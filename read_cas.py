@@ -22,9 +22,9 @@ def parse_fluent_msh(file_path):
     node_section_pattern = re.compile(r'\(10 \(1')
     face_section_pattern = re.compile(r'\(13 \((\d+)')
     cell_section_pattern = re.compile(r'\(12 \((\d+)')
-    # 边界条件正则表达式
-    bc_pattern = re.compile(r'\(45 \((\d+) (\w+) (.+)\)\)')
-
+    # 边界条件正则表达式   
+    bc_pattern = re.compile(r'^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$')
+    
     for line in lines:
         # 处理注释和输出提示
         if line.startswith('(0'):
@@ -96,6 +96,10 @@ def parse_fluent_msh(file_path):
                 zone_id = int(match.group(1))
                 bc_type = match.group(2)
                 bc_name = match.group(3).strip() if match.group(3) else None
+               
+                # 清理边界名称中的多余字符
+                if bc_name:
+                    bc_name = bc_name.split(')', 1)[0].strip()
 
                 if f'zone_{zone_id}' in data['zones']:
                     zone = data['zones'][f'zone_{zone_id}']
@@ -105,8 +109,8 @@ def parse_fluent_msh(file_path):
                     print(f"Warning: Zone {zone_id} not found for BC: {line}")
             else:
                 print(f"Warning: Unparsed BC line: {line}")
-            continue
-
+            continue       
+                 
         # 处理当前section的数据
         if current_section == 'nodes':
             if line == '))':
