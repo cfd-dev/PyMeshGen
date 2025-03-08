@@ -1,6 +1,6 @@
 from read_cas import parse_fluent_msh
 
-file_path = './sample/tri.cas'
+file_path = './sample/convex.cas'
 data = parse_fluent_msh(file_path)
 
 print(f"Dimensions: {data['dimensions']}")

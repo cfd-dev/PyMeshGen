@@ -21,9 +21,10 @@ def parse_fluent_msh(file_path):
     hex_pattern = re.compile(r'[0-9a-fA-F]+')
     node_section_pattern = re.compile(r'\(10 \(1')
     face_section_pattern = re.compile(r'\(13 \((\d+)')
-    cell_section_pattern = re.compile(r'\(12 \((\d+)')
-    # 边界条件正则表达式   
+    # cell_section_pattern = re.compile(r'\(12 \((\d+)\s*(\d+)\s*(\d+)')
+    cell_section_pattern = re.compile(r'\(\s*12\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')   
     bc_pattern = re.compile(r'^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$')
+    # cell_type_pattern = re.compile(r'^\((\d+)\s+\(([^)]*)\)\s*\(\s*$')
     
     for line in lines:
         # 处理注释和输出提示
@@ -65,25 +66,33 @@ def parse_fluent_msh(file_path):
             continue
 
         # 处理面数据
-        if face_section_pattern.match(line):
+        face_match = face_section_pattern.match(line)
+        if face_match:
             current_section = 'faces'
-            zone_id = int(face_section_pattern.match(line).group(1))
+            zone_id = int(face_match.group(1))
             current_zone = {
                 'zone_id': zone_id,
                 'type': 'faces',
-                'data': []
+                'data': [],
+                'left_cells': [],
+                'right_cells': []
             }
             data['zones'][f'zone_{zone_id}'] = current_zone
             continue
 
         # 处理单元数据
-        if cell_section_pattern.match(line):
+        cell_match = cell_section_pattern.match(line)
+        if cell_match:
             current_section = 'cells'
-            zone_id = int(cell_section_pattern.match(line).group(1))
+            zone_id = int(cell_match.group(1))
+            cell_start_idx = int(cell_match.group(2),16)
+            cell_end_idx = int(cell_match.group(3), 16)
+            cell_count = cell_end_idx - cell_start_idx + 1
             current_zone = {
                 'zone_id': zone_id,
                 'type': 'cells',
-                'cell_type': line.split()[4],
+                'cell_type': [],
+                'cell_count': cell_count,
                 'data': []
             }
             data['zones'][f'zone_{zone_id}'] = current_zone
@@ -109,7 +118,7 @@ def parse_fluent_msh(file_path):
                     print(f"Warning: Zone {zone_id} not found for BC: {line}")
             else:
                 print(f"Warning: Unparsed BC line: {line}")
-            continue       
+            continue            
                  
         # 处理当前section的数据
         if current_section == 'nodes':
@@ -146,7 +155,20 @@ def parse_fluent_msh(file_path):
             continue
 
         if current_section == 'cells':
-            # 这里需要根据具体单元数据格式补充解析逻辑
-            pass
-
+            if line == '))':
+                current_section = None
+            else:        
+                hex_values = line.split()
+                # 分离单元类型和节点数据
+                for h in hex_values:
+                    cell_type = int(h)
+                    current_zone['cell_type'].append(cell_type)
+            continue
+        
+    # # 后处理补充信息
+    # for zone_id, zone in data['zones'].items():
+    #     if zone['type'] == 'cells':
+    #         zone['cell_count'] = len(zone['data'])
+    #         if zone['data']:
+    #             zone['nodes_per_cell'] = len(zone['data'][0])
     return data
