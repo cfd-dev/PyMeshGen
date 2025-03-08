@@ -1,27 +1,16 @@
-import re
+from read_cas import parse_fluent_msh
 
-# 定义正则表达式（注意使用原始字符串避免转义问题）
-pattern = r'^\(\s*45\s+\(\s*\d+\s+[\w-]+\s+[\w-]+\s*\)\s*\(\s*\)\s*\)$'
-# pattern = r'^\(45 \(\d+ [a-zA-Z0-9-]+ [a-zA-Z0-9-]+\)\)\(\)$'
-# pattern = r'^$45 \(\d+(?: [a-zA-Z0-9-]+)+$$$\)$'
+file_path = './sample/tri.cas'
+data = parse_fluent_msh(file_path)
 
-# 编译正则表达式
-regex = re.compile(pattern)
+print(f"Dimensions: {data['dimensions']}")
+print(f"Nodes: {len(data['nodes'])}")
+print(f"Zones: {len(data['zones'])}")
 
-# 测试用例
-test_cases = [
-    "(45 (2 fluid unspecified)())",
-    "(45 (3 interior interior-unspecified)())",
-    "(45 (4 wall bc-2)())",
-    "(45 (5 pressure-far-field bc-3)())",
-    "(45 (6 invalid))",          # 无效格式（缺少部分）
-    "45 (7 test test)()",        # 无效格式（缺少外层括号）
-    "(45 (8 too many parts here)())"  # 无效格式（多余的内容）
-]
-
-# 验证测试用例
-for test in test_cases:
-    if regex.match(test):
-        print(f"匹配成功: {test}")
-    else:
-        print(f"匹配失败: {test}")
+# 打印第一个面区域的信息
+face_zone = data['zones'].get('zone_3')
+if face_zone:
+    print(f"\nFace Zone {face_zone['zone_id']} ({face_zone['bc_type'] if 'bc_type' in face_zone else 'interior'}):")
+    print(f"First 2 faces:")
+    for face in face_zone['data'][:2]:
+        print(f"Nodes: {face['node1']}->{face['node2']}, Cells: {face['left_cell']}|{face['right_cell']}")

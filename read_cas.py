@@ -127,15 +127,22 @@ def parse_fluent_msh(file_path):
             else:
                 # 处理十六进制面数据
                 hex_values = hex_pattern.findall(line)
-                if len(hex_values) >= 4:
+                if len(hex_values) == 4:
+                    face = {
+                        'node1': int(hex_values[0], 16),
+                        'node2': int(hex_values[1], 16),
+                        'left_cell': int(hex_values[2], 16),
+                        'right_cell': int(hex_values[3], 16)
+                    }
+                elif len(hex_values) == 5:
                     face = {
                         'nnodes':int(hex_values[0], 16),
                         'node1': int(hex_values[1], 16),
                         'node2': int(hex_values[2], 16),
                         'left_cell': int(hex_values[3], 16),
                         'right_cell': int(hex_values[4], 16)
-                    }
-                    current_zone['data'].append(face)
+                    }                    
+                current_zone['data'].append(face)
             continue
 
         if current_section == 'cells':
@@ -143,19 +150,3 @@ def parse_fluent_msh(file_path):
             pass
 
     return data
-
-# 使用示例
-file_path = './sample/convex.cas'
-data = parse_fluent_msh(file_path)
-
-print(f"Dimensions: {data['dimensions']}")
-print(f"Nodes: {len(data['nodes'])}")
-print(f"Zones: {len(data['zones'])}")
-
-# 打印第一个面区域的信息
-face_zone = data['zones'].get('zone_3')
-if face_zone:
-    print(f"\nFace Zone {face_zone['zone_id']} ({face_zone['bc_type'] if 'bc_type' in face_zone else 'interior'}):")
-    print(f"First 2 faces:")
-    for face in face_zone['data'][:2]:
-        print(f"Nodes: {face['node1']}->{face['node2']}, Cells: {face['left_cell']}|{face['right_cell']}")
