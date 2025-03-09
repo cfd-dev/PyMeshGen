@@ -20,11 +20,11 @@ def parse_fluent_msh(file_path):
     # 正则表达式模式
     hex_pattern = re.compile(r'[0-9a-fA-F]+')
     node_section_pattern = re.compile(r'\(10 \(1')
-    face_section_pattern = re.compile(r'\(13 \((\d+)')
-    # cell_section_pattern = re.compile(r'\(12 \((\d+)\s*(\d+)\s*(\d+)')
+    face_section_pattern = re.compile(r'\(13 \((\d+)')  
     cell_section_pattern = re.compile(r'\(\s*12\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')   
     bc_pattern = re.compile(r'^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$')
     # cell_type_pattern = re.compile(r'^\((\d+)\s+\(([^)]*)\)\s*\(\s*$')
+    # cell_section_pattern = re.compile(r'\(12 \((\d+)\s*(\d+)\s*(\d+)')
     
     for line in lines:
         # 处理注释和输出提示
@@ -158,17 +158,22 @@ def parse_fluent_msh(file_path):
             if line == '))':
                 current_section = None
             else:        
-                hex_values = line.split()
-                # 分离单元类型和节点数据
-                for h in hex_values:
-                    cell_type = int(h)
+                dec_values = line.split()
+                # 分离单元类型，
+                for h in dec_values:
+                    cell_type = int(h)  #暂且当作十进制
                     current_zone['cell_type'].append(cell_type)
             continue
         
-    # # 后处理补充信息
-    # for zone_id, zone in data['zones'].items():
-    #     if zone['type'] == 'cells':
-    #         zone['cell_count'] = len(zone['data'])
-    #         if zone['data']:
-    #             zone['nodes_per_cell'] = len(zone['data'][0])
     return data
+
+#cell_types
+# MIXED_CELL = 0
+# TRI_CELL = 1
+# TET_CELL = 2
+# QUAD_CELL = 3
+# HEX_CELL = 4
+# PYRAMID_CELL = 5
+# WEDGE_CELL = 6
+# POLY_CELL = 7
+# GHOST_CELL = 8
