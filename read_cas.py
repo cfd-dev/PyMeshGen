@@ -33,13 +33,10 @@ def parse_fluent_msh(file_path):
     # 正则表达式模式
     hex_pattern = re.compile(r'[0-9a-fA-F]+')
     node_section_pattern = re.compile(r'\(10 \(1')
-    # face_section_pattern = re.compile(r'\(13 \((\d+)')  
-    face_section_pattern = re.compile(r'\(\s*13\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')
-    cell_section_pattern = re.compile(r'\(\s*12\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')   
+    face_section_pattern = re.compile(r'\(\s*13\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')
+    cell_section_pattern = re.compile(r'\(\s*12\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')
     bc_pattern = re.compile(r'^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$')
-    # cell_type_pattern = re.compile(r'^\((\d+)\s+\(([^)]*)\)\s*\(\s*$')
-    # cell_section_pattern = re.compile(r'\(12 \((\d+)\s*(\d+)\s*(\d+)')
-    
+  
     for line in lines:
         # 处理注释和输出提示
         if line.startswith('(0'):
