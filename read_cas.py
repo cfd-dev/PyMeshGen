@@ -201,29 +201,23 @@ def parse_fluent_msh(file_path):
             if line == '))':
                 current_section = None
             else:        
-                dec_values = line.split()
+                dec_values = line.split()                
                 # 分离单元类型
                 for h in dec_values:
                     cell_type = int(h)
                     current_zone['cell_type_array'].append(cell_type)
             continue
         
+    # 收集faces数据到data['faces']
+    for zone in data['zones'].values():
+        if zone['type'] == 'faces':
+            bc_type = zone.get('bc_type', 'internal')
+            for face in zone['data']:
+                face_with_bc = {
+                    'nodes': face['nodes'],
+                    'left_cell': face['left_cell'],
+                    'right_cell': face['right_cell'],
+                    'bc_type': bc_type
+                }
+                data['faces'].append(face_with_bc)        
     return data
-
-#cell_types
-# MIXED_CELL = 0
-# TRI_CELL = 1
-# TET_CELL = 2
-# QUAD_CELL = 3
-# HEX_CELL = 4
-# PYRAMID_CELL = 5
-# WEDGE_CELL = 6
-# POLY_CELL = 7
-# GHOST_CELL = 8
-
-
-    # MIXED_FACE =  0,
-    # LINEAR_FACE =  2,           /* 2 nodes, 0 edges */
-    # TRI_FACE =  3,              /* 3 nodes, 3 edges */
-    # QUAD_FACE =  4,             /* 4 nodes, 4 edges */
-    # POLY_FACE = 5,              /* alrbitrary number of nodes/edges */
