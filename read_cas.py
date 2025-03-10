@@ -1,5 +1,18 @@
 import re
 
+MIXED_FACE  = 0
+LINEAR_FACE = 2
+TRI_FACE    = 3
+QUAD_FACE   = 4
+
+MIXED_CELL = 0
+TRI_CELL = 1
+TET_CELL = 2
+QUAD_CELL = 3
+HEX_CELL = 4
+PYRAMID_CELL = 5
+WEDGE_CELL = 6
+
 def parse_fluent_msh(file_path):
     data = {
         'nodes': [],
@@ -20,7 +33,8 @@ def parse_fluent_msh(file_path):
     # 正则表达式模式
     hex_pattern = re.compile(r'[0-9a-fA-F]+')
     node_section_pattern = re.compile(r'\(10 \(1')
-    face_section_pattern = re.compile(r'\(13 \((\d+)')  
+    # face_section_pattern = re.compile(r'\(13 \((\d+)')  
+    face_section_pattern = re.compile(r'\(\s*13\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')
     cell_section_pattern = re.compile(r'\(\s*12\s*\(\s*(\d+)\s+(\d+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)')   
     bc_pattern = re.compile(r'^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$')
     # cell_type_pattern = re.compile(r'^\((\d+)\s+\(([^)]*)\)\s*\(\s*$')
@@ -70,12 +84,21 @@ def parse_fluent_msh(file_path):
         if face_match:
             current_section = 'faces'
             zone_id = int(face_match.group(1))
+            face_start_idx = int(face_match.group(2),16)
+            face_end_idx = int(face_match.group(3),16)
+            face_count_section = face_end_idx - face_start_idx + 1
+            bc_type = int(face_match.group(4))
+            face_type = int(face_match.group(5))
             current_zone = {
-                'zone_id': zone_id,
                 'type': 'faces',
-                'data': [],
-                'left_cells': [],
-                'right_cells': []
+                'zone_id': zone_id,
+                'start_idx':face_start_idx,
+                'end_idx':face_end_idx,
+                'bc_type': bc_type,
+                'face_type':face_type,
+                'bc_name': [],
+                'face_count_section': face_count_section,
+                'data': []
             }
             data['zones'][f'zone_{zone_id}'] = current_zone
             continue
@@ -87,13 +110,19 @@ def parse_fluent_msh(file_path):
             zone_id = int(cell_match.group(1))
             cell_start_idx = int(cell_match.group(2),16)
             cell_end_idx = int(cell_match.group(3), 16)
+            cell_zone_type = int(cell_match.group(4))
+            cell_type = int(cell_match.group(5))
             cell_count = cell_end_idx - cell_start_idx + 1
             current_zone = {
-                'zone_id': zone_id,
                 'type': 'cells',
-                'cell_type': [],
-                'cell_count': cell_count,
-                'data': []
+                'zone_id': zone_id,
+                'start_idx':cell_start_idx,
+                'end_idx':cell_end_idx,
+                'cell_zone_type':cell_zone_type,               
+                'cell_type': cell_type,
+                'cell_type_array': [],
+                'bc_name': [],
+                'cell_count': cell_count
             }
             data['zones'][f'zone_{zone_id}'] = current_zone
             continue
@@ -136,21 +165,35 @@ def parse_fluent_msh(file_path):
             else:
                 # 处理十六进制面数据
                 hex_values = hex_pattern.findall(line)
-                if len(hex_values) == 4:
-                    face = {
-                        'node1': int(hex_values[0], 16),
-                        'node2': int(hex_values[1], 16),
-                        'left_cell': int(hex_values[2], 16),
-                        'right_cell': int(hex_values[3], 16)
+                dec_values = [int(h, 16) for h in hex_values]
+                
+                if face_type == MIXED_FACE:   
+                    nnodes = dec_values[0]                 
+                    face = {                       
+                        'nnodes':dec_values[0],
+                        'nodes':dec_values[1:1+nnodes],
+                        'left_cell': dec_values[1+nnodes],
+                        'right_cell': dec_values[2+nnodes]
                     }
-                elif len(hex_values) == 5:
+                else:
                     face = {
-                        'nnodes':int(hex_values[0], 16),
-                        'node1': int(hex_values[1], 16),
-                        'node2': int(hex_values[2], 16),
-                        'left_cell': int(hex_values[3], 16),
-                        'right_cell': int(hex_values[4], 16)
-                    }                    
+                        'nnodes':0,
+                        'nodes':[],
+                        'left_cell': [],
+                        'right_cell': []                                               
+                    }
+                    if face_type == LINEAR_FACE:
+                        face['nnodes'] = 2
+                    elif face_type == TRI_FACE:
+                       face['nnodes'] = 3
+                    elif face_type == QUAD_FACE:
+                        face['nnodes'] = 4
+                        
+                    nnodes = face['nnodes']
+                    face['nodes'] = dec_values[0:nnodes]
+                    face['left_cell'] =dec_values[nnodes]
+                    face['right_cell'] =dec_values[1+nnodes]
+                  
                 current_zone['data'].append(face)
             continue
 
@@ -159,10 +202,10 @@ def parse_fluent_msh(file_path):
                 current_section = None
             else:        
                 dec_values = line.split()
-                # 分离单元类型，
+                # 分离单元类型
                 for h in dec_values:
-                    cell_type = int(h)  #暂且当作十进制
-                    current_zone['cell_type'].append(cell_type)
+                    cell_type = int(h)
+                    current_zone['cell_type_array'].append(cell_type)
             continue
         
     return data
@@ -177,3 +220,10 @@ def parse_fluent_msh(file_path):
 # WEDGE_CELL = 6
 # POLY_CELL = 7
 # GHOST_CELL = 8
+
+
+    # MIXED_FACE =  0,
+    # LINEAR_FACE =  2,           /* 2 nodes, 0 edges */
+    # TRI_FACE =  3,              /* 3 nodes, 3 edges */
+    # QUAD_FACE =  4,             /* 4 nodes, 4 edges */
+    # POLY_FACE = 5,              /* alrbitrary number of nodes/edges */
