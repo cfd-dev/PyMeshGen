@@ -14,3 +14,5 @@
 /regression_rnn.py
 /__pycache__
 /morvan_python
+marching_model.pth
+.gitignore

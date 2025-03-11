@@ -4,7 +4,7 @@ def get_march_vector(grid, node_1based, current_face):
       
     adjacent_faces = mesh_recons.get_adjacent_node(grid, node_1based, current_face)
     
-    for adj_face in adjacent_faces:        
+    for adj_face in adjacent_faces:    
         face = adj_face['face']       
         nodes = face['nodes']
         
