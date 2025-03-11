@@ -97,7 +97,7 @@ def visualize_graph_structure(data):
     ax.set_title("Graph Structure Visualization")
     plt.show()
 
-def visualize_predictions(data, model, vector_scale=0.3):
+def visualize_predictions(data, model, vector_scale=0.05, head_scale=0.01):
     """
     可视化真实向量与预测向量对比
 
@@ -117,12 +117,23 @@ def visualize_predictions(data, model, vector_scale=0.3):
     # 绘制节点位置
     ax.scatter(coords[:, 0], coords[:, 1], c='black', s=20, label='Nodes')
 
+    # 计算动态箭头参数
+    x_range = coords[:,0].max() - coords[:,0].min()
+    y_range = coords[:,1].max() - coords[:,1].min()
+    base_size = (x_range + y_range) / 2 * head_scale
+    
+    # 统一箭头尺寸参数
+    head_width = base_size * 3   # 箭头宽度
+    head_length = base_size * 5  # 箭头长度
+
+    # 修改箭头绘制部分（原117-136行）
     # 绘制真实向量（蓝色）
     for i in range(len(true)):
         if not np.any(np.isnan(true[i])):
             dx, dy = true[i] * vector_scale
             ax.arrow(coords[i, 0], coords[i, 1], dx, dy,
-                     head_width=0.05, head_length=0.1,
+                     head_width=head_width, 
+                     head_length=head_length,  # 替换固定数值
                      fc='blue', ec='blue', alpha=0.6,
                      length_includes_head=True)
 
@@ -131,7 +142,8 @@ def visualize_predictions(data, model, vector_scale=0.3):
         if not np.any(np.isnan(pred[i])):
             dx, dy = pred[i] * vector_scale
             ax.arrow(coords[i, 0], coords[i, 1], dx, dy,
-                     head_width=0.05, head_length=0.1,
+                     head_width=head_width,
+                     head_length=head_length,  # 替换固定数值
                      fc='red', ec='red', alpha=0.6,
                      length_includes_head=True)
 
