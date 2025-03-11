@@ -64,47 +64,36 @@ class EnhancedGNN(torch.nn.Module):
     def __init__(self, hidden_channels=64):
         super().__init__()
         self.conv1 = GCNConv(2, hidden_channels)
+        self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
+        self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
+        self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
+        self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 全连接层后BN
         self.fc2 = torch.nn.Linear(32, 2)
+        self.tanh = torch.nn.Tanh()
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
 
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = F.relu(self.conv3(x, edge_index))
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-
+        x = F.relu(self.bn1(self.conv1(x, edge_index)))  # 修改前向传播
+        x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        x = F.relu(self.bn_fc1(self.fc1(x)))  # 全连接层后加BN
+        x = self.tanh(self.fc2(x))
+        
         return x
 
-def visualize_graph_structure(data):
-    fig, ax = plt.subplots(figsize=(10, 8))
-
-    # 绘制节点
-    ax.scatter(data.x[:,0], data.x[:,1], c='blue', s=20)
-
-    # 绘制边
-    for i in range(data.edge_index.shape[1]):
-        a = data.edge_index[0, i].item()
-        b = data.edge_index[1, i].item()
-        ax.plot([data.x[a,0], data.x[b,0]],
-                [data.x[a,1], data.x[b,1]],
-                c='gray', alpha=0.3)
-
-    ax.set_title("Graph Structure Visualization")
-    plt.show()
-
-def visualize_predictions(data, model, vector_scale=0.05, head_scale=0.01):
+def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     """
     可视化真实向量与预测向量对比
 
     参数:
     data (Data): 图数据对象
     model (torch.nn.Module): 训练好的GNN模型
-    vector_scale (float): 向量缩放因子（防止箭头过长）
+    vector_scale (float): [可选] 手动指定向量缩放因子，None表示自动计算
+    head_scale (float): [可选] 手动指定箭头尺寸缩放因子，None表示自动计算
     """
     model.eval()
     with torch.no_grad():
@@ -118,13 +107,23 @@ def visualize_predictions(data, model, vector_scale=0.05, head_scale=0.01):
     ax.scatter(coords[:, 0], coords[:, 1], c='black', s=20, label='Nodes')
 
     # 计算动态箭头参数
-    x_range = coords[:,0].max() - coords[:,0].min()
-    y_range = coords[:,1].max() - coords[:,1].min()
-    base_size = (x_range + y_range) / 2 * head_scale
-    
-    # 统一箭头尺寸参数
-    head_width = base_size * 3   # 箭头宽度
-    head_length = base_size * 5  # 箭头长度
+    # 计算坐标范围
+    x_min, x_max = coords[:,0].min(), coords[:,0].max()
+    y_min, y_max = coords[:,1].min(), coords[:,1].max()
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    avg_range = (x_range + y_range) / 2
+
+    # 自动计算参数（新增部分）
+    if vector_scale is None:
+        vector_scale = 0.15 / avg_range if avg_range > 0 else 0.3
+    if head_scale is None:
+        head_scale = 0.02 / avg_range if avg_range > 0 else 0.01
+
+    # 统一箭头尺寸参数（保持原有逻辑）
+    base_size = avg_range * head_scale
+    head_width = base_size * 2.5
+    head_length = base_size * 4
 
     # 修改箭头绘制部分（原117-136行）
     # 绘制真实向量（蓝色）
@@ -173,7 +172,7 @@ if __name__ == "__main__":
     config = {
         'hidden_channels': 128,  # GNN隐藏层维度
         'learning_rate': 0.001,  # 学习率
-        'epochs': 1000,  # 单数据集训练轮次
+        'epochs': 20000,  # 单数据集训练轮次
         'log_interval': 20  # 损失打印间隔
     }
 
@@ -189,7 +188,12 @@ if __name__ == "__main__":
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
     model = EnhancedGNN(hidden_channels=config['hidden_channels']).to(device)
-    
+    print("\n网络层详细信息：")
+    print(model)
+    # 新增参数数量统计
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"\n总可训练参数数量：{total_params:,}")
+
     # 优化器和损失函数配置
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
     criterion = torch.nn.MSELoss()
@@ -217,7 +221,7 @@ if __name__ == "__main__":
             print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
             
             # 可视化初始图结构
-            visualize_graph_structure(data.cpu())
+            # visualize_graph_structure(data.cpu())
 
             # 2. 训练阶段
             model.train()
@@ -243,9 +247,9 @@ if __name__ == "__main__":
                     plt.pause(0.01)  # 维持图像响应
 
             # 3. 单数据集验证
-            plt.ioff()
-            visualize_predictions(data.cpu(), model.cpu())
-            plt.ion()
+            # plt.ioff()
+            # visualize_predictions(data.cpu(), model.cpu())
+            # plt.ion()
             
             model.to(device)  # 确保模型回到正确设备
 
