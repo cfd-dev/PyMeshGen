@@ -145,7 +145,7 @@ def visualize_predictions(data, model, vector_scale=0.3):
     ax.set_ylabel("Y Coordinate")
     ax.axis('equal')
     plt.tight_layout()
-    plt.show()
+    plt.show(block=True)
 
 if __name__ == "__main__":
     # -------------------------- 初始化配置 --------------------------
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     
     # 超参数配置
     config = {
-        'hidden_channels': 64,  # GNN隐藏层维度
+        'hidden_channels': 128,  # GNN隐藏层维度
         'learning_rate': 0.001,  # 学习率
         'epochs': 1000,  # 单数据集训练轮次
         'log_interval': 20  # 损失打印间隔
@@ -205,7 +205,7 @@ if __name__ == "__main__":
             print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
             
             # 可视化初始图结构
-            # visualize_graph_structure(data.cpu())
+            visualize_graph_structure(data.cpu())
 
             # 2. 训练阶段
             model.train()
@@ -231,7 +231,9 @@ if __name__ == "__main__":
                     plt.pause(0.01)  # 维持图像响应
 
             # 3. 单数据集验证
-            # visualize_predictions(data.cpu(), model.cpu())
+            plt.ioff()
+            visualize_predictions(data.cpu(), model.cpu())
+            plt.ion()
             
             model.to(device)  # 确保模型回到正确设备
 
