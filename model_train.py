@@ -42,7 +42,6 @@ def build_graph_data(wall_nodes, wall_faces):
     
     return Data(x=x, edge_index=edge_index, y=y)
 
-
 def visualize_graph_structure(data):
     fig, ax = plt.subplots(figsize=(10, 8))
     
@@ -96,7 +95,6 @@ def visualize_graph_structure(data):
     
     ax.set_title("Graph Structure Visualization")
     plt.show()
-
 
 def visualize_predictions(data, model, vector_scale=0.3):
     """
@@ -155,7 +153,7 @@ if __name__ == "__main__":
     
     # 示例：可视化第一个文件的结果
     if all_results:
-        first_result = all_results[3]
+        first_result = all_results[8]
         mesh_vis.visualize_mesh_2d(
             first_result['grid'], 
             first_result['valid_wall_nodes'], 

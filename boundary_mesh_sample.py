@@ -48,7 +48,8 @@ def process_single_file(file_path):
                             'coords': grid['nodes'][node_idx],
                             'node_wall_faces': [],          # 存储该节点所属的所有wall面
                             'march_vector': None  # 后续计算
-                        }
+                        }                       
+                        
                     # 添加当前面到节点的faces列表
                     node_dict[node_idx]['node_wall_faces'].append(face)
                       
@@ -56,7 +57,7 @@ def process_single_file(file_path):
     wall_nodes = list(node_dict.values())
     for node_info in wall_nodes:
         node_1based = node_info['original_indices'] + 1
-        # 选择第一个关联的面进行计算（可根据需求调整策略）
+        # 选择第一个关联的面进行计算（可根据需求调整策略）           
         if node_info['node_wall_faces']:
             face = node_info['node_wall_faces'][0]
             try:
