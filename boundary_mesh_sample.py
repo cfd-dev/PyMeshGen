@@ -1,228 +1,106 @@
+import os
 import read_cas as rc
 import mesh_reconstruction as mesh_recons
 import grid_sample as gsam 
-import mesh_visualization as mesh_vis
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool
-import torch
-from torch_geometric.data import Data
-import numpy as np
 
-def build_graph_data(wall_nodes, wall_faces):
-    # 创建原始索引到wall_nodes索引的映射
-    index_map = {node['original_indices']: i for i, node in enumerate(wall_nodes)}
-    
-    edge_set = set()  # 使用集合去重
-    
-    for face in wall_faces:
-        # 获取面的节点索引（转换为0-based）
-        nodes_0based = [n-1 for n in face['nodes']]
-        
-        # 根据面类型决定连接方式
-        if len(nodes_0based) == 2:  # 线性面
-            i, j = nodes_0based
-            if i in index_map and j in index_map:
-                a, b = index_map[i], index_map[j]
-                edge_set.add((a, b))
-                edge_set.add((b, a))  # 无向图
-        else:  # 多边形面（三角形/四边形等）
-            # 循环连接相邻节点
-            for i in range(len(nodes_0based)):
-                current = nodes_0based[i]
-                next_node = nodes_0based[(i+1) % len(nodes_0based)]
-                if current in index_map and next_node in index_map:
-                    a, b = index_map[current], index_map[next_node]
-                    edge_set.add((a, b))
-                    edge_set.add((b, a))
-    
-    # 转换为tensor格式
-    edge_index = torch.tensor(list(edge_set), dtype=torch.long).t().contiguous()
-    
-    # 处理节点特征和标签
-    x = torch.tensor([node['coords'][:2] for node in wall_nodes], dtype=torch.float)
-    y = torch.tensor([node['march_vector'][:2] for node in wall_nodes], dtype=torch.float)
-    
-    return Data(x=x, edge_index=edge_index, y=y)
-
-
-def visualize_graph_structure(data):
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # 绘制节点
-    ax.scatter(data.x[:,0], data.x[:,1], c='blue', s=20)
-    
-    # 绘制边
-    for i in range(data.edge_index.shape[1]):
-        a = data.edge_index[0, i].item()
-        b = data.edge_index[1, i].item()
-        ax.plot([data.x[a,0], data.x[b,0]],
-                [data.x[a,1], data.x[b,1]],
-                c='gray', alpha=0.3)
-    
-    ax.set_title("Graph Structure Visualization")
-    plt.show()
-    
-class EnhancedGNN(torch.nn.Module):
-    def __init__(self, hidden_channels=64):
-        super().__init__()
-        self.conv1 = GCNConv(2, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        self.fc1 = torch.nn.Linear(hidden_channels, 32)
-        self.fc2 = torch.nn.Linear(32, 2)
-        
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = F.relu(self.conv3(x, edge_index))
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        
-        return x
-    
-import matplotlib.pyplot as plt   
-def visualize_graph_structure(data):
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # 绘制节点
-    ax.scatter(data.x[:,0], data.x[:,1], c='blue', s=20)
-    
-    # 绘制边
-    for i in range(data.edge_index.shape[1]):
-        a = data.edge_index[0, i].item()
-        b = data.edge_index[1, i].item()
-        ax.plot([data.x[a,0], data.x[b,0]],
-                [data.x[a,1], data.x[b,1]],
-                c='gray', alpha=0.3)
-    
-    ax.set_title("Graph Structure Visualization")
-    plt.show()
-
-
-def visualize_predictions(data, model, vector_scale=0.3):
+def process_single_file(file_path):
     """
-    可视化真实向量与预测向量对比
+    处理单个网格文件，提取wall节点和推进向量
     
     参数:
-    data (Data): 图数据对象
-    model (torch.nn.Module): 训练好的GNN模型
-    vector_scale (float): 向量缩放因子（防止箭头过长）
+    file_path (str): 文件路径
+    
+    返回:
+    dict: 包含wall_faces, wall_nodes, valid_wall_nodes等信息
     """
-    model.eval()
-    with torch.no_grad():
-        pred = model(data).cpu().numpy()
-    true = data.y.cpu().numpy()
-    coords = data.x.cpu().numpy()
+    print(f"Processing file: {file_path}")
     
-    fig, ax = plt.subplots(figsize=(12, 8))
+    # 解析网格文件
+    try:
+        grid = rc.parse_fluent_msh(file_path)
+    except Exception as e:
+        print(f"Error parsing file {file_path}: {e}")
+        return None
     
-    # 绘制节点位置
-    ax.scatter(coords[:, 0], coords[:, 1], c='black', s=20, label='Nodes')
-    
-    # 绘制真实向量（蓝色）
-    for i in range(len(true)):
-        if not np.any(np.isnan(true[i])):
-            dx, dy = true[i] * vector_scale
-            ax.arrow(coords[i, 0], coords[i, 1], dx, dy,
-                     head_width=0.05, head_length=0.1,
-                     fc='blue', ec='blue', alpha=0.6,
-                     length_includes_head=True)
-    
-    # 绘制预测向量（红色）
-    for i in range(len(pred)):
-        if not np.any(np.isnan(pred[i])):
-            dx, dy = pred[i] * vector_scale
-            ax.arrow(coords[i, 0], coords[i, 1], dx, dy,
-                     head_width=0.05, head_length=0.1,
-                     fc='red', ec='red', alpha=0.6,
-                     length_includes_head=True)
-    
-    # 创建图例
-    blue_arrow = plt.Line2D([0], [0], color='blue', lw=2, label='True Vector')
-    red_arrow = plt.Line2D([0], [0], color='red', lw=2, label='Predicted Vector')
-    ax.legend(handles=[blue_arrow, red_arrow])
-    
-    ax.set_title("March Vector Prediction vs Ground Truth")
-    ax.set_xlabel("X Coordinate")
-    ax.set_ylabel("Y Coordinate")
-    ax.axis('equal')
-    plt.tight_layout()
-    plt.show()    
-            
-file_path = './sample/convex.cas'
-grid = rc.parse_fluent_msh(file_path)
-mesh_recons.preprocess_grid(grid)
+    # 预处理网格
+    mesh_recons.preprocess_grid(grid)
 
-wall_faces = []
-wall_nodes = []
-march_vector = []
-processed_nodes = set()
-# 遍历所有区域
-for zone in grid['zones'].values():
-    # 检查是否为面区域且边界类型为wall
-    if zone['type'] == 'faces' and zone.get('bc_type') == 'wall':
-        # 遍历该区域的所有面
-        for face in zone['data']:
-            wall_faces.append(face)
-            # 获取面的节点索引（注意Fluent节点索引从1开始）
-            node_indices_0based = [n - 1 for n in face['nodes']]  # 转换为Python的0基索引
-            
-            for node_idx in node_indices_0based:
-                if node_idx in processed_nodes:
-                    continue
-                processed_nodes.add(node_idx)
+    # 初始化存储结构
+    wall_faces = []
+    node_dict = {}  # 使用字典暂存节点信息，避免重复
+    
+    # 遍历所有区域
+    for zone in grid['zones'].values():
+        # 检查是否为面区域且边界类型为wall
+        if zone['type'] == 'faces' and zone.get('bc_type') == 'wall':
+            # 遍历该区域的所有面
+            for face in zone['data']:
+                wall_faces.append(face)
                 
-                node_1based = node_idx + 1
+                # 获取面的节点索引（注意Fluent节点索引从1开始）
+                node_indices_0based = [n - 1 for n in face['nodes']]  # 转换为Python的0基索引
                 
-                # 计算推进向量
-                try:
-                    march_vector = gsam.get_march_vector(grid, node_1based, face)
-                except Exception as e:
-                    print(f"Error calculating vector for node {node_1based}: {e}")
-                    print(f"Face nodes: {face['nodes']}")
-                    vector = None 
-                                   
-                wall_nodes.append({'original_indices': node_idx,
-                                   'coords': grid['nodes'][node_idx],
-                                   'march_vector': march_vector
-                                   })
-
-# 过滤掉无效向量
-valid_wall_nodes = [n for n in wall_nodes if n['march_vector']]
-
-print(f"Total wall nodes: {len(wall_nodes)}")
-print(f"Valid vectors: {len(valid_wall_nodes)}")
+                for node_idx in node_indices_0based:
+                    # 初始化节点信息
+                    if node_idx not in node_dict:
+                        node_dict[node_idx] = {
+                            'original_indices': node_idx,
+                            'coords': grid['nodes'][node_idx],
+                            'node_wall_faces': [],          # 存储该节点所属的所有wall面
+                            'march_vector': None  # 后续计算
+                        }
+                    # 添加当前面到节点的faces列表
+                    node_dict[node_idx]['node_wall_faces'].append(face)
                       
-# mesh_vis.visualize_mesh_2d(grid, valid_wall_nodes, vector_scale=0.3)
+# 转换为列表并计算推进向量
+    wall_nodes = list(node_dict.values())
+    for node_info in wall_nodes:
+        node_1based = node_info['original_indices'] + 1
+        # 选择第一个关联的面进行计算（可根据需求调整策略）
+        if node_info['node_wall_faces']:
+            face = node_info['node_wall_faces'][0]
+            try:
+                node_info['march_vector'] = gsam.get_march_vector(grid, node_1based, face)
+            except Exception as e:
+                print(f"Error calculating vector for node {node_1based}: {e}")
+    
+    # 过滤无效向量
+    valid_wall_nodes = [n for n in wall_nodes if n['march_vector']]
+    
+    # 打印统计信息
+    print(f"File: {file_path}")
+    print(f"Total wall nodes: {len(wall_nodes)}")
+    print(f"Valid vectors: {len(valid_wall_nodes)}")
+    
+    # mesh_vis.visualize_mesh_2d(grid, valid_wall_nodes, vector_scale=0.3)
+    
+    return {
+        'file_path': file_path,
+        'grid': grid,
+        'wall_faces': wall_faces,
+        'wall_nodes': wall_nodes,
+        'valid_wall_nodes': valid_wall_nodes
+    }                                    
 
-# 1. 数据预处理
-data = build_graph_data(valid_wall_nodes, wall_faces)
-
-# 查看图结构
-print(f"节点数: {data.num_nodes}")
-print(f"边数: {data.num_edges}")
-print(f"特征维度: {data.num_node_features}")
-
-# 2. 模型初始化
-model = EnhancedGNN(hidden_channels=64)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-criterion = torch.nn.MSELoss()
-
-# 3. 训练循环
-model.train()
-for epoch in range(200):
-    optimizer.zero_grad()
-    out = model(data)
-    loss = criterion(out, data.y)
-    loss.backward()
-    optimizer.step()
-    if epoch % 20 == 0:
-        print(f'Epoch {epoch}, Loss: {loss.item():.4f}')
-
-# 4. 可视化验证
-visualize_graph_structure(data)
-visualize_predictions(data, model)
-
-input("按回车键退出...")
+    
+def batch_process_files(folder_path):
+    """
+    批量处理指定文件夹中的所有网格文件
+    
+    参数:
+    folder_path (str): 文件夹路径
+    
+    返回:
+    list: 每个文件的处理结果列表
+    """
+    results = []
+    
+    # 遍历文件夹中的所有.cas文件
+    for file_name in os.listdir(folder_path):
+        if file_name.endswith('.cas'):
+            file_path = os.path.join(folder_path, file_name)
+            result = process_single_file(file_path)
+            if result:
+                results.append(result)
+    
+    return results
