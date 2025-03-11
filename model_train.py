@@ -171,8 +171,8 @@ if __name__ == "__main__":
     # 超参数配置
     config = {
         'hidden_channels': 128,  # GNN隐藏层维度
-        'learning_rate': 0.001,  # 学习率
-        'epochs': 20000,  # 单数据集训练轮次
+        'learning_rate': 0.01,  # 学习率
+        'epochs': 10000,  # 单数据集训练轮次
         'log_interval': 20  # 损失打印间隔
     }
 

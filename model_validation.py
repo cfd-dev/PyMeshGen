@@ -7,22 +7,27 @@ from model_train import build_graph_data, visualize_predictions
 from torch_geometric.nn import GCNConv
 
 class EnhancedGNN(torch.nn.Module):
-    """复现训练时使用的网络结构"""
+    """保持与训练模型一致的网络结构"""
     def __init__(self, hidden_channels=64):
         super().__init__()
         self.conv1 = GCNConv(2, hidden_channels)
+        self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
+        self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
+        self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
+        self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 新增全连接层BN
         self.fc2 = torch.nn.Linear(32, 2)
+        self.tanh = torch.nn.Tanh()  # 新增tanh激活
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = F.relu(self.conv3(x, edge_index))
-        x = F.relu(self.fc1(x))
-        return self.fc2(x)
+        x = F.relu(self.bn1(self.conv1(x, edge_index)))  # 调整前向传播顺序
+        x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        x = F.relu(self.bn_fc1(self.fc1(x)))  # 全连接层后加BN
+        return self.tanh(self.fc2(x))  # 添加tanh激活
 
 def validate_model():
     # -------------------------- 初始化配置 --------------------------
