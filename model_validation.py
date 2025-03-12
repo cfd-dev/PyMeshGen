@@ -33,7 +33,7 @@ def validate_model():
     # -------------------------- 初始化配置 --------------------------
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
-        'hidden_channels': 64,
+        'hidden_channels': 128,
         'model_path': 'marching_model.pth',
         'validation_data_path': './validation_sample'
     }
