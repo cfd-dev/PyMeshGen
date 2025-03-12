@@ -24,6 +24,39 @@ def process_single_file(file_path):
     
     # 预处理网格
     mesh_recons.preprocess_grid(grid)
+    
+    # === 新增归一化预处理 ===
+    # 获取所有节点坐标
+    all_nodes = grid['nodes']
+    if not all_nodes:
+        print("No nodes found in grid.")
+        return None
+    
+    # 计算各维度范围
+    xs = [n[0] for n in all_nodes]
+    ys = [n[1] for n in all_nodes]
+    zs = [n[2] for n in all_nodes] if len(all_nodes[0]) > 2 else []
+    
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    z_min, z_max = (min(zs), max(zs)) if zs else (0.0, 0.0)
+    
+    # 生成归一化后的坐标列表
+    normalized_nodes = []
+    for node in all_nodes:
+        # 处理每个坐标轴
+        x_range = x_max - x_min
+        norm_x = (node[0] - x_min) / x_range if x_range != 0 else 0.5
+        
+        y_range = y_max - y_min
+        norm_y = (node[1] - y_min) / y_range if y_range != 0 else 0.5
+        
+        if len(node) > 2 and zs:
+            z_range = z_max - z_min
+            norm_z = (node[2] - z_min) / z_range if z_range != 0 else 0.5
+            normalized_nodes.append((norm_x, norm_y, norm_z))
+        else:
+            normalized_nodes.append((norm_x, norm_y))
 
     # 初始化存储结构
     wall_faces = []
@@ -45,9 +78,9 @@ def process_single_file(file_path):
                     if node_idx not in node_dict:
                         node_dict[node_idx] = {
                             'original_indices': node_idx,
-                            'coords': grid['nodes'][node_idx],
-                            'node_wall_faces': [],          # 存储该节点所属的所有wall面
-                            'march_vector': None  # 后续计算
+                            'coords': normalized_nodes[node_idx], 
+                            'node_wall_faces': [], # 存储与该节点相关的所有wall面         
+                            'march_vector': None  
                         }                       
                         
                     # 添加当前面到节点的faces列表
