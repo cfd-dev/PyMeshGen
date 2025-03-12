@@ -168,12 +168,13 @@ if __name__ == "__main__":
     folder_path = './sample'  # 原始数据目录
     model_save_path = './model/saved_model.pth'  # 模型保存路径
     
-    # 超参数配置
+    # -------------------------- 超参数配置 --------------------------
     config = {
         'hidden_channels': 128,  # GNN隐藏层维度
-        'learning_rate': 0.01,  # 学习率
-        'epochs': 1000,  # 单数据集训练轮次
-        'log_interval': 20  # 损失打印间隔
+        'learning_rate': 0.001,  # 降低学习率
+        'total_epochs': 100,      # 总训练轮次（新增）
+        'epochs_per_dataset': 5000, # 每个数据集每次迭代训练次数（新增）
+        'log_interval': 20
     }
 
     # -------------------------- 数据准备 --------------------------
@@ -210,59 +211,66 @@ if __name__ == "__main__":
 
     # -------------------------- 训练流程 --------------------------
     try:
-        # 遍历所有数据集进行训练
-        for dataset_idx, result in enumerate(all_results):
-            # 1. 数据预处理
-            wall_nodes = result['valid_wall_nodes']
-            wall_faces = result['wall_faces']
+        # 外层循环：总训练轮次
+        for total_epoch in range(config['total_epochs']):
+           # 内层循环：遍历所有数据集
+            for dataset_idx, result in enumerate(all_results):
+                # 1. 数据预处理
+                wall_nodes = result['valid_wall_nodes']
+                wall_faces = result['wall_faces']
             
-            # 构建图数据结构
-            data = build_graph_data(wall_nodes, wall_faces).to(device)
-            print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
+                # 构建图数据结构
+                data = build_graph_data(wall_nodes, wall_faces).to(device)
+                print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
             
-            # 可视化初始图结构
-            # visualize_graph_structure(data.cpu())
+                # 可视化初始图结构
+                # visualize_graph_structure(data.cpu())
 
-            # 2. 训练阶段
-            model.train()
-            for epoch in range(config['epochs']):
-                optimizer.zero_grad()
-                out = model(data)
-                loss = criterion(out, data.y)
-                loss.backward()
-                optimizer.step()
+                # 单个数据集训练阶段
+                model.train()
+                for epoch in range(config['epochs_per_dataset']):
+                    optimizer.zero_grad()
+                    out = model(data)
+                    loss = criterion(out, data.y)
+                    loss.backward()
+                    optimizer.step()
 
-                # 记录损失值
-                train_losses.append(loss.item())
+                    # 记录损失值
+                    train_losses.append(loss.item())
 
-                # 定期更新训练信息
-                if epoch % config['log_interval'] == 0:
-                    print(f"数据集[{dataset_idx+1}] 轮次[{epoch}/{config['epochs']}] 损失: {loss.item():.4f}")
-                    
-                    # 更新损失曲线
-                    line.set_data(range(len(train_losses)), train_losses)
-                    ax.relim()
-                    ax.autoscale_view()
-                    plt.draw()
-                    plt.pause(0.01)  # 维持图像响应
+                    # 定期更新训练信息（调整日志格式）
+                    if epoch % config['log_interval'] == 0:
+                        print(f"总轮次[{total_epoch+1}/{config['total_epochs']}] " 
+                              f"数据集[{dataset_idx+1}/{len(all_results)}] "
+                              f"局部轮次[{epoch}/{config['epochs_per_dataset']}] "
+                              f"损失: {loss.item():.4f}")                    
+                        # 更新损失曲线
+                        line.set_data(range(len(train_losses)), train_losses)
+                        ax.relim()
+                        ax.autoscale_view()
+                        plt.draw()
+                        plt.pause(0.01)  # 维持图像响应
 
-            # 3. 单数据集验证
-            plt.ioff()
-            visualize_predictions(data.cpu(), model.cpu())
-            plt.ion()
+                # 3. 单数据集验证
+                # plt.ioff()
+                # visualize_predictions(data.cpu(), model.cpu())
+                # plt.ion()
             
-            model.to(device)  # 确保模型回到正确设备
+        model.to(device)  # 确保模型回到正确设备
+        # 每个总epoch结束后保存模型
+        torch.save(model.state_dict(), model_save_path)
+        print(f"\n模型已保存至 {model_save_path}（第{total_epoch+1}轮）")
 
     except KeyboardInterrupt:
         print("\n训练被用户中断！")
     finally:
         # -------------------------- 收尾工作 --------------------------
-        # 保存最终模型
+        # 最终保存模型
         torch.save(model.state_dict(), model_save_path)
         print(f"\n模型已保存至 {model_save_path}")
         
-        # 关闭交互式绘图
-        plt.ioff()
-        plt.close()
+    # 关闭交互式绘图
+    plt.ioff()
+    plt.close()
 
     input("训练完成，按回车键退出...")
