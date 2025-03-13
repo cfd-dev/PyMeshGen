@@ -1,9 +1,9 @@
 import os
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent /"fileIO"))
-sys.path.append(str(Path(__file__).parent /"sample"))
-sys.path.append(str(Path(__file__).parent /"data_structure"))
+sys.path.append(str(Path(__file__).parent.parent /"fileIO"))
+sys.path.append(str(Path(__file__).parent.parent /"sample"))
+sys.path.append(str(Path(__file__).parent.parent /"data_structure"))
 import grid_sample as gsam
 import read_cas as rc
 import mesh_reconstruction as mesh_recons

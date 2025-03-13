@@ -2,40 +2,26 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
-import boundary_mesh_sample as bl_samp
-from model_train import build_graph_data, visualize_predictions
 from torch_geometric.nn import GCNConv
 
-class EnhancedGNN(torch.nn.Module):
-    """保持与训练模型一致的网络结构"""
-    def __init__(self, hidden_channels=64):
-        super().__init__()
-        self.conv1 = GCNConv(2, hidden_channels)
-        self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
-        self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
-        self.fc1 = torch.nn.Linear(hidden_channels, 32)
-        self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 新增全连接层BN
-        self.fc2 = torch.nn.Linear(32, 2)
-        self.tanh = torch.nn.Tanh()  # 新增tanh激活
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent /"sample"))
+sys.path.append(str(Path(__file__).parent /"data_structure"))
+sys.path.append(str(Path(__file__).parent /"visualization"))
+import boundary_mesh_sample as bl_samp
+from data_structure import build_graph_data
+from visualization import visualize_predictions
+from train_model import EnhancedGNN
 
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = F.relu(self.bn1(self.conv1(x, edge_index)))  # 调整前向传播顺序
-        x = F.relu(self.bn2(self.conv2(x, edge_index)))
-        x = F.relu(self.bn3(self.conv3(x, edge_index)))
-        x = F.relu(self.bn_fc1(self.fc1(x)))  # 全连接层后加BN
-        return self.tanh(self.fc2(x))  # 添加tanh激活
 
 def validate_model():
     # -------------------------- 初始化配置 --------------------------
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
-        'hidden_channels': 128,
-        'model_path': 'marching_model.pth',
-        'validation_data_path': './validation_sample'
+        'hidden_channels': 64,
+        'model_path': 'saved_model.pth',
+        'validation_data_path': './sample_grids/validation_sample'
     }
 
     # -------------------------- 加载模型 --------------------------

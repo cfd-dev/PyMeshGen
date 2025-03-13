@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent /"data_structure"))
 import mesh_reconstruction as mesh_recons
     
 def get_march_vector(grid, node_1based, current_face):

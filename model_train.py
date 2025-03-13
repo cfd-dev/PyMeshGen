@@ -1,6 +1,3 @@
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent /"visualization"))
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
@@ -8,6 +5,11 @@ from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import numpy as np
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent /"sample"))
+sys.path.append(str(Path(__file__).parent /"visualization"))
 import boundary_mesh_sample as bl_samp
 import mesh_visualization as mesh_vis
 
@@ -97,19 +99,19 @@ class EnhancedGNN(torch.nn.Module):
     def __init__(self, hidden_channels=64):
         super().__init__()
         
-        self.coord_encoder = nn.Linear(2, hidden_dim)
+        self.coord_encoder = torch.nn.Linear(2, hidden_channels)
 
         self.conv1 = GCNConv(hidden_channels, hidden_channels)
-        self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+        # self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
 
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+        # self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
 
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+        # self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
 
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
-        self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 全连接层后BN
+        # self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 全连接层后BN
         
         self.fc2 = torch.nn.Linear(32, 2)
         self.tanh = torch.nn.Tanh()
@@ -122,22 +124,26 @@ class EnhancedGNN(torch.nn.Module):
 
         # 第一层残差
         identity1 = x  # 保存当前层输入
-        x = F.relu(self.bn1(self.conv1(x, edge_index)))
+        # x = F.relu(self.bn1(self.conv1(x, edge_index)))
+        x = F.relu(self.conv1(x, edge_index))
         identity1 = self._adjust_identity(identity1, x)  # 新增维度适配
         x = x + identity1  # 与当前层输入相加
 
         # 第二层残差
         identity2 = x  # 使用上一层的输出作为下一层残差输入
-        x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        # x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        x = F.relu(self.conv2(x, edge_index))
         x = x + identity2
 
         # 第三层残差
         identity3 = x
-        x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        # x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        x = F.relu(self.conv3(x, edge_index))
         x = x + identity3
 
         # 全连接部分
-        x = F.relu(self.bn_fc1(self.fc1(x)))
+        # x = F.relu(self.bn_fc1(self.fc1(x)))
+        x = F.relu(self.fc1(x))
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.tanh(self.fc2(x))
         return x

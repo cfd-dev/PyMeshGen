@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+
 def visualize_graph_structure(graph):
     fig, ax = plt.subplots(figsize=(10, 8))
 
