@@ -62,7 +62,7 @@ def visualize_graph_structure(data):
     ax.set_title("Graph Structure Visualization")
     plt.show()
 
-class GATModel(nn.Module):
+class GATModel(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
         super().__init__()
         # 图注意力卷积层
@@ -86,7 +86,7 @@ class GATModel(nn.Module):
         )
         
         # 全连接层
-        self.fc = nn.Linear(hidden_channels, out_channels)
+        self.fc = torch.nn.Linear(hidden_channels, out_channels)
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
@@ -116,30 +116,37 @@ class EnhancedGNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(32, 2)
         self.tanh = torch.nn.Tanh()
 
-def forward(self, data):
-    x, edge_index = data.x, data.edge_index
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
 
-    # 第一层残差
-    identity1 = x  # 保存当前层输入
-    x = F.relu(self.bn1(self.conv1(x, edge_index)))
-    x = x + identity1  # 与当前层输入相加
+        # 第一层残差
+        identity1 = x  # 保存当前层输入
+        x = F.relu(self.bn1(self.conv1(x, edge_index)))
+        identity1 = self._adjust_identity(identity1, x)  # 新增维度适配
+        x = x + identity1  # 与当前层输入相加
 
-    # 第二层残差
-    identity2 = x  # 使用上一层的输出作为下一层残差输入
-    x = F.relu(self.bn2(self.conv2(x, edge_index)))
-    x = x + identity2
+        # 第二层残差
+        identity2 = x  # 使用上一层的输出作为下一层残差输入
+        x = F.relu(self.bn2(self.conv2(x, edge_index)))
+        x = x + identity2
 
-    # 第三层残差
-    identity3 = x
-    x = F.relu(self.bn3(self.conv3(x, edge_index)))
-    x = x + identity3
+        # 第三层残差
+        identity3 = x
+        x = F.relu(self.bn3(self.conv3(x, edge_index)))
+        x = x + identity3
 
-    # 全连接部分
-    x = F.relu(self.bn_fc1(self.fc1(x)))
-    x = F.dropout(x, p=0.5, training=self.training)
-    x = self.tanh(self.fc2(x))
-    return x
+        # 全连接部分
+        x = F.relu(self.bn_fc1(self.fc1(x)))
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.tanh(self.fc2(x))
+        return x
 
+    def _adjust_identity(self, identity, x):
+        """维度适配器，当残差连接维度不匹配时进行线性变换"""
+        if identity.size(1) != x.size(1):
+            return torch.nn.Linear(identity.size(1), x.size(1)).to(x.device)(identity)
+        return identity
+        
 def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     """
     可视化真实向量与预测向量对比
