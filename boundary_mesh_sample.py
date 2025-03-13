@@ -1,4 +1,7 @@
 import os
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent /"fileIO"))
 import read_cas as rc
 import mesh_reconstruction as mesh_recons
 import grid_sample as gsam 

@@ -1,8 +1,18 @@
-# from read_cas import parse_fluent_msh
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent /"fileIO"))
+sys.path.append(str(Path(__file__).parent /"data_structure"))
+import read_cas as rc
      
 # # 使用示例文件测试解析结果
-# file_path = './sample/convex.cas'
-# grid = parse_fluent_msh(file_path)
+# file_path = './sample/tri.cas' 
+# grid = rc.parse_fluent_msh(file_path)
+# construct_initial_front(grid)
+
+import torch
+print(f"PyTorch 版本: {torch.__version__}")          # 应显示 GPU 版本（如 2.0.0+cu117）
+print(f"CUDA 是否可用: {torch.cuda.is_available()}") # 应输出 True
+print(f"CUDA 版本: {torch.version.cuda}")            # 应输出 11.7
 
 # # 基础验证
 # print(f"维度: {grid['dimensions']}")
@@ -20,7 +30,7 @@
 # for node in grid['nodes'][:5]:
 #     print(node)
 
-import boundary_mesh_sample as bl_samp 
+# import boundary_mesh_sample as bl_samp 
 
-file_path = './sample/convex-60.cas'
-result = bl_samp.process_single_file(file_path)
+# file_path = './sample/convex-60.cas'
+# result = bl_samp.process_single_file(file_path)

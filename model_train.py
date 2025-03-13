@@ -1,11 +1,13 @@
+import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
-import torch
+from torch_geometric.nn import GATConv  
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
+import numpy as np
 import boundary_mesh_sample as bl_samp
 import mesh_visualization as mesh_vis
-import numpy as np
+
 
 def build_graph_data(wall_nodes, wall_faces):
     # 创建原始索引到wall_nodes索引的映射
@@ -60,6 +62,46 @@ def visualize_graph_structure(data):
     ax.set_title("Graph Structure Visualization")
     plt.show()
 
+class GATModel(nn.Module):
+    def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
+        super().__init__()
+        # 图注意力卷积层
+        self.conv1 = GATConv(
+            in_channels=in_channels,
+            out_channels=hidden_channels,
+            heads=heads,
+            dropout=0.2
+        )
+        self.conv2 = GATConv(
+            in_channels=hidden_channels * heads,  # 多头输出拼接后的维度
+            out_channels=hidden_channels,
+            heads=heads,
+            dropout=0.2
+        )
+        self.conv3 = GATConv(
+            in_channels=hidden_channels * heads,
+            out_channels=hidden_channels,
+            heads=1,  # 最后一层用单头，简化输出维度
+            concat=False  # 不拼接，输出维度保持hidden_channels
+        )
+        
+        # 全连接层
+        self.fc = nn.Linear(hidden_channels, out_channels)
+
+    def forward(self, data):
+        x, edge_index = data.x, data.edge_index
+        
+        # 图注意力卷积部分
+        x = F.relu(self.conv1(x, edge_index))
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.relu(self.conv2(x, edge_index))
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = F.relu(self.conv3(x, edge_index))
+        
+        # 全连接输出
+        x = self.fc(x)
+        return x
+
 class EnhancedGNN(torch.nn.Module):
     def __init__(self, hidden_channels=64):
         super().__init__()
@@ -74,16 +116,29 @@ class EnhancedGNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(32, 2)
         self.tanh = torch.nn.Tanh()
 
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
+def forward(self, data):
+    x, edge_index = data.x, data.edge_index
 
-        x = F.relu(self.bn1(self.conv1(x, edge_index)))  # 修改前向传播
-        x = F.relu(self.bn2(self.conv2(x, edge_index)))
-        x = F.relu(self.bn3(self.conv3(x, edge_index)))
-        x = F.relu(self.bn_fc1(self.fc1(x)))  # 全连接层后加BN
-        x = self.tanh(self.fc2(x))
-        
-        return x
+    # 第一层残差
+    identity1 = x  # 保存当前层输入
+    x = F.relu(self.bn1(self.conv1(x, edge_index)))
+    x = x + identity1  # 与当前层输入相加
+
+    # 第二层残差
+    identity2 = x  # 使用上一层的输出作为下一层残差输入
+    x = F.relu(self.bn2(self.conv2(x, edge_index)))
+    x = x + identity2
+
+    # 第三层残差
+    identity3 = x
+    x = F.relu(self.bn3(self.conv3(x, edge_index)))
+    x = x + identity3
+
+    # 全连接部分
+    x = F.relu(self.bn_fc1(self.fc1(x)))
+    x = F.dropout(x, p=0.5, training=self.training)
+    x = self.tanh(self.fc2(x))
+    return x
 
 def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     """
@@ -170,9 +225,9 @@ if __name__ == "__main__":
     
     # -------------------------- 超参数配置 --------------------------
     config = {
-        'hidden_channels': 128,  # GNN隐藏层维度
+        'hidden_channels': 64,  # GNN隐藏层维度
         'learning_rate': 0.001,  # 降低学习率
-        'total_epochs': 100,      # 总训练轮次（新增）
+        'total_epochs': 50,      # 总训练轮次（新增）
         'epochs_per_dataset': 5000, # 每个数据集每次迭代训练次数（新增）
         'log_interval': 20
     }
