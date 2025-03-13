@@ -45,6 +45,12 @@ def build_graph_data(wall_nodes, wall_faces):
 
     return Data(x=x, edge_index=edge_index, y=y)
 
+def add_edge_features(data):
+    row, col = data.edge_index
+    edge_attr = data.x[row, :dim_coords] - data.x[col, :dim_coords]  # 相对坐标差
+    data.edge_attr = edge_attr
+    return data
+
 def visualize_graph_structure(data):
     fig, ax = plt.subplots(figsize=(10, 8))
 
@@ -105,19 +111,29 @@ class GATModel(torch.nn.Module):
 class EnhancedGNN(torch.nn.Module):
     def __init__(self, hidden_channels=64):
         super().__init__()
-        self.conv1 = GCNConv(2, hidden_channels)
+        
+        self.coord_encoder = nn.Linear(2, hidden_dim)
+
+        self.conv1 = GCNConv(hidden_channels, hidden_channels)
         self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
         self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
         self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
+
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
         self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 全连接层后BN
+        
         self.fc2 = torch.nn.Linear(32, 2)
         self.tanh = torch.nn.Tanh()
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
+        
+        # 编码坐标
+        x = F.relu(self.coord_encoder(x))
 
         # 第一层残差
         identity1 = x  # 保存当前层输入
@@ -146,7 +162,7 @@ class EnhancedGNN(torch.nn.Module):
         if identity.size(1) != x.size(1):
             return torch.nn.Linear(identity.size(1), x.size(1)).to(x.device)(identity)
         return identity
-        
+
 def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     """
     可视化真实向量与预测向量对比
@@ -235,7 +251,7 @@ if __name__ == "__main__":
         'hidden_channels': 64,  # GNN隐藏层维度
         'learning_rate': 0.001,  # 降低学习率
         'total_epochs': 50,      # 总训练轮次（新增）
-        'epochs_per_dataset': 5000, # 每个数据集每次迭代训练次数（新增）
+        'epochs_per_dataset': 1000, # 每个数据集每次迭代训练次数（新增）
         'log_interval': 20
     }
 
@@ -283,6 +299,7 @@ if __name__ == "__main__":
             
                 # 构建图数据结构
                 data = build_graph_data(wall_nodes, wall_faces).to(device)
+                add_edge_features(data)
                 print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
             
                 # 可视化初始图结构
