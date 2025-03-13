@@ -5,6 +5,7 @@ from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import numpy as np
+from torch_geometric.data import DataLoader
 
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ sys.path.append(str(Path(__file__).parent /"sample"))
 sys.path.append(str(Path(__file__).parent /"visualization"))
 import boundary_mesh_sample as bl_samp
 import visualization as vis
+
 
 def add_edge_features(data):
     row, col = data.edge_index
@@ -55,7 +57,7 @@ def build_graph_data(wall_nodes, wall_faces):
     
     data = Data(x=x, edge_index=edge_index, y=y)
     
-    add_edge_features(data)
+    data = add_edge_features(data)
 
     return data
 
@@ -199,10 +201,11 @@ if __name__ == "__main__":
 
     # -------------------------- 超参数配置 --------------------------
     config = {
+        'train_ratio': 0.8,     # 训练集比例
+        'batch_size': 3,        # 批量大小
         'hidden_channels': 64,  # GNN隐藏层维度
-        'learning_rate': 0.001,  # 降低学习率
-        'total_epochs': 20,      # 总训练轮次
-        'epochs_per_dataset': 5000, # 每个数据集每次迭代训练次数
+        'learning_rate': 0.001,  # 学习率
+        'total_epochs': 20000,      # 总训练轮次
         'log_interval': 50,
         'validation_interval': 200 # 验证间隔
     }
@@ -215,6 +218,10 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"数据加载失败: {str(e)}")
         exit(1)
+
+    train_dataset = [build_graph_data(result['valid_wall_nodes'], result['wall_faces']) 
+                for result in all_results]
+    train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
@@ -239,66 +246,41 @@ if __name__ == "__main__":
     ax.set_xlabel("Accumulated Epochs")
     ax.set_ylabel("Loss")
 
-    # -------------------------- 训练流程 --------------------------
+    # -------------------------- 训练流程 --------------------------  
     try:
-        # 外层循环：总训练轮次
-        for total_epoch in range(config['total_epochs']):
-           # 内层循环：遍历所有数据集
-            for dataset_idx, result in enumerate(all_results):
-                # 1. 数据预处理
-                wall_nodes = result['valid_wall_nodes']
-                wall_faces = result['wall_faces']
-            
-                # 构建图数据结构
-                data = build_graph_data(wall_nodes, wall_faces).to(device)
-                print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
-            
-                # 可视化初始图结构
-                # visualize_graph_structure(data.cpu())
+        global_step = 0  # 新增全局步数计数器
+        for epoch in range(config['total_epochs']):    
+            model.train()
+            for batch_data in train_loader:
+                global_step += 1
+                batch_data = batch_data.to(device)
+                optimizer.zero_grad()
+                out = model(batch_data)
+                loss = criterion(out, batch_data.y)
+                loss.backward()
+                optimizer.step()
+                
+                # 更新损失记录和日志输出部分保持不变
+                train_losses.append(loss.item())
 
-                # 单个数据集训练阶段
-                model.train()
-                for epoch in range(config['epochs_per_dataset']):
-                    optimizer.zero_grad()
-                    out = model(data)
-                    loss = criterion(out, data.y)
-                    loss.backward()
-                    optimizer.step()
+                # 定期更新训练信息
+                if global_step % config['log_interval'] == 0:
+                    print(f"当前轮次[{global_step}/{config['total_epochs']}] "
+                            f"损失: {loss.item():.4f}")                    
+                    # 更新损失曲线
+                    line.set_data(range(len(train_losses)), train_losses)
+                    ax.relim()
+                    ax.autoscale_view()
+                    plt.draw()
+                    plt.pause(0.01)  # 维持图像响应
 
-                    # 记录损失值
-                    train_losses.append(loss.item())
-
-                    # 定期更新训练信息
-                    if epoch % config['log_interval'] == 0:
-                        print(f"总轮次[{total_epoch+1}/{config['total_epochs']}] " 
-                              f"数据集[{dataset_idx+1}/{len(all_results)}] "
-                              f"局部轮次[{epoch}/{config['epochs_per_dataset']}] "
-                              f"损失: {loss.item():.4f}")                    
-                        # 更新损失曲线
-                        line.set_data(range(len(train_losses)), train_losses)
-                        ax.relim()
-                        ax.autoscale_view()
-                        plt.draw()
-                        plt.pause(0.01)  # 维持图像响应
-
-                    # if global_step % config['validation_interval'] == 0:
-                    #     model.eval()
-                    #     with torch.no_grad():
-                    #         val_loss = criterion(model(val_data), val_data.y)
-                    #     model.train()
-                    #     print(f"训练损失: {loss.item():.4f} 验证损失: {val_loss.item():.4f}")
-
-                # 3. 单数据集验证
-                if test_single_sample:
-                    # 可视化预测结果
-                    plt.ioff()
-                    vis.visualize_predictions(data.cpu(), model.cpu())
-                    plt.ion()
-            
+                # if global_step % config['validation_interval'] == 0:
+                #     model.eval()
+                #     with torch.no_grad():
+                #         val_loss = criterion(model(val_data), val_data.y)
+                #     model.train()
+                #     print(f"训练损失: {loss.item():.4f} 验证损失: {val_loss.item():.4f}")
         model.to(device)  # 确保模型回到正确设备
-        # 每个数据集结束后保存模型
-        torch.save(model.state_dict(), model_save_path)
-        print(f"\n模型已保存至 {model_save_path}（第{total_epoch+1}轮）")
 
     except KeyboardInterrupt:
         print("\n训练被用户中断！")
