@@ -11,7 +11,13 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent /"sample"))
 sys.path.append(str(Path(__file__).parent /"visualization"))
 import boundary_mesh_sample as bl_samp
-import mesh_visualization as mesh_vis
+import visualization as vis
+
+def add_edge_features(data):
+    row, col = data.edge_index
+    edge_attr = data.x[col, :2] - data.x[row, :2]  # 相对坐标差
+    data.edge_attr = edge_attr
+    return data
 
 def build_graph_data(wall_nodes, wall_faces):
     # 创建原始索引到wall_nodes索引的映射
@@ -46,51 +52,53 @@ def build_graph_data(wall_nodes, wall_faces):
     # 处理节点特征和标签
     x = torch.tensor([node['coords'][:2] for node in wall_nodes], dtype=torch.float)
     y = torch.tensor([node['march_vector'][:2] for node in wall_nodes], dtype=torch.float)
+    
+    data = Data(x=x, edge_index=edge_index, y=y)
+    
+    add_edge_features(data)
 
-    return Data(x=x, edge_index=edge_index, y=y)
-
-def add_edge_features(data):
-    row, col = data.edge_index
-    edge_attr = data.x[row, :dim_coords] - data.x[col, :dim_coords]  # 相对坐标差
-    data.edge_attr = edge_attr
     return data
 
 class GATModel(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
         super().__init__()
-        # 图注意力卷积层
         self.conv1 = GATConv(
-            in_channels=in_channels,
+            in_channels=2,
             out_channels=hidden_channels,
             heads=heads,
+            edge_dim=2, 
             dropout=0.2
         )
         self.conv2 = GATConv(
-            in_channels=hidden_channels * heads,  # 多头输出拼接后的维度
+            in_channels=hidden_channels * heads,
             out_channels=hidden_channels,
             heads=heads,
+            edge_dim=2,
             dropout=0.2
         )
         self.conv3 = GATConv(
             in_channels=hidden_channels * heads,
             out_channels=hidden_channels,
-            heads=1,  # 最后一层用单头，简化输出维度
-            concat=False  # 不拼接，输出维度保持hidden_channels
+            heads=1,
+            concat=False,
+            edge_dim=2,
+            dropout=0.2
         )
-        
-        # 全连接层
         self.fc = torch.nn.Linear(hidden_channels, out_channels)
 
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        
-        # 图注意力卷积部分
-        x = F.relu(self.conv1(x, edge_index))
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        # 第一层：多头注意力 + 边特征
+        x = self.conv1(x, edge_index, edge_attr=edge_attr)
         x = F.dropout(x, p=0.5, training=self.training)
-        x = F.relu(self.conv2(x, edge_index))
+        x = F.relu(x)
+        # 第二层
+        x = self.conv2(x, edge_index, edge_attr=edge_attr)
         x = F.dropout(x, p=0.5, training=self.training)
-        x = F.relu(self.conv3(x, edge_index))
-        
+        x = F.relu(x)
+        # 第三层（单头）
+        x = self.conv3(x, edge_index, edge_attr=edge_attr)
+        x = F.relu(x)
         # 全连接输出
         x = self.fc(x)
         return x
@@ -98,55 +106,78 @@ class GATModel(torch.nn.Module):
 class EnhancedGNN(torch.nn.Module):
     def __init__(self, hidden_channels=64):
         super().__init__()
-        
+        self.residual_switch = True  # 新增残差开关
+
+        self.norm_layers = torch.nn.ModuleList([
+            torch.nn.LayerNorm(hidden_channels),       # 节点级标准化
+            torch.nn.BatchNorm1d(hidden_channels),       # 批量标准化
+            torch.nn.InstanceNorm1d(hidden_channels)   # 图级标准化   
+        ])
+
         self.coord_encoder = torch.nn.Linear(2, hidden_channels)
-
         self.conv1 = GCNConv(hidden_channels, hidden_channels)
-        # self.bn1 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
-
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        # self.bn2 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
-
         self.conv3 = GCNConv(hidden_channels, hidden_channels)
-        # self.bn3 = torch.nn.BatchNorm1d(hidden_channels)  # 新增BN层
 
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
-        # self.bn_fc1 = torch.nn.BatchNorm1d(32)  # 全连接层后BN
-        
         self.fc2 = torch.nn.Linear(32, 2)
         self.tanh = torch.nn.Tanh()
+
+    def complexity_check(self, data):
+        with torch.no_grad():
+            out = self(data)
+            mem_usage = torch.cuda.memory_allocated() if torch.cuda.is_available() else 0
+        return mem_usage  # 返回显存占用情况
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         
+        self.toggle_residual(True)
+
         # 编码坐标
         x = F.relu(self.coord_encoder(x))
+        x = self.norm_layers[0](x)  # 初始编码后使用LayerNorm
 
         # 第一层残差
         identity1 = x  # 保存当前层输入
-        # x = F.relu(self.bn1(self.conv1(x, edge_index)))
         x = F.relu(self.conv1(x, edge_index))
+        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
         identity1 = self._adjust_identity(identity1, x)  # 新增维度适配
-        x = x + identity1  # 与当前层输入相加
+        if self.residual_switch:
+            x = x + identity1  # 与当前层输入相加
+            x = self.norm_layers[2](x)
+        else:
+            x = x
 
         # 第二层残差
         identity2 = x  # 使用上一层的输出作为下一层残差输入
-        # x = F.relu(self.bn2(self.conv2(x, edge_index)))
         x = F.relu(self.conv2(x, edge_index))
-        x = x + identity2
+        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
+        if self.residual_switch:
+            x = x + identity2
+            x = self.norm_layers[2](x)
+        else:
+            x = x
 
         # 第三层残差
         identity3 = x
-        # x = F.relu(self.bn3(self.conv3(x, edge_index)))
         x = F.relu(self.conv3(x, edge_index))
-        x = x + identity3
+        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
+        if self.residual_switch:
+            x = x + identity3
+            x = self.norm_layers[2](x)
+        else:
+            x = x
 
         # 全连接部分
-        # x = F.relu(self.bn_fc1(self.fc1(x)))
         x = F.relu(self.fc1(x))
-        x = F.dropout(x, p=0.5, training=self.training)
+        # x = F.dropout(x, p=0.5, training=self.training)
         x = self.tanh(self.fc2(x))
         return x
+
+    def toggle_residual(self, mode: bool):
+        """残差连接开关"""
+        self.residual_switch = mode
 
     def _adjust_identity(self, identity, x):
         """维度适配器，当残差连接维度不匹配时进行线性变换"""
@@ -158,19 +189,22 @@ if __name__ == "__main__":
     # -------------------------- 初始化配置 --------------------------
     # 硬件设置
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.backends.cudnn.benchmark = True
     print(f"当前运行设备: {device}")
     
     # 路径配置
-    folder_path = './sample'  # 原始数据目录
+    folder_path = './sample_grids/training'  # 原始数据目录
     model_save_path = './model/saved_model.pth'  # 模型保存路径
-    
+    test_single_sample = False
+
     # -------------------------- 超参数配置 --------------------------
     config = {
         'hidden_channels': 64,  # GNN隐藏层维度
         'learning_rate': 0.001,  # 降低学习率
-        'total_epochs': 50,      # 总训练轮次（新增）
-        'epochs_per_dataset': 1000, # 每个数据集每次迭代训练次数（新增）
-        'log_interval': 20
+        'total_epochs': 20,      # 总训练轮次
+        'epochs_per_dataset': 5000, # 每个数据集每次迭代训练次数
+        'log_interval': 50,
+        'validation_interval': 200 # 验证间隔
     }
 
     # -------------------------- 数据准备 --------------------------
@@ -217,7 +251,6 @@ if __name__ == "__main__":
             
                 # 构建图数据结构
                 data = build_graph_data(wall_nodes, wall_faces).to(device)
-                add_edge_features(data)
                 print(f"\n数据集 {dataset_idx+1}/{len(all_results)} 包含 {data.num_nodes} 个节点")
             
                 # 可视化初始图结构
@@ -235,7 +268,7 @@ if __name__ == "__main__":
                     # 记录损失值
                     train_losses.append(loss.item())
 
-                    # 定期更新训练信息（调整日志格式）
+                    # 定期更新训练信息
                     if epoch % config['log_interval'] == 0:
                         print(f"总轮次[{total_epoch+1}/{config['total_epochs']}] " 
                               f"数据集[{dataset_idx+1}/{len(all_results)}] "
@@ -248,13 +281,22 @@ if __name__ == "__main__":
                         plt.draw()
                         plt.pause(0.01)  # 维持图像响应
 
+                    # if global_step % config['validation_interval'] == 0:
+                    #     model.eval()
+                    #     with torch.no_grad():
+                    #         val_loss = criterion(model(val_data), val_data.y)
+                    #     model.train()
+                    #     print(f"训练损失: {loss.item():.4f} 验证损失: {val_loss.item():.4f}")
+
                 # 3. 单数据集验证
-                # plt.ioff()
-                # visualize_predictions(data.cpu(), model.cpu())
-                # plt.ion()
+                if test_single_sample:
+                    # 可视化预测结果
+                    plt.ioff()
+                    vis.visualize_predictions(data.cpu(), model.cpu())
+                    plt.ion()
             
         model.to(device)  # 确保模型回到正确设备
-        # 每个总epoch结束后保存模型
+        # 每个数据集结束后保存模型
         torch.save(model.state_dict(), model_save_path)
         print(f"\n模型已保存至 {model_save_path}（第{total_epoch+1}轮）")
 

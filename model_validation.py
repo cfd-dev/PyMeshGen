@@ -10,9 +10,8 @@ sys.path.append(str(Path(__file__).parent /"sample"))
 sys.path.append(str(Path(__file__).parent /"data_structure"))
 sys.path.append(str(Path(__file__).parent /"visualization"))
 import boundary_mesh_sample as bl_samp
-from data_structure import build_graph_data
+from model_train import build_graph_data, EnhancedGNN
 from visualization import visualize_predictions
-from train_model import EnhancedGNN
 
 
 def validate_model():
@@ -20,8 +19,8 @@ def validate_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
         'hidden_channels': 64,
-        'model_path': 'saved_model.pth',
-        'validation_data_path': './sample_grids/validation_sample'
+        'model_path': './model/saved_model.pth',
+        'validation_data_path': './sample_grids/validation'
     }
 
     # -------------------------- 加载模型 --------------------------
