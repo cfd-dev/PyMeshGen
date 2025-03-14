@@ -5,7 +5,7 @@ from torch_geometric.nn import GATConv
 from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import numpy as np
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 import sys
 from pathlib import Path
@@ -265,8 +265,8 @@ if __name__ == "__main__":
 
                 # 定期更新训练信息
                 if global_step % config['log_interval'] == 0:
-                    print(f"当前轮次[{global_step}/{config['total_epochs']}] "
-                            f"损失: {loss.item():.4f}")                    
+                    print(f"当前步数[{global_step}] 轮次[{epoch+1}/{config['total_epochs']}] 损失: {loss.item():.4f}")
+                    
                     # 更新损失曲线
                     line.set_data(range(len(train_losses)), train_losses)
                     ax.relim()
@@ -292,6 +292,5 @@ if __name__ == "__main__":
         
     # 关闭交互式绘图
     plt.ioff()
-    plt.close()
-
     input("训练完成，按回车键退出...")
+    plt.close()
