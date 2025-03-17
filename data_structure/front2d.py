@@ -2,11 +2,13 @@ import heapq
 from math import sqrt
 
 class Front:
-    def __init__(self, nodes, length, bc_type, bc_name):
+    def __init__(self, nodes, length, bc_type, bc_name, front_center, nodes_coords):
         self.nodes = nodes    # 节点对（排序后）
         self.length = length  # 阵面长度
         self.bc_type = bc_type # 边界类型
         self.bc_name = bc_name  # 新增边界名称属性
+        self.front_center = front_center  # 阵面中心坐标
+        self.nodes_coords = nodes_coords  # 节点坐标属性
         
     def __lt__(self, other):
         return self.length < other.length
@@ -46,14 +48,15 @@ def construct_initial_front(grid):
             # 计算长度
             length = calculate_distance(node1, node2)
             center = [(a + b) / 2 for a, b in zip(node1, node2)]
-            
+
             # 创建Front对象并压入堆
             heapq.heappush(heap, Front(
                 nodes=(u, v),  # 保持原始顺序，编号从1开始
                 length=length,
                 bc_type=face['bc_type'],
                 bc_name=face['bc_name'],
-                front_center=center
+                front_center=center,
+                nodes_coords=(node1, node2)
             ))
     
     return heap

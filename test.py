@@ -4,9 +4,10 @@ import heapq
 
 sys.path.append(str(Path(__file__).parent / "fileIO"))
 sys.path.append(str(Path(__file__).parent / "data_structure"))
+sys.path.append(str(Path(__file__).parent / "meshsize"))
 import read_cas as rc
 import front2d
-
+import meshsize
 # 使用示例文件测试解析结果
 file_path = "./sample_grids/tri.cas"
 grid = rc.parse_fluent_msh(file_path)
@@ -15,11 +16,18 @@ grid = rc.parse_fluent_msh(file_path)
 front_heap = front2d.construct_initial_front(grid)
 
 # 获取最小阵面
-while front_heap:
-    smallest = heapq.heappop(front_heap)
-    print(
-        f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}"
-    )
+# while front_heap:
+#     smallest = heapq.heappop(front_heap)
+#     print(
+#         f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}"
+#     )
+# 创建尺寸系统
+sizing_system = meshsize.QuadtreeSizing(
+    initial_front=front_heap,
+    max_size=0.5,
+    resolution=0.1,
+    decay=1.2
+)
 
 # import torch
 # print(f"PyTorch 版本: {torch.__version__}")          # 应显示 GPU 版本（如 2.0.0+cu117）
