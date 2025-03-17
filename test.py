@@ -1,20 +1,25 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent /"fileIO"))
-sys.path.append(str(Path(__file__).parent /"data_structure"))
+import heapq
+
+sys.path.append(str(Path(__file__).parent / "fileIO"))
+sys.path.append(str(Path(__file__).parent / "data_structure"))
 import read_cas as rc
-     
+import front2d
+
 # 使用示例文件测试解析结果
-file_path = './sample/tri.cas' 
+file_path = "./sample_grids/tri.cas"
 grid = rc.parse_fluent_msh(file_path)
 
 # 构造优先队列
-front_heap = construct_initial_front(parse_fluent_msh("test.cas"))
+front_heap = front2d.construct_initial_front(grid)
 
 # 获取最小阵面
 while front_heap:
     smallest = heapq.heappop(front_heap)
-    print(f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}")
+    print(
+        f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}"
+    )
 
 # import torch
 # print(f"PyTorch 版本: {torch.__version__}")          # 应显示 GPU 版本（如 2.0.0+cu117）
@@ -28,7 +33,7 @@ while front_heap:
 # print(f"边界条件数量: {sum(1 for z in grid['zones'].values() if z.get('bc_type'))}")
 
 # # 验证wall面解析
-# wall_zones = [z for z in grid['zones'].values() 
+# wall_zones = [z for z in grid['zones'].values()
 #               if z['type'] == 'faces' and z.get('bc_type') == 'wall']
 # print(f"Wall面数量: {sum(len(z['data']) for z in wall_zones)}")
 
@@ -37,7 +42,7 @@ while front_heap:
 # for node in grid['nodes'][:5]:
 #     print(node)
 
-# import boundary_mesh_sample as bl_samp 
+# import boundary_mesh_sample as bl_samp
 
 # file_path = './sample/convex-60.cas'
 # result = bl_samp.process_single_file(file_path)

@@ -2,10 +2,11 @@ import heapq
 from math import sqrt
 
 class Front:
-    def __init__(self, nodes, length, bc_type):
+    def __init__(self, nodes, length, bc_type, bc_name):
         self.nodes = nodes    # 节点对（排序后）
         self.length = length  # 阵面长度
         self.bc_type = bc_type # 边界类型
+        self.bc_name = bc_name  # 新增边界名称属性
         
     def __lt__(self, other):
         return self.length < other.length
@@ -24,8 +25,11 @@ def construct_initial_front(grid):
     
     # 遍历所有面，筛选边界面
     for face in grid['faces']:
+        if face['left_cell'] == 0:
+            raise ValueError(f"发现无效左单元 (face ID: {grid['faces'].index(face)})，左单元为0，请检查网格读入！")
+  
         # 仅处理有两个节点的线性面（边界面）
-        if len(face['nodes']) == 2 and (face['left_cell'] == 0 or face['right_cell'] == 0):
+        if len(face['nodes']) == 2 and (face['right_cell'] == 0):
             # 获取原始节点顺序
             u, v = face['nodes']
             
@@ -46,7 +50,8 @@ def construct_initial_front(grid):
             heapq.heappush(heap, Front(
                 nodes=(u, v),  # 保持原始顺序
                 length=length,
-                bc_type=face['bc_type']
+                bc_type=face['bc_type'],
+                bc_name=face['bc_name']
             ))
     
     return heap
