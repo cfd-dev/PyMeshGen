@@ -6,7 +6,7 @@ from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import numpy as np
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import random_split
+from torch.utils.data import random_split
 
 import sys
 from pathlib import Path
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size==config['batch_size'])
+    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
@@ -265,13 +265,19 @@ if __name__ == "__main__":
                     plt.draw()
                     plt.pause(0.01)  # 维持图像响应
 
-                # if global_step % config['validation_interval'] == 0:
-                #     model.eval()
-                #     with torch.no_grad():
-                #         val_loss = criterion(model(val_data), val_data.y)
-                #     model.train()
-                #     print(f"训练损失: {loss.item():.4f} 验证损失: {val_loss.item():.4f}")
-        model.to(device)  # 确保模型回到正确设备
+                if global_step % config['validation_interval'] == 0:
+                    model.eval()
+                    total_val_loss = 0.0
+                    with torch.no_grad():
+                        for val_data in val_loader:  # 遍历整个验证集
+                            val_data = val_data.to(device)
+                            val_out = model(val_data)
+                            val_loss = criterion(val_out, val_data.y)
+                            total_val_loss += val_loss.item() * val_data.num_graphs
+                    avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
+                    model.train()
+                    print(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
+                model.to(device)  # 确保模型回到正确设备
 
     except KeyboardInterrupt:
         print("\n训练被用户中断！")
