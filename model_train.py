@@ -277,6 +277,7 @@ if __name__ == "__main__":
                     avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
                     model.train()
                     print(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
+                
                 model.to(device)  # 确保模型回到正确设备
 
     except KeyboardInterrupt:
