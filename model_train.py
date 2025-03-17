@@ -6,6 +6,7 @@ from torch_geometric.data import Data
 import matplotlib.pyplot as plt
 import numpy as np
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import random_split
 
 import sys
 from pathlib import Path
@@ -106,7 +107,7 @@ class GATModel(torch.nn.Module):
         return x
 
 class EnhancedGNN(torch.nn.Module):
-    def __init__(self, hidden_channels=64):
+    def __init__(self, hidden_channels=64, num_gcn_layers = 4):
         super().__init__()
         self.residual_switch = True  # 新增残差开关
 
@@ -117,9 +118,13 @@ class EnhancedGNN(torch.nn.Module):
         ])
 
         self.coord_encoder = torch.nn.Linear(2, hidden_channels)
-        self.conv1 = GCNConv(hidden_channels, hidden_channels)
-        self.conv2 = GCNConv(hidden_channels, hidden_channels)
-        self.conv3 = GCNConv(hidden_channels, hidden_channels)
+
+        self.convs = torch.nn.ModuleList([
+            GCNConv(hidden_channels, hidden_channels) for _ in range(num_gcn_layers)  # 增加层数
+        ])
+
+        # 添加Dropout
+        self.dropout = torch.nn.Dropout(0.3)
 
         self.fc1 = torch.nn.Linear(hidden_channels, 32)
         self.fc2 = torch.nn.Linear(32, 2)
@@ -140,40 +145,21 @@ class EnhancedGNN(torch.nn.Module):
         x = F.relu(self.coord_encoder(x))
         x = self.norm_layers[0](x)  # 初始编码后使用LayerNorm
 
-        # 第一层残差
-        identity1 = x  # 保存当前层输入
-        x = F.relu(self.conv1(x, edge_index))
-        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
-        identity1 = self._adjust_identity(identity1, x)  # 新增维度适配
-        if self.residual_switch:
-            x = x + identity1  # 与当前层输入相加
-            x = self.norm_layers[2](x)
-        else:
-            x = x
-
-        # 第二层残差
-        identity2 = x  # 使用上一层的输出作为下一层残差输入
-        x = F.relu(self.conv2(x, edge_index))
-        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
-        if self.residual_switch:
-            x = x + identity2
-            x = self.norm_layers[2](x)
-        else:
-            x = x
-
-        # 第三层残差
-        identity3 = x
-        x = F.relu(self.conv3(x, edge_index))
-        x = self.norm_layers[1](x)  # 卷积后使用BatchNorm
-        if self.residual_switch:
-            x = x + identity3
-            x = self.norm_layers[2](x)
-        else:
-            x = x
+        # 多层GCN
+        for conv in self.convs:
+            res = x
+            x = conv(x, edge_index)
+            x = F.relu(x)
+            if self.residual_switch:
+                res = self._adjust_identity(res, x)
+                x = x + res              
+            else:
+                x = x 
+            x = self.norm_layers[0](x)  # 每层后使用LayerNorm
+            x = self.dropout(x)
 
         # 全连接部分
         x = F.relu(self.fc1(x))
-        # x = F.dropout(x, p=0.5, training=self.training)
         x = self.tanh(self.fc2(x))
         return x
 
@@ -219,9 +205,14 @@ if __name__ == "__main__":
         print(f"数据加载失败: {str(e)}")
         exit(1)
 
-    train_dataset = [build_graph_data(result['valid_wall_nodes'], result['wall_faces']) 
+    dataset = [build_graph_data(result['valid_wall_nodes'], result['wall_faces']) 
                 for result in all_results]
+    train_size = int(config['train_ratio'] * len(dataset))
+    val_size = len(dataset) - train_size
+    train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size==config['batch_size'])
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
