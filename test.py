@@ -4,15 +4,22 @@ sys.path.append(str(Path(__file__).parent /"fileIO"))
 sys.path.append(str(Path(__file__).parent /"data_structure"))
 import read_cas as rc
      
-# # 使用示例文件测试解析结果
-# file_path = './sample/tri.cas' 
-# grid = rc.parse_fluent_msh(file_path)
-# construct_initial_front(grid)
+# 使用示例文件测试解析结果
+file_path = './sample/tri.cas' 
+grid = rc.parse_fluent_msh(file_path)
 
-import torch
-print(f"PyTorch 版本: {torch.__version__}")          # 应显示 GPU 版本（如 2.0.0+cu117）
-print(f"CUDA 是否可用: {torch.cuda.is_available()}") # 应输出 True
-print(f"CUDA 版本: {torch.version.cuda}")            # 应输出 11.7
+# 构造优先队列
+front_heap = construct_initial_front(parse_fluent_msh("test.cas"))
+
+# 获取最小阵面
+while front_heap:
+    smallest = heapq.heappop(front_heap)
+    print(f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}")
+
+# import torch
+# print(f"PyTorch 版本: {torch.__version__}")          # 应显示 GPU 版本（如 2.0.0+cu117）
+# print(f"CUDA 是否可用: {torch.cuda.is_available()}") # 应输出 True
+# print(f"CUDA 版本: {torch.version.cuda}")            # 应输出 11.7
 
 # # 基础验证
 # print(f"维度: {grid['dimensions']}")
