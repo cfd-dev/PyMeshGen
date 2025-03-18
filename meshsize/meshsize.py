@@ -4,14 +4,16 @@ import matplotlib.pyplot as plt
 
 
 class QuadTreeNode:
+    """四叉树节点类，用于存储网格划分信息"""
+
     def __init__(self, bounds):
-        self.level = 0
-        self.subflag = 0
-        self.parent = None
-        self.children = None
-        self.bounds = bounds  # (x_min, y_min, x_max, y_max)
-        self.spacing = [0.0] * 4  # spacing at 4 corners
-        self.isvalid = True
+        self.level = 0  # 节点层级（0表示根节点）
+        self.subflag = 0  # 细分标志（0:未细分，1:已细分，-1:需强制细分）
+        self.parent = None  # 父节点指针
+        self.children = None  # 子节点列表（最多4个子节点）
+        self.bounds = bounds  # 节点边界坐标 (x_min, y_min, x_max, y_max)
+        self.spacing = [0.0] * 4  # 四个角点的网格尺寸（NW, NE, SW, SE）
+        self.isvalid = True  # 节点是否有效（用于遍历过滤）
 
     @staticmethod
     def _draw_node(node, ax, marker):
@@ -34,7 +36,7 @@ class QuadTreeNode:
         )
 
     def is_empty(self):
-        """Check if node has zero area"""
+        """检查节点是否为空（无效区域）"""
         return self.bounds[0] >= self.bounds[2] or self.bounds[1] >= self.bounds[3]
 
 
@@ -74,15 +76,25 @@ def CountNode(node, data):
     data["maxLevel"] = max(data["maxLevel"], node.level)
 
 
+NEIGHBORS_MAP2D = [
+    [-1, 1, -1, 2],  # 子节点0 (NW)
+    [0, -1, -1, 3],  # 子节点1 (NE)
+    [-1, 3, 0, -1],  # 子节点2 (SW)
+    [2, -1, 1, -1],  # 子节点3 (SE)
+]
+
+
 class QuadtreeSizing:
+    """四叉树网格生成器，用于自适应网格尺寸计算"""
+
     def __init__(
         self,
-        initial_front=None,
-        max_size=1.0,
-        resolution=0.1,
-        decay=1.2,
-        fig=None,
-        ax=None,
+        initial_front=None,  # 初始阵面列表（包含几何边界信息）
+        max_size=1.0,  # 最大允许网格尺寸
+        resolution=0.1,  # 网格细分分辨率阈值（尺寸差百分比）
+        decay=1.2,  # 尺寸场衰减系数（>1时尺寸随距离增大）
+        fig=None,  # matplotlib图对象（可视化用）
+        ax=None,  # matplotlib坐标轴对象
     ):
 
         self.max_size = max_size  # 最大网格尺寸
@@ -167,7 +179,10 @@ class QuadtreeSizing:
         self._calculate_max_depth(min_edge_len)
 
     def _calculate_max_depth(self, min_edge_len):
-        """四叉树深度计算"""
+        """计算四叉树最大深度：
+        基于公式：depth = ceil(log2(global_spacing / min_edge_length)) + 安全裕度
+        保证能解析最小几何特征
+        """
         # 计算理论深度
         ratio = self.global_spacing / min_edge_len
         theoretical_depth = math.log(ratio) / math.log(2)  # 换底公式
@@ -180,6 +195,8 @@ class QuadtreeSizing:
 
     def initial_quadtree(self):
         """初始化四叉树网格"""
+        print(f"初始quadtree生成...")
+
         # 计算背景网格分割数
         dist = [
             self.bg_bounds[2] - self.bg_bounds[0],  # x方向长度
@@ -236,7 +253,12 @@ class QuadtreeSizing:
         ]
 
     def refine_quadtree(self):
-        """实现基于表面网格尺寸的四叉树细分"""
+        """基于表面网格尺寸的细化：
+        1. 遍历所有表面网格单元
+        2. 定位到对应的四叉树节点
+        3. 根据尺寸差判断是否需要细分
+        4. 递归细分直到满足条件
+        """
 
         def _should_refine(node, target_size):
             """细分条件判断"""
@@ -263,6 +285,8 @@ class QuadtreeSizing:
                     quadrant += 2
                 node = node.children[quadrant]
             return node
+
+        print(f"细化初始quadtree...")
 
         # 遍历所有表面节点
         for front in self.initial_front:
@@ -296,13 +320,10 @@ class QuadtreeSizing:
                 current = _locate_quadtree(face_center, current)
 
     def level_refinement(self):
-        """平衡树层级差异,保证相邻节点之间层级差不大于1"""
-        BG_MAP_SIDES = [
-            [-1, 1, -1, 2],  # 子节点0 (NW)
-            [0, -1, -1, 3],  # 子节点1 (NE)
-            [-1, 3, 0, -1],  # 子节点2 (SW)
-            [2, -1, 1, -1],  # 子节点3 (SE)
-        ]
+        """层级平衡细化：
+        保证相邻节点层级差不超过1，避免尺寸突变
+        使用广度优先搜索处理需要强制细分的节点
+        """
 
         def mark_neighbors(node, neighbors):
             """递归标记需要细分的节点"""
@@ -313,14 +334,14 @@ class QuadtreeSizing:
                 # 处理当前节点的子节点
                 for n in range(4):
                     for j in range(4):  # 四个方向
-                        i = BG_MAP_SIDES[n][j]
+                        i = NEIGHBORS_MAP2D[n][j]
                         if i < 0:
-                            if neighbors[j] and neighbors[j].subflag <= 0:  # 西
+                            if neighbors[j] and neighbors[j].subflag <= 0:
                                 cs[j] = neighbors[j]
                                 # cs[j]._draw_node(cs[j], self.ax, "b--")
                             else:
                                 opposite = j ^ 1  # 取相反方向
-                                i = BG_MAP_SIDES[n][opposite]
+                                i = NEIGHBORS_MAP2D[n][opposite]
                                 cs[j] = (
                                     neighbors[j].children[i] if neighbors[j] else None
                                 )
@@ -344,6 +365,7 @@ class QuadtreeSizing:
                         changed += 1
             return changed
 
+        print(f"平衡quadtree，保证层级差<2...")
         # 主循环
         changed = 1
         while changed:
@@ -407,6 +429,8 @@ class QuadtreeSizing:
             pwr = min(pwr, 50.0)  # 限制最大指数
             return base_size * math.exp(pwr)
 
+        print(f"计算尺寸场decay...")
+
         if self.decay < 1.0:
             return
 
@@ -443,12 +467,6 @@ class QuadtreeSizing:
 
     def spacing_transition(self):
         """基于相邻节点尺寸的平滑过渡"""
-        BG_MAP_SIDES = [
-            [-1, 1, -1, 2],  # 子节点0 (NW)
-            [0, -1, -1, 3],  # 子节点1 (NE)
-            [-1, 3, 0, -1],  # 子节点2 (SW)
-            [2, -1, 1, -1],  # 子节点3 (SE)
-        ]
 
         def update_sizes(node, neighbors):
             """递归标记需要细分的节点"""
@@ -458,13 +476,13 @@ class QuadtreeSizing:
                 # 处理当前节点的子节点
                 for n in range(4):
                     for j in range(4):  # 四个方向
-                        i = BG_MAP_SIDES[n][j]
+                        i = NEIGHBORS_MAP2D[n][j]
                         if i < 0:
                             if neighbors[j] and neighbors[j].subflag <= 0:
                                 cs[j] = neighbors[j]
                             else:
                                 opposite = j ^ 1  # 取相反方向
-                                i = BG_MAP_SIDES[n][opposite]
+                                i = NEIGHBORS_MAP2D[n][opposite]
                                 cs[j] = (
                                     neighbors[j].children[i] if neighbors[j] else None
                                 )
@@ -481,12 +499,13 @@ class QuadtreeSizing:
 
                     if neighbor.level == node.level:
                         for i in range(4):
-                            j = BG_MAP_SIDES[i][n ^ 1]
+                            j = NEIGHBORS_MAP2D[i][n ^ 1]
                             if j >= 0 and neighbor.spacing[j] > node.spacing[i]:
                                 neighbor.spacing[j] = node.spacing[i]
                                 changed += 1
             return changed
 
+        print(f"尺寸场光滑transition...")
         # 主循环
         changed = 1
         while changed:
@@ -514,6 +533,7 @@ class QuadtreeSizing:
 
     def grid_summary(self):
         """输出网格统计信息"""
+        print(f"输出背景网格信息...")
         data = {"nCells": 0, "maxLevel": 0}
 
         enumerate_quadtree(self.quad_tree, CountNode, data)
