@@ -249,7 +249,7 @@ class QuadtreeSizing:
             diff = (current_spacing - target_size) / current_spacing
             return diff > self.resolution
 
-        def _locate_quadtree(point, node):
+        def _locate_quadtree(self, point, node):
             """定位点在四叉树中的叶节点"""
             while node.children:
                 x_center = (node.bounds[0] + node.bounds[2]) / 2
@@ -521,3 +521,32 @@ class QuadtreeSizing:
         print(f"网格统计:")
         print(f"- 总节点数: {data['nCells']}")
         print(f"- 最大深度: {data['maxLevel']}")
+
+    def spacing_at(self, point):
+        """计算指定点的网格尺寸（二维双线性插值）"""
+        # 定位到包含该点的背景网格根节点
+        root_node = None
+        for node in self.quad_tree:
+            x_min, y_min, x_max, y_max = node.bounds
+            if (x_min <= point[0] <= x_max) and (y_min <= point[1] <= y_max):
+                root_node = node
+                break
+
+        if not root_node:
+            raise ValueError(f"Point {point} outside quadtree bounds")
+
+        # 定位到叶节点
+        leaf = self._locate_quadtree(point, root_node)
+
+        # 计算局部坐标系参数 (归一化坐标)
+        x_min, y_min, x_max, y_max = leaf.bounds
+        rx = (point[0] - x_min) / (x_max - x_min) if x_max != x_min else 0.0
+        ry = (point[1] - y_min) / (y_max - y_min) if y_max != y_min else 0.0
+
+        # 二维双线性插值（四个角点权重）
+        return (
+            leaf.spacing[0] * (1 - rx) * (1 - ry)  # 西北角
+            + leaf.spacing[1] * rx * (1 - ry)  # 东北角
+            + leaf.spacing[2] * (1 - rx) * ry  # 西南角
+            + leaf.spacing[3] * rx * ry
+        )  # 东南角
