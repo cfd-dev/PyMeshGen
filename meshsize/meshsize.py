@@ -48,10 +48,10 @@ def draw_quadtree(quadtree, ax, marker="g-"):
 
 def enumerate_quadtree(quadtree, func, data):
     """
-    遍历八叉树的所有节点，无论是否被分割。
+    遍历叉树的所有节点
 
     参数:
-    octree (list): 八叉树节点列表，每个节点为具有isvalid、subflag和child属性的对象。
+    quadtree (list): 叉树节点列表
     func (function): 对每个有效节点应用的函数，接受节点和data作为参数。
     data: 传递给func的额外数据。
     """
