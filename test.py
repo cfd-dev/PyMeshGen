@@ -14,7 +14,7 @@ import mesh_visualization as viz
 # 使用示例文件测试解析结果
 file_path = "./sample_grids/tri.cas"
 grid = rc.parse_fluent_msh(file_path)
-viz.visualize_mesh_2d(grid)
+fig, ax = viz.visualize_mesh_2d(grid)
 
 # 构造优先队列
 front_heap = front2d.construct_initial_front(grid)
@@ -26,8 +26,9 @@ front_heap = front2d.construct_initial_front(grid)
 #         f"边界类型: {smallest.bc_type}, 长度: {smallest.length:.4f}, 节点: {smallest.nodes}"
 #     )
 # 创建尺寸系统
+
 sizing_system = meshsize.QuadtreeSizing(
-    initial_front=front_heap, max_size=0.5, resolution=0.1, decay=1.2
+    initial_front=front_heap, max_size=0.5, resolution=0.1, decay=1.2, fig=fig, ax=ax
 )
 
 # import torch

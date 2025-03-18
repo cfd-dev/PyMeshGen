@@ -19,7 +19,7 @@ def visualize_mesh_2d(grid):
         "symmetry": "green",  # 压力出口
         "pressure-outlet": "purple",  # 对称面
         "pressure-inlet": "cyan",  # 速度入口
-        "DEFAULT": "orange",  # 其他类型
+        "unspecified": "orange",  # 其他类型
     }
 
     # 遍历所有面区域
@@ -30,7 +30,7 @@ def visualize_mesh_2d(grid):
 
         # 获取边界类型和颜色
         bc_type = zone.get("bc_type", "INTERIOR")
-        color = bc_colors.get(bc_type, bc_colors["DEFAULT"])
+        color = bc_colors.get(bc_type, bc_colors["unspecified"])
 
         existing_types.add(bc_type.lower())
 
@@ -53,8 +53,8 @@ def visualize_mesh_2d(grid):
                 x,
                 y,
                 color=color,
-                linewidth=1 if bc_type == "INTERIOR" else 2,
-                alpha=0.7 if bc_type == "INTERIOR" else 1.0,
+                linewidth=1 if bc_type == "interior" else 2,
+                alpha=0.7 if bc_type == "interior" else 1.0,
             )
 
     # 创建图例代理
@@ -67,11 +67,11 @@ def visualize_mesh_2d(grid):
             "symmetry": "Symmetry",
             "pressure-outlet": "Pressure Outlet",
             "pressure-inlet": "Pressure Inlet",
-            "DEFAULT": "Other Boundaries",
+            "unspecified": "Other Boundaries",
         }.get(bc_type, bc_type.title())
 
         if bc_type in existing_types or (
-            bc_type == "DEFAULT" and len(existing_types - bc_colors.keys()) > 0
+            bc_type == "unspecified" and len(existing_types - bc_colors.keys()) > 0
         ):
             legend_elements.append(plt.Line2D([0], [0], color=color, lw=2, label=label))
 
@@ -82,10 +82,13 @@ def visualize_mesh_2d(grid):
     ax.legend(handles=legend_elements, loc="upper right")
     ax.axis("equal")
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
+
+    # 返回figure和axes对象
+    return fig, ax
 
 
-def visualize_wall_mesh_2d(grid, wall_nodes, vector_scale=0.3):
+def visualize_wall_structure_2d(grid, wall_nodes, vector_scale=0.3):
     fig, ax = plt.subplots(figsize=(10, 8))
 
     # 预处理：计算每个wall面的边长（排序节点避免重复）

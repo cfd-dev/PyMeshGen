@@ -13,19 +13,19 @@ class QuadTreeNode:
         self.spacing = [0.0] * 4  # spacing at 4 corners
 
     @staticmethod
-    def _draw_node(node, marker):
+    def _draw_node(node, ax, marker):
         """Recursive node drawing method"""
         if node.children:
             for child in node.children:
-                QuadTreeNode._draw_node(child, marker)
+                QuadTreeNode._draw_node(child, ax, marker)
         else:
-            QuadTreeNode._draw_square(node.bounds, marker)
+            QuadTreeNode._draw_square(node.bounds, ax, marker)
 
     @staticmethod
-    def _draw_square(bounds, marker):
+    def _draw_square(bounds, ax, marker):
         """Draw single node's boundaries"""
         x_min, y_min, x_max, y_max = bounds
-        plt.plot(
+        ax.plot(
             [x_min, x_max, x_max, x_min, x_min],
             [y_min, y_min, y_max, y_max, y_min],
             marker,
@@ -36,16 +36,24 @@ class QuadTreeNode:
         return self.bounds[0] >= self.bounds[2] or self.bounds[1] >= self.bounds[3]
 
 
-def draw_quadtree(quadtree, marker="b-"):
+def draw_quadtree(quadtree, ax, marker="b-"):
     """Draw entire quadtree structure"""
     for node in quadtree:
-        QuadTreeNode._draw_node(node, marker)
-    plt.axis("equal")
+        QuadTreeNode._draw_node(node, ax, marker)
+    ax.axis("equal")
     plt.show()
 
 
 class QuadtreeSizing:
-    def __init__(self, initial_front=None, max_size=1.0, resolution=0.1, decay=1.2):
+    def __init__(
+        self,
+        initial_front=None,
+        max_size=1.0,
+        resolution=0.1,
+        decay=1.2,
+        fig=None,
+        ax=None,
+    ):
 
         self.max_size = max_size  # 最大网格尺寸
         self.resolution = resolution  # 分辨率
@@ -58,6 +66,8 @@ class QuadtreeSizing:
         self.depth = None  # 叉树深度
         self.bg_divisions = [1, 1]  # 背景网格维度
 
+        self.fig = fig
+        self.ax = ax
         self.generate_bg_mesh()
 
     def generate_bg_mesh(self):
@@ -67,7 +77,7 @@ class QuadtreeSizing:
         # 初始叉树网格
         self.initial_quadtree()
 
-        draw_quadtree(self.quad_tree)
+        draw_quadtree(self.quad_tree, self.ax)
 
         # 细分网格
         self.refine_quadtree()
