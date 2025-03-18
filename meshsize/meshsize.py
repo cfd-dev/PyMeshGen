@@ -29,6 +29,7 @@ class QuadTreeNode:
             [x_min, x_max, x_max, x_min, x_min],
             [y_min, y_min, y_max, y_max, y_min],
             marker,
+            linewidth=0.5,
         )
 
     def is_empty(self):
@@ -36,7 +37,7 @@ class QuadTreeNode:
         return self.bounds[0] >= self.bounds[2] or self.bounds[1] >= self.bounds[3]
 
 
-def draw_quadtree(quadtree, ax, marker="b-"):
+def draw_quadtree(quadtree, ax, marker="g-"):
     """Draw entire quadtree structure"""
     for node in quadtree:
         QuadTreeNode._draw_node(node, ax, marker)
@@ -82,8 +83,12 @@ class QuadtreeSizing:
         # 细分网格
         self.refine_quadtree()
 
+        draw_quadtree(self.quad_tree, self.ax)
+
         # 加密区扩散，避免level相差>=2
         self.level_refinement()
+
+        draw_quadtree(self.quad_tree, self.ax)
 
         # 根据decay参数计算网格尺度场的decay
         self.compute_spacing_decay()
@@ -204,21 +209,19 @@ class QuadtreeSizing:
     def refine_quadtree(self):
         """实现基于表面网格尺寸的四叉树细分"""
 
-        def _should_refine(node, surface_size):
+        def _should_refine(node, target_size):
             """细分条件判断"""
             if node.level >= self.depth:
                 return False
-            if node.sp <= surface_size:
+
+            current_spacing = current.spacing[0]
+            if current_spacing <= target_size:
                 return False
-            diff = (node.sp - surface_size) / node.sp
+            diff = (current_spacing - target_size) / current_spacing
             return diff > self.resolution
 
         def _locate_quadtree(point, node):
             """定位点在四叉树中的叶节点"""
-            min_x, min_y, max_x, max_y = node.bounds
-            if not (min_x <= point[0] <= max_x and min_y <= point[1] <= max_y):
-                print(f"Point {point} 超出叉树节点边界 {node.bounds}")
-
             while node.children:
                 x_center = (node.bounds[0] + node.bounds[2]) / 2
                 y_center = (node.bounds[1] + node.bounds[3]) / 2
@@ -237,22 +240,30 @@ class QuadtreeSizing:
             face_center = front.front_center
             target_size = front.length
 
-            current = self.quad_tree
-            current = _locate_quadtree(face_center, current)
-            # 执行递归细分
+            # 从背景网格根节点开始定位
+            current = None
+            for root in self.quad_tree:  # 遍历所有背景网格根节点
+                if (
+                    root.bounds[0] <= face_center[0] <= root.bounds[2]
+                    and root.bounds[1] <= face_center[1] <= root.bounds[3]
+                ):
+                    current = root
+                    break
+
             while _should_refine(current, target_size):
+                # 执行细分
                 if not current.children:
-                    # 细分当前节点
                     current.subflag = 1
                     current.children = [
-                        QuadTreeNode(divide_bounds(current.bounds)) for _ in range(4)
+                        QuadTreeNode(bounds)
+                        for bounds in self.divide_bounds(current.bounds)
                     ]
-                    for child in current.children:
+                    for i, child in enumerate(current.children):
                         child.level = current.level + 1
-                        child.father = current
+                        child.parent = current
                         child.spacing = [s / 2 for s in current.spacing]
 
-                # 更新当前节点到子节点
+                # 重新定位到子节点
                 current = _locate_quadtree(face_center, current)
 
     def level_refinement(self):

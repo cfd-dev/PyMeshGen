@@ -2,14 +2,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def visualize_mesh_2d(grid):
+def visualize_mesh_2d(grid, BoundaryOnly=False):
     """可视化完整的2D网格结构"""
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # 绘制所有网格节点（半透明显示）
-    xs = [n[0] for n in grid["nodes"]]
-    ys = [n[1] for n in grid["nodes"]]
-    ax.scatter(xs, ys, c="gray", s=8, alpha=0.3, label="All Nodes")
+    if not BoundaryOnly:
+        # 绘制所有网格节点（半透明显示）
+        xs = [n[0] for n in grid["nodes"]]
+        ys = [n[1] for n in grid["nodes"]]
+        ax.scatter(xs, ys, c="gray", s=8, alpha=0.3, label="All Nodes")
 
     # 定义边界类型颜色映射
     bc_colors = {
@@ -26,6 +27,9 @@ def visualize_mesh_2d(grid):
     existing_types = set()
     for zone in grid["zones"].values():
         if zone["type"] != "faces":
+            continue
+
+        if BoundaryOnly and zone["bc_type"] == "interior":
             continue
 
         # 获取边界类型和颜色
@@ -55,6 +59,7 @@ def visualize_mesh_2d(grid):
                 color=color,
                 linewidth=1 if bc_type == "interior" else 2,
                 alpha=0.7 if bc_type == "interior" else 1.0,
+                marker=".",
             )
 
     # 创建图例代理
