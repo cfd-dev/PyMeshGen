@@ -12,7 +12,7 @@ import meshsize
 import mesh_visualization as viz
 
 # 使用示例文件测试解析结果
-file_path = "./sample_grids/training/anw-hybrid.cas"
+file_path = "./sample_grids/training/30p30n-hybrid-sample.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 

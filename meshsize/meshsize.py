@@ -251,6 +251,21 @@ class QuadtreeSizing:
             (x_min, y_center, x_center, y_max),  # 西南象限 (SW)
             (x_center, y_center, x_max, y_max),  # 东南象限 (SE)
         ]
+        
+    def _locate_quadtree(self, point, node):
+        """定位点在四叉树中的叶节点"""
+        while node.children:
+            x_center = (node.bounds[0] + node.bounds[2]) / 2
+            y_center = (node.bounds[1] + node.bounds[3]) / 2
+
+            # 判断点所在象限
+            quadrant = 0
+            if point[0] > x_center:
+                quadrant += 1
+            if point[1] > y_center:
+                quadrant += 2
+            node = node.children[quadrant]
+        return node
 
     def refine_quadtree(self):
         """基于表面网格尺寸的细化：
@@ -270,21 +285,6 @@ class QuadtreeSizing:
                 return False
             diff = (current_spacing - target_size) / current_spacing
             return diff > self.resolution
-
-        def _locate_quadtree(self, point, node):
-            """定位点在四叉树中的叶节点"""
-            while node.children:
-                x_center = (node.bounds[0] + node.bounds[2]) / 2
-                y_center = (node.bounds[1] + node.bounds[3]) / 2
-
-                # 判断点所在象限
-                quadrant = 0
-                if point[0] > x_center:
-                    quadrant += 1
-                if point[1] > y_center:
-                    quadrant += 2
-                node = node.children[quadrant]
-            return node
 
         print(f"细化初始quadtree...")
 
@@ -317,7 +317,7 @@ class QuadtreeSizing:
                         child.spacing = [s / 2 for s in current.spacing]
 
                 # 重新定位到子节点
-                current = _locate_quadtree(face_center, current)
+                current = self._locate_quadtree(face_center, current)
 
     def level_refinement(self):
         """层级平衡细化：
