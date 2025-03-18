@@ -11,6 +11,7 @@ class QuadTreeNode:
         self.children = None
         self.bounds = bounds  # (x_min, y_min, x_max, y_max)
         self.spacing = [0.0] * 4  # spacing at 4 corners
+        self.isvalid = True
 
     @staticmethod
     def _draw_node(node, ax, marker):
@@ -43,6 +44,29 @@ def draw_quadtree(quadtree, ax, marker="g-"):
         QuadTreeNode._draw_node(node, ax, marker)
     ax.axis("equal")
     plt.show()
+
+
+def enumerate_quadtree(quadtree, func, data):
+    """
+    遍历八叉树的所有节点，无论是否被分割。
+
+    参数:
+    octree (list): 八叉树节点列表，每个节点为具有isvalid、subflag和child属性的对象。
+    func (function): 对每个有效节点应用的函数，接受节点和data作为参数。
+    data: 传递给func的额外数据。
+    """
+    for node in quadtree:
+        if not node.isvalid:
+            continue
+        # 对当前有效节点应用函数
+        func(node, data)
+
+        # 如果节点被分割，递归处理所有子节点
+        if node.subflag > 0:
+            for i in range(4):
+                child = node.child[i]
+                # 递归调用时，将子节点作为单元素列表传入
+                enumerate_quadtree(child, func, data)
 
 
 class QuadtreeSizing:
@@ -78,12 +102,12 @@ class QuadtreeSizing:
         # 初始叉树网格
         self.initial_quadtree()
 
-        draw_quadtree(self.quad_tree, self.ax)
+        # draw_quadtree(self.quad_tree, self.ax)
 
         # 细分网格
         self.refine_quadtree()
 
-        draw_quadtree(self.quad_tree, self.ax)
+        # draw_quadtree(self.quad_tree, self.ax)
 
         # 加密区扩散，避免level相差>=2
         self.level_refinement()
