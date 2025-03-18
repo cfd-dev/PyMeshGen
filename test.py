@@ -12,9 +12,9 @@ import meshsize
 import mesh_visualization as viz
 
 # 使用示例文件测试解析结果
-file_path = "./sample_grids/tri.cas"
+file_path = "./sample_grids/training/anw-hybrid.cas"
 grid = rc.parse_fluent_msh(file_path)
-fig, ax = viz.visualize_mesh_2d(grid)
+fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
 # 构造优先队列
 front_heap = front2d.construct_initial_front(grid)
@@ -28,7 +28,7 @@ front_heap = front2d.construct_initial_front(grid)
 # 创建尺寸系统
 
 sizing_system = meshsize.QuadtreeSizing(
-    initial_front=front_heap, max_size=0.5, resolution=0.1, decay=1.2, fig=fig, ax=ax
+    initial_front=front_heap, max_size=4, resolution=0.1, decay=1.2, fig=fig, ax=ax
 )
 
 # import torch

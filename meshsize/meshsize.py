@@ -267,93 +267,107 @@ class QuadtreeSizing:
                 current = _locate_quadtree(face_center, current)
 
     def level_refinement(self):
-        """平衡树层级差异"""
-        from collections import deque
+        """平衡树层级差异,保证相邻节点之间层级差不大于1"""
+        BG_MAP_SIDES = [
+            [-1, 1, -1, 2],  # 子节点0 (NW)
+            [0, -1, -1, 3],  # 子节点1 (NE)
+            [-1, 3, 0, -1],  # 子节点2 (SW)
+            [2, -1, 1, -1],  # 子节点3 (SE)
+        ]
 
-        def find_neighbors(node):
-            """查找当前叶节点四个方向的相邻叶节点"""
-            neighbors = []
-            # 获取当前节点边界
-            min_x, min_y, max_x, max_y = node.bounds
-            cell_size = max_x - min_x
-
-            # 四个方向的搜索向量 (dx_min, dx_max, dy_min, dy_max)
-            directions = [
-                (-cell_size, 0, 0, 0),  # 西
-                (cell_size, 0, 0, 0),  # 东
-                (0, 0, -cell_size, 0),  # 南
-                (0, 0, cell_size, 0),  # 北
-            ]
-
-            # 广度优先搜索每个方向的邻居
-            for dx_min, dx_max, dy_min, dy_max in directions:
-                search_bounds = (
-                    min_x + dx_min + dx_max,
-                    min_y + dy_min + dy_max,
-                    max_x + dx_min + dx_max,
-                    max_y + dy_min + dy_max,
-                )
-
-                # 从根节点开始搜索
-                queue = deque([self.quad_tree])
-                while queue:
-                    current = queue.popleft()
-                    if current == node:
-                        continue
-
-                    # 检查边界重叠
-                    c_min_x, c_min_y, c_max_x, c_max_y = current.bounds
-                    if (
-                        search_bounds[0] < c_max_x
-                        and search_bounds[2] > c_min_x
-                        and search_bounds[1] < c_max_y
-                        and search_bounds[3] > c_min_y
-                    ):
-
-                        if current.children:
-                            queue.extend(current.children)
+        def mark_neighbors(node, neighbors):
+            """递归标记需要细分的节点"""
+            changed = 0
+            if node.subflag > 0 and node.children:
+                cs = [None] * 4
+                # node._draw_node(node, self.ax, "r--")
+                # 处理当前节点的子节点
+                for n in range(4):
+                    for j in range(4):  # 四个方向
+                        i = BG_MAP_SIDES[n][j]
+                        if i < 0:
+                            if neighbors[j] and neighbors[j].subflag <= 0:  # 西
+                                cs[j] = neighbors[j]
+                                # cs[j]._draw_node(cs[j], self.ax, "b--")
+                            else:
+                                opposite = j ^ 1  # 取相反方向
+                                i = BG_MAP_SIDES[n][opposite]
+                                cs[j] = (
+                                    neighbors[j].children[i] if neighbors[j] else None
+                                )
+                                # cs[j]._draw_node(cs[j], self.ax, "b--")
                         else:
-                            neighbors.append(current)
+                            cs[j] = node.children[i]
+                            # cs[j]._draw_node(cs[j], self.ax, "b--")
 
-            return neighbors
+                    changed += mark_neighbors(node.children[n], cs)
 
-        def force_refine(node):
-            """强制细分节点"""
-            if not node.children and node.level < self.depth:
-                node.subflag = 1
-                node.children = [
-                    QuadTreeNode(divide_bounds(node.bounds)) for _ in range(4)
-                ]
-                for child in node.children:
-                    child.level = node.level + 1
-                    child.parent = node
-                    child.spacing = [s / 2 for s in node.spacing]
+            elif node.level >= 2:  # 需要平衡的层级差
+                # node._draw_node(node, self.ax, "r--")
+                for j in range(4):  # 四个方向
+                    neighbor = neighbors[j]
+                    if (
+                        neighbor
+                        and neighbor.level < node.level - 1
+                        and neighbor.subflag == 0
+                    ):
+                        neighbor.subflag = -1
+                        changed += 1
+            return changed
 
-        # 主平衡逻辑
-        queue = deque([self.quad_tree])
-        visited = set()
+        # 主循环
+        changed = 1
+        while changed:
+            changed = 0
+            ndiv = 0
 
-        while queue:
-            node = queue.popleft()
-            if id(node) in visited:
-                continue
-            visited.add(id(node))
+            # 遍历背景网格
+            for j in range(self.bg_divisions[1]):
+                for i in range(self.bg_divisions[0]):
+                    current = self.quad_tree[ndiv]
+                    neighbors = [None] * 4  # 西、东、南、北
 
-            if node.children:
-                queue.extend(node.children)
-                continue
+                    # current._draw_node(current, self.ax, "r-")
+                    # 获取相邻节点
+                    if i > 0:
+                        neighbors[0] = self.quad_tree[ndiv - 1]  # 西
+                    if i < self.bg_divisions[0] - 1:
+                        neighbors[1] = self.quad_tree[ndiv + 1]  # 东
+                    if j > 0:
+                        neighbors[2] = self.quad_tree[ndiv - self.bg_divisions[0]]  # 南
+                    if j < self.bg_divisions[1] - 1:
+                        neighbors[3] = self.quad_tree[ndiv + self.bg_divisions[0]]  # 北
 
-            # 获取相邻叶节点
-            neighbors = find_neighbors(node)
+                    # for ineighbor in neighbors:
+                    #     if ineighbor:
+                    #         ineighbor._draw_node(ineighbor, self.ax, "b-")
 
-            for neighbor in neighbors:
-                # 层级差>=2时需要细分
-                while node.level - neighbor.level >= 2:
-                    force_refine(neighbor)
-                    # 细分后需要处理新生成的子节点
-                    if neighbor.children:
-                        queue.extend(neighbor.children)
-                    neighbor = neighbor.parent  # 向上追溯直到满足条件
+                    changed += mark_neighbors(current, neighbors)
+                    ndiv += 1
+
+            # 执行实际细分
+            from collections import deque
+
+            queue = deque(self.quad_tree)  # 初始队列包含所有根节点
+            while queue:
+                node = queue.popleft()
+                if node.subflag < 0:
+                    self._force_refine(node)
+                # 将子节点加入队列以继续处理
+                if node.children:
+                    queue.extend(node.children)
+
+    def _force_refine(self, node):
+        """执行实际的节点细分"""
+        if not node.children and node.level < self.depth:
+            node.subflag = 1
+            node.children = [
+                QuadTreeNode(bounds) for bounds in self.divide_bounds(node.bounds)
+            ]
+            for i, child in enumerate(node.children):
+                child.level = node.level + 1
+                child.parent = node
+                child.spacing = [s / 2 for s in node.spacing]
 
     def traverse_tree(self, node):
         """递归枚举四叉树节点"""
