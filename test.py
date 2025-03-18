@@ -5,12 +5,16 @@ import heapq
 sys.path.append(str(Path(__file__).parent / "fileIO"))
 sys.path.append(str(Path(__file__).parent / "data_structure"))
 sys.path.append(str(Path(__file__).parent / "meshsize"))
+sys.path.append(str(Path(__file__).parent / "visualization"))
 import read_cas as rc
 import front2d
 import meshsize
+import mesh_visualization as viz
+
 # 使用示例文件测试解析结果
 file_path = "./sample_grids/tri.cas"
 grid = rc.parse_fluent_msh(file_path)
+viz.visualize_mesh_2d(grid)
 
 # 构造优先队列
 front_heap = front2d.construct_initial_front(grid)
@@ -23,10 +27,7 @@ front_heap = front2d.construct_initial_front(grid)
 #     )
 # 创建尺寸系统
 sizing_system = meshsize.QuadtreeSizing(
-    initial_front=front_heap,
-    max_size=0.5,
-    resolution=0.1,
-    decay=1.2
+    initial_front=front_heap, max_size=0.5, resolution=0.1, decay=1.2
 )
 
 # import torch
