@@ -64,9 +64,14 @@ def enumerate_quadtree(quadtree, func, data):
         # 如果节点被分割，递归处理所有子节点
         if node.subflag > 0:
             for i in range(4):
-                child = node.child[i]
+                child = node.children[i]
                 # 递归调用时，将子节点作为单元素列表传入
-                enumerate_quadtree(child, func, data)
+                enumerate_quadtree([child], func, data)
+
+
+def CountNode(node, data):
+    data["nCells"] += 1
+    data["maxLevel"] = max(data["maxLevel"], node.level)
 
 
 class QuadtreeSizing:
@@ -393,14 +398,6 @@ class QuadtreeSizing:
                 child.parent = node
                 child.spacing = [s / 2 for s in node.spacing]
 
-    def traverse_tree(self, node):
-        """递归枚举四叉树节点"""
-        if not node.children:
-            yield node
-        else:
-            for child in node.children:
-                yield from traverse_tree(child)
-
     def compute_spacing_decay(self):
         """计算考虑表面节点影响的网格尺寸"""
 
@@ -414,7 +411,12 @@ class QuadtreeSizing:
             return
 
         # 遍历四叉树所有节点
-        for node in self.traverse_tree(self.quad_tree):
+        from collections import deque
+
+        queue = deque(self.quad_tree)  # 初始队列包含所有根节点
+        while queue:
+            node = queue.popleft()
+
             min_sp = float("inf")
             x_center = (node.bounds[0] + node.bounds[2]) / 2
             y_center = (node.bounds[1] + node.bounds[3]) / 2
@@ -433,93 +435,89 @@ class QuadtreeSizing:
                 min_sp = min(min_sp, sp)
 
             # 限制最小尺寸不超过全局尺寸
-            node.sp = min(min_sp, self.global_spacing)
+            node.spacing = [min(min_sp, self.global_spacing) for _ in range(4)]
+
+            # 将子节点加入队列以继续处理
+            if node.children:
+                queue.extend(node.children)
 
     def spacing_transition(self):
         """基于相邻节点尺寸的平滑过渡"""
-        from collections import deque
-
-        # 方向映射：西(0)、东(1)、南(2)、北(3)
-        bg_map_sides = [
+        BG_MAP_SIDES = [
             [-1, 1, -1, 2],  # 子节点0 (NW)
             [0, -1, -1, 3],  # 子节点1 (NE)
             [-1, 3, 0, -1],  # 子节点2 (SW)
             [2, -1, 1, -1],  # 子节点3 (SE)
         ]
 
-        def get_neighbor(node, direction):
-            """通过父节点链获取指定方向的叶节点"""
-            if not node.parent:
-                return None
+        def update_sizes(node, neighbors):
+            """递归标记需要细分的节点"""
+            changed = 0
+            if node.subflag > 0 and node.children:
+                cs = [None] * 4
+                # 处理当前节点的子节点
+                for n in range(4):
+                    for j in range(4):  # 四个方向
+                        i = BG_MAP_SIDES[n][j]
+                        if i < 0:
+                            if neighbors[j] and neighbors[j].subflag <= 0:
+                                cs[j] = neighbors[j]
+                            else:
+                                opposite = j ^ 1  # 取相反方向
+                                i = BG_MAP_SIDES[n][opposite]
+                                cs[j] = (
+                                    neighbors[j].children[i] if neighbors[j] else None
+                                )
+                        else:
+                            cs[j] = node.children[i]
 
-            sibling_idx = node.parent.children.index(node)
-            neighbor_idx = bg_map_sides[sibling_idx][direction]
+                    changed += update_sizes(node.children[n], cs)
 
-            if neighbor_idx != -1:
-                return node.parent.children[neighbor_idx]
             else:
-                parent_neighbor = get_neighbor(node.parent, direction)
-                if parent_neighbor and parent_neighbor.children:
-                    return parent_neighbor.children[sibling_idx]
-            return None
+                for n in range(4):
+                    neighbor = neighbors[n]
+                    if not neighbor or neighbor.subflag > 0:
+                        continue
 
-        # 迭代3次确保收敛
-        for _ in range(3):
-            updates = []
+                    if neighbor.level == node.level:
+                        for i in range(4):
+                            j = BG_MAP_SIDES[i][n ^ 1]
+                            if j >= 0 and neighbor.spacing[j] > node.spacing[i]:
+                                neighbor.spacing[j] = node.spacing[i]
+                                changed += 1
+            return changed
 
-            # 收集所有叶节点
-            leaves = []
-            queue = deque([self.quad_tree])
-            while queue:
-                node = queue.popleft()
-                if node.children:
-                    queue.extend(node.children)
-                else:
-                    leaves.append(node)
+        # 主循环
+        changed = 1
+        while changed:
+            changed = 0
+            ndiv = 0
 
-            # 计算相邻节点尺寸影响
-            for node in leaves:
-                avg_spacing = node.spacing.copy()
-                count = 1
+            # 遍历背景网格
+            for j in range(self.bg_divisions[1]):
+                for i in range(self.bg_divisions[0]):
+                    current = self.quad_tree[ndiv]
+                    neighbors = [None] * 4  # 西、东、南、北
 
-                # 检查四个方向
-                for dir in range(4):
-                    neighbor = get_neighbor(node, dir)
-                    if neighbor and not neighbor.children:
-                        # 获取对应方向的角点索引
-                        corner_map = [
-                            [0, 1],  # 西侧影响左边界（0,2角点）
-                            [1, 3],  # 东侧影响右边界（1,3角点）
-                            [0, 2],  # 南侧影响下边界（0,1角点）
-                            [2, 3],  # 北侧影响上边界（2,3角点）
-                        ][dir]
+                    # 获取相邻节点
+                    if i > 0:
+                        neighbors[0] = self.quad_tree[ndiv - 1]  # 西
+                    if i < self.bg_divisions[0] - 1:
+                        neighbors[1] = self.quad_tree[ndiv + 1]  # 东
+                    if j > 0:
+                        neighbors[2] = self.quad_tree[ndiv - self.bg_divisions[0]]  # 南
+                    if j < self.bg_divisions[1] - 1:
+                        neighbors[3] = self.quad_tree[ndiv + self.bg_divisions[0]]  # 北
 
-                        # 累加相邻节点对应角点尺寸
-                        for idx in corner_map:
-                            avg_spacing[idx] += neighbor.spacing[idx]
-                            count += 1
-
-                    # 计算平均值并更新
-                    for i in range(4):
-                        avg_spacing[i] /= count
-                        # 平滑过渡系数 (0.2表示保留80%原尺寸，20%邻居影响)
-                        node.spacing[i] = node.spacing[i] * 0.8 + avg_spacing[i] * 0.2
-
-                    updates.append((node, avg_spacing))
-
-            # 应用更新
-            for node, new_spacing in updates:
-                node.spacing = [min(ns, s) for ns, s in zip(new_spacing, node.spacing)]
+                    changed += update_sizes(current, neighbors)
+                    ndiv += 1
 
     def grid_summary(self):
         """输出网格统计信息"""
-        node_count = 0
-        max_level = 0
-        for node in self.traverse_tree(self.quad_tree):
-            node_count += 1
-            max_level = max(max_level, node.level)
+        data = {"nCells": 0, "maxLevel": 0}
+
+        enumerate_quadtree(self.quad_tree, CountNode, data)
 
         print(f"网格统计:")
-        print(f"- 总节点数: {node_count}")
-        print(f"- 最大深度: {max_level}")
-        print(f"- 最小尺寸: {self.global_spacing / (2 ** max_level):.4f}")
+        print(f"- 总节点数: {data['nCells']}")
+        print(f"- 最大深度: {data['maxLevel']}")
