@@ -1,9 +1,0 @@
-/myenv
-/sample_grids
-/__pycache__
-/morvan_python
-.gitignore
-*.pyc
-/neural/model
-
-
