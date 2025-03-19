@@ -10,14 +10,21 @@ import front2d
 import meshsize
 import mesh_visualization as viz
 
-
+# 读入边界网格
 file_path = "./neural/sample_grids/training/30p30n-hybrid-sample.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
-# 构造优先队列
+# 构造初始阵面
 front_heap = front2d.construct_initial_front(grid)
 
+# 计算网格尺寸场
 sizing_system = meshsize.QuadtreeSizing(
     initial_front=front_heap, max_size=4, resolution=0.1, decay=1.2, fig=fig, ax=ax
 )
+
+# 推进生成网格
+
+# 网格质量优化
+
+# 可视化网格
