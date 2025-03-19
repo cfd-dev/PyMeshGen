@@ -4,5 +4,6 @@
 /morvan_python
 .gitignore
 *.pyc
+/neural/model
 
 
