@@ -9,7 +9,7 @@ class Adfront2:
     def __init__(self, initial_front, sizing_system):
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
-        self.coeff = 0.85  # Pbest质量系数，coeff越小，选择Pbest的概率越小
+        self.discount = 0.85  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
         self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
         self.sort_front = True  # 是否对阵面排序
@@ -17,30 +17,123 @@ class Adfront2:
 
         self.front_list = initial_front
         self.sizing_system = sizing_system
+        self.base_front = None
+        self.pbest = None
+        self.pselected = None
+        self.best_flag = False
+        self.node_candidates = None
+        self.front_candidates = None
+
+        self.num_cells = 0
+        self.num_nodes = 0
+
+        self.initialize()
 
     @staticmethod
+    def initialize(self):
+        """初始化节点编号系统"""
+        node_id_map = {}  # 存储节点坐标到ID的映射 {(x,y): id}
+        self.node_coords = []  # 按ID顺序存储所有节点坐标
+        self.node_ids = {}  # 反向映射 {id: (x,y)}
+        current_id = 0
+
+        # 遍历所有阵面提取节点
+        for front in self.front_list:
+            for node in front.nodes_coords:
+                # 将节点坐标转为可哈希的元组
+                node_tuple = tuple(
+                    round(coord, 6) for coord in node
+                )  # 使用6位小数精度去重
+
+                # 为新节点分配ID
+                if node_tuple not in node_id_map:
+                    node_id_map[node_tuple] = current_id
+                    self.node_coords.append(node)  # 保留原始坐标
+                    self.node_ids[current_id] = node_tuple
+                    current_id += 1
+
+        # 将映射关系保存到实例中
+        self.node_id_map = node_id_map
+
+        # 更新节点计数器
+        self.num_nodes = current_id
+
     def generate_elements(self):
         while self.front_list:
-            smallest = heapq.heappop(self.front_list)
+            self.base_front = heapq.heappop(self.front_list)
 
-            spacing = self.sizing_system(smallest.front_center)
+            spacing = self.sizing_system(self.base_front.front_center)
 
-            pbest = self.add_new_point(smallest, spacing)
+            self.add_new_point(spacing)
 
-            node_candidates, front_candidates = self.search_candidates(
-                pbest, self.al * spacing
+            self.search_candidates(self.al * spacing)
+
+            self.select_point()
+
+    def select_point(self):
+        # 存储带质量的候选节点元组 (质量, 节点)
+        scored_candidates = []
+
+        # 遍历所有候选节点计算质量
+        for node in self.node_candidates:
+            quality = geo_info.triangle_quality(
+                self.base_front.nodes_coords[0], self.base_front.nodes_coords[1], node
             )
+            scored_candidates.append((quality, node))
 
-            pselect = select_point(node_candidates, front_candidates)
+        # 添加Pbest节点的质量（带折扣系数）
+        pbest_quality = (
+            geo_info.triangle_quality(
+                self.base_front.nodes_coords[0],
+                self.base_front.nodes_coords[1],
+                self.pbest,
+            )
+            if self.pbest
+            else 0
+        )
+        scored_candidates.append((pbest_quality * self.discount, self.pbest))
 
-    def select_point(self, node_candidates, front_candidates):
-        pass
+        # 按质量降序排序（质量高的在前）
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-    def search_candidates(self, point, radius):
-        node_candidates = []
-        face_candidates = []
+        for quality, node in scored_candidates:
+            if quality < self.quality_criteria:
+                continue
+
+            if not geo_info.is_left(
+                self.base_front.nodes_coords[0], self.base_front.nodes_coords[1], node
+            ):
+                continue
+
+            if self.is_cross(node):
+                continue
+
+            self.pselectd = node
+
+            if self.pselectd == self.pbest:
+                self.best_flag = True
+
+            return self.pselectd
+
+    def is_cross(self, node):
+        for front in self.front_candidates:
+            front_line = geo_info.LineSegment(
+                front.nodes_coords[0], front.nodes_coords[1]
+            )
+            line1 = geo_info.LineSegment(node, self.base_front.nodes_coords[0])
+            line2 = geo_info.LineSegment(node, self.base_front.nodes_coords[1])
+
+            if front_line.is_intersect(line1) or front_line.is_intersect(line2):
+                return True
+
+        return False
+
+    def search_candidates(self, radius):
+        self.node_candidates = []
+        self.front_candidates = []
         radius2 = radius * radius
 
+        point = self.pbest
         possible_fronts = []
         for front in self.front_list:
             if (
@@ -51,21 +144,31 @@ class Adfront2:
             ):
                 possible_fronts.append(front)
 
+        seen_nodes = set()
+        seen_fronts = set()
         for front in possible_fronts:
+            front_tuple = tuple(front.face_center)
             for node in front.nodes_coords:
+                node_tuple = tuple(node)
                 if geo_info.calculate_distance2(point, node) <= radius2:
-                    node_candidates.append(node)
-                    face_candidates.append(front)
-        return node_candidates, face_candidates
+                    if node_tuple not in seen_nodes:
+                        self.node_candidates.append(node)
+                        seen_nodes.add(node_tuple)
+                    if front_tuple not in seen_fronts:
+                        self.front_candidates.append(front)
+                        seen_fronts.add(front_tuple)
 
-    def add_new_point(self, front, spacing):
-        normal_vec = normal_vector(smallest)
+        return self.node_candidates, self.front_candidates
+
+    def add_new_point(self, spacing):
+        normal_vec = geo_info.normal_vector2d(self.base_front)
         if mesh_type == 1:
-            pbest = smallest.front_center + normal_vec * spacing
+            self.pbest = self.base_front.front_center + normal_vec * spacing
         elif mesh_type == 2:
-            pbest = smallest.nodes_coords[0] + normal_vec * spacing
+            self.pbest = self.base_front.nodes_coords[0] + normal_vec * spacing
         elif mesh_type == 3:
             pass
         else:
-            pbest = smallest.front_center + normal_vec * spacing
-        return pbest
+            self.pbest = self.base_front.front_center + normal_vec * spacing
+
+        return self.pbest
