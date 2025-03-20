@@ -82,7 +82,7 @@ class Adfront2:
             self.base_front.draw_front("r-", self.ax)
 
             # 绘制Pbest
-            self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
+            # self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
 
             # 绘制虚线圆
             # from matplotlib.patches import Circle
@@ -123,10 +123,10 @@ class Adfront2:
             self.show_progress()
 
     def show_progress(self):
-        print(f"当前阵面数量：{len(self.front_list)}")
-        print(f"当前节点数量：{self.num_nodes}")
-        print(f"当前单元数量：{self.num_cells}")
-        print(f"\n")
+        if self.num_cells % 100 == 0 or len(self.front_list) == 0:
+            print(f"当前阵面数量：{len(self.front_list)}")
+            print(f"当前节点数量：{self.num_nodes}")
+            print(f"当前单元数量：{self.num_cells} \n")
 
     def update_cells(self):
         # 更新节点

@@ -13,7 +13,7 @@ import mesh_visualization as viz
 import adfront2 as adfr
 
 # 读入边界网格
-file_path = "./neural/sample_grids/inv_cylinder-8.cas"
+file_path = "./neural/sample_grids/inv_cylinder-50.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
