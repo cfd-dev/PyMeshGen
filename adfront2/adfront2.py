@@ -6,35 +6,88 @@ sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
 import front2d
+import matplotlib.pyplot as plt
+
+
+class Unstructed_Grid:
+    def __init__(self, cell_nodes, node_coords):
+        self.dim = None
+        self.cell_nodes = cell_nodes
+        self.node_coords = node_coords
+        self.num_cells = len(cell_nodes)
+        self.num_nodes = len(node_coords)
+        self.num_edges = 0
+        self.num_faces = 0
+        self.edges = []
+
+        self.dim = len(node_coords[0])
+
+    def calculate_edges(self):
+        """计算网格的边"""
+        edge_set = set()
+        for cell in self.cell_nodes:
+            for i in range(len(cell)):
+                edge = tuple(sorted([cell[i], cell[(i + 1) % len(cell)]]))
+                if edge not in edge_set:
+                    edge_set.add(edge)
+
+        self.edges = list(edge_set)
+        self.num_edges = len(self.edges)
+
+    def visualize_unstr_grid_2d(self):
+        """可视化二维网格"""
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # 绘制所有节点
+        xs = [n[0] for n in self.node_coords]
+        ys = [n[1] for n in self.node_coords]
+        ax.scatter(xs, ys, c="gray", s=10, alpha=0.3, label="Nodes")
+
+        # 绘制边
+        if self.dim == 2:
+            self.calculate_edges()
+        for edge in self.edges:
+            x = [self.node_coords[i][0] for i in edge]
+            y = [self.node_coords[i][1] for i in edge]
+            ax.plot(x, y, c="red", alpha=0.5, lw=1.5)
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_title("Unstructured Grid Visualization")
+        ax.legend()
+        ax.axis("equal")
+
+        plt.show()
 
 
 class Adfront2:
-    def __init__(self, initial_front, sizing_system, ax=None):
+    def __init__(self, boundary_front, sizing_system, ax=None):
         self.ax = ax
+
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.85  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
         self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
-        self.plot_front = True  # 是否实时绘图
+        self.plot_front = False  # 是否实时绘图
 
-        self.front_list = initial_front
-        self.sizing_system = sizing_system
-        self.base_front = None
-        self.pbest = None
-        self.pselected = None
-        self.best_flag = False
-        self.node_candidates = None
-        self.front_candidates = None
-        self.search_radius = None
+        self.front_list = boundary_front  # 初始边界阵面列表
+        self.sizing_system = sizing_system  # 尺寸场系统
+        self.base_front = None  # 当前基准阵面
+        self.pbest = None  #  当前Pbest
+        self.pselected = None  # 当前选中的节点
+        self.best_flag = False  # 标记是否采用pbest
+        self.node_candidates = None  # 候选节点列表
+        self.front_candidates = None  # 候选阵面列表
+        self.search_radius = None  # 搜索半径
 
-        self.num_cells = 0
-        self.num_nodes = 0
+        self.num_cells = 0  # 单元计数器
+        self.num_nodes = 0  # 节点计数器
 
-        self.cell_nodes = []
-        self.node_coords = []
-        self.node_ids = {}
-        self.node_id_map = {}
+        self.cell_nodes = []  # 单元节点列表
+        self.node_coords = []  # 节点坐标列表
+        self.node_ids = {}  # 节点ID映射  {id: (x,y)}
+        self.node_id_map = {}  # 节点ID映射 {(x,y): id}
 
         self.initialize()
 
@@ -122,6 +175,8 @@ class Adfront2:
 
             self.show_progress()
 
+        return Unstructed_Grid(self.cell_nodes, self.node_coords)
+
     def show_progress(self):
         if self.num_cells % 100 == 0 or len(self.front_list) == 0:
             print(f"当前阵面数量：{len(self.front_list)}")
@@ -137,8 +192,8 @@ class Adfront2:
                 self.node_id_map[node_tuple] = self.num_nodes
                 self.node_coords.append(self.pselected)  # 保留原始坐标
                 self.node_ids[self.num_nodes] = node_tuple
-            # 更新节点计数器
-            self.num_nodes += 1
+                # 更新节点计数器
+                self.num_nodes += 1
 
         # 更新阵面
         if self.pselected is not None:
@@ -168,7 +223,8 @@ class Adfront2:
             # 使用列表推导式过滤已存在的阵面
             if not exists_new1:
                 heapq.heappush(self.front_list, new_front1)
-                new_front1.draw_front("g-", self.ax)
+                if self.ax and self.plot_front:
+                    new_front1.draw_front("g-", self.ax)
             else:
                 # 移除所有相同位置的旧阵面
                 self.front_list = [
@@ -180,7 +236,8 @@ class Adfront2:
 
             if not exists_new2:
                 heapq.heappush(self.front_list, new_front2)
-                new_front2.draw_front("g-", self.ax)
+                if self.ax and self.plot_front:
+                    new_front2.draw_front("g-", self.ax)
             else:
                 self.front_list = [
                     front

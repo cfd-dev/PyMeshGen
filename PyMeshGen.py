@@ -13,7 +13,7 @@ import mesh_visualization as viz
 import adfront2 as adfr
 
 # 读入边界网格
-file_path = "./neural/sample_grids/inv_cylinder-50.cas"
+file_path = "./neural/sample_grids/inv_cylinder-8.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
@@ -28,9 +28,16 @@ sizing_system = meshsize.QuadtreeSizing(
 
 # 推进生成网格
 adfront2 = adfr.Adfront2(front_heap, sizing_system, ax=ax)
-adfront2.generate_elements()
+unstr_grid = adfront2.generate_elements()
+unstr_grid.visualize_unstr_grid_2d()
+# viz.visualize_unstr_grid_2d(unstr_grid, ax=ax)
 
 # 网格质量优化
+# unstr_grid = edge_swap(unstr_grid)
+# viz.visualize_mesh_2d(unstr_grid, ax=ax)
+
+# unstr_grid = laplacian_smooth(unstr_grid)
+# viz.visualize_mesh_2d(unstr_grid, ax=ax)
 
 # 可视化网格
 input("Press Enter to continue...")

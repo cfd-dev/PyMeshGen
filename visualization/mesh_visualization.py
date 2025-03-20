@@ -174,3 +174,30 @@ def visualize_wall_structure_2d(grid, wall_nodes, vector_scale=0.3):
     ax.legend()
     ax.axis("equal")
     plt.show()
+
+
+def visualize_unstr_grid_2d(unstr_grid, ax=None):
+    """可视化非结构化网格"""
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+    # 绘制节点
+    xs = [n[0] for n in unstr_grid.node_coords]
+    ys = [n[1] for n in unstr_grid.node_coords]
+
+    ax.scatter(xs, ys, c="blue", s=10, alpha=0.7, label="Nodes")
+    # 绘制边
+    if unstr_grid.dim == 2:
+        unstr_grid.calculate_edges()
+    for edge in unstr_grid.edges:
+        x = [unstr_grid.node_coords[i][0] for i in edge]
+        y = [unstr_grid.node_coords[i][1] for i in edge]
+        ax.plot(x, y, c="red", alpha=0.5, lw=1.5)
+
+    # 图形设置
+    ax.set_title("2D Unstructured Mesh Visualization")
+    ax.set_xlabel("X Coordinate")
+    ax.set_ylabel("Y Coordinate")
+    ax.legend()
+    ax.axis("equal")
+    plt.show()
