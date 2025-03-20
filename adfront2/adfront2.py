@@ -253,8 +253,8 @@ class Adfront2:
                 continue
 
             # 质量不足时，仅允许最后一个候选放宽标准
-            if quality < self.quality_criteria and idx != len(scored_candidates) - 1:
-                continue
+            # if quality < self.quality_criteria and idx != len(scored_candidates) - 1:
+            #     continue
 
             self.pselected = node
 
