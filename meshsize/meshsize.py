@@ -112,6 +112,9 @@ class QuadtreeSizing:
         self.ax = ax
         self.generate_bg_mesh()
 
+    def draw_bgmesh(self):
+        draw_quadtree(self.quad_tree, self.ax)
+
     def generate_bg_mesh(self):
         # 初始化计算域的BoundingBox及全局尺寸及叉树深度
         self.compute_global_parameters()
@@ -129,7 +132,7 @@ class QuadtreeSizing:
         # 加密区扩散，避免level相差>=2
         self.level_refinement()
 
-        draw_quadtree(self.quad_tree, self.ax)
+        # draw_quadtree(self.quad_tree, self.ax)
 
         # 根据decay参数计算网格尺度场的decay
         self.compute_spacing_decay()
@@ -251,7 +254,7 @@ class QuadtreeSizing:
             (x_min, y_center, x_center, y_max),  # 西南象限 (SW)
             (x_center, y_center, x_max, y_max),  # 东南象限 (SE)
         ]
-        
+
     def _locate_quadtree(self, point, node):
         """定位点在四叉树中的叶节点"""
         while node.children:

@@ -2,12 +2,15 @@ import heapq
 import sys
 from pathlib import Path
 
+sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
+import front2d
 
 
 class Adfront2:
-    def __init__(self, initial_front, sizing_system):
+    def __init__(self, initial_front, sizing_system, ax=None):
+        self.ax = ax
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.85  # Pbest质量系数，discount越小，选择Pbest的概率越小
@@ -67,25 +70,78 @@ class Adfront2:
         # 更新节点计数器
         self.num_nodes = current_id
 
+    def draw_front_list(self, ax=None):
+        """绘制阵面列表"""
+        for front in self.front_list:
+            front.draw_front(ax)
+
+    def draw_candidates(self, ax):
+        """绘制候选节点、候选阵面"""
+        if ax and self.plot_front:
+            for node in self.node_candidates:
+                ax.plot(node[0], node[1], "r.")
+
+            for front in self.front_candidates:
+                front.draw_front("y-", ax)
+
     def generate_elements(self):
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
+            self.base_front.draw_front("r-", self.ax)
 
-            spacing = 1.0
-            # spacing = self.sizing_system(self.base_front.front_center)
+            spacing = self.sizing_system.spacing_at(self.base_front.front_center)
 
             self.add_new_point(spacing)
 
             self.search_candidates(self.al * spacing)
+            self.draw_candidates(self.ax)
 
             self.select_point()
 
             self.update_cells()
 
     def update_cells(self):
+        # 更新节点
         if self.best_flag and self.pselected is not None:
             node_tuple = tuple(round(coord, 6) for coord in self.pselected)
             self.cell_nodes.append(self.node_id_map.get(node_tuple))
+            # 更新节点计数器
+            self.num_nodes += 1
+
+        # 更新阵面
+        if self.pselected is not None:
+            new_front1 = front2d.Front(
+                None,
+                [self.base_front.nodes_coords[0], self.pselected],
+                "interior",
+                "internal",
+            )
+            new_front2 = front2d.Front(
+                [self.pselected, self.base_front.nodes_coords[1]],
+                "interior",
+                "internal",
+            )
+
+            # 根据front_center判断front_list中是否存在new_front1，若不存在，
+            # 则将其压入front_list，若已存在，则将其从front_list中删除
+            if new_front1.front_center not in [
+                front.front_center for front in self.front_list
+            ]:
+                heapq.heappush(self.front_list, new_front1)
+
+            if new_front2.front_center not in [
+                front.front_center for front in self.front_list
+            ]:
+                heapq.heappush(self.front_list, new_front2)
+
+        # 更新单元
+        self.cell_nodes.append(
+            geo_info.Triangle(
+                self.base_front.nodes_coords[0],
+                self.base_front.nodes_coords[1],
+                self.pselected,
+            )
+        )
 
     def select_point(self):
         # 存储带质量的候选节点元组 (质量, 节点)
@@ -151,6 +207,21 @@ class Adfront2:
         radius2 = radius * radius
 
         point = self.pbest
+
+        # 绘制虚线圆
+        if self.ax and self.plot_front:
+            from matplotlib.patches import Circle
+
+            self.ax.add_patch(
+                Circle(
+                    (point[0], point[1]),
+                    radius,
+                    edgecolor="b",
+                    linestyle="--",
+                    fill=False,
+                )
+            )
+
         possible_fronts = []
         for front in self.front_list:
             if (
@@ -164,7 +235,7 @@ class Adfront2:
         seen_nodes = set()
         seen_fronts = set()
         for front in possible_fronts:
-            front_tuple = tuple(front.face_center)
+            front_tuple = tuple(front.front_center)
             for node in front.nodes_coords:
                 node_tuple = tuple(node)
                 if geo_info.calculate_distance2(point, node) <= radius2:
@@ -201,5 +272,9 @@ class Adfront2:
                 fc[0] + normal_vec[0] * spacing,
                 fc[1] + normal_vec[1] * spacing,
             ]
+
+        # 绘制Pbest
+        if self.ax and self.plot_front:
+            self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
 
         return self.pbest

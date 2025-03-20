@@ -4,22 +4,49 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
 import heapq
+import matplotlib.pyplot as plt
 
 
 class Front:
-    def __init__(
-        self, nodes, length, bc_type, bc_name, front_center, nodes_coords, bbox
-    ):
-        self.nodes = nodes  # 节点对（排序后）
-        self.length = length  # 阵面长度
+    def __init__(self, nodes_idx_old, nodes_coords, bc_type, bc_name):
+        self.nodes_idx_old = (
+            nodes_idx_old  # 节点对应的原始索引，从原始cas网格中读入的值，编号从1开始
+        )
+        self.node_coords = [round(coord, 6) for coord in node_coords]  # 节点坐标属性
         self.bc_type = bc_type  # 边界类型
         self.bc_name = bc_name  # 新增边界名称属性
-        self.front_center = front_center  # 阵面中心坐标
-        self.nodes_coords = nodes_coords  # 节点坐标属性
-        self.bbox = bbox  # 边界框
+
+        self.front_center = None  # 阵面中心坐标
+        self.length = None  # 阵面长度
+        self.bbox = None  # 边界框
+
+        # 计算长度
+        node1, node2 = self.nodes_coords
+        self.length = geo_info.calculate_distance(node1, node2)
+        self.front_center = [(a + b) / 2 for a, b in zip(node1, node2)]
+
+        # 计算边界框
+        min_x = min(node1[0], node2[0])  # 最小x坐标
+        max_x = max(node1[0], node2[0])  # 最大x坐标
+        min_y = min(node1[1], node2[1])  # 最小y坐标
+        max_y = max(node1[1], node2[1])  # 最大y坐标
+
+        self.bbox = (min_x, max_x, min_y, max_y)
 
     def __lt__(self, other):
         return self.length < other.length
+
+    def __eq__(self, other):
+        # 通过节点坐标判断是否相同
+        return self.nodes_coords == other.nodes_coords
+
+    def draw_front(self, marker="b-", ax=None):
+        """绘制阵面"""
+        node1, node2 = (
+            self.nodes_coords[0],
+            self.nodes_coords[1],
+        )
+        ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
 
 
 def construct_initial_front(grid):
@@ -52,27 +79,14 @@ def construct_initial_front(grid):
             node1 = grid["nodes"][u - 1]
             node2 = grid["nodes"][v - 1]
 
-            # 计算长度
-            length = geo_info.calculate_distance(node1, node2)
-            center = [(a + b) / 2 for a, b in zip(node1, node2)]
-
-            # 计算边界框
-            min_x = min(node1[0], node2[0])  # 最小x坐标
-            max_x = max(node1[0], node2[0])  # 最大x坐标
-            min_y = min(node1[1], node2[1])  # 最小y坐标
-            max_y = max(node1[1], node2[1])  # 最大y坐标
-
             # 创建Front对象并压入堆
             heapq.heappush(
                 heap,
                 Front(
-                    nodes=(u, v),  # 保持原始顺序，编号从1开始
-                    length=length,
+                    nodes_idx_old=(u, v),  # 保持原始顺序，编号从1开始
+                    nodes_coords=(node1, node2),
                     bc_type=face["bc_type"],
                     bc_name=face["bc_name"],
-                    front_center=center,
-                    nodes_coords=(node1, node2),
-                    bbox=(min_x, max_x, min_y, max_y),
                 ),
             )
 
