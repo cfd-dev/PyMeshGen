@@ -60,6 +60,57 @@ class Unstructed_Grid:
 
         plt.show(block=False)
 
+    def save_to_vtkfile(self, file_path):
+        """将网格保存到VTK文件"""
+        # 分类二维单元
+        tri_cells = [c for c in self.cell_nodes if len(c) == 3]
+        quad_cells = [c for c in self.cell_nodes if len(c) == 4]
+
+        # 准备单元数据
+        cell_data = []
+        for cells, n_nodes in [(tri_cells, 3), (quad_cells, 4)]:
+            cell_data.extend([f"{n_nodes} " + " ".join(map(str, c)) for c in cells])
+
+        # 计算单元类型
+        cell_types = []
+        cell_types.extend([5] * len(tri_cells))  # VTK_TRIANGLE = 5
+        cell_types.extend([9] * len(quad_cells))  # VTK_QUAD = 9
+
+        with open(file_path, "w") as file:
+            file.write("# vtk DataFile Version 2.0\n")
+            file.write("Unstructured Grid\n")
+            file.write("ASCII\n")
+            file.write("DATASET UNSTRUCTURED_GRID\n")
+            file.write(f"POINTS {self.num_nodes} float\n")
+            for coord in self.node_coords:
+                if len(coord) == 2:
+                    coord.append(0.0)  # 添加Z坐标
+                file.write(" ".join(map(str, coord)) + "\n")
+
+            # 写入单元信息
+            total_cells = len(tri_cells) + len(quad_cells)
+            total_data_size = len(tri_cells) * 4 + len(quad_cells) * 5  # 3+1 和 4+1
+            file.write(f"CELLS {total_cells} {total_data_size}\n")
+            file.write("\n".join(cell_data) + "\n")
+
+            file.write(f"CELL_TYPES {total_cells}\n")
+            file.write("\n".join(map(str, cell_types)) + "\n")
+
+            # 写入边界节点标记
+            file.write(f"POINT_DATA {self.num_nodes}\n")
+            file.write("SCALARS node_id int 1\n")
+            file.write("LOOKUP_TABLE default\n")
+            for i in range(self.num_nodes):
+                file.write(f"{1 if i in self.boundary_nodes else 0}\n")  # 标记边界节点
+
+            # 修正原代码中的f-string错误
+            file.write(f"CELL_DATA {total_cells}\n")
+            file.write("SCALARS cell_id int 1\n")
+            file.write("LOOKUP_TABLE default\n")
+            file.write("\n".join(map(str, range(total_cells))) + "\n")
+
+        print(f"网格已保存到 {file_path}")
+
 
 class Adfront2:
     def __init__(self, boundary_front, sizing_system, ax=None):

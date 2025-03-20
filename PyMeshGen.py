@@ -41,5 +41,7 @@ unstr_grid.visualize_unstr_grid_2d()
 unstr_grid = laplacian_smooth(unstr_grid)
 unstr_grid.visualize_unstr_grid_2d()
 
-# 可视化网格
+# 输出网格文件
+unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+
 input("Press Enter to continue...")
