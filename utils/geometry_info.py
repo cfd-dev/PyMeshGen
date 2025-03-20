@@ -2,11 +2,20 @@ from math import sqrt, isnan, isinf
 
 
 def normal_vector2d(front):
-    """计算二维平面阵面的法向量"""
+    """计算二维平面阵面的单位法向量"""
     node1, node2 = front.nodes_coords
     dx = node2[0] - node1[0]
     dy = node2[1] - node1[1]
-    return dy, -dx
+
+    # 计算向量模长
+    magnitude = sqrt(dx**2 + dy**2)
+
+    # 处理零向量情况
+    if magnitude < 1e-12:
+        return (0.0, 0.0)
+
+    # 单位化法向量
+    return (dy / magnitude, -dx / magnitude)
 
 
 def calculate_distance(p1, p2):

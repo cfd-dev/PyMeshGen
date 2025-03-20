@@ -1,3 +1,4 @@
+import heapq
 import sys
 from pathlib import Path
 
@@ -70,7 +71,8 @@ class Adfront2:
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
-            spacing = self.sizing_system(self.base_front.front_center)
+            spacing = 1.0
+            # spacing = self.sizing_system(self.base_front.front_center)
 
             self.add_new_point(spacing)
 
@@ -177,13 +179,27 @@ class Adfront2:
 
     def add_new_point(self, spacing):
         normal_vec = geo_info.normal_vector2d(self.base_front)
+
+        # 分量式计算向量相加
         if self.mesh_type == 1:
-            self.pbest = self.base_front.front_center + normal_vec * spacing
+            fc = self.base_front.front_center
+            self.pbest = [
+                fc[0] + normal_vec[0] * spacing,
+                fc[1] + normal_vec[1] * spacing,
+            ]
         elif self.mesh_type == 2:
-            self.pbest = self.base_front.nodes_coords[0] + normal_vec * spacing
+            node_coord = self.base_front.nodes_coords[0]
+            self.pbest = [
+                node_coord[0] + normal_vec[0] * spacing,
+                node_coord[1] + normal_vec[1] * spacing,
+            ]
         elif self.mesh_type == 3:
             pass
         else:
-            self.pbest = self.base_front.front_center + normal_vec * spacing
+            fc = self.base_front.front_center
+            self.pbest = [
+                fc[0] + normal_vec[0] * spacing,
+                fc[1] + normal_vec[1] * spacing,
+            ]
 
         return self.pbest

@@ -16,7 +16,7 @@ class Front:
         self.bc_name = bc_name  # 新增边界名称属性
         self.front_center = front_center  # 阵面中心坐标
         self.nodes_coords = nodes_coords  # 节点坐标属性
-        self.bbox = None  # 边界框
+        self.bbox = bbox  # 边界框
 
     def __lt__(self, other):
         return self.length < other.length
