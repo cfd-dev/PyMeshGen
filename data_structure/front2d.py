@@ -8,17 +8,17 @@ import matplotlib.pyplot as plt
 
 
 class Front:
-    def __init__(self, nodes_idx_old, nodes_coords, bc_type, bc_name):
-        self.nodes_idx_old = (
-            nodes_idx_old  # 节点对应的原始索引，从原始cas网格中读入的值，编号从1开始
-        )
-        self.node_coords = [round(coord, 6) for coord in node_coords]  # 节点坐标属性
+    def __init__(self, nodes_coords, bc_type, bc_name, nodes_idx_old=None):
+        self.nodes_coords = [[round(c, 6) for c in coord] for coord in nodes_coords]
         self.bc_type = bc_type  # 边界类型
-        self.bc_name = bc_name  # 新增边界名称属性
+        self.bc_name = bc_name  # 边界名称属性
+        # 节点对应的原始索引，从原始cas网格中读入的值，编号从1开始
+        self.nodes_idx_old = nodes_idx_old
 
         self.front_center = None  # 阵面中心坐标
         self.length = None  # 阵面长度
         self.bbox = None  # 边界框
+        self.hash = None
 
         # 计算长度
         node1, node2 = self.nodes_coords
@@ -32,6 +32,7 @@ class Front:
         max_y = max(node1[1], node2[1])  # 最大y坐标
 
         self.bbox = (min_x, max_x, min_y, max_y)
+        self.hash = hash(tuple(self.front_center))
 
     def __lt__(self, other):
         return self.length < other.length
@@ -83,10 +84,10 @@ def construct_initial_front(grid):
             heapq.heappush(
                 heap,
                 Front(
-                    nodes_idx_old=(u, v),  # 保持原始顺序，编号从1开始
                     nodes_coords=(node1, node2),
                     bc_type=face["bc_type"],
                     bc_name=face["bc_name"],
+                    nodes_idx_old=(u, v),  # 保持原始顺序，编号从1开始
                 ),
             )
 

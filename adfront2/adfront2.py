@@ -16,7 +16,6 @@ class Adfront2:
         self.discount = 0.85  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
         self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
-        self.sort_front = True  # 是否对阵面排序
         self.plot_front = True  # 是否实时绘图
 
         self.front_list = initial_front
@@ -27,6 +26,7 @@ class Adfront2:
         self.best_flag = False
         self.node_candidates = None
         self.front_candidates = None
+        self.search_radius = None
 
         self.num_cells = 0
         self.num_nodes = 0
@@ -75,43 +75,74 @@ class Adfront2:
         for front in self.front_list:
             front.draw_front(ax)
 
-    def draw_candidates(self, ax):
+    def debug_draw(self, ax):
         """绘制候选节点、候选阵面"""
         if ax and self.plot_front:
-            for node in self.node_candidates:
-                ax.plot(node[0], node[1], "r.")
+            # 绘制基准阵面
+            self.base_front.draw_front("r-", self.ax)
 
-            for front in self.front_candidates:
-                front.draw_front("y-", ax)
+            # 绘制Pbest
+            self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
+
+            # 绘制虚线圆
+            # from matplotlib.patches import Circle
+
+            # self.ax.add_patch(
+            #     Circle(
+            #         (self.pbest[0], self.pbest[1]),
+            #         self.search_radius,
+            #         edgecolor="b",
+            #         linestyle="--",
+            #         fill=False,
+            #     )
+            # )
+
+            # # 绘制候选节点
+            # for node in self.node_candidates:
+            #     ax.plot(node[0], node[1], "r.")
+            # # 绘制候选阵面
+            # for front in self.front_candidates:
+            #     front.draw_front("y-", ax)
 
     def generate_elements(self):
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
-            self.base_front.draw_front("r-", self.ax)
 
             spacing = self.sizing_system.spacing_at(self.base_front.front_center)
 
             self.add_new_point(spacing)
 
             self.search_candidates(self.al * spacing)
-            self.draw_candidates(self.ax)
+
+            self.debug_draw(self.ax)
 
             self.select_point()
 
             self.update_cells()
 
+            self.show_progress()
+
+    def show_progress(self):
+        print(f"当前阵面数量：{len(self.front_list)}")
+        print(f"当前节点数量：{self.num_nodes}")
+        print(f"当前单元数量：{self.num_cells}")
+        print(f"\n")
+
     def update_cells(self):
         # 更新节点
         if self.best_flag and self.pselected is not None:
             node_tuple = tuple(round(coord, 6) for coord in self.pselected)
-            self.cell_nodes.append(self.node_id_map.get(node_tuple))
+            # 将pselected加入到node_id_map中去
+            if node_tuple not in self.node_id_map:
+                self.node_id_map[node_tuple] = self.num_nodes
+                self.node_coords.append(self.pselected)  # 保留原始坐标
+                self.node_ids[self.num_nodes] = node_tuple
             # 更新节点计数器
             self.num_nodes += 1
 
         # 更新阵面
         if self.pselected is not None:
             new_front1 = front2d.Front(
-                None,
                 [self.base_front.nodes_coords[0], self.pselected],
                 "interior",
                 "internal",
@@ -122,26 +153,66 @@ class Adfront2:
                 "internal",
             )
 
-            # 根据front_center判断front_list中是否存在new_front1，若不存在，
+            # 判断front_list中是否存在new_front1，若不存在，
             # 则将其压入front_list，若已存在，则将其从front_list中删除
-            if new_front1.front_center not in [
-                front.front_center for front in self.front_list
-            ]:
-                heapq.heappush(self.front_list, new_front1)
+            # 判断front_list中是否存在相同front_center的阵面
+            exists_new1 = any(
+                front.front_center == new_front1.front_center
+                for front in self.front_list
+            )
+            exists_new2 = any(
+                front.front_center == new_front2.front_center
+                for front in self.front_list
+            )
 
-            if new_front2.front_center not in [
-                front.front_center for front in self.front_list
-            ]:
+            # 使用列表推导式过滤已存在的阵面
+            if not exists_new1:
+                heapq.heappush(self.front_list, new_front1)
+                new_front1.draw_front("g-", self.ax)
+            else:
+                # 移除所有相同位置的旧阵面
+                self.front_list = [
+                    front
+                    for front in self.front_list
+                    if front.front_center != new_front1.front_center
+                ]
+                heapq.heapify(self.front_list)  # 重新堆化
+
+            if not exists_new2:
                 heapq.heappush(self.front_list, new_front2)
+                new_front2.draw_front("g-", self.ax)
+            else:
+                self.front_list = [
+                    front
+                    for front in self.front_list
+                    if front.front_center != new_front2.front_center
+                ]
+                heapq.heapify(self.front_list)
 
         # 更新单元
-        self.cell_nodes.append(
-            geo_info.Triangle(
-                self.base_front.nodes_coords[0],
-                self.base_front.nodes_coords[1],
-                self.pselected,
-            )
-        )
+        # self.cell_nodes.append(
+        #     geo_info.Triangle(
+        #         self.base_front.nodes_coords[0],
+        #         self.base_front.nodes_coords[1],
+        #         self.pselected,
+        #     )
+        # )
+        # 更新单元（使用节点ID）
+        node1 = self.node_id_map[
+            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[0])
+        ]
+        node2 = self.node_id_map[
+            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[1])
+        ]
+        node3 = self.node_id_map[tuple(round(coord, 6) for coord in self.pselected)]
+
+        # 检查单元是否已存在（考虑节点顺序不同的情况）
+        new_cell = tuple(sorted((node1, node2, node3)))  # 排序节点顺序
+        if new_cell not in {tuple(sorted(c)) for c in self.cell_nodes}:
+            self.cell_nodes.append((node1, node2, node3))
+            self.num_cells += 1
+        else:
+            print(f"发现重复单元：{new_cell}")
 
     def select_point(self):
         # 存储带质量的候选节点元组 (质量, 节点)
@@ -166,19 +237,23 @@ class Adfront2:
         )
         scored_candidates.append((pbest_quality * self.discount, self.pbest))
 
+        # 去掉quality为0的节点
+        scored_candidates = [(q, n) for q, n in scored_candidates if q > 0]
+
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        for quality, node in scored_candidates:
-            if quality < self.quality_criteria:
-                continue
-
+        for idx, (quality, node) in enumerate(scored_candidates):
             if not geo_info.is_left(
                 self.base_front.nodes_coords[0], self.base_front.nodes_coords[1], node
             ):
                 continue
 
             if self.is_cross(node):
+                continue
+
+            # 质量不足时，仅允许最后一个候选放宽标准
+            if quality < self.quality_criteria and idx != len(scored_candidates) - 1:
                 continue
 
             self.pselected = node
@@ -204,24 +279,10 @@ class Adfront2:
     def search_candidates(self, radius):
         self.node_candidates = []
         self.front_candidates = []
+        self.search_radius = radius
         radius2 = radius * radius
 
         point = self.pbest
-
-        # 绘制虚线圆
-        if self.ax and self.plot_front:
-            from matplotlib.patches import Circle
-
-            self.ax.add_patch(
-                Circle(
-                    (point[0], point[1]),
-                    radius,
-                    edgecolor="b",
-                    linestyle="--",
-                    fill=False,
-                )
-            )
-
         possible_fronts = []
         for front in self.front_list:
             if (
@@ -272,9 +333,5 @@ class Adfront2:
                 fc[0] + normal_vec[0] * spacing,
                 fc[1] + normal_vec[1] * spacing,
             ]
-
-        # 绘制Pbest
-        if self.ax and self.plot_front:
-            self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
 
         return self.pbest
