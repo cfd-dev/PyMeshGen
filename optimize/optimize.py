@@ -1,5 +1,10 @@
 import numpy as np
 from itertools import combinations
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
+import geometry_info as geo_info
 
 
 def edge_swap(unstr_grid):
@@ -13,61 +18,68 @@ def edge_swap(unstr_grid):
                 edge_map[edge] = []
             edge_map[edge].append(cell_idx)
 
-    # 遍历所有共享边
     swapped = True
     while swapped:
         swapped = False
-        for edge, cells in edge_map.items():
+        # 使用当前edge_map的快照避免迭代修改问题
+        for edge, cells in list(edge_map.items()):
+            # 仅处理内部边（被两个单元共享）
             if len(cells) != 2:
                 continue
 
-            # 修复点：正确识别四边形顶点
-            tri1 = unstr_grid.cell_nodes[cells[0]]
-            tri2 = unstr_grid.cell_nodes[cells[1]]
+            cell1_idx, cell2_idx = cells
+            cell1 = unstr_grid.cell_nodes[cell1_idx]
+            cell2 = unstr_grid.cell_nodes[cell2_idx]
 
-            # 找到公共边（已排序的edge）
-            common_edge = set(tri1) & set(tri2)
-            other_points = list((set(tri1) | set(tri2)) - common_edge)
-
-            if len(other_points) != 2:  # 确保构成四边形
-                continue
+            # 确认公共边
+            common_edge = set(cell1) & set(cell2)
+            if len(common_edge) != 2:
+                continue  # 数据异常
 
             a, b = sorted(common_edge)
+            other_points = list((set(cell1) | set(cell2)) - common_edge)
+            if len(other_points) != 2:
+                continue  # 无法构成四边形
+
             c, d = other_points
 
-            # 修复点：正确计算四边形对角线的角度
-            def triangle_angles(p1, p2, p3):
-                # 计算三角形三个内角
-                v1 = np.subtract(unstr_grid.node_coords[p2], unstr_grid.node_coords[p1])
-                v2 = np.subtract(unstr_grid.node_coords[p3], unstr_grid.node_coords[p1])
-                v3 = np.subtract(unstr_grid.node_coords[p3], unstr_grid.node_coords[p2])
+            # 凸性检查
+            if not geo_info.is_convex(a, b, c, d, unstr_grid.node_coords):
+                continue
 
-                angle1 = np.arccos(
-                    np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-                )
-                angle2 = np.arccos(
-                    np.dot(-v1, v3) / (np.linalg.norm(v1) * np.linalg.norm(v3))
-                )
-                angle3 = np.pi - angle1 - angle2
-                return np.rad2deg([angle1, angle2, angle3])
-
-            # 计算当前对角线的最小角
+            # 计算交换前的最小角
             current_min = min(
-                min(triangle_angles(a, b, c)), min(triangle_angles(a, d, b))
+                geo_info.calculate_min_angle(cell1, unstr_grid.node_coords),
+                geo_info.calculate_min_angle(cell2, unstr_grid.node_coords),
             )
+
+            # 交换后的单元
+            swapped_cell1 = [a, c, d]
+            swapped_cell2 = [b, c, d]
+
+            # 有效性检查
+            if not (
+                geo_info.is_valid_triangle(swapped_cell1, unstr_grid.node_coords)
+                and geo_info.is_valid_triangle(swapped_cell2, unstr_grid.node_coords)
+            ):
+                continue
 
             # 计算交换后的最小角
             swapped_min = min(
-                min(triangle_angles(a, c, d)), min(triangle_angles(b, c, d))
+                geo_info.calculate_min_angle(swapped_cell1, unstr_grid.node_coords),
+                geo_info.calculate_min_angle(swapped_cell2, unstr_grid.node_coords),
             )
 
-            if swapped_min > current_min:
-                # 执行边交换
-                unstr_grid.cell_nodes[cells[0]] = [a, c, d]
-                unstr_grid.cell_nodes[cells[1]] = [b, c, d]
+            # 交换条件：最小角优化且不创建新边界边
+            if swapped_min > current_min and not (
+                c in unstr_grid.boundary_nodes and d in unstr_grid.boundary_nodes
+            ):
+                # 执行交换
+                unstr_grid.cell_nodes[cell1_idx] = swapped_cell1
+                unstr_grid.cell_nodes[cell2_idx] = swapped_cell2
                 swapped = True
 
-        # 需要重新构建边映射
+        # 重新构建边映射
         if swapped:
             edge_map = {}
             for cell_idx, cell in enumerate(unstr_grid.cell_nodes):
@@ -80,7 +92,7 @@ def edge_swap(unstr_grid):
     return unstr_grid
 
 
-def laplacian_smooth(unstr_grid):
+def laplacian_smooth(unstr_grid, num_iter=10):
     # 将键改为节点索引
     neighbors = {node_idx: set() for node_idx in range(len(unstr_grid.node_coords))}
 
@@ -90,8 +102,7 @@ def laplacian_smooth(unstr_grid):
             neighbors[j].add(i)
 
     # 迭代进行拉普拉斯平滑
-    num_iterations = 10
-    for _ in range(num_iterations):
+    for _ in range(num_iter):
         new_coords = []
         for node, coord in enumerate(unstr_grid.node_coords):
             # 跳过边界节点（保持固定）

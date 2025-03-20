@@ -1,4 +1,5 @@
 from math import sqrt, isnan, isinf
+import numpy as np
 
 
 def normal_vector2d(front):
@@ -91,6 +92,46 @@ def is_left(p1, p2, p3):
     # 向量叉积
     cross_product = v1[0] * v2[1] - v1[1] * v2[0]
     return cross_product > 0
+
+
+# 辅助函数：判断四边形是否为凸
+def is_convex(a, b, c, d, node_coords):
+    ab = np.array(node_coords[b]) - np.array(node_coords[a])
+    ac = np.array(node_coords[c]) - np.array(node_coords[a])
+    ad = np.array(node_coords[d]) - np.array(node_coords[a])
+    cross_c = np.cross(ab, ac)
+    cross_d = np.cross(ab, ad)
+    return cross_c * cross_d < 0  # 符号不同则在两侧
+
+    # 辅助函数：计算三角形最小角
+
+
+def calculate_min_angle(cell, node_coords):
+    if len(cell) != 3:
+        return 0.0
+    p1, p2, p3 = cell
+    angles = []
+    for i in range(3):
+        prev = cell[(i - 1) % 3]
+        next_p = cell[(i + 1) % 3]
+        v1 = np.array(node_coords[prev]) - np.array(node_coords[cell[i]])
+        v2 = np.array(node_coords[next_p]) - np.array(node_coords[cell[i]])
+        cos_theta = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        angle = np.arccos(np.clip(cos_theta, -1.0, 1.0))
+        angles.append(np.rad2deg(angle))
+    return min(angles) if angles else 0.0
+
+
+# 辅助函数：检查三角形是否有效（非退化）
+def is_valid_triangle(cell, node_coords):
+    if len(cell) != 3:
+        return False
+    p1, p2, p3 = cell
+    # 修正后的面积计算方式
+    v1 = np.array(node_coords[p2]) - np.array(node_coords[p1])
+    v2 = np.array(node_coords[p3]) - np.array(node_coords[p1])
+    area = 0.5 * np.abs(np.cross(v1, v2))  # 使用向量叉积计算面积
+    return area > 1e-10
 
 
 class NodeElement:

@@ -35,10 +35,10 @@ unstr_grid = adfront2.generate_elements()
 unstr_grid.visualize_unstr_grid_2d()
 
 # 网格质量优化
-# unstr_grid = edge_swap(unstr_grid)
-# unstr_grid.visualize_unstr_grid_2d()
+unstr_grid = laplacian_smooth(unstr_grid, num_iter=3)
+unstr_grid.visualize_unstr_grid_2d()
 
-unstr_grid = laplacian_smooth(unstr_grid)
+unstr_grid = edge_swap(unstr_grid)
 unstr_grid.visualize_unstr_grid_2d()
 
 # 输出网格文件
