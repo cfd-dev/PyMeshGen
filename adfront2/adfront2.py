@@ -10,12 +10,14 @@ import matplotlib.pyplot as plt
 
 
 class Unstructed_Grid:
-    def __init__(self, cell_nodes, node_coords):
+    def __init__(self, cell_nodes, node_coords, boundary_nodes):
         self.dim = None
         self.cell_nodes = cell_nodes
         self.node_coords = node_coords
+        self.boundary_nodes = boundary_nodes
         self.num_cells = len(cell_nodes)
         self.num_nodes = len(node_coords)
+        self.num_boundary_nodes = len(boundary_nodes)
         self.num_edges = 0
         self.num_faces = 0
         self.edges = []
@@ -54,10 +56,9 @@ class Unstructed_Grid:
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_title("Unstructured Grid Visualization")
-        ax.legend()
         ax.axis("equal")
 
-        plt.show()
+        plt.show(block=False)
 
 
 class Adfront2:
@@ -88,7 +89,7 @@ class Adfront2:
         self.node_coords = []  # 节点坐标列表
         self.node_ids = {}  # 节点ID映射  {id: (x,y)}
         self.node_id_map = {}  # 节点ID映射 {(x,y): id}
-
+        self.boundary_nodes = {}  # 边界节点映射 {id: bc_type}
         self.initialize()
 
     def initialize(self):
@@ -98,6 +99,8 @@ class Adfront2:
         self.node_ids = {}  # 反向映射 {id: (x,y)}
         current_id = 0
 
+        # 存储边界节点的ID及其边界类型
+        self.boundary_nodes = {}
         # 遍历所有阵面提取节点
         for front in self.front_list:
             front.node_ids = []
@@ -112,6 +115,7 @@ class Adfront2:
                     node_id_map[node_tuple] = current_id
                     self.node_coords.append(node)  # 保留原始坐标
                     self.node_ids[current_id] = node_tuple
+                    self.boundary_nodes[current_id] = front.bc_type
                     current_id += 1
 
                 # 将节点ID添加到阵面上
@@ -175,7 +179,7 @@ class Adfront2:
 
             self.show_progress()
 
-        return Unstructed_Grid(self.cell_nodes, self.node_coords)
+        return Unstructed_Grid(self.cell_nodes, self.node_coords, self.boundary_nodes)
 
     def show_progress(self):
         if self.num_cells % 100 == 0 or len(self.front_list) == 0:

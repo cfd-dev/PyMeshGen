@@ -198,6 +198,5 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
     ax.set_title("2D Unstructured Mesh Visualization")
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
-    ax.legend()
     ax.axis("equal")
-    plt.show()
+    plt.show(block=False)

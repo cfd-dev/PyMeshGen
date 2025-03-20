@@ -6,11 +6,14 @@ sys.path.append(str(Path(__file__).parent / "data_structure"))
 sys.path.append(str(Path(__file__).parent / "meshsize"))
 sys.path.append(str(Path(__file__).parent / "visualization"))
 sys.path.append(str(Path(__file__).parent / "adfront2"))
+sys.path.append(str(Path(__file__).parent / "optimize"))
 import read_cas as rc
 import front2d
 import meshsize
 import mesh_visualization as viz
 import adfront2 as adfr
+import optimize
+from optimize import edge_swap, laplacian_smooth
 
 # 读入边界网格
 file_path = "./neural/sample_grids/inv_cylinder-8.cas"
@@ -30,14 +33,13 @@ sizing_system = meshsize.QuadtreeSizing(
 adfront2 = adfr.Adfront2(front_heap, sizing_system, ax=ax)
 unstr_grid = adfront2.generate_elements()
 unstr_grid.visualize_unstr_grid_2d()
-# viz.visualize_unstr_grid_2d(unstr_grid, ax=ax)
 
 # 网格质量优化
 # unstr_grid = edge_swap(unstr_grid)
-# viz.visualize_mesh_2d(unstr_grid, ax=ax)
+# unstr_grid.visualize_unstr_grid_2d()
 
-# unstr_grid = laplacian_smooth(unstr_grid)
-# viz.visualize_mesh_2d(unstr_grid, ax=ax)
+unstr_grid = laplacian_smooth(unstr_grid)
+unstr_grid.visualize_unstr_grid_2d()
 
 # 可视化网格
 input("Press Enter to continue...")
