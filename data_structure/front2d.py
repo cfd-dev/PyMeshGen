@@ -1,8 +1,15 @@
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
+import geometry_info as geo_info
 import heapq
 
 
 class Front:
-    def __init__(self, nodes, length, bc_type, bc_name, front_center, nodes_coords):
+    def __init__(
+        self, nodes, length, bc_type, bc_name, front_center, nodes_coords, bbox
+    ):
         self.nodes = nodes  # 节点对（排序后）
         self.length = length  # 阵面长度
         self.bc_type = bc_type  # 边界类型
@@ -46,7 +53,7 @@ def construct_initial_front(grid):
             node2 = grid["nodes"][v - 1]
 
             # 计算长度
-            length = calculate_distance(node1, node2)
+            length = geo_info.calculate_distance(node1, node2)
             center = [(a + b) / 2 for a, b in zip(node1, node2)]
 
             # 计算边界框

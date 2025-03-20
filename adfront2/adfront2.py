@@ -27,9 +27,13 @@ class Adfront2:
         self.num_cells = 0
         self.num_nodes = 0
 
+        self.cell_nodes = []
+        self.node_coords = []
+        self.node_ids = {}
+        self.node_id_map = {}
+
         self.initialize()
 
-    @staticmethod
     def initialize(self):
         """初始化节点编号系统"""
         node_id_map = {}  # 存储节点坐标到ID的映射 {(x,y): id}
@@ -39,6 +43,7 @@ class Adfront2:
 
         # 遍历所有阵面提取节点
         for front in self.front_list:
+            front.node_ids = []
             for node in front.nodes_coords:
                 # 将节点坐标转为可哈希的元组
                 node_tuple = tuple(
@@ -51,6 +56,9 @@ class Adfront2:
                     self.node_coords.append(node)  # 保留原始坐标
                     self.node_ids[current_id] = node_tuple
                     current_id += 1
+
+                # 将节点ID添加到阵面上
+                front.node_ids.append(node_id_map[node_tuple])
 
         # 将映射关系保存到实例中
         self.node_id_map = node_id_map
@@ -69,6 +77,13 @@ class Adfront2:
             self.search_candidates(self.al * spacing)
 
             self.select_point()
+
+            self.update_cells()
+
+    def update_cells(self):
+        if self.best_flag and self.pselected is not None:
+            node_tuple = tuple(round(coord, 6) for coord in self.pselected)
+            self.cell_nodes.append(self.node_id_map.get(node_tuple))
 
     def select_point(self):
         # 存储带质量的候选节点元组 (质量, 节点)
@@ -108,12 +123,12 @@ class Adfront2:
             if self.is_cross(node):
                 continue
 
-            self.pselectd = node
+            self.pselected = node
 
-            if self.pselectd == self.pbest:
+            if self.pselected == self.pbest:
                 self.best_flag = True
 
-            return self.pselectd
+            return self.pselected
 
     def is_cross(self, node):
         for front in self.front_candidates:
@@ -162,11 +177,11 @@ class Adfront2:
 
     def add_new_point(self, spacing):
         normal_vec = geo_info.normal_vector2d(self.base_front)
-        if mesh_type == 1:
+        if self.mesh_type == 1:
             self.pbest = self.base_front.front_center + normal_vec * spacing
-        elif mesh_type == 2:
+        elif self.mesh_type == 2:
             self.pbest = self.base_front.nodes_coords[0] + normal_vec * spacing
-        elif mesh_type == 3:
+        elif self.mesh_type == 3:
             pass
         else:
             self.pbest = self.base_front.front_center + normal_vec * spacing
