@@ -91,9 +91,10 @@ class Unstructed_Grid:
             file.write("DATASET UNSTRUCTURED_GRID\n")
             file.write(f"POINTS {self.num_nodes} float\n")
             for coord in self.node_coords:
+                coord_tmp = coord.copy()
                 if len(coord) == 2:
-                    coord.append(0.0)  # 添加Z坐标
-                file.write(" ".join(map(str, coord)) + "\n")
+                    coord_tmp.append(0.0)  # 添加Z坐标
+                file.write(" ".join(map(str, coord_tmp)) + "\n")
 
             # 写入单元信息
             total_cells = len(tri_cells) + len(quad_cells)
@@ -232,9 +233,9 @@ class Adfront2:
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
-            if self.base_front.node_ids == (39, 2):
-                # self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
-                kkk = 0
+            # if self.base_front.node_ids == (895, 738):
+            #     self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+            #     kkk = 0
 
             spacing = self.sizing_system.spacing_at(self.base_front.front_center)
 
@@ -264,12 +265,10 @@ class Adfront2:
             print(f"当前阵面数量：{len(self.front_list)}")
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")
+            # self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
 
-        # if self.debug_switch or self.num_cells == -1:
-        #     uns_grid = Unstructed_Grid(
-        #         self.cell_nodes, self.node_coords, self.boundary_nodes
-        #     )
-        # uns_grid.save_to_vtkfile("./out/output_mesh.vtk")
+        # if self.debug_switch:
+        #     self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
 
     def update_cells(self):
         # 更新节点
@@ -460,10 +459,10 @@ class Adfront2:
         possible_fronts = []
         for front in self.front_list:
             if (
-                point[0] > front.bbox[0] - radius
-                and point[0] < front.bbox[1] + radius
-                and point[1] > front.bbox[2] - radius
-                and point[1] < front.bbox[3] + radius
+                point[0] > front.bbox[0] - radius  # xmin
+                and point[0] < front.bbox[2] + radius  # xmax
+                and point[1] > front.bbox[1] - radius  # ymin
+                and point[1] < front.bbox[3] + radius  # ymax
             ):
                 possible_fronts.append(front)
 
@@ -483,11 +482,19 @@ class Adfront2:
 
         possible_cells = []
         for cell in self.cell_nodes:
+            if sorted(cell.node_idx) == (822, 829, 900):
+                kkk = 0
             if (
-                point[0] > cell.bbox[0] - radius
-                and point[0] < cell.bbox[1] + radius
-                and point[1] > cell.bbox[2] - radius
-                and point[1] < cell.bbox[3] + radius
+                cell.node_idx[0] == 829
+                or cell.node_idx[1] == 829
+                or cell.node_idx[2] == 829
+            ):
+                kkk = 0
+            if (
+                point[0] > cell.bbox[0] - radius  # xmin
+                and point[0] < cell.bbox[2] + radius  # xmax
+                and point[1] > cell.bbox[1] - radius  # ymin
+                and point[1] < cell.bbox[3] + radius  # ymax
             ):
                 possible_cells.append(cell)
 

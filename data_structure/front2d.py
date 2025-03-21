@@ -34,7 +34,7 @@ class Front:
         min_y = min(node1[1], node2[1])  # 最小y坐标
         max_y = max(node1[1], node2[1])  # 最大y坐标
 
-        self.bbox = (min_x, max_x, min_y, max_y)
+        self.bbox = (min_x, min_y, max_x, max_y)
         self.hash = hash(tuple(self.front_center))
 
     def __lt__(self, other):

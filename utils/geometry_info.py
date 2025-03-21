@@ -245,8 +245,11 @@ def segments_intersect(a1, a2, b1, b2):
     return False
 
 
-def is_point_inside(p, a, b, c):
-    # 判断点p是否严格在三角形内部（不包括边）
+def is_point_inside_or_on(p, a, b, c):
+    # 检查点p是否在三角形内部或边上，但排除共享顶点的情况
+    if any(points_equal(p, vtx) for vtx in [a, b, c]):
+        return False  # 共享顶点，视为不相交
+
     def cross_sign(p1, p2, p3):
         return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
 
@@ -257,7 +260,7 @@ def is_point_inside(p, a, b, c):
     has_neg = (d1 < -1e-8) or (d2 < -1e-8) or (d3 < -1e-8)
     has_pos = (d1 > 1e-8) or (d2 > 1e-8) or (d3 > 1e-8)
 
-    return not (has_neg or has_pos) and not (d1 == d2 == d3 == 0)
+    return not (has_neg and has_pos)
 
 
 class Triangle:
@@ -269,22 +272,11 @@ class Triangle:
         self.area = None
         self.quality = None
         self.bbox = [
-            min(p1[0], p2[0], p3[0]),
+            min(p1[0], p2[0], p3[0]),  # (min_x, min_y, max_x, max_y)
             min(p1[1], p2[1], p3[1]),
             max(p1[0], p2[0], p3[0]),
             max(p1[1], p2[1], p3[1]),
         ]
-
-    def __hash__(self):
-        return hash((self.p1, self.p2, self.p3))
-
-    def __eq__(self, other):
-        if isinstance(other, Triangle):
-            return self.p1 == other.p1 and self.p2 == other.p2 and self.p3 == other.p3
-        return False
-
-    def get_edges(self):
-        return [(self.p1, self.p2), (self.p2, self.p3), (self.p3, self.p1)]
 
     def init_metrics(self):
         self.area = triangle_area(self.p1, self.p2, self.p3)
@@ -312,20 +304,38 @@ class Triangle:
                     else:
                         return True  # 非共边的相交
 
-        # 检查顶点是否在另一个三角形内部（严格内部）
+        # 检查顶点是否在另一个三角形内部或边上（严格内部或边上，但排除共享顶点）
         for p in [self.p1, self.p2, self.p3]:
             if any(
                 points_equal(p, tri_p)
                 for tri_p in [triangle.p1, triangle.p2, triangle.p3]
             ):
                 continue
-            if is_point_inside(p, triangle.p1, triangle.p2, triangle.p3):
+            if is_point_inside_or_on(p, triangle.p1, triangle.p2, triangle.p3):
                 return True
 
         for p in [triangle.p1, triangle.p2, triangle.p3]:
             if any(points_equal(p, self_p) for self_p in [self.p1, self.p2, self.p3]):
                 continue
-            if is_point_inside(p, self.p1, self.p2, self.p3):
+            if is_point_inside_or_on(p, self.p1, self.p2, self.p3):
                 return True
+
+        # 检查当前三角形是否完全在另一个三角形内部（非共享顶点）
+        all_in_self = True
+        for p in [self.p1, self.p2, self.p3]:
+            if not is_point_inside_or_on(p, triangle.p1, triangle.p2, triangle.p3):
+                all_in_self = False
+                break
+        if all_in_self:
+            return True
+
+        # 检查另一个三角形是否完全在当前三角形内部
+        all_in_other = True
+        for p in [triangle.p1, triangle.p2, triangle.p3]:
+            if not is_point_inside_or_on(p, self.p1, self.p2, self.p3):
+                all_in_other = False
+                break
+        if all_in_other:
+            return True
 
         return False
