@@ -1,5 +1,6 @@
 from math import sqrt, isnan, isinf
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 def normal_vector2d(front):
@@ -106,6 +107,9 @@ def is_convex(a, b, c, d, node_coords):
 
 # 辅助函数：计算三角形最小角
 def calculate_min_angle(cell, node_coords):
+    if isinstance(cell, Triangle):
+        cell = cell.node_idx
+
     if len(cell) != 3:
         return 0.0
     p1, p2, p3 = cell
@@ -123,6 +127,9 @@ def calculate_min_angle(cell, node_coords):
 
 # 辅助函数：检查三角形是否有效（非退化）
 def is_valid_triangle(cell, node_coords):
+    if isinstance(cell, Triangle):
+        cell = cell.node_idx
+
     if len(cell) != 3:
         return False
     p1, p2, p3 = cell
@@ -191,16 +198,134 @@ class LineSegment:
         return False
 
 
+def points_equal(p1, p2, epsilon=1e-6):
+    return abs(p1[0] - p2[0]) < epsilon and abs(p1[1] - p2[1]) < epsilon
+
+
+def segments_intersect(a1, a2, b1, b2):
+    # 检查两个线段是否在非端点处相交（包括部分重叠但非共线的情况）
+    if any(points_equal(a, b) for a in (a1, a2) for b in (b1, b2)):
+        return False
+
+    a_min_x = min(a1[0], a2[0])
+    a_max_x = max(a1[0], a2[0])
+    a_min_y = min(a1[1], a2[1])
+    a_max_y = max(a1[1], a2[1])
+
+    b_min_x = min(b1[0], b2[0])
+    b_max_x = max(b1[0], b2[0])
+    b_min_y = min(b1[1], b2[1])
+    b_max_y = max(b1[1], b2[1])
+
+    if (
+        (a_max_x < b_min_x)
+        or (b_max_x < a_min_x)
+        or (a_max_y < b_min_y)
+        or (b_max_y < a_min_y)
+    ):
+        return False
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    c1 = cross(a1, a2, b1)
+    c2 = cross(a1, a2, b2)
+    c3 = cross(b1, b2, a1)
+    c4 = cross(b1, b2, a2)
+
+    if (c1 * c2 < 0) and (c3 * c4 < 0):
+        return True
+
+    # 处理共线但部分重叠的情况（非完全重合）
+    if c1 == 0 and c2 == 0 and c3 == 0 and c4 == 0:
+        x_overlap = max(a_min_x, b_min_x) <= min(a_max_x, b_max_x)
+        y_overlap = max(a_min_y, b_min_y) <= min(a_max_y, b_max_y)
+        return x_overlap and y_overlap
+
+    return False
+
+
+def is_point_inside(p, a, b, c):
+    # 判断点p是否严格在三角形内部（不包括边）
+    def cross_sign(p1, p2, p3):
+        return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
+
+    d1 = cross_sign(a, b, p)
+    d2 = cross_sign(b, c, p)
+    d3 = cross_sign(c, a, p)
+
+    has_neg = (d1 < -1e-8) or (d2 < -1e-8) or (d3 < -1e-8)
+    has_pos = (d1 > 1e-8) or (d2 > 1e-8) or (d3 > 1e-8)
+
+    return not (has_neg or has_pos) and not (d1 == d2 == d3 == 0)
+
+
 class Triangle:
-    def __init__(self, p1, p2, p3):
+    def __init__(self, p1, p2, p3, node_idx=None):
         self.p1 = p1
         self.p2 = p2
         self.p3 = p3
-        self.area = triangle_area(p1, p2, p3)
-        self.quality = triangle_quality(p1, p2, p3)
+        self.node_idx = node_idx
+        self.area = None
+        self.quality = None
         self.bbox = [
             min(p1[0], p2[0], p3[0]),
             min(p1[1], p2[1], p3[1]),
             max(p1[0], p2[0], p3[0]),
             max(p1[1], p2[1], p3[1]),
         ]
+
+    def __hash__(self):
+        return hash((self.p1, self.p2, self.p3))
+
+    def __eq__(self, other):
+        if isinstance(other, Triangle):
+            return self.p1 == other.p1 and self.p2 == other.p2 and self.p3 == other.p3
+        return False
+
+    def get_edges(self):
+        return [(self.p1, self.p2), (self.p2, self.p3), (self.p3, self.p1)]
+
+    def init_metrics(self):
+        self.area = triangle_area(self.p1, self.p2, self.p3)
+        self.quality = triangle_quality(self.p1, self.p2, self.p3)
+
+    def is_intersect(self, triangle):
+        self_edges = [(self.p1, self.p2), (self.p2, self.p3), (self.p3, self.p1)]
+        tri_edges = [
+            (triangle.p1, triangle.p2),
+            (triangle.p2, triangle.p3),
+            (triangle.p3, triangle.p1),
+        ]
+
+        # 检查边是否相交（排除共边）
+        for e1 in self_edges:
+            a1, a2 = e1
+            for e2 in tri_edges:
+                b1, b2 = e2
+                if segments_intersect(a1, a2, b1, b2):
+                    # 检查是否为共边（顶点完全相同）
+                    if (points_equal(a1, b1) and points_equal(a2, b2)) or (
+                        points_equal(a1, b2) and points_equal(a2, b1)
+                    ):
+                        continue  # 共边，视为不相交
+                    else:
+                        return True  # 非共边的相交
+
+        # 检查顶点是否在另一个三角形内部（严格内部）
+        for p in [self.p1, self.p2, self.p3]:
+            if any(
+                points_equal(p, tri_p)
+                for tri_p in [triangle.p1, triangle.p2, triangle.p3]
+            ):
+                continue
+            if is_point_inside(p, triangle.p1, triangle.p2, triangle.p3):
+                return True
+
+        for p in [triangle.p1, triangle.p2, triangle.p3]:
+            if any(points_equal(p, self_p) for self_p in [self.p1, self.p2, self.p3]):
+                continue
+            if is_point_inside(p, self.p1, self.p2, self.p3):
+                return True
+
+        return False

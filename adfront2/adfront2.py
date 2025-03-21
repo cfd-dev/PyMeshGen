@@ -28,8 +28,12 @@ class Unstructed_Grid:
         """计算网格的边"""
         edge_set = set()
         for cell in self.cell_nodes:
-            for i in range(len(cell)):
-                edge = tuple(sorted([cell[i], cell[(i + 1) % len(cell)]]))
+            for i in range(len(cell.node_idx)):
+                edge = tuple(
+                    sorted(
+                        [cell.node_idx[i], cell.node_idx[(i + 1) % len(cell.node_idx)]]
+                    )
+                )
                 if edge not in edge_set:
                     edge_set.add(edge)
 
@@ -66,9 +70,9 @@ class Unstructed_Grid:
 
     def save_to_vtkfile(self, file_path):
         """将网格保存到VTK文件"""
-        # 分类二维单元
-        tri_cells = [c for c in self.cell_nodes if len(c) == 3]
-        quad_cells = [c for c in self.cell_nodes if len(c) == 4]
+        # 分类二维单元（修正node_idx访问方式）
+        tri_cells = [c.node_idx for c in self.cell_nodes if len(c.node_idx) == 3]
+        quad_cells = [c.node_idx for c in self.cell_nodes if len(c.node_idx) == 4]
 
         # 准备单元数据
         cell_data = []
@@ -122,7 +126,7 @@ class Adfront2:
 
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
-        self.discount = 0.85  # Pbest质量系数，discount越小，选择Pbest的概率越小
+        self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
         self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
         self.plot_front = False  # 是否实时绘图
@@ -135,7 +139,9 @@ class Adfront2:
         self.best_flag = False  # 标记是否采用pbest
         self.node_candidates = None  # 候选节点列表
         self.front_candidates = None  # 候选阵面列表
+        self.cell_candidates = None  # 候选单元列表
         self.search_radius = None  # 搜索半径
+        self.debug_switch = False  # 调试模式
 
         self.num_cells = 0  # 单元计数器
         self.num_nodes = 0  # 节点计数器
@@ -145,6 +151,8 @@ class Adfront2:
         self.node_ids = {}  # 节点ID映射  {id: (x,y)}
         self.node_id_map = {}  # 节点ID映射 {(x,y): id}
         self.boundary_nodes = {}  # 边界节点映射 {id: bc_type}
+        self.unstr_grid = None  # 网格对象
+
         self.initialize()
 
     def initialize(self):
@@ -193,6 +201,10 @@ class Adfront2:
             # 绘制基准阵面
             self.base_front.draw_front("r-", self.ax)
 
+            # # 绘制节点编号
+            # for i, (x, y) in enumerate(self.node_coords):
+            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
+
             # 绘制Pbest
             # self.ax.plot(self.pbest[0], self.pbest[1], "r.", markersize=10)
 
@@ -220,6 +232,10 @@ class Adfront2:
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
+            if self.base_front.node_ids == (39, 2):
+                # self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+                kkk = 0
+
             spacing = self.sizing_system.spacing_at(self.base_front.front_center)
 
             self.add_new_point(spacing)
@@ -232,15 +248,28 @@ class Adfront2:
 
             self.update_cells()
 
+            self.construct_unstructured_grid()
+
             self.show_progress()
 
-        return Unstructed_Grid(self.cell_nodes, self.node_coords, self.boundary_nodes)
+        return self.unstr_grid
+
+    def construct_unstructured_grid(self):
+        self.unstr_grid = Unstructed_Grid(
+            self.cell_nodes, self.node_coords, self.boundary_nodes
+        )
 
     def show_progress(self):
         if self.num_cells % 500 == 0 or len(self.front_list) == 0:
             print(f"当前阵面数量：{len(self.front_list)}")
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")
+
+        # if self.debug_switch or self.num_cells == -1:
+        #     uns_grid = Unstructed_Grid(
+        #         self.cell_nodes, self.node_coords, self.boundary_nodes
+        #     )
+        # uns_grid.save_to_vtkfile("./out/output_mesh.vtk")
 
     def update_cells(self):
         # 更新节点
@@ -254,17 +283,27 @@ class Adfront2:
                 # 更新节点计数器
                 self.num_nodes += 1
 
+        node1 = self.node_id_map[
+            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[0])
+        ]
+        node2 = self.node_id_map[
+            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[1])
+        ]
+        node3 = self.node_id_map[tuple(round(coord, 6) for coord in self.pselected)]
+
         # 更新阵面
         if self.pselected is not None:
             new_front1 = front2d.Front(
                 [self.base_front.nodes_coords[0], self.pselected],
                 "interior",
                 "internal",
+                (node1, node3),
             )
             new_front2 = front2d.Front(
                 [self.pselected, self.base_front.nodes_coords[1]],
                 "interior",
                 "internal",
+                (node3, node2),
             )
 
             # 判断front_list中是否存在new_front1，若不存在，
@@ -305,35 +344,34 @@ class Adfront2:
                 ]
                 heapq.heapify(self.front_list)
 
-        # 更新单元
-        # self.cell_nodes.append(
-        #     geo_info.Triangle(
-        #         self.base_front.nodes_coords[0],
-        #         self.base_front.nodes_coords[1],
-        #         self.pselected,
-        #     )
-        # )
         # 更新单元（使用节点ID）
-        node1 = self.node_id_map[
-            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[0])
-        ]
-        node2 = self.node_id_map[
-            tuple(round(coord, 6) for coord in self.base_front.nodes_coords[1])
-        ]
-        node3 = self.node_id_map[tuple(round(coord, 6) for coord in self.pselected)]
+        # 判断是否有重复点
+        if node1 == node2 or node1 == node3 or node2 == node3:
+            print(f"发现重复点：{node1}, {node2}, {node3}")
+            self.debug_switch = True
 
-        # 检查单元是否已存在（考虑节点顺序不同的情况）
-        new_cell = tuple(sorted((node1, node2, node3)))  # 排序节点顺序
-        if new_cell not in {tuple(sorted(c)) for c in self.cell_nodes}:
-            self.cell_nodes.append((node1, node2, node3))
+        # 更新单元
+        triangle = geo_info.Triangle(
+            self.base_front.nodes_coords[0],
+            self.base_front.nodes_coords[1],
+            self.pselected,
+            (node1, node2, node3),
+        )
+
+        # 使用node_idx进行重复性检查
+        existing_nodes = {tuple(sorted(t.node_idx)) for t in self.cell_nodes}
+        new_cell = tuple(sorted((node1, node2, node3)))
+
+        if new_cell not in existing_nodes:
+            self.cell_nodes.append(triangle)
             self.num_cells += 1
         else:
             print(f"发现重复单元：{new_cell}")
+            self.debug_switch = True
 
     def select_point(self):
         # 存储带质量的候选节点元组 (质量, 节点)
         scored_candidates = []
-
         # 遍历所有候选节点计算质量
         for node in self.node_candidates:
             quality = geo_info.triangle_quality(
@@ -359,6 +397,8 @@ class Adfront2:
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
+        self.pselected = None
+        self.best_flag = False
         for idx, (quality, node) in enumerate(scored_candidates):
             if not geo_info.is_left(
                 self.base_front.nodes_coords[0], self.base_front.nodes_coords[1], node
@@ -373,11 +413,15 @@ class Adfront2:
             #     continue
 
             self.pselected = node
+            break
 
-            if self.pselected == self.pbest:
-                self.best_flag = True
+        if self.pselected == self.pbest:
+            self.best_flag = True
 
-            return self.pselected
+        if self.pselected == None:
+            raise (f"候选点列表中没有合适的点，可能需要扩大搜索范围，请检查！")
+
+        return self.pselected
 
     def is_cross(self, node):
         for front in self.front_candidates:
@@ -390,11 +434,25 @@ class Adfront2:
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
 
+        cell_to_add = geo_info.Triangle(
+            node,
+            self.base_front.nodes_coords[0],
+            self.base_front.nodes_coords[1],
+        )
+
+        for tri_cell in self.cell_candidates:
+            if len(tri_cell.node_idx) != 3:
+                raise (f"节点数量错误：{tri_cell.node_idx}")
+
+            if tri_cell.is_intersect(cell_to_add):
+                return True
         return False
 
     def search_candidates(self, radius):
         self.node_candidates = []
         self.front_candidates = []
+        self.cell_candidates = []
+
         self.search_radius = radius
         radius2 = radius * radius
 
@@ -422,6 +480,23 @@ class Adfront2:
                     if front_tuple not in seen_fronts:
                         self.front_candidates.append(front)
                         seen_fronts.add(front_tuple)
+
+        possible_cells = []
+        for cell in self.cell_nodes:
+            if (
+                point[0] > cell.bbox[0] - radius
+                and point[0] < cell.bbox[1] + radius
+                and point[1] > cell.bbox[2] - radius
+                and point[1] < cell.bbox[3] + radius
+            ):
+                possible_cells.append(cell)
+
+        seen_cells = set()
+        for cell in possible_cells:
+            cell_tuple = tuple(sorted(cell.node_idx))
+            if cell_tuple not in seen_cells:
+                self.cell_candidates.append(cell)
+                seen_cells.add(cell_tuple)
 
         return self.node_candidates, self.front_candidates
 

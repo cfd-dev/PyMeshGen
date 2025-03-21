@@ -8,11 +8,12 @@ import geometry_info as geo_info
 
 
 def edge_swap(unstr_grid):
+    print(f"开始进行边交换优化...")
     edge_map = {}
 
     # 构建边到单元的映射
     for cell_idx, cell in enumerate(unstr_grid.cell_nodes):
-        for i, j in combinations(sorted(cell), 2):
+        for i, j in combinations(sorted(cell.node_idx), 2):
             edge = (i, j)
             if edge not in edge_map:
                 edge_map[edge] = []
@@ -35,12 +36,14 @@ def edge_swap(unstr_grid):
             cell2 = unstr_grid.cell_nodes[cell2_idx]
 
             # 确认公共边
-            common_edge = set(cell1) & set(cell2)
+            common_edge = set(cell1.node_idx) & set(cell2.node_idx)
             if len(common_edge) != 2:
                 continue  # 数据异常
 
             a, b = sorted(common_edge)
-            other_points = list((set(cell1) | set(cell2)) - common_edge)
+            other_points = list(
+                (set(cell1.node_idx) | set(cell2.node_idx)) - common_edge
+            )
             if len(other_points) != 2:
                 continue  # 无法构成四边形
 
@@ -82,8 +85,22 @@ def edge_swap(unstr_grid):
                 c in unstr_grid.boundary_nodes and d in unstr_grid.boundary_nodes
             ):
                 # 执行交换
-                unstr_grid.cell_nodes[cell1_idx] = swapped_cell1
-                unstr_grid.cell_nodes[cell2_idx] = swapped_cell2
+                # 创建新的Triangle对象
+                new_cell1 = geo_info.Triangle(
+                    unstr_grid.node_coords[a],
+                    unstr_grid.node_coords[c],
+                    unstr_grid.node_coords[d],
+                    node_idx=(a, c, d),
+                )
+                new_cell2 = geo_info.Triangle(
+                    unstr_grid.node_coords[b],
+                    unstr_grid.node_coords[c],
+                    unstr_grid.node_coords[d],
+                    node_idx=(b, c, d),
+                )
+
+                unstr_grid.cell_nodes[cell1_idx] = new_cell1  # 修改点
+                unstr_grid.cell_nodes[cell2_idx] = new_cell2  # 修改点
                 swapped = True
                 num_swapped += 1
 
@@ -91,7 +108,7 @@ def edge_swap(unstr_grid):
         if swapped:
             edge_map = {}
             for cell_idx, cell in enumerate(unstr_grid.cell_nodes):
-                for i, j in combinations(sorted(cell), 2):
+                for i, j in combinations(sorted(cell.node_idx), 2):
                     edge = (i, j)
                     if edge not in edge_map:
                         edge_map[edge] = []
@@ -103,11 +120,12 @@ def edge_swap(unstr_grid):
 
 
 def laplacian_smooth(unstr_grid, num_iter=10):
+    print(f"开始进行laplacian优化...")
     # 将键改为节点索引
     neighbors = {node_idx: set() for node_idx in range(len(unstr_grid.node_coords))}
 
     for cell in unstr_grid.cell_nodes:
-        for i, j in combinations(sorted(cell), 2):
+        for i, j in combinations(sorted(cell.node_idx), 2):
             neighbors[i].add(j)
             neighbors[j].add(i)
 
@@ -135,5 +153,5 @@ def laplacian_smooth(unstr_grid, num_iter=10):
             new_coords.append(new_coord.tolist())  # 转换回列表格式
 
         unstr_grid.node_coords = new_coords
-
+        print(f"laplacian优化完成...")
     return unstr_grid

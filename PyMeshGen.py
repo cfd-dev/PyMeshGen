@@ -16,7 +16,7 @@ import optimize
 from optimize import edge_swap, laplacian_smooth
 
 # 读入边界网格
-file_path = "./neural/sample_grids/30p30n-big.cas"
+file_path = "./neural/sample_grids/30p30n-small.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 

@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 
 
 class Front:
-    def __init__(self, nodes_coords, bc_type, bc_name, nodes_idx_old=None):
+    def __init__(
+        self, nodes_coords, bc_type, bc_name, node_ids=None, nodes_idx_old=None
+    ):
         self.nodes_coords = [[round(c, 6) for c in coord] for coord in nodes_coords]
         self.bc_type = bc_type  # 边界类型
         self.bc_name = bc_name  # 边界名称属性
@@ -19,6 +21,7 @@ class Front:
         self.length = None  # 阵面长度
         self.bbox = None  # 边界框
         self.hash = None
+        self.node_ids = node_ids  # 新的节点ID列表
 
         # 计算长度
         node1, node2 = self.nodes_coords
