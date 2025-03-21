@@ -16,7 +16,7 @@ import optimize
 from optimize import edge_swap, laplacian_smooth
 
 # 读入边界网格
-file_path = "./neural/sample_grids/inv_cylinder-8.cas"
+file_path = "./neural/sample_grids/30p30n-big.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
@@ -32,13 +32,13 @@ sizing_system = meshsize.QuadtreeSizing(
 # 推进生成网格
 adfront2 = adfr.Adfront2(front_heap, sizing_system, ax=ax)
 unstr_grid = adfront2.generate_elements()
-unstr_grid.visualize_unstr_grid_2d()
+# unstr_grid.visualize_unstr_grid_2d()
 
 # 网格质量优化
-unstr_grid = laplacian_smooth(unstr_grid, num_iter=3)
-unstr_grid.visualize_unstr_grid_2d()
-
 unstr_grid = edge_swap(unstr_grid)
+# unstr_grid.visualize_unstr_grid_2d()
+
+unstr_grid = laplacian_smooth(unstr_grid, num_iter=3)
 unstr_grid.visualize_unstr_grid_2d()
 
 # 输出网格文件

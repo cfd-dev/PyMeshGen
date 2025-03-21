@@ -103,9 +103,8 @@ def is_convex(a, b, c, d, node_coords):
     cross_d = np.cross(ab, ad)
     return cross_c * cross_d < 0  # 符号不同则在两侧
 
-    # 辅助函数：计算三角形最小角
 
-
+# 辅助函数：计算三角形最小角
 def calculate_min_angle(cell, node_coords):
     if len(cell) != 3:
         return 0.0
@@ -127,7 +126,8 @@ def is_valid_triangle(cell, node_coords):
     if len(cell) != 3:
         return False
     p1, p2, p3 = cell
-    # 修正后的面积计算方式
+
+    # 面积计算
     v1 = np.array(node_coords[p2]) - np.array(node_coords[p1])
     v2 = np.array(node_coords[p3]) - np.array(node_coords[p1])
     area = 0.5 * np.abs(np.cross(v1, v2))  # 使用向量叉积计算面积

@@ -43,7 +43,11 @@ class Unstructed_Grid:
         # 绘制所有节点
         xs = [n[0] for n in self.node_coords]
         ys = [n[1] for n in self.node_coords]
-        ax.scatter(xs, ys, c="gray", s=10, alpha=0.3, label="Nodes")
+        ax.scatter(xs, ys, c="white", s=10, alpha=0.3, label="Nodes")
+
+        # 绘制节点编号
+        # for i, (x, y) in enumerate(self.node_coords):
+        # ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
 
         # 绘制边
         if self.dim == 2:
@@ -51,7 +55,7 @@ class Unstructed_Grid:
         for edge in self.edges:
             x = [self.node_coords[i][0] for i in edge]
             y = [self.node_coords[i][1] for i in edge]
-            ax.plot(x, y, c="red", alpha=0.5, lw=1.5)
+            ax.plot(x, y, c="blue", alpha=0.5, lw=1)
 
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
@@ -233,7 +237,7 @@ class Adfront2:
         return Unstructed_Grid(self.cell_nodes, self.node_coords, self.boundary_nodes)
 
     def show_progress(self):
-        if self.num_cells % 100 == 0 or len(self.front_list) == 0:
+        if self.num_cells % 500 == 0 or len(self.front_list) == 0:
             print(f"当前阵面数量：{len(self.front_list)}")
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")

@@ -19,6 +19,7 @@ def edge_swap(unstr_grid):
             edge_map[edge].append(cell_idx)
 
     swapped = True
+    num_swapped = 0
     while swapped:
         swapped = False
         # 使用当前edge_map的快照避免迭代修改问题
@@ -26,6 +27,8 @@ def edge_swap(unstr_grid):
             # 仅处理内部边（被两个单元共享）
             if len(cells) != 2:
                 continue
+            if edge == (194, 24) or edge == (24, 194):
+                kkk = 0
 
             cell1_idx, cell2_idx = cells
             cell1 = unstr_grid.cell_nodes[cell1_idx]
@@ -70,6 +73,10 @@ def edge_swap(unstr_grid):
                 geo_info.calculate_min_angle(swapped_cell2, unstr_grid.node_coords),
             )
 
+            # 凸性检查
+            if not geo_info.is_convex(c, d, a, b, unstr_grid.node_coords):
+                continue
+
             # 交换条件：最小角优化且不创建新边界边
             if swapped_min > current_min and not (
                 c in unstr_grid.boundary_nodes and d in unstr_grid.boundary_nodes
@@ -78,6 +85,7 @@ def edge_swap(unstr_grid):
                 unstr_grid.cell_nodes[cell1_idx] = swapped_cell1
                 unstr_grid.cell_nodes[cell2_idx] = swapped_cell2
                 swapped = True
+                num_swapped += 1
 
         # 重新构建边映射
         if swapped:
@@ -88,6 +96,8 @@ def edge_swap(unstr_grid):
                     if edge not in edge_map:
                         edge_map[edge] = []
                     edge_map[edge].append(cell_idx)
+
+    print(f"共进行了{num_swapped}次边交换")
 
     return unstr_grid
 
