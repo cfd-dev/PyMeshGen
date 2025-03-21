@@ -3,9 +3,127 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+class Unstructed_Grid:
+    def __init__(self, cell_container, node_coords, boundary_nodes):
+        self.dim = None
+        self.cell_container = cell_container
+        self.node_coords = node_coords
+        self.boundary_nodes = boundary_nodes
+        self.boundary_nodes_list = [node_elem.idx for node_elem in boundary_nodes]
+
+        self.num_cells = len(cell_container)
+        self.num_nodes = len(node_coords)
+        self.num_boundary_nodes = len(boundary_nodes)
+        self.num_edges = 0
+        self.num_faces = 0
+        self.edges = []
+
+        self.dim = len(node_coords[0])
+
+    def calculate_edges(self):
+        """计算网格的边"""
+        edge_set = set()
+        for cell in self.cell_container:
+            for i in range(len(cell.node_ids)):
+                edge = tuple(
+                    sorted(
+                        [
+                            cell.node_ids[i],
+                            cell.node_ids[(i + 1) % len(cell.node_ids)],
+                        ]
+                    )
+                )
+                if edge not in edge_set:
+                    edge_set.add(edge)
+
+        self.edges = list(edge_set)
+        self.num_edges = len(self.edges)
+
+    def visualize_unstr_grid_2d(self):
+        """可视化二维网格"""
+        fig, ax = plt.subplots(figsize=(10, 8))
+
+        # 绘制所有节点
+        xs = [n[0] for n in self.node_coords]
+        ys = [n[1] for n in self.node_coords]
+        ax.scatter(xs, ys, c="white", s=10, alpha=0.3, label="Nodes")
+
+        # 绘制节点编号
+        # for i, (x, y) in enumerate(self.node_coords):
+        # ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
+
+        # 绘制边
+        if self.dim == 2:
+            self.calculate_edges()
+        for edge in self.edges:
+            x = [self.node_coords[i][0] for i in edge]
+            y = [self.node_coords[i][1] for i in edge]
+            ax.plot(x, y, c="blue", alpha=0.5, lw=1)
+
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_title("Unstructured Grid Visualization")
+        ax.axis("equal")
+
+        plt.show(block=False)
+
+    def save_to_vtkfile(self, file_path):
+        """将网格保存到VTK文件"""
+        # 分类二维单元
+        tri_cells = [c.node_ids for c in self.cell_container if len(c.node_ids) == 3]
+        quad_cells = [c.node_ids for c in self.cell_container if len(c.node_ids) == 4]
+
+        # 准备单元数据
+        cell_data = []
+        for cells, n_nodes in [(tri_cells, 3), (quad_cells, 4)]:
+            cell_data.extend([f"{n_nodes} " + " ".join(map(str, c)) for c in cells])
+
+        # 计算单元类型
+        cell_types = []
+        cell_types.extend([5] * len(tri_cells))  # VTK_TRIANGLE = 5
+        cell_types.extend([9] * len(quad_cells))  # VTK_QUAD = 9
+
+        with open(file_path, "w") as file:
+            file.write("# vtk DataFile Version 2.0\n")
+            file.write("Unstructured Grid\n")
+            file.write("ASCII\n")
+            file.write("DATASET UNSTRUCTURED_GRID\n")
+            file.write(f"POINTS {self.num_nodes} float\n")
+            for coord in self.node_coords:
+                coord_tmp = coord.copy()
+                if len(coord) == 2:
+                    coord_tmp.append(0.0)  # 添加Z坐标
+                file.write(" ".join(map(str, coord_tmp)) + "\n")
+
+            # 写入单元信息
+            total_cells = len(tri_cells) + len(quad_cells)
+            total_data_size = len(tri_cells) * 4 + len(quad_cells) * 5  # 3+1 和 4+1
+            file.write(f"CELLS {total_cells} {total_data_size}\n")
+            file.write("\n".join(cell_data) + "\n")
+
+            file.write(f"CELL_TYPES {total_cells}\n")
+            file.write("\n".join(map(str, cell_types)) + "\n")
+
+            # 写入边界节点标记
+            file.write(f"POINT_DATA {self.num_nodes}\n")
+            file.write("SCALARS node_id int 1\n")
+            file.write("LOOKUP_TABLE default\n")
+            for i in range(self.num_nodes):
+                file.write(
+                    f"{1 if i in self.boundary_nodes_list else 0}\n"
+                )  # 标记边界节点
+
+            file.write(f"CELL_DATA {total_cells}\n")
+            file.write("SCALARS cell_id int 1\n")
+            file.write("LOOKUP_TABLE default\n")
+            file.write("\n".join(map(str, range(total_cells))) + "\n")
+
+        print(f"网格已保存到 {file_path}")
+
+
 def normal_vector2d(front):
     """计算二维平面阵面的单位法向量"""
-    node1, node2 = front.nodes_coords
+    node1, node2 = [front.node_elems[i].coords for i in range(2)]
     dx = node2[0] - node1[0]
     dy = node2[1] - node1[1]
 
@@ -108,7 +226,7 @@ def is_convex(a, b, c, d, node_coords):
 # 辅助函数：计算三角形最小角
 def calculate_min_angle(cell, node_coords):
     if isinstance(cell, Triangle):
-        cell = cell.node_idx
+        cell = cell.node_ids
 
     if len(cell) != 3:
         return 0.0
@@ -128,7 +246,7 @@ def calculate_min_angle(cell, node_coords):
 # 辅助函数：检查三角形是否有效（非退化）
 def is_valid_triangle(cell, node_coords):
     if isinstance(cell, Triangle):
-        cell = cell.node_idx
+        cell = cell.node_ids
 
     if len(cell) != 3:
         return False
@@ -142,32 +260,39 @@ def is_valid_triangle(cell, node_coords):
 
 
 class NodeElement:
-    def __init__(self, node_coords, idx):
+    def __init__(self, coords, idx, bc_type=None):
         # 四舍五入到小数点后6位以消除浮点误差
-        self.node_coords = [round(coord, 6) for coord in node_coords]
+        self.coords = [round(coord, 6) for coord in coords]
         self.idx = idx
         # 使用处理后的坐标生成哈希
-        self.hash = hash(tuple(self.node_coords))
+        self.hash = hash(tuple(self.coords))
+        self.bc_type = bc_type
 
     def __hash__(self):
         return self.hash
 
     def __eq__(self, other):
         if isinstance(other, NodeElement):
-            return self.node_coords == other.node_coords
+            # return self.coords == other.coords
+            return self.hash == other.hash
         return False
 
 
 class LineSegment:
     def __init__(self, p1, p2):
-        self.p1 = p1
-        self.p2 = p2
-        self.length = calculate_distance(p1, p2)
+        if isinstance(p1, NodeElement) and isinstance(p2, NodeElement):
+            self.p1 = p1.coords
+            self.p2 = p2.coords
+        else:
+            self.p1 = p1
+            self.p2 = p2
+
+        self.length = calculate_distance(self.p1, self.p2)
         self.bbox = [
-            min(p1[0], p2[0]),
-            min(p1[1], p2[1]),
-            max(p1[0], p2[0]),
-            max(p1[1], p2[1]),
+            min(self.p1[0], self.p2[0]),
+            min(self.p1[1], self.p2[1]),
+            max(self.p1[0], self.p2[0]),
+            max(self.p1[1], self.p2[1]),
         ]
 
     def is_intersect(self, line):
@@ -264,18 +389,37 @@ def is_point_inside_or_on(p, a, b, c):
 
 
 class Triangle:
-    def __init__(self, p1, p2, p3, node_idx=None):
-        self.p1 = p1
-        self.p2 = p2
-        self.p3 = p3
-        self.node_idx = node_idx
+    def __init__(self, p1, p2, p3, idx=None, node_ids=None):
+        if (
+            isinstance(p1, NodeElement)
+            and isinstance(p2, NodeElement)
+            and isinstance(p3, NodeElement)
+        ):
+            self.p1 = p1.coords
+            self.p2 = p2.coords
+            self.p3 = p3.coords
+            self.node_ids = (p1.idx, p2.idx, p3.idx)
+        else:
+            self.p1 = p1
+            self.p2 = p2
+            self.p3 = p3
+            self.node_ids = node_ids
+
+        self.idx = idx
+        # 生成几何级哈希
+        coord_hash = hash((tuple(self.p1), tuple(self.p2), tuple(self.p3)))
+        # 生成逻辑级哈希
+        id_hash = hash(tuple(sorted(self.node_ids)))
+        # 组合哈希
+        self.hash = hash((coord_hash, id_hash))
+
         self.area = None
         self.quality = None
         self.bbox = [
-            min(p1[0], p2[0], p3[0]),  # (min_x, min_y, max_x, max_y)
-            min(p1[1], p2[1], p3[1]),
-            max(p1[0], p2[0], p3[0]),
-            max(p1[1], p2[1], p3[1]),
+            min(self.p1[0], self.p2[0], self.p3[0]),  # (min_x, min_y, max_x, max_y)
+            min(self.p1[1], self.p2[1], self.p3[1]),
+            max(self.p1[0], self.p2[0], self.p3[0]),
+            max(self.p1[1], self.p2[1], self.p3[1]),
         ]
 
     def init_metrics(self):

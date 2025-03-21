@@ -12,8 +12,8 @@ def edge_swap(unstr_grid):
     edge_map = {}
 
     # 构建边到单元的映射
-    for cell_idx, cell in enumerate(unstr_grid.cell_nodes):
-        for i, j in combinations(sorted(cell.node_idx), 2):
+    for cell_idx, cell in enumerate(unstr_grid.cell_container):
+        for i, j in combinations(sorted(cell.node_ids), 2):
             edge = (i, j)
             if edge not in edge_map:
                 edge_map[edge] = []
@@ -32,17 +32,17 @@ def edge_swap(unstr_grid):
                 kkk = 0
 
             cell1_idx, cell2_idx = cells
-            cell1 = unstr_grid.cell_nodes[cell1_idx]
-            cell2 = unstr_grid.cell_nodes[cell2_idx]
+            cell1 = unstr_grid.cell_container[cell1_idx]
+            cell2 = unstr_grid.cell_container[cell2_idx]
 
             # 确认公共边
-            common_edge = set(cell1.node_idx) & set(cell2.node_idx)
+            common_edge = set(cell1.node_ids) & set(cell2.node_ids)
             if len(common_edge) != 2:
                 continue  # 数据异常
 
             a, b = sorted(common_edge)
             other_points = list(
-                (set(cell1.node_idx) | set(cell2.node_idx)) - common_edge
+                (set(cell1.node_ids) | set(cell2.node_ids)) - common_edge
             )
             if len(other_points) != 2:
                 continue  # 无法构成四边形
@@ -82,7 +82,8 @@ def edge_swap(unstr_grid):
 
             # 交换条件：最小角优化且不创建新边界边
             if swapped_min > current_min and not (
-                c in unstr_grid.boundary_nodes and d in unstr_grid.boundary_nodes
+                c in unstr_grid.boundary_nodes_list
+                and d in unstr_grid.boundary_nodes_list
             ):
                 # 执行交换
                 # 创建新的Triangle对象
@@ -90,25 +91,27 @@ def edge_swap(unstr_grid):
                     unstr_grid.node_coords[a],
                     unstr_grid.node_coords[c],
                     unstr_grid.node_coords[d],
-                    node_idx=(a, c, d),
+                    cell1.idx,
+                    node_ids=(a, c, d),
                 )
                 new_cell2 = geo_info.Triangle(
                     unstr_grid.node_coords[b],
                     unstr_grid.node_coords[c],
                     unstr_grid.node_coords[d],
-                    node_idx=(b, c, d),
+                    cell2.idx,
+                    node_ids=(b, c, d),
                 )
 
-                unstr_grid.cell_nodes[cell1_idx] = new_cell1  # 修改点
-                unstr_grid.cell_nodes[cell2_idx] = new_cell2  # 修改点
+                unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点
+                unstr_grid.cell_container[cell2_idx] = new_cell2  # 修改点
                 swapped = True
                 num_swapped += 1
 
         # 重新构建边映射
         if swapped:
             edge_map = {}
-            for cell_idx, cell in enumerate(unstr_grid.cell_nodes):
-                for i, j in combinations(sorted(cell.node_idx), 2):
+            for cell_idx, cell in enumerate(unstr_grid.cell_container):
+                for i, j in combinations(sorted(cell.node_ids), 2):
                     edge = (i, j)
                     if edge not in edge_map:
                         edge_map[edge] = []
@@ -122,10 +125,10 @@ def edge_swap(unstr_grid):
 def laplacian_smooth(unstr_grid, num_iter=10):
     print(f"开始进行laplacian优化...")
     # 将键改为节点索引
-    neighbors = {node_idx: set() for node_idx in range(len(unstr_grid.node_coords))}
+    neighbors = {node_ids: set() for node_ids in range(len(unstr_grid.node_coords))}
 
-    for cell in unstr_grid.cell_nodes:
-        for i, j in combinations(sorted(cell.node_idx), 2):
+    for cell in unstr_grid.cell_container:
+        for i, j in combinations(sorted(cell.node_ids), 2):
             neighbors[i].add(j)
             neighbors[j].add(i)
 
@@ -134,7 +137,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
         new_coords = []
         for node, coord in enumerate(unstr_grid.node_coords):
             # 跳过边界节点（保持固定）
-            if node in unstr_grid.boundary_nodes:
+            if node in unstr_grid.boundary_nodes_list:
                 new_coords.append(coord)
                 continue
 

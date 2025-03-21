@@ -45,7 +45,7 @@ class TestCheckMeshQuality(unittest.TestCase):
         """测试质量检查流程是否完整执行"""
         # 创建模拟网格对象
         mock_grid = Mock()
-        mock_grid.cell_nodes = [Mock() for _ in range(5)]  # 5个单元
+        mock_grid.cell_container = [Mock() for _ in range(5)]  # 5个单元
 
         # 执行质量检查
         check_mesh_quality(mock_grid)

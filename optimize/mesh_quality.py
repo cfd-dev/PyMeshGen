@@ -15,7 +15,7 @@ def calculate_triangle_twist(triangle):
 def check_mesh_quality(unstr_grid):
     """检查网格质量"""
     twist_values = []
-    for triangle in unstr_grid.cell_nodes:
+    for triangle in unstr_grid.cell_container:
         twist = calculate_triangle_twist(triangle)
         twist_values.append(twist)
 

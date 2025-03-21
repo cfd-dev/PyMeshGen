@@ -2,31 +2,36 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
-import geometry_info as geo_info
 import heapq
 import matplotlib.pyplot as plt
+from geometry_info import NodeElement, calculate_distance
 
 
 class Front:
-    def __init__(
-        self, nodes_coords, bc_type, bc_name, node_ids=None, nodes_idx_old=None
-    ):
-        self.nodes_coords = [[round(c, 6) for c in coord] for coord in nodes_coords]
+    def __init__(self, node_elem1, node_elem2, idx, bc_type, bc_name):
+        if not isinstance(node_elem1, NodeElement) or not isinstance(
+            node_elem1, NodeElement
+        ):
+            raise TypeError("node1 和 node2 必须是 NodeElement 类型")
+
+        self.node_elems = [node_elem1, node_elem2]
+        self.idx = idx  # 阵面ID
         self.bc_type = bc_type  # 边界类型
         self.bc_name = bc_name  # 边界名称属性
-        # 节点对应的原始索引，从原始cas网格中读入的值，编号从1开始
-        self.nodes_idx_old = nodes_idx_old
 
+        self.priority = False  # 优先推进标记
         self.front_center = None  # 阵面中心坐标
         self.length = None  # 阵面长度
         self.bbox = None  # 边界框
-        self.hash = None
-        self.node_ids = node_ids  # 新的节点ID列表
-
+        self.hash = None  # 阵面hash值
+        self.node_ids = (node_elem1.idx, node_elem2.idx)  # 新的节点ID列表
+        # self.node_pair = [round(self.node_elems[i].coords, 6) for i in range(2)]
         # 计算长度
-        node1, node2 = self.nodes_coords
-        self.length = geo_info.calculate_distance(node1, node2)
+        node1 = node_elem1.coords
+        node2 = node_elem2.coords
+        self.length = calculate_distance(node1, node2)
         self.front_center = [(a + b) / 2 for a, b in zip(node1, node2)]
+        self.front_center = [round(coord, 6) for coord in self.front_center]
 
         # 计算边界框
         min_x = min(node1[0], node2[0])  # 最小x坐标
@@ -35,38 +40,38 @@ class Front:
         max_y = max(node1[1], node2[1])  # 最大y坐标
 
         self.bbox = (min_x, min_y, max_x, max_y)
-        self.hash = hash(tuple(self.front_center))
+
+        length_hash = hash(round(self.length, 3))
+        center_hash = hash(tuple(self.front_center))
+        self.hash = hash((center_hash, length_hash))
 
     def __lt__(self, other):
+        # 优先比较priority属性，其次比较长度
+        if self.priority != other.priority:
+            return self.priority > other.priority  # True值优先
         return self.length < other.length
-
-    def __eq__(self, other):
-        # 通过节点坐标判断是否相同
-        return self.nodes_coords == other.nodes_coords
 
     def draw_front(self, marker="b-", ax=None):
         """绘制阵面"""
-        node1, node2 = (
-            self.nodes_coords[0],
-            self.nodes_coords[1],
-        )
+        node1, node2 = [self.node_elems[i].coords for i in range(2)]
+
+        if ax is None:
+            ax = plt.gca()
         ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
 
 
 def construct_initial_front(grid):
     """
     从网格数据中构造初始的阵面，并按长度排序
-    返回格式：优先队列 [(length, Front)]
+    返回格式：阵面队列 [(length, Front)]
     """
     heap = []
     processed_edges = set()  # 新增已处理边记录
 
     # 遍历所有面，筛选边界面
+    node_count = 0
+    front_count = 0
     for face in grid["faces"]:
-        if face["left_cell"] == 0:
-            raise ValueError(
-                f"发现无效左单元 (face ID: {grid['faces'].index(face)})，左单元为0，请检查网格读入！"
-            )
 
         # 仅处理有两个节点的线性面（边界面）
         if len(face["nodes"]) == 2 and (face["right_cell"] == 0):
@@ -83,16 +88,32 @@ def construct_initial_front(grid):
             node1 = grid["nodes"][u - 1]
             node2 = grid["nodes"][v - 1]
 
+            node_elem1 = NodeElement(
+                coords=node1,
+                idx=-1,
+                bc_type=face["bc_type"],
+            )
+
+            node_elem2 = NodeElement(
+                coords=node2,
+                idx=-1,
+                bc_type=face["bc_type"],
+            )
+            # 更新节点计数器
+            node_count += 2
+
             # 创建Front对象并压入堆
             heapq.heappush(
                 heap,
                 Front(
-                    nodes_coords=(node1, node2),
+                    node_elem1=node_elem1,
+                    node_elem2=node_elem2,
+                    idx=front_count,
                     bc_type=face["bc_type"],
                     bc_name=face["bc_name"],
-                    nodes_idx_old=(u, v),  # 保持原始顺序，编号从1开始
                 ),
             )
+            front_count += 1
 
     return heap
 

@@ -151,7 +151,8 @@ class QuadtreeSizing:
         min_edge_len = float("inf")
         max_edge_len = 0
         for front in self.initial_front:
-            all_points.extend(front.nodes_coords)
+            for node_elem in front.node_elems:
+                all_points.append(node_elem.coords)
             min_edge_len = min(min_edge_len, front.length)
             max_edge_len = max(max_edge_len, front.length)
 
