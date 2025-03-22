@@ -18,44 +18,44 @@ class Adfront2:
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
-        self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
+        # self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
         self.plot_front = False  # 是否实时绘图
 
-        self.front_list = boundary_front  # 初始边界阵面列表
-        self.sizing_system = sizing_system  # 尺寸场系统
+        self.front_list = boundary_front  # 初始边界阵面列表，堆
+        self.sizing_system = sizing_system  # 尺寸场系统对象
         self.base_front = None  # 当前基准阵面
-        self.pbest = None  #  当前Pbest
-        self.pselected = None  # 当前选中的节点
+        self.pbest = None  #  当前Pbest，NodeElement对象
+        self.pselected = None  # 当前选中的节点，NodeElement对象
         self.best_flag = False  # 标记是否采用pbest
         self.node_candidates = None  # 候选节点列表
         self.front_candidates = None  # 候选阵面列表
         self.cell_candidates = None  # 候选单元列表
         self.search_radius = None  # 搜索半径
-        self.debug_switch = False  # 调试模式
+        self.debug_switch = False  # 调试模式开关
 
         self.num_cells = 0  # 单元计数器
         self.num_nodes = 0  # 节点计数器
 
-        self.cell_container = None  # 单元节点列表
+        self.cell_container = None  # 单元对象（Triangle）对象列表
         self.node_coords = None  # 节点坐标列表
 
-        self.boundary_nodes = None  # 边界节点列表
-        self.unstr_grid = None  # 网格对象
+        self.boundary_nodes = None  # 边界节点对象列表
+        self.unstr_grid = None  # Unstructured_Grid网格对象
 
-        self.node_hash_list = None  # 节点hash列表
-        self.cell_hash_list = None  # 单元hash列表
+        self.node_hash_list = None  # 节点hash列表，用于判断是否重复
+        self.cell_hash_list = None  # 单元hash列表，用于判断是否重复
 
         self.initialize()
 
     def initialize(self):
-        # 存储边界节点的ID及其边界类型
+        """初始化hash列表、阵面节点编号和优先级"""
         self.boundary_nodes = set()
         self.node_hash_list = set()
         self.cell_hash_list = set()
         self.cell_container = []
         self.node_coords = []
 
-        hash_idx_map = {}
+        hash_idx_map = {}  # 节点hash值到节点索引的映射
         node_count = 0
         for front in self.front_list:
             front.node_ids = []
@@ -81,6 +81,10 @@ class Adfront2:
             front.draw_front(ax)
 
     def debug_draw(self, ax):
+        # if self.base_front.node_ids == (895, 738):
+        #     self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
+        #     kkk = 0
+
         """绘制候选节点、候选阵面"""
         if ax and self.plot_front:
             # 绘制基准阵面
@@ -119,10 +123,6 @@ class Adfront2:
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
-            # if self.base_front.node_ids == (895, 738):
-            #     self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
-            #     kkk = 0
-
             spacing = self.sizing_system.spacing_at(self.base_front.front_center)
 
             self.add_new_point(spacing)
@@ -151,10 +151,9 @@ class Adfront2:
             print(f"当前阵面数量：{len(self.front_list)}")
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")
-            # self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
 
-        # if self.debug_switch:
-        #     self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+            if self.debug_switch:
+                self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
 
     def update_cells(self):
         # 更新节点
@@ -182,7 +181,7 @@ class Adfront2:
                 "internal",
             )
 
-            # 判断front_list中是否存在new_front1，若不存在，
+            # 判断front_list中是否存在new_front，若不存在，
             # 则将其压入front_list，若已存在，则将其从front_list中删除
             exists_new1 = any(
                 front.hash == new_front1.hash for front in self.front_list
@@ -196,7 +195,7 @@ class Adfront2:
                 if self.ax and self.plot_front:
                     new_front1.draw_front("g-", self.ax)
             else:
-                # 移除所有相同位置的旧阵面
+                # 移除相同位置的旧阵面
                 self.front_list = [
                     front for front in self.front_list if front.hash != new_front1.hash
                 ]
@@ -261,7 +260,7 @@ class Adfront2:
         self.pselected = None
         self.best_flag = False
         for idx, (quality, node_elem) in enumerate(scored_candidates):
-            if not geo_info.is_left(
+            if not geo_info.is_left2d(
                 self.base_front.node_elems[0].coords,
                 self.base_front.node_elems[1].coords,
                 node_elem.coords,
@@ -270,10 +269,6 @@ class Adfront2:
 
             if self.is_cross(node_elem):
                 continue
-
-            # 质量不足时，仅允许最后一个候选放宽标准
-            # if quality < self.quality_criteria and idx != len(scored_candidates) - 1:
-            #     continue
 
             self.pselected = node_elem
             break

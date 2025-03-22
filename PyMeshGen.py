@@ -12,7 +12,6 @@ import front2d
 import meshsize
 import mesh_visualization as viz
 import adfront2 as adfr
-import optimize
 from optimize import edge_swap, laplacian_smooth
 
 # 读入边界网格

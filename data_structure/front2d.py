@@ -24,8 +24,9 @@ class Front:
         self.length = None  # 阵面长度
         self.bbox = None  # 边界框
         self.hash = None  # 阵面hash值
-        self.node_ids = (node_elem1.idx, node_elem2.idx)  # 新的节点ID列表
+        self.node_ids = (node_elem1.idx, node_elem2.idx)  # 节点元素列表
         # self.node_pair = [round(self.node_elems[i].coords, 6) for i in range(2)]
+
         # 计算长度
         node1 = node_elem1.coords
         node2 = node_elem2.coords
@@ -61,18 +62,13 @@ class Front:
 
 
 def construct_initial_front(grid):
-    """
-    从网格数据中构造初始的阵面，并按长度排序
-    返回格式：阵面队列 [(length, Front)]
-    """
+    """从网格数据中构造初始阵面，并按长度排序"""
     heap = []
     processed_edges = set()  # 新增已处理边记录
 
     # 遍历所有面，筛选边界面
-    node_count = 0
     front_count = 0
     for face in grid["faces"]:
-
         # 仅处理有两个节点的线性面（边界面）
         if len(face["nodes"]) == 2 and (face["right_cell"] == 0):
             # 获取原始节点顺序
@@ -84,10 +80,11 @@ def construct_initial_front(grid):
                 continue
             processed_edges.add(edge_key)
 
-            # 获取节点坐标（保持原始顺序）
+            # 获取节点坐标，fluent网格从1开始计数
             node1 = grid["nodes"][u - 1]
             node2 = grid["nodes"][v - 1]
 
+            # 创建NodeElement对象
             node_elem1 = NodeElement(
                 coords=node1,
                 idx=-1,
@@ -99,8 +96,6 @@ def construct_initial_front(grid):
                 idx=-1,
                 bc_type=face["bc_type"],
             )
-            # 更新节点计数器
-            node_count += 2
 
             # 创建Front对象并压入堆
             heapq.heappush(
