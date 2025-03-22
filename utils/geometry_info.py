@@ -387,7 +387,7 @@ class Triangle:
         return False
 
 
-class Unstructed_Grid:
+class Unstructured_Grid:
     def __init__(self, cell_container, node_coords, boundary_nodes):
         self.cell_container = cell_container
         self.node_coords = node_coords

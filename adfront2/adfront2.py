@@ -7,7 +7,7 @@ sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
 import front2d
 import matplotlib.pyplot as plt
-from geometry_info import NodeElement, Unstructed_Grid
+from geometry_info import NodeElement, Unstructured_Grid
 
 
 class Adfront2:
@@ -145,7 +145,7 @@ class Adfront2:
         return self.unstr_grid
 
     def construct_unstructured_grid(self):
-        self.unstr_grid = Unstructed_Grid(
+        self.unstr_grid = Unstructured_Grid(
             self.cell_container, self.node_coords, self.boundary_nodes
         )
 
