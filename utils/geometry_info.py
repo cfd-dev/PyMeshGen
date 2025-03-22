@@ -227,11 +227,10 @@ def is_point_inside_or_on(p, a, b, c):
 
 class NodeElement:
     def __init__(self, coords, idx, bc_type=None):
-        # 四舍五入到小数点后6位以消除浮点误差
-        self.coords = [round(coord, 6) for coord in coords]
+        self.coords = coords
         self.idx = idx
         # 使用处理后的坐标生成哈希
-        self.hash = hash(tuple(self.coords))
+        self.hash = hash(tuple([round(coord, 6) for coord in self.coords]))
         self.bc_type = bc_type
 
     def __hash__(self):
@@ -273,9 +272,11 @@ class LineSegment:
             return False
 
         # 跨立实验
-        if is_left(self.p1, self.p2, line.p1) != is_left(
+        if is_left2d(self.p1, self.p2, line.p1) != is_left2d(
             self.p1, self.p2, line.p2
-        ) and is_left(line.p1, line.p2, self.p1) != is_left(line.p1, line.p2, self.p2):
+        ) and is_left2d(line.p1, line.p2, self.p1) != is_left2d(
+            line.p1, line.p2, self.p2
+        ):
             # 新增端点重合检查
             if (
                 self.p1 == line.p1

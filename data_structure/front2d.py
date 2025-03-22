@@ -52,6 +52,9 @@ class Front:
             return self.priority > other.priority  # True值优先
         return self.length < other.length
 
+    def __eq__(self, other):
+        return self.hash == other.hash
+
     def draw_front(self, marker="b-", ax=None):
         """绘制阵面"""
         node1, node2 = [self.node_elems[i].coords for i in range(2)]

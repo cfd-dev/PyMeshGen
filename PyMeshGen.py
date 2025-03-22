@@ -15,7 +15,7 @@ import adfront2 as adfr
 from optimize import edge_swap, laplacian_smooth
 
 # 读入边界网格
-file_path = "./neural/sample_grids/30p30n-small.cas"
+file_path = "./neural/sample_grids/naca0012-tri-coarse.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 

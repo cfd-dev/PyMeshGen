@@ -117,7 +117,7 @@ def edge_swap(unstr_grid):
                         edge_map[edge] = []
                     edge_map[edge].append(cell_idx)
 
-    print(f"共进行了{num_swapped}次边交换")
+    print(f"共进行了{num_swapped}次边交换.\n")
 
     return unstr_grid
 
@@ -133,7 +133,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
             neighbors[j].add(i)
 
     # 迭代进行拉普拉斯平滑
-    for _ in range(num_iter):
+    for i in range(num_iter):
         new_coords = []
         for node, coord in enumerate(unstr_grid.node_coords):
             # 跳过边界节点（保持固定）
@@ -156,5 +156,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
             new_coords.append(new_coord.tolist())  # 转换回列表格式
 
         unstr_grid.node_coords = new_coords
-        print(f"laplacian优化完成...")
+        print(f"第{i}轮laplacian优化完成.")
+    print(f"laplacian优化完成.\n")
+
     return unstr_grid

@@ -277,6 +277,7 @@ class Adfront2:
             self.best_flag = True
 
         if self.pselected == None:
+            self.construct_unstructured_grid()
             self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
             raise (f"候选点列表中没有合适的点，可能需要扩大搜索范围，请检查！")
 
