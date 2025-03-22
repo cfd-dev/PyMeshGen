@@ -81,43 +81,46 @@ class Adfront2:
             front.draw_front(ax)
 
     def debug_draw(self, ax):
+        """绘制候选节点、候选阵面"""
+        if not __debug__:
+            return
+
+        if ax is None or self.plot_front is False:
+            return
+
         # if self.base_front.node_ids == (895, 738):
         #     self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
         #     kkk = 0
 
-        """绘制候选节点、候选阵面"""
-        if ax and self.plot_front:
-            # 绘制基准阵面
-            self.base_front.draw_front("r-", self.ax)
+        # 绘制基准阵面
+        self.base_front.draw_front("r-", self.ax)
 
-            # # 绘制节点编号
-            # for idx, (x, y) in enumerate(self.node_coords):
-            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
+        # # 绘制节点编号
+        # for idx, (x, y) in enumerate(self.node_coords):
+        #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
 
-            # 绘制Pbest
-            self.ax.plot(
-                self.pbest.coords[0], self.pbest.coords[1], "r.", markersize=10
+        # 绘制Pbest
+        self.ax.plot(self.pbest.coords[0], self.pbest.coords[1], "r.", markersize=10)
+
+        # 绘制虚线圆
+        from matplotlib.patches import Circle
+
+        self.ax.add_patch(
+            Circle(
+                (self.pbest.coords[0], self.pbest.coords[1]),
+                self.search_radius,
+                edgecolor="b",
+                linestyle="--",
+                fill=False,
             )
+        )
 
-            # 绘制虚线圆
-            from matplotlib.patches import Circle
-
-            self.ax.add_patch(
-                Circle(
-                    (self.pbest.coords[0], self.pbest.coords[1]),
-                    self.search_radius,
-                    edgecolor="b",
-                    linestyle="--",
-                    fill=False,
-                )
-            )
-
-            # 绘制候选节点
-            for node_elem in self.node_candidates:
-                ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
-            # 绘制候选阵面
-            for front in self.front_candidates:
-                front.draw_front("y-", ax)
+        # 绘制候选节点
+        for node_elem in self.node_candidates:
+            ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
+        # 绘制候选阵面
+        for front in self.front_candidates:
+            front.draw_front("y-", ax)
 
     def generate_elements(self):
         while self.front_list:
