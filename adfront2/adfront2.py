@@ -140,11 +140,11 @@ class Adfront2:
 
             self.show_progress()
 
-        self.construct_unstructured_grid()
+        self.construct_unstr_grid()
 
         return self.unstr_grid
 
-    def construct_unstructured_grid(self):
+    def construct_unstr_grid(self):
         self.unstr_grid = Unstructured_Grid(
             self.cell_container, self.node_coords, self.boundary_nodes
         )

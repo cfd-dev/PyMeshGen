@@ -95,7 +95,7 @@ def is_left2d(p1, p2, p3):
     return cross_product > 0
 
 
-# 辅助函数：判断四边形是否为凸
+# 判断四边形是否为凸
 def is_convex(a, b, c, d, node_coords):
     ab = np.array(node_coords[b]) - np.array(node_coords[a])
     ac = np.array(node_coords[c]) - np.array(node_coords[a])
@@ -248,12 +248,14 @@ class NodeElementALM(NodeElement):  # 添加父类继承
     def __init__(self, coords, idx, bc_type=None, convex_flag=False, concav_flag=False):
         super().__init__(coords, idx, bc_type)  # 调用父类构造函数
         self.node2front = []  # 节点关联的阵面列表
-        self.marching_direction = None  # 节点推进方向
+        self.node2node = []  # 节点关联的节点列表
+        self.marching_direction = []  # 节点推进方向
+        self.marching_distance = 0.0  # 节点处的推进距离
         self.angle = 0.0  # 节点的角度
         self.convex_flag = False
         self.concav_flag = False
         self.num_multi_direction = 1  # 节点处的多方向数量
-        self.local_size_factor = 1.0  # 节点处的局部尺寸因子
+        self.local_step_factor = 1.0  # 节点处的局部步长因子
 
     @classmethod
     def from_existing_node(cls, node_elem):
@@ -331,7 +333,13 @@ class Triangle:
 
         self.idx = idx
         # 生成几何级哈希
-        coord_hash = hash((tuple(self.p1), tuple(self.p2), tuple(self.p3)))
+        coord_hash = hash(
+            (
+                tuple(round(self.p1, 6)),
+                tuple(round(self.p2, 6)),
+                tuple(round(self.p3, 6)),
+            )
+        )
         # 生成逻辑级哈希
         id_hash = hash(tuple(sorted(self.node_ids)))
         # 组合哈希
@@ -407,6 +415,128 @@ class Triangle:
             return True
 
         return False
+
+
+def quadrilateral_area(p1, p2, p3, p4):
+    """使用鞋带公式计算任意简单四边形面积（顶点需按顺序排列）"""
+    # 将顶点坐标转换为numpy数组并按顺序排列
+    points = np.array([p1, p2, p3, p4])
+
+    # 鞋带公式计算面积
+    x = points[:, 0]
+    y = points[:, 1]
+    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+
+def is_valid_quadrilateral(p1, p2, p3, p4):
+    """检查四边形是否非退化（面积>阈值）"""
+    area = quadrilateral_area(p1, p2, p3, p4)
+    return area > 1e-10
+
+
+def quadrilateral_quality(p1, p2, p3, p4):
+    """计算四边形质量（基于子三角形质量的最小组合）"""
+    # 检查四边形有效性
+    if not is_valid_quadrilateral(p1, p2, p3, p4):
+        return 0.0
+
+    # 凸性检查（使用现有is_convex函数适配）
+    if not is_convex([0, 1, 2, 3], [p1, p2, p3, p4], lambda i: [p1, p2, p3, p4][i]):
+        return 0.0
+
+    # 计算对角线交点
+    seg1 = LineSegment(p1, p3)
+    seg2 = LineSegment(p2, p4)
+    if not seg1.is_intersect(seg2):
+        return 0.0
+
+    # 获取交点坐标（新增交点计算逻辑）
+    def line_intersection(line1, line2):
+        # 实现线段交点计算
+        x1, y1 = line1.p1
+        x2, y2 = line1.p2
+        x3, y3 = line2.p1
+        x4, y4 = line2.p2
+
+        denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+        if denom == 0:
+            return None
+        u = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+        x = x1 + u * (x2 - x1)
+        y = y1 + u * (y2 - y1)
+        return (x, y)
+
+    po = line_intersection(seg1, seg2)
+
+    try:
+        # 计算四个子三角形质量
+        q1 = triangle_quality(p1, p2, po)
+        q2 = triangle_quality(p2, p3, po)
+        q3 = triangle_quality(p3, p4, po)
+        q4 = triangle_quality(p4, p1, po)
+    except ValueError:
+        return 0.0
+
+    # 组合质量指标
+    tmp = sorted([q1, q2, q3, q4])
+    if tmp[-1] == 0:
+        return 0.0
+    quality = (tmp[0] * tmp[1]) / (tmp[2] * tmp[3])
+
+    # 异常检测（保持与triangle_quality一致）
+    if isnan(quality) or isinf(quality):
+        raise ValueError(f"四边形质量异常：{quality}，顶点：{p1}, {p2}, {p3}, {p4}")
+
+    return quality
+
+
+class Quadrilateral:
+    def __init__(self, p1, p2, p3, p4, idx=None, node_ids=None):
+        if (
+            isinstance(p1, NodeElement)
+            and isinstance(p2, NodeElement)
+            and isinstance(p3, NodeElement)
+            and isinstance(p4, NodeElement)
+        ):
+            self.p1 = p1.coords
+            self.p2 = p2.coords
+            self.p3 = p3.coords
+            self.p4 = p4.coords
+            self.node_ids = (p1.idx, p2.idx, p3.idx, p4.idx)
+        else:
+            self.p1 = p1
+            self.p2 = p2
+            self.p3 = p3
+            self.p4 = p4
+            self.node_ids = node_ids
+
+        self.idx = idx
+        # 生成几何级哈希
+        coord_hash = hash(
+            (
+                tuple(round(self.p1, 6)),
+                tuple(round(self.p2, 6)),
+                tuple(round(self.p3, 6)),
+                tuple(round(self.p4, 6)),
+            )
+        )
+        # 生成逻辑级哈希
+        id_hash = hash(tuple(sorted(self.node_ids)))
+        # 组合哈希
+        self.hash = hash((coord_hash, id_hash))
+
+        self.area = None
+        self.quality = None
+        self.bbox = [  # (min_x, min_y, max_x, max_y)
+            min(self.p1[0], self.p2[0], self.p3[0], self.p4[0]),
+            min(self.p1[1], self.p2[1], self.p3[1], self.p4[1]),
+            max(self.p1[0], self.p2[0], self.p3[0], self.p4[0]),
+            max(self.p1[1], self.p2[1], self.p3[1], self.p4[1]),
+        ]
+
+    def init_metrics(self):
+        self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+        self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
 
 
 class Unstructured_Grid:

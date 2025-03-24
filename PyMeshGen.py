@@ -31,7 +31,7 @@ sizing_system = meshsize.QuadtreeSizing(
 
 # 推进生成边界层网格
 part_params = adlm.PartMeshParameters("farfield", 2.0, True, 0.5)
-adlayers = adlm.Adlayers2(part_params, front_heap)
+adlayers = adlm.Adlayers2([part_params], front_heap, ax)
 unstr_grid = adlayers.generate_elements()
 # adlayers.visualize_adlayers()
 
