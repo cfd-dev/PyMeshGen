@@ -13,9 +13,10 @@ import meshsize
 import mesh_visualization as viz
 import adfront2 as adfr
 from optimize import edge_swap, laplacian_smooth
+import adlayers2 as adlm
 
 # 读入边界网格
-file_path = "./neural/sample_grids/naca0012-tri-coarse.cas"
+file_path = "./neural/sample_grids/tri.cas"
 grid = rc.parse_fluent_msh(file_path)
 fig, ax = viz.visualize_mesh_2d(grid, BoundaryOnly=True)
 
@@ -27,6 +28,11 @@ sizing_system = meshsize.QuadtreeSizing(
     initial_front=front_heap, max_size=4, resolution=0.1, decay=1.2, fig=fig, ax=ax
 )
 # sizing_system.draw_bgmesh()
+
+# 推进生成边界层网格
+# adlayers = adlm.AdLayers(front_heap, sizing_system, ax=ax)
+# unstr_grid = adlayers.generate_elements()
+# adlayers.visualize_adlayers()
 
 # 推进生成网格
 adfront2 = adfr.Adfront2(front_heap, sizing_system, ax=ax)

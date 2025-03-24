@@ -48,29 +48,29 @@ class Adfront2:
         self.initialize()
 
     def initialize(self):
-        """初始化hash列表、阵面节点编号和优先级"""
+        """初始化hash列表、坐标、边界点和优先级"""
         self.boundary_nodes = set()
         self.node_hash_list = set()
         self.cell_hash_list = set()
         self.cell_container = []
         self.node_coords = []
 
-        hash_idx_map = {}  # 节点hash值到节点索引的映射
+        # hash_idx_map = {}  # 节点hash值到节点索引的映射
         node_count = 0
         for front in self.front_list:
-            front.node_ids = []
+            # front.node_ids = []
             for node_elem in front.node_elems:
                 if node_elem.hash not in self.node_hash_list:
-                    node_elem.idx = node_count
-                    hash_idx_map[node_elem.hash] = node_elem.idx
+                    # node_elem.idx = node_count
+                    # hash_idx_map[node_elem.hash] = node_elem.idx
                     self.node_hash_list.add(node_elem.hash)
                     self.node_coords.append(node_elem.coords)
                     self.boundary_nodes.add(node_elem)
                     node_count += 1
-                else:
-                    node_elem.idx = hash_idx_map[node_elem.hash]
+                # else:
+                # node_elem.idx = hash_idx_map[node_elem.hash]
 
-                front.node_ids.append(node_elem.idx)
+                # front.node_ids.append(node_elem.idx)
                 front.priority = True
 
         self.num_nodes = node_count

@@ -64,7 +64,7 @@ class Front:
         ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
 
 
-def construct_initial_front(grid):
+def process_initial_front(grid):
     """从网格数据中构造初始阵面，并按长度排序"""
     heap = []
     processed_edges = set()  # 新增已处理边记录
@@ -114,6 +114,30 @@ def construct_initial_front(grid):
             front_count += 1
 
     return heap
+
+
+def construct_initial_front(grid):
+    """从网格数据中构造初始阵面，并按长度排序"""
+    front_heap = process_initial_front(grid)
+
+    # 重新计算节点索引,对初始阵面的节点重新编号
+    node_count = 0
+    node_hash_list = set()
+    hash_idx_map = {}  # 节点hash值到节点索引的映射
+    for front in front_heap:
+        front.node_ids = []
+        for node_elem in front.node_elems:
+            if node_elem.hash not in node_hash_list:
+                node_elem.idx = node_count
+                hash_idx_map[node_elem.hash] = node_elem.idx
+                node_hash_list.add(node_elem.hash)
+                node_count += 1
+            else:
+                node_elem.idx = hash_idx_map[node_elem.hash]
+
+            front.node_ids.append(node_elem.idx)
+
+    return front_heap
 
 
 # 使用示例
