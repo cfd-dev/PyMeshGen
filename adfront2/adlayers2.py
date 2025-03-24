@@ -40,6 +40,8 @@ class Adlayers2:
         self.part_params = part_params  # 层推进部件参数
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
+        self.front_node_list = []  # 当前阵面节点列表
+        self.relax_factor = 0.5  # 节点坐标松弛因子
 
     def generate_elements(self):
         """生成边界层网格"""
@@ -48,26 +50,83 @@ class Adlayers2:
 
             self.prepare_geometry_info()
 
-            # self.compute_point_normals()
+            self.compute_point_normals()
 
-            # self.advancing_fronts()
+            self.advancing_fronts()
 
             # self.update_cells()
 
         return unstr_grid
 
+    def advancing_fronts(self):
+        # for part in self.part_params:
+        pass
+
+    def compute_point_normals(self):
+        """计算节点推进方向"""
+        for node in self.front_node_list:
+            if len(node.node2front) < 2:
+                continue
+
+            front1, front2 = node.node2front[:2]
+            normal1 = np.array(front1.normal)
+            normal2 = np.array(front2.normal)
+
+            # 计算推进方向（法向量平均）
+            avg_direction = (normal1 + normal2) / 2.0
+            norm = np.linalg.norm(avg_direction)
+            if norm > 1e-6:
+                node_elem.marching_direction = tuple(avg_direction / norm)
+            else:
+                node_elem.marching_direction = tuple(normal1)
+
+            # 加权光滑
+            w1 = self.relax_factor
+            wf1 = (1 - self.relax_factor) / 2
+            wf2 = 1 - w1 - wf1
+
+            iterations = 0
+            smooth = True
+            while smooth:
+                iterations += 1
+                old_direction = node.marching_direction
+
+                node.marching_direction = tuple(
+                    w1 * old_direction + wf1 * normal1 + +wf2 * normal2
+                ) / np.linalg.norm(w1 * old_direction + wf1 * normal1 + +wf2 * normal2)
+
+                # 计算法向与相邻面的夹角及其与平均夹角的偏差df
+                angle1 = np.arccos(np.dot(node.marching_direction, front1.normal))
+                angle2 = np.arccos(np.dot(node.marching_direction, front2.normal))
+                avg_angle = (angle1 + angle2) / 2
+
+                # 计算夹角偏差
+                df1 = abs(angle1 - avg_angle)
+                df2 = abs(angle2 - avg_angle)
+
+                wf1_bar = wf1 * (1 - df1 / avg_angle)
+                wf2_bar = wf2 * (1 - df2 / avg_angle)
+                wf1 = wf1_bar + wf1 * (1 - (wf1_bar + wf2_bar))
+                wf2 = wf2_bar + wf2 * (1 - (wf1_bar + wf2_bar))
+
+                if (
+                    np.linalg.norm(np.array(node.marching_direction) - old_direction)
+                    < 1e-3
+                ):
+                    smooth = False
+
     def prepare_geometry_info(self):
         """准备几何信息"""
         self.compute_front_geometry()
 
-        self.mark_special_points()
+        self.compute_point_normals()
 
         self.match_parts_with_fronts()
 
     def compute_front_geometry(self):
         """计算阵面几何信息"""
         # 计算node2front
-        node_list = []
+        self.front_node_list = []
         processed_nodes = set()
         hash_idx_map = {}  # 节点hash值到节点索引的映射
         for front in self.initial_front:
@@ -79,14 +138,14 @@ class Adlayers2:
                     front.node_elems[i] = NodeElementALM.from_existing_node(node_elem)
                     processed_nodes.add(node_elem.hash)
                     hash_idx_map[node_elem.hash] = front.node_elems[i]
-                    node_list.append(front.node_elems[i])
+                    self.front_node_list.append(front.node_elems[i])
                 else:
                     front.node_elems[i] = hash_idx_map[node_elem.hash]
 
                 front.node_elems[i].node2front.append(front)
 
-        # 计算阵面间夹角
-        for node in node_list:
+        # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
+        for node in self.front_node_list:
             if len(node.node2front) < 2:
                 continue
 
@@ -98,9 +157,6 @@ class Adlayers2:
                 np.linalg.norm(normal1) * np.linalg.norm(normal2)
             )
             node_elem.angle = np.degrees(np.arccos(np.clip(cos_theta, -1.0, 1.0)))
-
-            # THETA1 = 45
-            # THETA2 = 180
 
             # 判断凹凸性（通过叉积符号）
             # 判断连接顺序：front2在前，front1在后，则交换normal顺序，便于叉乘
@@ -123,21 +179,12 @@ class Adlayers2:
                 node_elem.convex_flag = False
                 node_elem.concav_flag = False
 
-            # 计算推进方向（法向量平均）
-            avg_direction = (normal1 + normal2) / 2.0
-            norm = np.linalg.norm(avg_direction)
-            if norm > 1e-6:
-                node_elem.marching_direction = tuple(avg_direction / norm)
-            else:
-                node_elem.marching_direction = tuple(normal1)
-
             # 计算多方向推进数量和局部步长因子
-
             if self.multi_direction and node_elem.convex_flag:
                 node_elem.num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )
-                delta = thetam / (num_multi_direction - 1)
+                delta = np.radians(node_elem.angle) / (num_multi_direction - 1)
                 initial_vectors = normal1
 
                 for i in range(node_elem.num_multi_direction):
@@ -155,30 +202,26 @@ class Adlayers2:
             else:
                 node_elem.num_multi_direction = 1
                 node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
-                kkk = 1
 
-            # if self.multi_direction:
-            #     if node_elem.convex_flag:
-            #         node_elem.num_multi_direction = (
-            #             int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
-            #         )
-            #         node_elem.local_step_factor = 1.0
-            #     elif node_elem.concav_flag:
-            #         node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
-            # else:
-            #     node_elem.num_multi_direction = 1
-            #     node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
+        kkk = 1
 
-    def mark_special_points(self):
-        """标记特殊节点，包括凹凸点"""
-        pass
+        # if self.multi_direction:
+        #     if node_elem.convex_flag:
+        #         node_elem.num_multi_direction = (
+        #             int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
+        #         )
+        #         node_elem.local_step_factor = 1.0
+        #     elif node_elem.concav_flag:
+        #         node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
+        # else:
+        #     node_elem.num_multi_direction = 1
+        #     node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
 
     def match_parts_with_fronts(self):
         """匹配部件和阵面堆"""
         for front in self.initial_front_heap:
-            bc_name = front.bc_name
             for part in self.part_params:
-                if part.part_name == bc_name:
+                if part.part_name == front.bc_name:
                     part.front_heap.append(front)
                     break
 
