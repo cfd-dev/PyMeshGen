@@ -30,8 +30,9 @@ sizing_system = meshsize.QuadtreeSizing(
 # sizing_system.draw_bgmesh()
 
 # 推进生成边界层网格
-# adlayers = adlm.AdLayers(front_heap, sizing_system, ax=ax)
-# unstr_grid = adlayers.generate_elements()
+part_params = adlm.PartMeshParameters("farfield", 2.0, True, 0.5)
+adlayers = adlm.Adlayers2(part_params, front_heap)
+unstr_grid = adlayers.generate_elements()
 # adlayers.visualize_adlayers()
 
 # 推进生成网格

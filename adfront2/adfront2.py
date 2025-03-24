@@ -126,7 +126,7 @@ class Adfront2:
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
-            spacing = self.sizing_system.spacing_at(self.base_front.front_center)
+            spacing = self.sizing_system.spacing_at(self.base_front.center)
 
             self.add_new_point(spacing)
 
@@ -364,7 +364,7 @@ class Adfront2:
         normal_vec = geo_info.normal_vector2d(self.base_front)
 
         # 分量式计算向量相加
-        fc = self.base_front.front_center
+        fc = self.base_front.center
         if self.mesh_type == 1:
             pbest = [
                 fc[0] + normal_vec[0] * spacing,

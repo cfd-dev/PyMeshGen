@@ -294,7 +294,7 @@ class QuadtreeSizing:
 
         # 遍历所有表面节点
         for front in self.initial_front:
-            face_center = front.front_center
+            face_center = front.center
             target_size = front.length
 
             # 从背景网格根节点开始定位
@@ -450,7 +450,7 @@ class QuadtreeSizing:
             y_center = (node.bounds[1] + node.bounds[3]) / 2
             # 遍历所有表面节点
             for front in self.initial_front:
-                face_center = front.front_center
+                face_center = front.center
                 target_size = front.length
 
                 # 计算子节点中心到表面节点的距离

@@ -20,19 +20,28 @@ class Front:
         self.bc_name = bc_name  # 边界名称属性
 
         self.priority = False  # 优先推进标记
-        self.front_center = None  # 阵面中心坐标
+        self.center = None  # 阵面中心坐标
         self.length = None  # 阵面长度
+        self.direction = None  # 单位方向向量
+        self.normal = None  # 单位法向量
         self.bbox = None  # 边界框
         self.hash = None  # 阵面hash值
         self.node_ids = (node_elem1.idx, node_elem2.idx)  # 节点元素列表
         # self.node_pair = [round(self.node_elems[i].coords, 6) for i in range(2)]
 
-        # 计算长度
         node1 = node_elem1.coords
         node2 = node_elem2.coords
-        self.length = calculate_distance(node1, node2)
-        self.front_center = [(a + b) / 2 for a, b in zip(node1, node2)]
-        self.front_center = [round(coord, 6) for coord in self.front_center]
+        self.length = calculate_distance(node1, node2)  # 长度
+        self.center = [(a + b) / 2 for a, b in zip(node1, node2)]  # 中心坐标
+
+        self.direction = [
+            (b - a) / self.length for a, b in zip(node1, node2)
+        ]  # 单位方向向量
+
+        self.normal = [
+            -self.direction[1],
+            self.direction[0],
+        ]  # 单位法向量
 
         # 计算边界框
         min_x = min(node1[0], node2[0])  # 最小x坐标
@@ -43,7 +52,7 @@ class Front:
         self.bbox = (min_x, min_y, max_x, max_y)
 
         length_hash = hash(round(self.length, 3))
-        center_hash = hash(tuple(self.front_center))
+        center_hash = hash(tuple(round(c, 6) for c in self.center))
         self.hash = hash((center_hash, length_hash))
 
     def __lt__(self, other):

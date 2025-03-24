@@ -243,6 +243,28 @@ class NodeElement:
         return False
 
 
+# 继承自NodeElement，用于存储额外的信息
+class NodeElementALM(NodeElement):  # 添加父类继承
+    def __init__(self, coords, idx, bc_type=None, convex_flag=False, concav_flag=False):
+        super().__init__(coords, idx, bc_type)  # 调用父类构造函数
+        self.node2front = []  # 节点关联的阵面列表
+        self.marching_direction = None  # 节点推进方向
+        self.angle = 0.0  # 节点的角度
+        self.convex_flag = False
+        self.concav_flag = False
+        self.num_multi_direction = 1  # 节点处的多方向数量
+        self.local_size_factor = 1.0  # 节点处的局部尺寸因子
+
+    @classmethod
+    def from_existing_node(cls, node_elem):
+        new_node = cls(
+            node_elem.coords,
+            node_elem.idx,
+            bc_type=node_elem.bc_type,
+        )
+        return new_node
+
+
 class LineSegment:
     def __init__(self, p1, p2):
         if isinstance(p1, NodeElement) and isinstance(p2, NodeElement):
