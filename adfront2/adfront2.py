@@ -19,7 +19,7 @@ class Adfront2:
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
         # self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
-        self.plot_front = False  # 是否实时绘图
+        self.plot_front = True  # 是否实时绘图
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象

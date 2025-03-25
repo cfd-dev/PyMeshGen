@@ -29,10 +29,12 @@ sizing_system = meshsize.QuadtreeSizing(
 )
 # sizing_system.draw_bgmesh()
 
+global_unstr_grid = []
 # 推进生成边界层网格
-part_params = adlm.PartMeshParameters("farfield", 2.0, True, 0.5)
+part_params = adlm.PartMeshParameters("farfield", 2.0, True, 0.1, 5, 5)
 adlayers = adlm.Adlayers2([part_params], front_heap, ax)
-unstr_grid = adlayers.generate_elements()
+unstr_grid, front_heap = adlayers.generate_elements()
+global_unstr_grid.append(unstr_grid)
 # adlayers.visualize_adlayers()
 
 # 推进生成网格
@@ -46,8 +48,13 @@ unstr_grid = edge_swap(unstr_grid)
 
 unstr_grid = laplacian_smooth(unstr_grid, num_iter=3)
 unstr_grid.visualize_unstr_grid_2d()
+global_unstr_grid.append(unstr_grid)
+
+# 合并各向同性网格和边界层网格
+global_unstr_grid.merge()
+global_unstr_grid.visualize_unstr_grid_2d()
 
 # 输出网格文件
-unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+global_unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
 
 input("Press Enter to continue...")

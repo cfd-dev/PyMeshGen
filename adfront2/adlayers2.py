@@ -18,6 +18,8 @@ class PartMeshParameters:
         max_size=1.0,
         PRISM_SWITCH=False,
         first_height=0.1,
+        max_layers=3,
+        full_layers=0,
         growth_rate=1.2,
         growth_method="geometric",
     ):
@@ -25,26 +27,28 @@ class PartMeshParameters:
         self.max_size = max_size  # 最大网格尺寸
         self.PRISM_SWITCH = PRISM_SWITCH  # 是否生成边界层网格
         self.first_height = first_height  # 第一层网格高度
+        self.max_layers = max_layers  # 最大推进层数
+        self.full_layers = full_layers  # 完整推进层数
         self.growth_rate = growth_rate  # 网格高度增长比例
         self.growth_method = growth_method  # 网格高度增长方法
-        self.front_heap = []  # 阵面堆
+        self.front_list = []  # 阵面列表
 
 
 class Adlayers2:
-    def __init__(self, part_params, initial_front, ax=None):
+    def __init__(self, part_params, boundary_front, ax=None):
         self.ax = ax
         # 层推进全局参数
         self.max_layers = 100  # 最大推进层数
         self.full_layers = 0  # 完整推进层数
         self.multi_direction = False  # 是否多方向推进
 
-        self.initial_front = initial_front  # 初始阵面堆
+        self.front_list = boundary_front  # 初始阵面
         self.part_params = part_params  # 层推进部件参数
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
         self.relax_factor = 0.5  # 节点坐标松弛因子
-        self.smooth_iterions = 500  # laplacian光滑次数
+        self.smooth_iterions = 10  # laplacian光滑次数
 
         self.ilayer = 0  # 当前推进层数
         self.num_nodes = 0  # 节点数量
@@ -54,34 +58,53 @@ class Adlayers2:
         self.unstr_grid = None  # 非结构化网格
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
+        self.all_boundary_fronts = []  # 所有边界阵面
 
     def generate_elements(self):
         """生成边界层网格"""
-        for self.ilayer in range(self.max_layers):
+        self.initialize_nodes()
+        self.match_parts_with_fronts()
 
-            print("第{}层推进...".format(self.ilayer + 1))
+        for part in self.part_params:
+            if not part.PRISM_SWITCH:
+                continue
 
-            self.prepare_geometry_info()
+            self.max_layers = part.max_layers
+            self.full_layers = part.full_layers
+            for self.ilayer in range(self.max_layers):
 
-            self.visualize_point_normals()
+                print("第{}层推进...".format(self.ilayer + 1))
 
-            self.calculate_marching_distance()
+                self.front_list = part.front_list
 
-            self.advancing_fronts()
+                self.prepare_geometry_info()
 
-            self.show_progress()
+                # self.visualize_point_normals()
 
-            self.ilayer += 1
+                self.calculate_marching_distance()
+
+                self.advancing_fronts()
+
+                self.show_progress()
+
+                self.ilayer += 1
 
         self.construct_unstr_grid()
 
-        return unstr_grid
+        return self.unstr_grid, self.all_boundary_fronts
 
     def construct_unstr_grid(self):
         """构造非结构化网格"""
         self.unstr_grid = Unstructured_Grid(
             self.cell_container, self.node_coords, self.boundary_nodes
         )
+
+        # 汇总所有边界阵面
+        self.all_boundary_fronts = []
+        for part in self.part_params:
+            if not part.PRISM_SWITCH:
+                continue
+            self.all_boundary_fronts.extend(part.front_list)
 
     def show_progress(self):
         """显示推进进度"""
@@ -103,7 +126,7 @@ class Adlayers2:
             new_prism_cap_list = []
 
             # 逐个阵面进行推进
-            for front in part.front_heap:
+            for front in part.front_list:
                 if front.bc_type == "interior":
                     continue
 
@@ -151,7 +174,7 @@ class Adlayers2:
                 )
 
                 # 检查新阵面是否已经存在于堆中
-                # exists_alm = any(front.hash == alm_front.hash for front in part.front_heap)
+                # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
                 new_prism_cap_list.append(alm_front)
                 if self.ax and self.debug_switch:
                     alm_front.draw_front("g-", self.ax)
@@ -198,11 +221,11 @@ class Adlayers2:
                 self.cell_container.append(new_cell)
                 self.num_cells += 1
 
-            part.front_heap = []
+            part.front_list = []
             for front in new_prism_cap_list:
-                part.front_heap.append(front)
+                part.front_list.append(front)
             for front in new_interior_list:
-                part.front_heap.append(front)
+                part.front_list.append(front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
@@ -218,7 +241,7 @@ class Adlayers2:
                     part.first_height * part.growth_rate**self.ilayer
                 )
 
-            for front in part.front_heap:
+            for front in part.front_list:
                 # 计算节点推进距离
                 for node in front.node_elems:
                     node.marching_distance = global_marching_distance
@@ -346,7 +369,17 @@ class Adlayers2:
 
         self.laplacian_smooth_point_normals()
 
-        self.match_parts_with_fronts()
+    def initialize_nodes(self):
+        """初始化节点"""
+        processed_nodes = set()
+        for front in self.front_list:
+            for node_elem in front.node_elems:
+                if node_elem.hash not in processed_nodes:
+                    self.boundary_nodes.append(node_elem)
+                    self.node_coords.append(node_elem.coords)
+                    processed_nodes.add(node_elem.hash)
+
+        self.num_nodes = len(self.node_coords)
 
     def compute_front_geometry(self):
         """计算阵面几何信息"""
@@ -354,28 +387,28 @@ class Adlayers2:
         self.front_node_list = []
         processed_nodes = set()
         hash_idx_map = {}  # 节点hash值到节点索引的映射
-        for front in self.initial_front:
+        for front in self.front_list:
             for i, node_elem in enumerate(front.node_elems):
-                if (
-                    not isinstance(node_elem, NodeElementALM)
-                    and node_elem.hash not in processed_nodes
-                ):
-                    front.node_elems[i] = NodeElementALM.from_existing_node(node_elem)
+                if node_elem.hash not in processed_nodes:
+                    if not isinstance(node_elem, NodeElementALM):
+                        # 将所有节点均转换为NodeElementALM类型
+                        front.node_elems[i] = NodeElementALM.from_existing_node(
+                            node_elem
+                        )
+
                     processed_nodes.add(node_elem.hash)
                     hash_idx_map[node_elem.hash] = front.node_elems[i]
-                    self.front_node_list.append(front.node_elems[i])
 
-                    self.node_coords.append(node_elem.coords)
-                    self.boundary_nodes.append(node_elem)  # 边界节点
+                    # 为方便对节点进行遍历，收集所有节点
+                    self.front_node_list.append(front.node_elems[i])
                 else:
+                    # 处理过的节点，直接取hash值对应的NodeElementALM对象
                     front.node_elems[i] = hash_idx_map[node_elem.hash]
 
                 front.node_elems[i].node2front.append(front)
 
-        self.num_nodes = len(self.front_node_list)
-
         # 计算node2node
-        for front in self.initial_front:
+        for front in self.front_list:
             nodes = front.node_elems
             num_nodes = len(nodes)
             for i, node in enumerate(nodes):
@@ -478,9 +511,12 @@ class Adlayers2:
         #     node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
 
     def match_parts_with_fronts(self):
-        """匹配部件和阵面堆"""
-        for front in self.initial_front:
+        """匹配部件和初始阵面"""
+        for front in self.front_list:
             for part in self.part_params:
                 if part.name == front.part_name:
-                    part.front_heap.append(front)
+                    part.front_list.append(front)
                     break
+
+        # 清空adlyaers对象中的front_list，后续计算均以part_params中的front_list为准
+        self.front_list = []
