@@ -234,8 +234,9 @@ class Adlayers2:
                 df1 = abs(angle1 - avg_angle)
                 df2 = abs(angle2 - avg_angle)
 
-                wf1_bar = wf1 * (1 - df1 / avg_angle)
-                wf2_bar = wf2 * (1 - df2 / avg_angle)
+                epsilon = 1e-10
+                wf1_bar = wf1 * (1 - df1 / (avg_angle + epsilon))
+                wf2_bar = wf2 * (1 - df2 / (avg_angle + epsilon))
                 wf1 = wf1_bar + wf1 * (1 - (wf1_bar + wf2_bar))
                 wf2 = wf2_bar + wf2 * (1 - (wf1_bar + wf2_bar))
 
