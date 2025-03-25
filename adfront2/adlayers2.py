@@ -54,7 +54,7 @@ class Adlayers2:
         self.num_nodes = 0  # 节点数量
         self.num_cells = 0  # 单元数量
         self.cell_container = []  # 单元容器
-        self.debug_switch = True  # 是否调试模式
+        self.debug_level = 0  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
         self.unstr_grid = None  # 非结构化网格
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
@@ -63,6 +63,7 @@ class Adlayers2:
     def generate_elements(self):
         """生成边界层网格"""
         self.initialize_nodes()
+
         self.match_parts_with_fronts()
 
         for part in self.part_params:
@@ -79,7 +80,7 @@ class Adlayers2:
 
                 self.prepare_geometry_info()
 
-                # self.visualize_point_normals()
+                self.visualize_point_normals()
 
                 self.calculate_marching_distance()
 
@@ -112,9 +113,11 @@ class Adlayers2:
         print(f"当前节点数量：{self.num_nodes}")
         print(f"当前单元数量：{self.num_cells} \n")
 
-        if self.debug_switch:
+        if self.debug_level >= 1:
             self.construct_unstr_grid()
-            self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
+            self.unstr_grid.save_to_vtkfile(
+                f"./out/debug_mesh_layer{self.ilayer + 1}.vtk"
+            )
 
     def advancing_fronts(self):
         # 逐个部件进行推进
@@ -176,7 +179,7 @@ class Adlayers2:
                 # 检查新阵面是否已经存在于堆中
                 # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
                 new_prism_cap_list.append(alm_front)
-                if self.ax and self.debug_switch:
+                if self.ax and self.debug_level >= 1:
                     alm_front.draw_front("g-", self.ax)
 
                 exists_new1 = any(
@@ -188,7 +191,7 @@ class Adlayers2:
 
                 if not exists_new1:
                     new_interior_list.append(new_front1)
-                    if self.ax and self.debug_switch:
+                    if self.ax and self.debug_level >= 1:
                         new_front1.draw_front("g-", self.ax)
                 else:
                     # 移除相同位置的旧阵面
@@ -200,7 +203,7 @@ class Adlayers2:
 
                 if not exists_new2:
                     new_interior_list.append(new_front2)
-                    if self.ax and self.debug_switch:
+                    if self.ax and self.debug_level >= 1:
                         new_front2.draw_front("g-", self.ax)
                 else:
                     new_interior_list = [
@@ -261,6 +264,9 @@ class Adlayers2:
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
+        if self.ax is None or self.debug_level < 1:
+            return
+
         for node in self.front_node_list:
             # 绘制front_node_list
             self.ax.plot(
@@ -339,7 +345,7 @@ class Adlayers2:
                 ):
                     smooth = False
 
-    def laplacian_smooth_point_normals(self):
+    def laplacian_smooth_normals(self):
         """拉普拉斯平滑节点推进方向"""
         for node_elem in self.front_node_list:
             num_neighbors = len(node_elem.node2node)
@@ -367,7 +373,7 @@ class Adlayers2:
 
         self.compute_point_normals()
 
-        self.laplacian_smooth_point_normals()
+        self.laplacian_smooth_normals()
 
     def initialize_nodes(self):
         """初始化节点"""

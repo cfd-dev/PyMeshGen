@@ -18,8 +18,7 @@ class Adfront2:
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
-        # self.quality_criteria = 0.5  # 单元质量标准，值越大，要求越高
-        self.plot_front = True  # 是否实时绘图
+        self.debug_level = 0  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象
@@ -31,7 +30,6 @@ class Adfront2:
         self.front_candidates = None  # 候选阵面列表
         self.cell_candidates = None  # 候选单元列表
         self.search_radius = None  # 搜索半径
-        self.debug_switch = False  # 调试模式开关
 
         self.num_cells = 0  # 单元计数器
         self.num_nodes = 0  # 节点计数器
@@ -55,28 +53,19 @@ class Adfront2:
         self.cell_container = []
 
         # 如果未传入已生成网格的节点坐标，则生成新的节点坐标
+        flag_given_node = True
         if self.node_coords is None:
-            self.node_coords = []
+            flag_given_node = False  # 未给定节点坐标
+            self.node_coords = []  # 准备初始化节点坐标
 
-        # hash_idx_map = {}  # 节点hash值到节点索引的映射
-        node_count = 0
         for front in self.front_list:
-            # front.node_ids = []
             for node_elem in front.node_elems:
+                front.priority = True  # 初始化优先级为True
                 if node_elem.hash not in self.node_hash_list:
-                    # node_elem.idx = node_count
-                    # hash_idx_map[node_elem.hash] = node_elem.idx
                     self.node_hash_list.add(node_elem.hash)
-                    if self.node_coords is None:
+                    self.boundary_nodes.add(node_elem)  # 添加边界节点
+                    if not flag_given_node:  # 如果未给定节点坐标，则添加节点坐标
                         self.node_coords.append(node_elem.coords)
-
-                    self.boundary_nodes.add(node_elem)
-                    node_count += 1
-                # else:
-                # node_elem.idx = hash_idx_map[node_elem.hash]
-
-                # front.node_ids.append(node_elem.idx)
-                front.priority = True
 
         self.num_nodes = len(self.node_coords)
 
@@ -90,42 +79,44 @@ class Adfront2:
         if not __debug__:
             return
 
-        if ax is None or self.plot_front is False:
+        if ax is None or self.debug_level < 1:
             return
 
         # if self.base_front.node_ids == (895, 738):
         #     self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
         #     kkk = 0
 
-        # 绘制基准阵面
-        self.base_front.draw_front("r-", self.ax)
-
-        # # 绘制节点编号
-        # for idx, (x, y) in enumerate(self.node_coords):
-        #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
-
-        # 绘制Pbest
-        self.ax.plot(self.pbest.coords[0], self.pbest.coords[1], "r.", markersize=10)
-
-        # 绘制虚线圆
-        from matplotlib.patches import Circle
-
-        self.ax.add_patch(
-            Circle(
-                (self.pbest.coords[0], self.pbest.coords[1]),
-                self.search_radius,
-                edgecolor="b",
-                linestyle="--",
-                fill=False,
+        if self.debug_level >= 1:
+            # 绘制基准阵面
+            self.base_front.draw_front("r-", self.ax)
+            # 绘制Pbest
+            self.ax.plot(
+                self.pbest.coords[0], self.pbest.coords[1], "r.", markersize=10
             )
-        )
+            # 绘制节点编号
+            # for idx, (x, y) in enumerate(self.node_coords):
+            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
 
-        # 绘制候选节点
-        for node_elem in self.node_candidates:
-            ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
-        # 绘制候选阵面
-        for front in self.front_candidates:
-            front.draw_front("y-", ax)
+        if self.debug_level >= 2:
+            # 绘制虚线圆
+            from matplotlib.patches import Circle
+
+            self.ax.add_patch(
+                Circle(
+                    (self.pbest.coords[0], self.pbest.coords[1]),
+                    self.search_radius,
+                    edgecolor="b",
+                    linestyle="--",
+                    fill=False,
+                )
+            )
+
+            # 绘制候选节点
+            for node_elem in self.node_candidates:
+                ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
+            # 绘制候选阵面
+            for front in self.front_candidates:
+                front.draw_front("y-", ax)
 
     def generate_elements(self):
         while self.front_list:
@@ -160,8 +151,11 @@ class Adfront2:
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")
 
-            if self.debug_switch:
-                self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
+            if self.debug_level >= 1:
+                self.construct_unstr_grid()
+                self.unstr_grid.save_to_vtkfile(
+                    f"./out/debug_mesh_cells{self.num_cells}.vtk"
+                )
 
     def update_cells(self):
         # 更新节点
@@ -200,7 +194,7 @@ class Adfront2:
 
             if not exists_new1:
                 heapq.heappush(self.front_list, new_front1)
-                if self.ax and self.plot_front:
+                if self.ax and self.debug_level >= 1:
                     new_front1.draw_front("g-", self.ax)
             else:
                 # 移除相同位置的旧阵面
@@ -211,7 +205,7 @@ class Adfront2:
 
             if not exists_new2:
                 heapq.heappush(self.front_list, new_front2)
-                if self.ax and self.plot_front:
+                if self.ax and self.debug_level >= 1:
                     new_front2.draw_front("g-", self.ax)
             else:
                 self.front_list = [
@@ -233,7 +227,7 @@ class Adfront2:
             self.num_cells += 1
         else:
             print(f"发现重复单元：{new_cell}")
-            self.debug_switch = True
+            self.debug_level = 1
 
     def select_point(self):
         # 存储带质量的候选节点元组 (质量, 节点)
