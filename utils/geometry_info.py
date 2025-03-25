@@ -335,9 +335,9 @@ class Triangle:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple(round(self.p1, 6)),
-                tuple(round(self.p2, 6)),
-                tuple(round(self.p3, 6)),
+                tuple([round(c, 6) for c in self.p1]),
+                tuple([round(c, 6) for c in self.p2]),
+                tuple([round(c, 6) for c in self.p3]),
             )
         )
         # 生成逻辑级哈希
@@ -514,10 +514,10 @@ class Quadrilateral:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple(round(self.p1, 6)),
-                tuple(round(self.p2, 6)),
-                tuple(round(self.p3, 6)),
-                tuple(round(self.p4, 6)),
+                tuple(round(c, 6) for c in self.p1),
+                tuple(round(c, 6) for c in self.p2),
+                tuple(round(c, 6) for c in self.p3),
+                tuple(round(c, 6) for c in self.p4),
             )
         )
         # 生成逻辑级哈希

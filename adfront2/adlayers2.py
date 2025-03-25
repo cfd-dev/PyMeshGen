@@ -4,7 +4,9 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
-from geometry_info import NodeElementALM, Quadrilateral, Unstructured_Grid
+sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
+from geometry_info import NodeElement, NodeElementALM, Quadrilateral, Unstructured_Grid
+from front2d import Front
 
 
 class PartMeshParameters:
@@ -93,7 +95,7 @@ class Adlayers2:
                 continue
 
             for front in part.front_heap:
-                new_cell_nodes = front.node_elems
+                new_cell_nodes = front.node_elems.copy()
 
                 for node_elem in front.node_elems:
                     new_node = (
@@ -102,11 +104,11 @@ class Adlayers2:
                         * node_elem.marching_distance
                     )
 
-                    self.node_coords.append(tuple(new_node))
+                    self.node_coords.append(new_node.tolist())
 
                     # TODO: 相交判断
                     new_node_elem = NodeElement(
-                        coords=tuple(new_node),
+                        coords=new_node.tolist(),
                         idx=self.num_nodes,
                         bc_type="interiror",
                     )
@@ -114,6 +116,13 @@ class Adlayers2:
                     new_cell_nodes.append(new_node_elem)
 
                     self.num_nodes += 1
+
+                temp_front = Front(new_cell_nodes[0], new_cell_nodes[2])
+                temp_front.draw_front("r-", self.ax)
+                temp_front = Front(new_cell_nodes[1], new_cell_nodes[3])
+                temp_front.draw_front("r-", self.ax)
+                temp_front = Front(new_cell_nodes[2], new_cell_nodes[3])
+                temp_front.draw_front("r-", self.ax)
 
                 new_cell = Quadrilateral(
                     new_cell_nodes[0],

@@ -78,7 +78,7 @@ class Adfront2:
     def draw_front_list(self, ax=None):
         """绘制阵面列表"""
         for front in self.front_list:
-            front.draw_front(ax)
+            front.draw_front("r-", self.ax)
 
     def debug_draw(self, ax):
         """绘制候选节点、候选阵面"""

@@ -8,7 +8,7 @@ from geometry_info import NodeElement, calculate_distance
 
 
 class Front:
-    def __init__(self, node_elem1, node_elem2, idx, bc_type, bc_name):
+    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, bc_name=None):
         if not isinstance(node_elem1, NodeElement) or not isinstance(
             node_elem1, NodeElement
         ):
