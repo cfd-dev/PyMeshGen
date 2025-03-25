@@ -587,7 +587,21 @@ class Unstructured_Grid:
         # 更新节点数量
         self.num_nodes = len(self.node_coords)
 
-        # 更新边界点，以各向异性边界为准，无需更新
+        # 更新边界点
+        self.boundary_nodes.extend(other_grid.boundary_nodes)
+        merged_boundary_nodes = set()
+        node_hash_list = set()
+        for node_elem in self.boundary_nodes:
+            if node_elem.bc_type == "interior":
+                continue
+
+            if node_elem.hash not in node_hash_list:
+                merged_boundary_nodes.add(node_elem)
+                node_hash_list.add(node_elem.hash)
+
+        self.boundary_nodes = list(merged_boundary_nodes)
+        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
+        self.num_boundary_nodes = len(self.boundary_nodes)
 
     def visualize_unstr_grid_2d(self):
         """可视化二维网格"""

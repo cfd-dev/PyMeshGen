@@ -39,13 +39,13 @@ unstr_grid_list.append(boundary_grid)
 
 # 推进生成网格
 adfront2 = Adfront2(front_heap, sizing_system, boundary_grid.node_coords, ax=ax)
-triangular_grids = adfront2.generate_elements()
+triangular_grid = adfront2.generate_elements()
 
 # 网格质量优化
-triangular_grids = edge_swap(triangular_grids)
-triangular_grids = laplacian_smooth(triangular_grids, 3)
-unstr_grid_list.append(triangular_grids)
-# unstr_grid.visualize_unstr_grid_2d()
+triangular_grid = edge_swap(triangular_grid)
+triangular_grid = laplacian_smooth(triangular_grid, 3)
+unstr_grid_list.append(triangular_grid)
+# triangular_grids.visualize_unstr_grid_2d()
 
 # 合并各向同性网格和边界层网格
 global_unstr_grid = unstr_grid_list[0]
