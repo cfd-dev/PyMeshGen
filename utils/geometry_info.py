@@ -575,6 +575,20 @@ class Unstructured_Grid:
         self.edges = list(edge_set)
         self.num_edges = len(self.edges)
 
+    def merge(self, other_grid):
+        """以各向异性网格为基础，合并两个Unstructured_Grid对象"""
+        # 合并单元容器
+        self.cell_container.extend(other_grid.cell_container)
+
+        # 更新单元数量
+        self.num_cells = len(self.cell_container)
+
+        # 节点坐标已经合并过了，此处不再合并
+        # 更新节点数量
+        self.num_nodes = len(self.node_coords)
+
+        # 更新边界点，以各向异性边界为准，无需更新
+
     def visualize_unstr_grid_2d(self):
         """可视化二维网格"""
         fig, ax = plt.subplots(figsize=(10, 8))

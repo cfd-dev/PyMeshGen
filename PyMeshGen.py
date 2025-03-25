@@ -29,29 +29,29 @@ sizing_system = meshsize.QuadtreeSizing(
 )
 # sizing_system.draw_bgmesh()
 
-global_unstr_grid = []
+unstr_grid_list = []
 # 推进生成边界层网格
 part_params = adlm.PartMeshParameters("farfield", 2.0, True, 0.1, 5, 5)
 adlayers = adlm.Adlayers2([part_params], front_heap, ax)
 unstr_grid, front_heap = adlayers.generate_elements()
-global_unstr_grid.append(unstr_grid)
+unstr_grid_list.append(unstr_grid)
 # adlayers.visualize_adlayers()
 
 # 推进生成网格
-adfront2 = adfr.Adfront2(front_heap, sizing_system, ax=ax)
+adfront2 = adfr.Adfront2(front_heap, sizing_system, unstr_grid.node_coords, ax=ax)
 unstr_grid = adfront2.generate_elements()
-# unstr_grid.visualize_unstr_grid_2d()
 
 # 网格质量优化
 unstr_grid = edge_swap(unstr_grid)
+unstr_grid = laplacian_smooth(unstr_grid, 3)
+unstr_grid_list.append(unstr_grid)
 # unstr_grid.visualize_unstr_grid_2d()
 
-unstr_grid = laplacian_smooth(unstr_grid, num_iter=3)
-unstr_grid.visualize_unstr_grid_2d()
-global_unstr_grid.append(unstr_grid)
-
 # 合并各向同性网格和边界层网格
-global_unstr_grid.merge()
+global_unstr_grid = unstr_grid_list[0]
+for unstr_grid in unstr_grid_list[1:]:
+    global_unstr_grid.merge(unstr_grid)
+
 global_unstr_grid.visualize_unstr_grid_2d()
 
 # 输出网格文件

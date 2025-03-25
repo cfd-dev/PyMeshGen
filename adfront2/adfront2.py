@@ -11,7 +11,7 @@ from geometry_info import NodeElement, Unstructured_Grid
 
 
 class Adfront2:
-    def __init__(self, boundary_front, sizing_system, ax=None):
+    def __init__(self, boundary_front, sizing_system, node_coords=None, ax=None):
         self.ax = ax
 
         # 阵面推进参数
@@ -37,7 +37,7 @@ class Adfront2:
         self.num_nodes = 0  # 节点计数器
 
         self.cell_container = None  # 单元对象（Triangle）对象列表
-        self.node_coords = None  # 节点坐标列表
+        self.node_coords = node_coords  # 节点坐标列表
 
         self.boundary_nodes = None  # 边界节点对象列表
         self.unstr_grid = None  # Unstructured_Grid网格对象
@@ -53,7 +53,10 @@ class Adfront2:
         self.node_hash_list = set()
         self.cell_hash_list = set()
         self.cell_container = []
-        self.node_coords = []
+
+        # 如果未传入已生成网格的节点坐标，则生成新的节点坐标
+        if self.node_coords is None:
+            self.node_coords = []
 
         # hash_idx_map = {}  # 节点hash值到节点索引的映射
         node_count = 0
@@ -64,7 +67,9 @@ class Adfront2:
                     # node_elem.idx = node_count
                     # hash_idx_map[node_elem.hash] = node_elem.idx
                     self.node_hash_list.add(node_elem.hash)
-                    self.node_coords.append(node_elem.coords)
+                    if self.node_coords is None:
+                        self.node_coords.append(node_elem.coords)
+
                     self.boundary_nodes.add(node_elem)
                     node_count += 1
                 # else:
@@ -73,7 +78,7 @@ class Adfront2:
                 # front.node_ids.append(node_elem.idx)
                 front.priority = True
 
-        self.num_nodes = node_count
+        self.num_nodes = len(self.node_coords)
 
     def draw_front_list(self, ax=None):
         """绘制阵面列表"""

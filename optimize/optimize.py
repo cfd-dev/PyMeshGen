@@ -9,6 +9,7 @@ import geometry_info as geo_info
 
 def edge_swap(unstr_grid):
     print(f"开始进行边交换优化...")
+    node_coords = unstr_grid.node_coords
     edge_map = {}
 
     # 构建边到单元的映射
@@ -50,13 +51,13 @@ def edge_swap(unstr_grid):
             c, d = other_points
 
             # 凸性检查
-            if not geo_info.is_convex(a, b, c, d, unstr_grid.node_coords):
+            if not geo_info.is_convex(a, b, c, d, node_coords):
                 continue
 
             # 计算交换前的最小角
             current_min = min(
-                geo_info.calculate_min_angle(cell1, unstr_grid.node_coords),
-                geo_info.calculate_min_angle(cell2, unstr_grid.node_coords),
+                geo_info.calculate_min_angle(cell1, node_coords),
+                geo_info.calculate_min_angle(cell2, node_coords),
             )
 
             # 交换后的单元
@@ -65,19 +66,19 @@ def edge_swap(unstr_grid):
 
             # 有效性检查
             if not (
-                geo_info.is_valid_triangle(swapped_cell1, unstr_grid.node_coords)
-                and geo_info.is_valid_triangle(swapped_cell2, unstr_grid.node_coords)
+                geo_info.is_valid_triangle(swapped_cell1, node_coords)
+                and geo_info.is_valid_triangle(swapped_cell2, node_coords)
             ):
                 continue
 
             # 计算交换后的最小角
             swapped_min = min(
-                geo_info.calculate_min_angle(swapped_cell1, unstr_grid.node_coords),
-                geo_info.calculate_min_angle(swapped_cell2, unstr_grid.node_coords),
+                geo_info.calculate_min_angle(swapped_cell1, node_coords),
+                geo_info.calculate_min_angle(swapped_cell2, node_coords),
             )
 
             # 凸性检查
-            if not geo_info.is_convex(c, d, a, b, unstr_grid.node_coords):
+            if not geo_info.is_convex(c, d, a, b, node_coords):
                 continue
 
             # 交换条件：最小角优化且不创建新边界边
@@ -88,16 +89,16 @@ def edge_swap(unstr_grid):
                 # 执行交换
                 # 创建新的Triangle对象
                 new_cell1 = geo_info.Triangle(
-                    unstr_grid.node_coords[a],
-                    unstr_grid.node_coords[c],
-                    unstr_grid.node_coords[d],
+                    node_coords[a],
+                    node_coords[c],
+                    node_coords[d],
                     cell1.idx,
                     node_ids=(a, c, d),
                 )
                 new_cell2 = geo_info.Triangle(
-                    unstr_grid.node_coords[b],
-                    unstr_grid.node_coords[c],
-                    unstr_grid.node_coords[d],
+                    node_coords[b],
+                    node_coords[c],
+                    node_coords[d],
                     cell2.idx,
                     node_ids=(b, c, d),
                 )
@@ -124,8 +125,10 @@ def edge_swap(unstr_grid):
 
 def laplacian_smooth(unstr_grid, num_iter=10):
     print(f"开始进行laplacian优化...")
+
+    node_coords = unstr_grid.node_coords
     # 将键改为节点索引
-    neighbors = {node_ids: set() for node_ids in range(len(unstr_grid.node_coords))}
+    neighbors = {node_ids: set() for node_ids in range(len(node_coords))}
 
     for cell in unstr_grid.cell_container:
         for i, j in combinations(sorted(cell.node_ids), 2):
@@ -135,7 +138,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
     # 迭代进行拉普拉斯平滑
     for i in range(num_iter):
         new_coords = []
-        for node, coord in enumerate(unstr_grid.node_coords):
+        for node, coord in enumerate(node_coords):
             # 跳过边界节点（保持固定）
             if node in unstr_grid.boundary_nodes_list:
                 new_coords.append(coord)
@@ -146,9 +149,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
                 continue
 
             # 计算邻居节点的平均坐标（转换为numpy数组）
-            neighbor_coords = np.array(
-                [unstr_grid.node_coords[n] for n in neighbors[node]]
-            )
+            neighbor_coords = np.array([node_coords[n] for n in neighbors[node]])
             avg_coord = np.mean(neighbor_coords, axis=0)
 
             # 使用numpy进行向量运算
@@ -156,7 +157,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
             new_coords.append(new_coord.tolist())  # 转换回列表格式
 
         unstr_grid.node_coords = new_coords
-        print(f"第{i}轮laplacian优化完成.")
+        print(f"第{i+1}轮laplacian优化完成.")
     print(f"laplacian优化完成.\n")
 
     return unstr_grid
