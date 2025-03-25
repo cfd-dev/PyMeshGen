@@ -123,7 +123,7 @@ def parse_fluent_msh(file_path):
                 "end_idx": face_end_idx,
                 "bc_type": bc_type,
                 "face_type": face_type,
-                "bc_name": [],
+                "part_name": [],
                 "face_count_section": face_count_section,
                 "data": [],
             }
@@ -148,7 +148,7 @@ def parse_fluent_msh(file_path):
                 "cell_zone_type": cell_zone_type,
                 "cell_type": cell_type,
                 "cell_type_array": [],
-                "bc_name": [],
+                "part_name": [],
                 "cell_count": cell_count,
             }
             data["zones"][f"zone_{zone_id}"] = current_zone
@@ -160,16 +160,16 @@ def parse_fluent_msh(file_path):
             if match:
                 zone_id = int(match.group(1))
                 bc_type = match.group(2)
-                bc_name = match.group(3).strip() if match.group(3) else None
+                part_name = match.group(3).strip() if match.group(3) else None
 
                 # 清理边界名称中的多余字符
-                if bc_name:
-                    bc_name = bc_name.split(")", 1)[0].strip()
+                if part_name:
+                    part_name = part_name.split(")", 1)[0].strip()
 
                 if f"zone_{zone_id}" in data["zones"]:
                     zone = data["zones"][f"zone_{zone_id}"]
                     zone["bc_type"] = bc_type
-                    zone["bc_name"] = bc_name
+                    zone["part_name"] = part_name
                 else:
                     print(f"Warning: Zone {zone_id} not found for BC: {line}")
             else:
@@ -234,14 +234,14 @@ def parse_fluent_msh(file_path):
     for zone in data["zones"].values():
         if zone["type"] == "faces":
             bc_type = zone.get("bc_type", "internal")
-            bc_name = zone.get("bc_name", "unspecified")
+            part_name = zone.get("part_name", "unspecified")
             for face in zone["data"]:
                 face_with_bc = {
                     "nodes": face["nodes"],
                     "left_cell": face["left_cell"],
                     "right_cell": face["right_cell"],
                     "bc_type": bc_type,
-                    "bc_name": bc_name,
+                    "part_name": part_name,
                 }
                 data["faces"].append(face_with_bc)
     return data

@@ -8,7 +8,7 @@ from geometry_info import NodeElement, calculate_distance
 
 
 class Front:
-    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, bc_name=None):
+    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None):
         if not isinstance(node_elem1, NodeElement) or not isinstance(
             node_elem1, NodeElement
         ):
@@ -17,7 +17,7 @@ class Front:
         self.node_elems = [node_elem1, node_elem2]
         self.idx = idx  # 阵面ID
         self.bc_type = bc_type  # 边界类型
-        self.bc_name = bc_name  # 边界名称属性
+        self.part_name = part_name  # 边界所属部件
 
         self.priority = False  # 优先推进标记
         self.center = None  # 阵面中心坐标
@@ -117,7 +117,7 @@ def process_initial_front(grid):
                     node_elem2=node_elem2,
                     idx=front_count,
                     bc_type=face["bc_type"],
-                    bc_name=face["bc_name"],
+                    part_name=face["part_name"],
                 ),
             )
             front_count += 1

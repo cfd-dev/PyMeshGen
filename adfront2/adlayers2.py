@@ -14,14 +14,14 @@ class PartMeshParameters:
 
     def __init__(
         self,
-        part_name,
+        name,
         max_size=1.0,
         PRISM_SWITCH=False,
         first_height=0.1,
         growth_rate=1.2,
         growth_method="geometric",
     ):
-        self.part_name = part_name  # 部件名称
+        self.name = name  # 部件名称
         self.max_size = max_size  # 最大网格尺寸
         self.PRISM_SWITCH = PRISM_SWITCH  # 是否生成边界层网格
         self.first_height = first_height  # 第一层网格高度
@@ -50,7 +50,7 @@ class Adlayers2:
         self.num_nodes = 0  # 节点数量
         self.num_cells = 0  # 单元数量
         self.cell_container = []  # 单元容器
-        self.debug_switch = False  # 是否调试模式
+        self.debug_switch = True  # 是否调试模式
         self.unstr_grid = None  # 非结构化网格
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
@@ -69,9 +69,12 @@ class Adlayers2:
 
             self.advancing_fronts()
 
-            self.construct_unstr_grid()
+            self.show_progress()
 
             self.ilayer += 1
+
+        self.construct_unstr_grid()
+
         return unstr_grid
 
     def construct_unstr_grid(self):
@@ -87,43 +90,103 @@ class Adlayers2:
         print(f"当前单元数量：{self.num_cells} \n")
 
         if self.debug_switch:
+            self.construct_unstr_grid()
             self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
 
     def advancing_fronts(self):
+        # 逐个部件进行推进
         for part in self.part_params:
             if not part.PRISM_SWITCH:
                 continue
 
+            new_interior_list = []
+            new_prism_cap_list = []
+
+            # 逐个阵面进行推进
             for front in part.front_heap:
+                if front.bc_type == "interior":
+                    continue
+
                 new_cell_nodes = front.node_elems.copy()
-
+                # 逐个节点进行推进
                 for node_elem in front.node_elems:
-                    new_node = (
-                        np.array(node_elem.coords)
-                        + np.array(node_elem.marching_direction)
-                        * node_elem.marching_distance
-                    )
+                    if node_elem.corresponding_node is None:
+                        new_node = (
+                            np.array(node_elem.coords)
+                            + np.array(node_elem.marching_direction)
+                            * node_elem.marching_distance
+                        )
 
-                    self.node_coords.append(new_node.tolist())
+                        # TODO: 相交判断
 
-                    # TODO: 相交判断
-                    new_node_elem = NodeElement(
-                        coords=new_node.tolist(),
-                        idx=self.num_nodes,
-                        bc_type="interiror",
-                    )
+                        # 更新节点坐标
+                        self.node_coords.append(new_node.tolist())
 
-                    new_cell_nodes.append(new_node_elem)
+                        # 创建新节点元素
+                        new_node_elem = NodeElementALM(
+                            coords=new_node.tolist(),
+                            idx=self.num_nodes,
+                            bc_type="interior",
+                        )
 
-                    self.num_nodes += 1
+                        node_elem.corresponding_node = new_node_elem
+                        new_cell_nodes.append(new_node_elem)
+                        self.num_nodes += 1
+                    else:
+                        new_cell_nodes.append(node_elem.corresponding_node)
 
-                temp_front = Front(new_cell_nodes[0], new_cell_nodes[2])
-                temp_front.draw_front("r-", self.ax)
-                temp_front = Front(new_cell_nodes[1], new_cell_nodes[3])
-                temp_front.draw_front("r-", self.ax)
-                temp_front = Front(new_cell_nodes[2], new_cell_nodes[3])
-                temp_front.draw_front("r-", self.ax)
+                # 创建新阵面
+                alm_front = Front(
+                    new_cell_nodes[2],
+                    new_cell_nodes[3],
+                    -1,
+                    "prism-cap",
+                    part.name,
+                )
+                new_front1 = Front(
+                    new_cell_nodes[0], new_cell_nodes[2], -1, "interior", part.name
+                )
+                new_front2 = Front(
+                    new_cell_nodes[3], new_cell_nodes[1], -1, "interior", part.name
+                )
 
+                # 检查新阵面是否已经存在于堆中
+                # exists_alm = any(front.hash == alm_front.hash for front in part.front_heap)
+                new_prism_cap_list.append(alm_front)
+                if self.ax and self.debug_switch:
+                    alm_front.draw_front("g-", self.ax)
+
+                exists_new1 = any(
+                    front.hash == new_front1.hash for front in new_interior_list
+                )
+                exists_new2 = any(
+                    front.hash == new_front2.hash for front in new_interior_list
+                )
+
+                if not exists_new1:
+                    new_interior_list.append(new_front1)
+                    if self.ax and self.debug_switch:
+                        new_front1.draw_front("g-", self.ax)
+                else:
+                    # 移除相同位置的旧阵面
+                    new_interior_list = [
+                        front
+                        for front in new_interior_list
+                        if front.hash != new_front1.hash
+                    ]
+
+                if not exists_new2:
+                    new_interior_list.append(new_front2)
+                    if self.ax and self.debug_switch:
+                        new_front2.draw_front("g-", self.ax)
+                else:
+                    new_interior_list = [
+                        front
+                        for front in new_interior_list
+                        if front.hash != new_front2.hash
+                    ]
+
+                # 创建新单元
                 new_cell = Quadrilateral(
                     new_cell_nodes[0],
                     new_cell_nodes[1],
@@ -133,8 +196,13 @@ class Adlayers2:
                 )
 
                 self.cell_container.append(new_cell)
-
                 self.num_cells += 1
+
+            part.front_heap = []
+            for front in new_prism_cap_list:
+                part.front_heap.append(front)
+            for front in new_interior_list:
+                part.front_heap.append(front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
@@ -413,6 +481,6 @@ class Adlayers2:
         """匹配部件和阵面堆"""
         for front in self.initial_front:
             for part in self.part_params:
-                if part.part_name == front.bc_name:
+                if part.name == front.part_name:
                     part.front_heap.append(front)
                     break
