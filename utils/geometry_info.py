@@ -260,6 +260,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self.num_multi_direction = 1  # 节点处的多方向数量
         self.local_step_factor = 1.0  # 节点处的局部步长因子
         self.corresponding_node = None  # 节点的对应节点
+        self.early_stop_flag = False  # 节点的提前停止标志
 
     @classmethod
     def from_existing_node(cls, node_elem):
@@ -541,6 +542,34 @@ class Quadrilateral:
     def init_metrics(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
         self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+
+    def get_area(self):
+        self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+        return self.area
+
+    def get_quality(self):
+        self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+        return self.quality
+
+    def get_element_size(self):
+        if self.area is None:
+            self.get_area()
+        return sqrt(self.area)
+
+    def get_aspect_ratio(self):
+        """基于最大/最小边长的长宽比"""
+        # 计算所有边长
+        edges = [
+            calculate_distance(self.p1, self.p2),
+            calculate_distance(self.p2, self.p3),
+            calculate_distance(self.p3, self.p4),
+            calculate_distance(self.p4, self.p1),
+        ]
+
+        # max_edge = max(edges)
+        # min_edge = min(edges)
+        # return max_edge / min_edge if min_edge > 1e-12 else 0.0
+        return (edges[0] + edges[2]) / (edges[1] + edges[3])
 
 
 class Unstructured_Grid:

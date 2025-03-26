@@ -2,6 +2,7 @@ import numpy as np
 from math import pi
 import sys
 from pathlib import Path
+import heapq
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
@@ -10,7 +11,7 @@ from front2d import Front
 
 
 class Adlayers2:
-    def __init__(self, boundary_front, param_obj=None, visual_obj=None):
+    def __init__(self, boundary_front, sizing_system, param_obj=None, visual_obj=None):
         self.ax = visual_obj.ax
         self.debug_level = (
             param_obj.debug_level
@@ -22,7 +23,10 @@ class Adlayers2:
         self.multi_direction = False  # 是否多方向推进
 
         self.front_list = boundary_front  # 初始阵面
+        self.sizing_system = sizing_system  # 尺寸场系统对象
         self.part_params = param_obj.part_params  # 层推进部件参数
+
+        self.current_part = None  # 当前推进部件
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
@@ -48,6 +52,8 @@ class Adlayers2:
             if not part.PRISM_SWITCH:
                 continue
 
+            # 将部件参数设置为当前推进参数
+            self.current_part = part
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
@@ -56,7 +62,8 @@ class Adlayers2:
 
                 print("第{}层推进...".format(self.ilayer + 1))
 
-                self.front_list = part.front_list
+                # 将更新后的part阵面列表设置为当前阵面列表
+                self.front_list = self.current_part.front_list
 
                 self.prepare_geometry_info()
 
@@ -87,126 +94,155 @@ class Adlayers2:
             #     continue
             self.all_boundary_fronts.extend(part.front_list)
 
+        heapq.heapify(self.all_boundary_fronts)
+
     def show_progress(self):
         """显示推进进度"""
         print("第{}层推进..., Done.".format(self.ilayer + 1))
         print(f"当前节点数量：{self.num_nodes}")
         print(f"当前单元数量：{self.num_cells} \n")
 
-        if self.debug_level >= 1:
-            self.construct_unstr_grid()
-            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
+        # if self.debug_level >= 1:
+        # self.construct_unstr_grid()
+        # self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
         # 逐个部件进行推进
-        for part in self.part_params:
-            if not part.PRISM_SWITCH:
+        new_interior_list = []  # 新增的边界层法向面，设置为内部面
+        new_prism_cap_list = []  # 新增的边界层流向面
+
+        # 逐个阵面进行推进
+        for front in self.front_list:
+            if front.bc_type == "interior":
+                new_interior_list.append(front)
                 continue
 
-            new_interior_list = []
-            new_prism_cap_list = []
+            new_cell_nodes = front.node_elems.copy()
 
-            # 逐个阵面进行推进
-            for front in part.front_list:
-                if front.bc_type == "interior":
+            # 如果early_stop_flag为True，则跳过该阵面
+            if new_cell_nodes[0].early_stop_flag or new_cell_nodes[1].early_stop_flag:
+                new_prism_cap_list.append(front)
+                continue
+
+            # 逐个节点进行推进
+            for node_elem in front.node_elems:
+                if node_elem.early_stop_flag:
                     continue
 
-                new_cell_nodes = front.node_elems.copy()
-                # 逐个节点进行推进
-                for node_elem in front.node_elems:
-                    if node_elem.corresponding_node is None:
-                        new_node = (
-                            np.array(node_elem.coords)
-                            + np.array(node_elem.marching_direction)
-                            * node_elem.marching_distance
-                        )
+                if node_elem.corresponding_node is None:
+                    new_node = (
+                        np.array(node_elem.coords)
+                        + np.array(node_elem.marching_direction)
+                        * node_elem.marching_distance
+                    )
 
-                        # TODO: 相交判断
+                    # TODO: 相交判断
 
-                        # 更新节点坐标
-                        self.node_coords.append(new_node.tolist())
+                    # 更新节点坐标
+                    self.node_coords.append(new_node.tolist())
 
-                        # 创建新节点元素
-                        new_node_elem = NodeElementALM(
-                            coords=new_node.tolist(),
-                            idx=self.num_nodes,
-                            bc_type="interior",
-                        )
+                    # 创建新节点元素
+                    new_node_elem = NodeElementALM(
+                        coords=new_node.tolist(),
+                        idx=self.num_nodes,
+                        bc_type="interior",
+                    )
 
-                        node_elem.corresponding_node = new_node_elem
-                        new_cell_nodes.append(new_node_elem)
-                        self.num_nodes += 1
-                    else:
-                        new_cell_nodes.append(node_elem.corresponding_node)
+                    node_elem.corresponding_node = new_node_elem
+                    new_cell_nodes.append(new_node_elem)
+                    self.num_nodes += 1
+                else:
+                    new_cell_nodes.append(node_elem.corresponding_node)
 
-                # 创建新阵面
-                alm_front = Front(
-                    new_cell_nodes[2],
-                    new_cell_nodes[3],
-                    -1,
-                    "prism-cap",
-                    part.name,
-                )
-                new_front1 = Front(
-                    new_cell_nodes[0], new_cell_nodes[2], -1, "interior", part.name
-                )
-                new_front2 = Front(
-                    new_cell_nodes[3], new_cell_nodes[1], -1, "interior", part.name
-                )
+            # 创建新阵面
+            alm_front = Front(
+                new_cell_nodes[2],
+                new_cell_nodes[3],
+                -1,
+                "prism-cap",
+                self.current_part.name,
+            )
+            new_front1 = Front(
+                new_cell_nodes[0],
+                new_cell_nodes[2],
+                -1,
+                "interior",
+                self.current_part.name,
+            )
+            new_front2 = Front(
+                new_cell_nodes[3],
+                new_cell_nodes[1],
+                -1,
+                "interior",
+                self.current_part.name,
+            )
 
-                # 检查新阵面是否已经存在于堆中
-                # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
-                new_prism_cap_list.append(alm_front)
+            # 检查新阵面是否已经存在于堆中
+            # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
+            new_prism_cap_list.append(alm_front)
+            if self.ax and self.debug_level >= 1:
+                alm_front.draw_front("g-", self.ax)
+
+            exists_new1 = any(
+                front.hash == new_front1.hash for front in new_interior_list
+            )
+            exists_new2 = any(
+                front.hash == new_front2.hash for front in new_interior_list
+            )
+
+            if not exists_new1:
+                new_interior_list.append(new_front1)
                 if self.ax and self.debug_level >= 1:
-                    alm_front.draw_front("g-", self.ax)
+                    new_front1.draw_front("g-", self.ax)
+            else:
+                # 移除相同位置的旧阵面
+                new_interior_list = [
+                    front
+                    for front in new_interior_list
+                    if front.hash != new_front1.hash
+                ]
 
-                exists_new1 = any(
-                    front.hash == new_front1.hash for front in new_interior_list
-                )
-                exists_new2 = any(
-                    front.hash == new_front2.hash for front in new_interior_list
-                )
+            if not exists_new2:
+                new_interior_list.append(new_front2)
+                if self.ax and self.debug_level >= 1:
+                    new_front2.draw_front("g-", self.ax)
+            else:
+                new_interior_list = [
+                    front
+                    for front in new_interior_list
+                    if front.hash != new_front2.hash
+                ]
 
-                if not exists_new1:
-                    new_interior_list.append(new_front1)
-                    if self.ax and self.debug_level >= 1:
-                        new_front1.draw_front("g-", self.ax)
-                else:
-                    # 移除相同位置的旧阵面
-                    new_interior_list = [
-                        front
-                        for front in new_interior_list
-                        if front.hash != new_front1.hash
-                    ]
+            # 创建新单元
+            new_cell = Quadrilateral(
+                new_cell_nodes[0],
+                new_cell_nodes[1],
+                new_cell_nodes[3],
+                new_cell_nodes[2],
+                self.num_cells,
+            )
 
-                if not exists_new2:
-                    new_interior_list.append(new_front2)
-                    if self.ax and self.debug_level >= 1:
-                        new_front2.draw_front("g-", self.ax)
-                else:
-                    new_interior_list = [
-                        front
-                        for front in new_interior_list
-                        if front.hash != new_front2.hash
-                    ]
+            self.cell_container.append(new_cell)
+            self.num_cells += 1
 
-                # 创建新单元
-                new_cell = Quadrilateral(
-                    new_cell_nodes[0],
-                    new_cell_nodes[1],
-                    new_cell_nodes[3],
-                    new_cell_nodes[2],
-                    self.num_cells,
-                )
+            # 早停条件判断
+            cell_size = new_cell.get_element_size()
+            cell_aspect_ratio = new_cell.get_aspect_ratio()
+            isotropic_size = self.sizing_system.spacing_at(front.center)
+            if (
+                cell_size <= 1.1 * isotropic_size
+                and cell_aspect_ratio <= 1.1
+                and self.ilayer >= self.full_layers - 1
+            ):
+                new_cell_nodes[2].early_stop_flag = True
+                new_cell_nodes[3].early_stop_flag = True
 
-                self.cell_container.append(new_cell)
-                self.num_cells += 1
-
-            part.front_list = []
-            for front in new_prism_cap_list:
-                part.front_list.append(front)
-            for front in new_interior_list:
-                part.front_list.append(front)
+        # 更新part阵面列表
+        self.current_part.front_list = []
+        for front in new_prism_cap_list:
+            self.current_part.front_list.append(front)
+        for front in new_interior_list:
+            self.current_part.front_list.append(front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
@@ -232,7 +268,11 @@ class Adlayers2:
                     proj1 = np.dot(node.marching_direction, front1.normal)
                     proj2 = np.dot(node.marching_direction, front2.normal)
 
-                    if proj1 * proj2 < 0:
+                    if (
+                        proj1 * proj2 < 0
+                        and front1.bc_type != "interior"
+                        and front2.bc_type != "interior"
+                    ):
                         print(
                             f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
                         )
@@ -284,6 +324,14 @@ class Adlayers2:
             front1, front2 = node_elem.node2front[:2]
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
+
+            # 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
+            if front1.bc_type == "interior":
+                node_elem.marching_direction = tuple(normal2)
+                continue
+            elif front2.bc_type == "interior":
+                node_elem.marching_direction = tuple(normal1)
+                continue
 
             # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0

@@ -52,6 +52,7 @@ def PyMeshGen():
     # 推进生成边界层网格
     adlayers = Adlayers2(
         boundary_front=front_heap,
+        sizing_system=sizing_system,
         param_obj=parameters,
         visual_obj=visual_obj,
     )
