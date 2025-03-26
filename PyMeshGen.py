@@ -18,7 +18,9 @@ from mesh_visualization import Visualization
 from parameters import Parameters, PartMeshParameters
 
 # 建立参数管理对象
-parameters = Parameters("./config/convex.json")
+# parameters = Parameters("./config/convex.json")
+parameters = Parameters("./config/cylinder.json")
+parameters = Parameters("./config/naca0012.json")
 
 # 建立可视化对象
 visual_obj = Visualization()

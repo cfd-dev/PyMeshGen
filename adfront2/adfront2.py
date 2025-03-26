@@ -287,7 +287,7 @@ class Adfront2:
 
         if self.pselected == None:
             self.construct_unstr_grid()
-            self.unstr_grid.save_debug_file()
+            self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
             raise (f"候选点列表中没有合适的点，可能需要扩大搜索范围，请检查！")
 
         return self.pselected
