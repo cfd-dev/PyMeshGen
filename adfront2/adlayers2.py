@@ -9,34 +9,13 @@ from geometry_info import NodeElement, NodeElementALM, Quadrilateral, Unstructur
 from front2d import Front
 
 
-class PartMeshParameters:
-    """网格生成部件参数"""
-
-    def __init__(
-        self,
-        name,
-        max_size=1.0,
-        PRISM_SWITCH=False,
-        first_height=0.1,
-        max_layers=3,
-        full_layers=0,
-        growth_rate=1.2,
-        growth_method="geometric",
-    ):
-        self.name = name  # 部件名称
-        self.max_size = max_size  # 最大网格尺寸
-        self.PRISM_SWITCH = PRISM_SWITCH  # 是否生成边界层网格
-        self.first_height = first_height  # 第一层网格高度
-        self.max_layers = max_layers  # 最大推进层数
-        self.full_layers = full_layers  # 完整推进层数
-        self.growth_rate = growth_rate  # 网格高度增长比例
-        self.growth_method = growth_method  # 网格高度增长方法
-        self.front_list = []  # 阵面列表
-
-
 class Adlayers2:
-    def __init__(self, part_params, boundary_front, visual_obj=None):
+    def __init__(self, part_params, boundary_front, param_obj=None, visual_obj=None):
         self.ax = visual_obj.ax
+        self.debug_level = (
+            param_obj.debug_level
+        )  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+
         # 层推进全局参数
         self.max_layers = 100  # 最大推进层数
         self.full_layers = 0  # 完整推进层数
@@ -54,7 +33,7 @@ class Adlayers2:
         self.num_nodes = 0  # 节点数量
         self.num_cells = 0  # 单元数量
         self.cell_container = []  # 单元容器
-        self.debug_level = 0  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+
         self.unstr_grid = None  # 非结构化网格
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
@@ -71,6 +50,8 @@ class Adlayers2:
 
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
+            self.multi_direction = part.multi_direction
+
             for self.ilayer in range(self.max_layers):
 
                 print("第{}层推进...".format(self.ilayer + 1))
@@ -292,17 +273,20 @@ class Adlayers2:
             if len(node_elem.node2front) < 2:
                 continue
 
+            # 对于凸角点，在此不计算，也不光滑
+            if len(node_elem.marching_direction) > 1:
+                continue
+
             front1, front2 = node_elem.node2front[:2]
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # 计算推进方向（法向量平均）
+            # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0
             norm = np.linalg.norm(avg_direction)
-            if norm > 1e-6:
-                node_elem.marching_direction = tuple(avg_direction / norm)
-            else:
-                node_elem.marching_direction = tuple(normal1)
+            avg_direction /= norm
+
+            new_direction = tuple(avg_direction) if norm > 1e-6 else tuple(normal1)
 
             # 加权光滑
             w1 = self.relax_factor
@@ -310,37 +294,36 @@ class Adlayers2:
             wf2 = 1 - w1 - wf1
 
             iterations = 0
+            max_iterations = 50
             smooth = True
-            while smooth:
+            while smooth and iterations < max_iterations:
                 iterations += 1
-                old_direction = np.array(node_elem.marching_direction)
+                old_direction = new_direction.copy()
 
-                node_elem.marching_direction = tuple(
-                    w1 * old_direction + wf1 * normal1 + +wf2 * normal2
-                ) / np.linalg.norm(w1 * old_direction + wf1 * normal1 + +wf2 * normal2)
+                new_direction = w1 * old_direction + wf1 * normal1 + +wf2 * normal2
+                new_direction /= np.linalg.norm(new_direction)
 
                 # 计算法向与相邻面的夹角及其与平均夹角的偏差df
-                angle1 = np.arccos(np.dot(node_elem.marching_direction, front1.normal))
-                angle2 = np.arccos(np.dot(node_elem.marching_direction, front2.normal))
+                angle1 = np.arccos(np.dot(new_direction, normal1))
+                angle2 = np.arccos(np.dot(new_direction, normal2))
+                # TODO 待检查是否需要取绝对值
                 avg_angle = (angle1 + angle2) / 2
 
                 # 计算夹角偏差
                 df1 = abs(angle1 - avg_angle)
                 df2 = abs(angle2 - avg_angle)
 
+                # 更新权重
                 epsilon = 1e-10
                 wf1_bar = wf1 * (1 - df1 / (avg_angle + epsilon))
                 wf2_bar = wf2 * (1 - df2 / (avg_angle + epsilon))
                 wf1 = wf1_bar + wf1 * (1 - (wf1_bar + wf2_bar))
                 wf2 = wf2_bar + wf2 * (1 - (wf1_bar + wf2_bar))
 
-                if (
-                    np.linalg.norm(
-                        np.array(node_elem.marching_direction) - old_direction
-                    )
-                    < 1e-3
-                ):
+                if np.linalg.norm(new_direction - old_direction) < 1e-3:
                     smooth = False
+
+            node_elem.marching_direction = tuple(new_direction)
 
     def laplacian_smooth_normals(self):
         """拉普拉斯平滑节点推进方向"""
@@ -480,11 +463,13 @@ class Adlayers2:
                 node_elem.num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )
-                delta = np.radians(node_elem.angle) / (num_multi_direction - 1)
+                delta = np.radians(node_elem.angle) / (
+                    node_elem.num_multi_direction - 1
+                )
                 initial_vectors = normal1
 
                 for i in range(node_elem.num_multi_direction):
-                    angle = i * delta
+                    angle = -i * delta
                     rotation_matrix = np.array(
                         [
                             [np.cos(angle), -np.sin(angle)],
@@ -492,26 +477,12 @@ class Adlayers2:
                         ]
                     )
                     rotated_vector = np.dot(rotation_matrix, initial_vectors)
-                    node_elem.multi_direction.append(tuple(rotated_vector))
+                    node_elem.marching_direction.append(tuple(rotated_vector))
 
                 node_elem.local_step_factor = 1.0
             else:
                 node_elem.num_multi_direction = 1
                 node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
-
-        kkk = 1
-
-        # if self.multi_direction:
-        #     if node_elem.convex_flag:
-        #         node_elem.num_multi_direction = (
-        #             int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
-        #         )
-        #         node_elem.local_step_factor = 1.0
-        #     elif node_elem.concav_flag:
-        #         node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
-        # else:
-        #     node_elem.num_multi_direction = 1
-        #     node_elem.local_step_factor = 1 - sign(thetam) * abs(thetam) / pi
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""

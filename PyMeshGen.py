@@ -13,30 +13,48 @@ from front2d import construct_initial_front
 from meshsize import QuadtreeSizing
 from adfront2 import Adfront2
 from optimize import edge_swap, laplacian_smooth
-from adlayers2 import Adlayers2, PartMeshParameters
+from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
+from parameters import Parameters, PartMeshParameters
+
+# 建立参数管理对象
+parameters = Parameters()
 
 # 建立可视化对象
 visual_obj = Visualization()
 visual_obj.create_figure()
 
 # 读入边界网格
-file_path = "./neural/sample_grids/convex.cas"
+file_path = "./neural/sample_grids/quad_quad.cas"
 input_grid = parse_fluent_msh(file_path)
-visual_obj.plot_unstr_grid(input_grid, BoundaryOnly=True)
+visual_obj.plot_mesh(input_grid, boundary_only=True)
 
 # 构造初始阵面
 front_heap = construct_initial_front(input_grid)
 
 # 设置部件网格生成参数
-part_params = PartMeshParameters(
-    name="wall",
+part_params = []
+part0 = PartMeshParameters(
+    name="inflow",
     max_size=2.0,
     PRISM_SWITCH=False,
     first_height=0.1,
     max_layers=5,
     full_layers=5,
+    multi_direction=False,
 )
+part_params.append(part0)
+
+part1 = PartMeshParameters(
+    name="wall",
+    max_size=2.0,
+    PRISM_SWITCH=True,
+    first_height=0.1,
+    max_layers=5,
+    full_layers=5,
+    multi_direction=True,
+)
+part_params.append(part1)
 
 # 计算网格尺寸场
 sizing_system = QuadtreeSizing(
@@ -51,7 +69,10 @@ sizing_system = QuadtreeSizing(
 unstr_grid_list = []
 # 推进生成边界层网格
 adlayers = Adlayers2(
-    part_params=[part_params], boundary_front=front_heap, visual_obj=visual_obj
+    part_params=part_params,
+    boundary_front=front_heap,
+    param_obj=parameters,
+    visual_obj=visual_obj,
 )
 boundary_grid, front_heap = adlayers.generate_elements()
 unstr_grid_list.append(boundary_grid)
@@ -61,6 +82,7 @@ adfront2 = Adfront2(
     boundary_front=front_heap,
     sizing_system=sizing_system,
     node_coords=boundary_grid.node_coords,
+    param_obj=parameters,
     visual_obj=visual_obj,
 )
 triangular_grid = adfront2.generate_elements()
