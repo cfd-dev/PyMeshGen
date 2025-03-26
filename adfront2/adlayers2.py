@@ -26,7 +26,7 @@ class Adlayers2:
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
-        self.relax_factor = 0.5  # 节点坐标松弛因子
+        self.relax_factor = 0.0  # 节点推进方向光滑松弛因子，0-不光滑，1-完全光滑
         self.smooth_iterions = 10  # laplacian光滑次数
 
         self.ilayer = 0  # 当前推进层数
@@ -226,19 +226,23 @@ class Adlayers2:
                 # 计算节点推进距离
                 for node in front.node_elems:
                     node.marching_distance = global_marching_distance
-
                     front1, front2 = node.node2front[:2]
 
                     # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
                     proj1 = np.dot(node.marching_direction, front1.normal)
                     proj2 = np.dot(node.marching_direction, front2.normal)
 
+                    if proj1 * proj2 < 0:
+                        print(
+                            f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
+                        )
+
                     # 节点推进距离
                     node.marching_distance = (
                         global_marching_distance
                         * node.local_step_factor
-                        / min(proj1, proj2)
-                    )
+                        / np.mean([proj1, proj2])
+                    )  # min(abs(proj1), abs(proj2))
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
@@ -290,8 +294,8 @@ class Adlayers2:
 
             # 加权光滑
             w1 = self.relax_factor
-            wf1 = (1 - self.relax_factor) / 2
-            wf2 = 1 - w1 - wf1
+            wf1 = 0.5
+            wf2 = 1 - wf1
 
             iterations = 0
             max_iterations = 50
@@ -300,13 +304,17 @@ class Adlayers2:
                 iterations += 1
                 old_direction = new_direction.copy()
 
-                new_direction = w1 * old_direction + wf1 * normal1 + +wf2 * normal2
+                new_direction = (1 - w1) * old_direction + w1 * (
+                    wf1 * normal1 + +wf2 * normal2
+                )
                 new_direction /= np.linalg.norm(new_direction)
 
                 # 计算法向与相邻面的夹角及其与平均夹角的偏差df
-                angle1 = np.arccos(np.dot(new_direction, normal1))
-                angle2 = np.arccos(np.dot(new_direction, normal2))
-                # TODO 待检查是否需要取绝对值
+                dot_product1 = np.dot(new_direction, normal1)
+                dot_product2 = np.dot(new_direction, normal2)
+                angle1 = np.arccos(np.clip(dot_product1, -1.0, 1.0))  # 添加数值裁剪
+                angle2 = np.arccos(np.clip(dot_product2, -1.0, 1.0))  # 添加数值裁剪
+
                 avg_angle = (angle1 + angle2) / 2
 
                 # 计算夹角偏差

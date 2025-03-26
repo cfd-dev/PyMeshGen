@@ -1,6 +1,6 @@
 {
     "debug_level": 0,
-    "input_file": "./neural/sample_grids/naca0012-tri-coarse.cas",
+    "input_file": "./config/input/naca0012-tri-coarse.cas",
     "output_file": "output",
     "parts": [
         {
