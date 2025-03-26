@@ -93,8 +93,7 @@ class QuadtreeSizing:
         max_size=1.0,  # 最大允许网格尺寸
         resolution=0.1,  # 网格细分分辨率阈值（尺寸差百分比）
         decay=1.2,  # 尺寸场衰减系数（>1时尺寸随距离增大）
-        fig=None,  # matplotlib图对象（可视化用）
-        ax=None,  # matplotlib坐标轴对象
+        visual_obj=None,  # matplotlib可视化对象
     ):
 
         self.max_size = max_size  # 最大网格尺寸
@@ -108,8 +107,8 @@ class QuadtreeSizing:
         self.depth = None  # 叉树深度
         self.bg_divisions = [1, 1]  # 背景网格维度
 
-        self.fig = fig
-        self.ax = ax
+        self.ax = visual_obj.ax
+
         self.generate_bg_mesh()
 
     def draw_bgmesh(self):

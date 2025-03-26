@@ -35,8 +35,8 @@ class PartMeshParameters:
 
 
 class Adlayers2:
-    def __init__(self, part_params, boundary_front, ax=None):
-        self.ax = ax
+    def __init__(self, part_params, boundary_front, visual_obj=None):
+        self.ax = visual_obj.ax
         # 层推进全局参数
         self.max_layers = 100  # 最大推进层数
         self.full_layers = 0  # 完整推进层数
@@ -60,12 +60,11 @@ class Adlayers2:
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
 
-    def generate_elements(self):
-        """生成边界层网格"""
         self.initialize_nodes()
-
         self.match_parts_with_fronts()
 
+    def generate_elements(self):
+        """生成边界层网格"""
         for part in self.part_params:
             if not part.PRISM_SWITCH:
                 continue
@@ -103,8 +102,8 @@ class Adlayers2:
         # 汇总所有边界阵面
         self.all_boundary_fronts = []
         for part in self.part_params:
-            if not part.PRISM_SWITCH:
-                continue
+            # if not part.PRISM_SWITCH:
+            #     continue
             self.all_boundary_fronts.extend(part.front_list)
 
     def show_progress(self):

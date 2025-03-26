@@ -73,9 +73,10 @@ class Front:
         if ax is None:
             ax = plt.gca()
 
-        for node_elem in self.node_elems:
-            ax.plot(node_elem.coords[0], node_elem.coords[1], marker)
+        node1, node2 = [self.node_elems[i].coords for i in range(2)]
+        ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
 
+        for node_elem in self.node_elems:
             ax.text(
                 node_elem.coords[0],
                 node_elem.coords[1],

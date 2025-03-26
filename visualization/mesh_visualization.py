@@ -2,9 +2,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def visualize_mesh_2d(grid, BoundaryOnly=False):
+class Visualization:
+    def __init__(self):
+        self.ax = None
+        self.fig = None
+
+    def create_figure(self, figsize=(10, 8)):
+        self.fig, self.ax = plt.subplots(figsize=figsize)
+
+    def plot_mesh(self, mesh, boundary_only=False):
+        visualize_mesh_2d(mesh, self.ax, boundary_only)
+
+
+def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     """可视化完整的2D网格结构"""
-    fig, ax = plt.subplots(figsize=(12, 8))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))
 
     if not BoundaryOnly:
         # 绘制所有网格节点（半透明显示）
@@ -89,12 +102,10 @@ def visualize_mesh_2d(grid, BoundaryOnly=False):
     plt.tight_layout()
     plt.show(block=False)
 
-    # 返回figure和axes对象
-    return fig, ax
 
-
-def visualize_wall_structure_2d(grid, wall_nodes, vector_scale=0.3):
-    fig, ax = plt.subplots(figsize=(10, 8))
+def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))
 
     # 预处理：计算每个wall面的边长（排序节点避免重复）
     face_length = {}

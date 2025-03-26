@@ -11,14 +11,16 @@ from geometry_info import NodeElement, Unstructured_Grid
 
 
 class Adfront2:
-    def __init__(self, boundary_front, sizing_system, node_coords=None, ax=None):
-        self.ax = ax
+    def __init__(
+        self, boundary_front, sizing_system, node_coords=None, visual_obj=None
+    ):
+        self.ax = visual_obj.ax
 
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
-        self.debug_level = 0  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+        self.debug_level = 1  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象
