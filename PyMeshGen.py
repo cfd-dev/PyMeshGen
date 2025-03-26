@@ -28,6 +28,16 @@ visual_obj.plot_unstr_grid(input_grid, BoundaryOnly=True)
 # 构造初始阵面
 front_heap = construct_initial_front(input_grid)
 
+# 设置部件网格生成参数
+part_params = PartMeshParameters(
+    name="wall",
+    max_size=2.0,
+    PRISM_SWITCH=False,
+    first_height=0.1,
+    max_layers=5,
+    full_layers=5,
+)
+
 # 计算网格尺寸场
 sizing_system = QuadtreeSizing(
     initial_front=front_heap,
@@ -40,15 +50,6 @@ sizing_system = QuadtreeSizing(
 
 unstr_grid_list = []
 # 推进生成边界层网格
-part_params = PartMeshParameters(
-    name="wall",
-    max_size=2.0,
-    PRISM_SWITCH=False,
-    first_height=0.1,
-    max_layers=5,
-    full_layers=5,
-)
-
 adlayers = Adlayers2(
     part_params=[part_params], boundary_front=front_heap, visual_obj=visual_obj
 )
