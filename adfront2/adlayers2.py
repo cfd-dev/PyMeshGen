@@ -26,8 +26,8 @@ class Adlayers2:
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
-        self.relax_factor = 0.0  # 节点推进方向光滑松弛因子，0-不光滑，1-完全光滑
-        self.smooth_iterions = 10  # laplacian光滑次数
+        self.relax_factor = 0.2  # 节点推进方向光滑松弛因子，0-不光滑，1-完全光滑
+        self.smooth_iterions = 3  # laplacian光滑次数
 
         self.ilayer = 0  # 当前推进层数
         self.num_nodes = 0  # 节点数量
