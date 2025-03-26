@@ -11,6 +11,9 @@ class Visualization:
         self.fig, self.ax = plt.subplots(figsize=figsize)
 
     def plot_mesh(self, mesh, boundary_only=False):
+        if self.ax is None:
+            self.create_figure()
+
         visualize_mesh_2d(mesh, self.ax, boundary_only)
 
 

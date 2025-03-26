@@ -1,6 +1,41 @@
+import json
+
+
 class Parameters:
-    def __init__(self):
-        self.debug_level = 2  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+    def __init__(self, config_file):
+        self.debug_level = 0  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+        self.part_params = []  # 网格生成部件参数
+        self.config_file = config_file
+        self.input_file = []
+        self.output_file = []
+
+        self.load_cofig()
+
+    # 配置文件读取函数
+    def load_cofig(self):
+        with open(self.config_file, "r") as f:
+            config = json.load(f)
+
+        self.debug_level = config["debug_level"]
+        self.input_file = config["input_file"]
+        self.output_file = config["output_file"]
+
+        if "parts" not in config:
+            raise ValueError("配置文件中缺少 parts 字段")
+
+        self.part_params = []
+        for part in config["parts"]:
+            self.part_params.append(
+                PartMeshParameters(
+                    name=part["name"],
+                    max_size=part["max_size"],
+                    PRISM_SWITCH=part["PRISM_SWITCH"],
+                    first_height=part["first_height"],
+                    max_layers=part["max_layers"],
+                    full_layers=part["full_layers"],
+                    multi_direction=part["multi_direction"],
+                )
+            )
 
 
 class PartMeshParameters:

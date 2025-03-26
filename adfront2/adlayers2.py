@@ -10,7 +10,7 @@ from front2d import Front
 
 
 class Adlayers2:
-    def __init__(self, part_params, boundary_front, param_obj=None, visual_obj=None):
+    def __init__(self, boundary_front, param_obj=None, visual_obj=None):
         self.ax = visual_obj.ax
         self.debug_level = (
             param_obj.debug_level
@@ -22,7 +22,7 @@ class Adlayers2:
         self.multi_direction = False  # 是否多方向推进
 
         self.front_list = boundary_front  # 初始阵面
-        self.part_params = part_params  # 层推进部件参数
+        self.part_params = param_obj.part_params  # 层推进部件参数
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
@@ -286,7 +286,7 @@ class Adlayers2:
             norm = np.linalg.norm(avg_direction)
             avg_direction /= norm
 
-            new_direction = tuple(avg_direction) if norm > 1e-6 else tuple(normal1)
+            new_direction = avg_direction if norm > 1e-6 else normal1
 
             # 加权光滑
             w1 = self.relax_factor
