@@ -27,7 +27,6 @@ class Adlayers2:
         self.part_params = param_obj.part_params  # 层推进部件参数
 
         self.current_part = None  # 当前推进部件
-        self.current_front_list = []  # 当前推进阵面列表
 
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
@@ -59,7 +58,6 @@ class Adlayers2:
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
-            self.current_front_list = self.current_part.front_list
 
             for self.ilayer in range(self.max_layers):
 
@@ -76,8 +74,6 @@ class Adlayers2:
                 self.show_progress()
 
                 self.ilayer += 1
-
-        self.current_part.front_list = self.current_front_list
 
         self.construct_unstr_grid()
 
@@ -114,7 +110,7 @@ class Adlayers2:
         new_prism_cap_list = []  # 新增的边界层流向面
 
         # 逐个阵面进行推进
-        for front in self.current_front_list:
+        for front in self.current_part.front_list:
             if front.bc_type == "interior":
                 # 未推进的阵面仍然加入到新阵面列表中
                 new_interior_list.append(front)
@@ -242,11 +238,11 @@ class Adlayers2:
                 new_cell_nodes[3].early_stop_flag = True
 
         # 更新part阵面列表
-        self.current_front_list = []
+        self.current_part.front_list = []
         for front in new_prism_cap_list:
-            self.current_front_list.append(front)
+            self.current_part.front_list.append(front)
         for front in new_interior_list:
-            self.current_front_list.append(front)
+            self.current_part.front_list.append(front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
@@ -258,7 +254,7 @@ class Adlayers2:
             growth_rate = self.current_part.growth_rate
             global_marching_distance = first_height * growth_rate**self.ilayer
 
-        for front in self.current_front_list:
+        for front in self.current_part.front_list:
             # 计算节点推进距离
             for node in front.node_elems:
                 node.marching_distance = global_marching_distance
@@ -429,7 +425,7 @@ class Adlayers2:
         self.front_node_list = []
         processed_nodes = set()
         hash_idx_map = {}  # 节点hash值到节点索引的映射
-        for front in self.current_front_list:
+        for front in self.current_part.front_list:
             for i, node_elem in enumerate(front.node_elems):
                 if node_elem.hash not in processed_nodes:
                     if not isinstance(node_elem, NodeElementALM):
@@ -450,7 +446,7 @@ class Adlayers2:
                 front.node_elems[i].node2front.append(front)
 
         # 计算node2node
-        for front in self.current_front_list:
+        for front in self.current_part.front_list:
             nodes = front.node_elems
             num_nodes = len(nodes)
             for i, node in enumerate(nodes):
