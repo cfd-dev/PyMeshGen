@@ -95,7 +95,7 @@ class Adfront2:
             )
             # 绘制节点编号
             # for idx, (x, y) in enumerate(self.node_coords):
-            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
+            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="top")
 
         if self.debug_level >= 2:
             # 绘制虚线圆
@@ -153,9 +153,7 @@ class Adfront2:
 
             if self.debug_level >= 1:
                 self.construct_unstr_grid()
-                self.unstr_grid.save_to_vtkfile(
-                    f"./out/debug_mesh_cells{self.num_cells}.vtk"
-                )
+                self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def update_cells(self):
         # 更新节点
@@ -226,7 +224,7 @@ class Adfront2:
             self.cell_container.append(new_cell)
             self.num_cells += 1
         else:
-            print(f"发现重复单元：{new_cell}")
+            print(f"发现重复单元：{new_cell.node_ids}")
             self.debug_level = 1
 
     def select_point(self):
@@ -279,8 +277,8 @@ class Adfront2:
             self.best_flag = True
 
         if self.pselected == None:
-            self.construct_unstructured_grid()
-            self.unstr_grid.save_to_vtkfile("./out/output_mesh.vtk")
+            self.construct_unstr_grid()
+            self.unstr_grid.save_debug_file()
             raise (f"候选点列表中没有合适的点，可能需要扩大搜索范围，请检查！")
 
         return self.pselected

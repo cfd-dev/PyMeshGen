@@ -32,6 +32,9 @@ class Front:
         node1 = node_elem1.coords
         node2 = node_elem2.coords
         self.length = calculate_distance(node1, node2)  # 长度
+        if self.length < 1e-12:
+            raise ValueError("node1 和 node2 不能重合")
+
         self.center = [(a + b) / 2 for a, b in zip(node1, node2)]  # 中心坐标
 
         self.direction = [
@@ -52,7 +55,8 @@ class Front:
         self.bbox = (min_x, min_y, max_x, max_y)
 
         length_hash = hash(round(self.length, 3))
-        center_hash = hash(tuple(round(c, 6) for c in self.center))
+
+        center_hash = hash(tuple(f"{round(coord, 6):.6f}" for coord in self.center))
         self.hash = hash((center_hash, length_hash))
 
     def __lt__(self, other):
@@ -66,11 +70,20 @@ class Front:
 
     def draw_front(self, marker="b-", ax=None):
         """绘制阵面"""
-        node1, node2 = [self.node_elems[i].coords for i in range(2)]
-
         if ax is None:
             ax = plt.gca()
-        ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
+
+        for node_elem in self.node_elems:
+            ax.plot(node_elem.coords[0], node_elem.coords[1], marker)
+
+            ax.text(
+                node_elem.coords[0],
+                node_elem.coords[1],
+                str(node_elem.idx),
+                fontsize=8,
+                ha="center",
+                va="top",
+            )
 
 
 def process_initial_front(grid):

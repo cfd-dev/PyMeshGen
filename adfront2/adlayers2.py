@@ -109,15 +109,13 @@ class Adlayers2:
 
     def show_progress(self):
         """显示推进进度"""
-        print("第{}层推进...,Done.".format(self.ilayer + 1))
+        print("第{}层推进..., Done.".format(self.ilayer + 1))
         print(f"当前节点数量：{self.num_nodes}")
         print(f"当前单元数量：{self.num_cells} \n")
 
         if self.debug_level >= 1:
             self.construct_unstr_grid()
-            self.unstr_grid.save_to_vtkfile(
-                f"./out/debug_mesh_layer{self.ilayer + 1}.vtk"
-            )
+            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
         # 逐个部件进行推进

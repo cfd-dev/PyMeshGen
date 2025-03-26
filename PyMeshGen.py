@@ -17,7 +17,7 @@ from adlayers2 import Adlayers2, PartMeshParameters
 from mesh_visualization import visualize_mesh_2d
 
 # 读入边界网格
-file_path = "./neural/sample_grids/tri.cas"
+file_path = "./neural/sample_grids/concave.cas"
 grid = parse_fluent_msh(file_path)
 fig, ax = visualize_mesh_2d(grid, BoundaryOnly=True)
 
@@ -32,7 +32,7 @@ sizing_system = QuadtreeSizing(
 
 unstr_grid_list = []
 # 推进生成边界层网格
-part_params = PartMeshParameters("farfield", 2.0, True, 0.1, 5, 5)
+part_params = PartMeshParameters("wall", 2.0, True, 0.1, 5, 5)
 adlayers = Adlayers2([part_params], front_heap, ax)
 boundary_grid, front_heap = adlayers.generate_elements()
 unstr_grid_list.append(boundary_grid)

@@ -229,8 +229,11 @@ class NodeElement:
     def __init__(self, coords, idx, bc_type=None):
         self.coords = coords
         self.idx = idx
+
         # 使用处理后的坐标生成哈希
-        self.hash = hash(tuple([round(coord, 6) for coord in self.coords]))
+        # 此处注意！！！hash(-1.0)和hash(-2.0)的结果是一样的！！！因此必须使用字符串
+        self.hash = hash(tuple(f"{round(coord, 6):.6f}" for coord in coords))
+
         self.bc_type = bc_type
 
     def __hash__(self):
@@ -336,9 +339,9 @@ class Triangle:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple([round(c, 6) for c in self.p1]),
-                tuple([round(c, 6) for c in self.p2]),
-                tuple([round(c, 6) for c in self.p3]),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p1),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p2),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p3),
             )
         )
         # 生成逻辑级哈希
@@ -515,10 +518,10 @@ class Quadrilateral:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple(round(c, 6) for c in self.p1),
-                tuple(round(c, 6) for c in self.p2),
-                tuple(round(c, 6) for c in self.p3),
-                tuple(round(c, 6) for c in self.p4),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p1),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p2),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p3),
+                tuple(f"{round(coord, 6):.6f}" for coord in self.p4),
             )
         )
         # 生成逻辑级哈希
@@ -602,6 +605,12 @@ class Unstructured_Grid:
         self.boundary_nodes = list(merged_boundary_nodes)
         self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
         self.num_boundary_nodes = len(self.boundary_nodes)
+
+    def save_debug_file(self, status):
+        """保存调试文件"""
+        self.num_cells = len(self.cell_container)
+        file_path = f"./out/debug_mesh_{status}.vtk"
+        self.save_to_vtkfile(file_path)
 
     def visualize_unstr_grid_2d(self):
         """可视化二维网格"""
