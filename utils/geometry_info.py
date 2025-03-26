@@ -586,7 +586,9 @@ class Unstructured_Grid:
         # 更新单元数量
         self.num_cells = len(self.cell_container)
 
-        # 节点坐标已经合并过了，此处不再合并
+        # 节点坐标已经合并过，但是laplacian优化后，节点坐标有更新，此处应采用优化后的节点坐标
+        self.node_coords = other_grid.node_coords
+
         # 更新节点数量
         self.num_nodes = len(self.node_coords)
 

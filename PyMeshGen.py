@@ -44,8 +44,8 @@ triangular_grid = adfront2.generate_elements()
 # 网格质量优化
 triangular_grid = edge_swap(triangular_grid)
 triangular_grid = laplacian_smooth(triangular_grid, 3)
+# triangular_grid.visualize_unstr_grid_2d()
 unstr_grid_list.append(triangular_grid)
-# triangular_grids.visualize_unstr_grid_2d()
 
 # 合并各向同性网格和边界层网格
 global_unstr_grid = unstr_grid_list[0]
