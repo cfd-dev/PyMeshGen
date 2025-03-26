@@ -22,11 +22,13 @@ class Adlayers2:
         self.full_layers = 0  # 完整推进层数
         self.multi_direction = False  # 是否多方向推进
 
-        self.front_list = boundary_front  # 初始阵面
+        self.initial_front_list = boundary_front  # 初始阵面
         self.sizing_system = sizing_system  # 尺寸场系统对象
         self.part_params = param_obj.part_params  # 层推进部件参数
 
         self.current_part = None  # 当前推进部件
+        self.current_front_list = []  # 当前推进阵面列表
+
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
         self.front_node_list = []  # 当前阵面节点列表
@@ -57,13 +59,11 @@ class Adlayers2:
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
+            self.current_front_list = self.current_part.front_list
 
             for self.ilayer in range(self.max_layers):
 
-                print("第{}层推进...".format(self.ilayer + 1))
-
-                # 将更新后的part阵面列表设置为当前阵面列表
-                self.front_list = self.current_part.front_list
+                print(f"第{self.ilayer + 1}层推进中...")
 
                 self.prepare_geometry_info()
 
@@ -76,6 +76,8 @@ class Adlayers2:
                 self.show_progress()
 
                 self.ilayer += 1
+
+        self.current_part.front_list = self.current_front_list
 
         self.construct_unstr_grid()
 
@@ -98,7 +100,7 @@ class Adlayers2:
 
     def show_progress(self):
         """显示推进进度"""
-        print("第{}层推进..., Done.".format(self.ilayer + 1))
+        print(f"第{self.ilayer + 1}层推进..., Done.")
         print(f"当前节点数量：{self.num_nodes}")
         print(f"当前单元数量：{self.num_cells} \n")
 
@@ -112,8 +114,9 @@ class Adlayers2:
         new_prism_cap_list = []  # 新增的边界层流向面
 
         # 逐个阵面进行推进
-        for front in self.front_list:
+        for front in self.current_front_list:
             if front.bc_type == "interior":
+                # 未推进的阵面仍然加入到新阵面列表中
                 new_interior_list.append(front)
                 continue
 
@@ -121,6 +124,7 @@ class Adlayers2:
 
             # 如果early_stop_flag为True，则跳过该阵面
             if new_cell_nodes[0].early_stop_flag or new_cell_nodes[1].early_stop_flag:
+                # 未推进的阵面仍然加入到新阵面列表中
                 new_prism_cap_list.append(front)
                 continue
 
@@ -238,51 +242,47 @@ class Adlayers2:
                 new_cell_nodes[3].early_stop_flag = True
 
         # 更新part阵面列表
-        self.current_part.front_list = []
+        self.current_front_list = []
         for front in new_prism_cap_list:
-            self.current_part.front_list.append(front)
+            self.current_front_list.append(front)
         for front in new_interior_list:
-            self.current_part.front_list.append(front)
+            self.current_front_list.append(front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
         global_marching_distance = 0.0  # 全局推进距离
 
-        for part in self.part_params:
-            if not part.PRISM_SWITCH:
-                continue
+        if self.current_part.growth_method == "geometric":
+            # 计算几何增长距离
+            first_height = self.current_part.first_height
+            growth_rate = self.current_part.growth_rate
+            global_marching_distance = first_height * growth_rate**self.ilayer
 
-            if part.growth_method == "geometric":
-                # 计算几何增长距离
-                global_marching_distance = (
-                    part.first_height * part.growth_rate**self.ilayer
-                )
+        for front in self.current_front_list:
+            # 计算节点推进距离
+            for node in front.node_elems:
+                node.marching_distance = global_marching_distance
+                front1, front2 = node.node2front[:2]
 
-            for front in part.front_list:
-                # 计算节点推进距离
-                for node in front.node_elems:
-                    node.marching_distance = global_marching_distance
-                    front1, front2 = node.node2front[:2]
+                # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
+                proj1 = np.dot(node.marching_direction, front1.normal)
+                proj2 = np.dot(node.marching_direction, front2.normal)
 
-                    # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
-                    proj1 = np.dot(node.marching_direction, front1.normal)
-                    proj2 = np.dot(node.marching_direction, front2.normal)
+                if (
+                    proj1 * proj2 < 0
+                    and front1.bc_type != "interior"
+                    and front2.bc_type != "interior"
+                ):
+                    print(
+                        f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
+                    )
 
-                    if (
-                        proj1 * proj2 < 0
-                        and front1.bc_type != "interior"
-                        and front2.bc_type != "interior"
-                    ):
-                        print(
-                            f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
-                        )
-
-                    # 节点推进距离
-                    node.marching_distance = (
-                        global_marching_distance
-                        * node.local_step_factor
-                        / np.mean([proj1, proj2])
-                    )  # min(abs(proj1), abs(proj2))
+                # 节点推进距离
+                node.marching_distance = (
+                    global_marching_distance
+                    * node.local_step_factor
+                    / np.mean([proj1, proj2])
+                )  # min(abs(proj1), abs(proj2))
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
@@ -414,7 +414,7 @@ class Adlayers2:
     def initialize_nodes(self):
         """初始化节点"""
         processed_nodes = set()
-        for front in self.front_list:
+        for front in self.initial_front_list:
             for node_elem in front.node_elems:
                 if node_elem.hash not in processed_nodes:
                     self.boundary_nodes.append(node_elem)
@@ -429,7 +429,7 @@ class Adlayers2:
         self.front_node_list = []
         processed_nodes = set()
         hash_idx_map = {}  # 节点hash值到节点索引的映射
-        for front in self.front_list:
+        for front in self.current_front_list:
             for i, node_elem in enumerate(front.node_elems):
                 if node_elem.hash not in processed_nodes:
                     if not isinstance(node_elem, NodeElementALM):
@@ -450,7 +450,7 @@ class Adlayers2:
                 front.node_elems[i].node2front.append(front)
 
         # 计算node2node
-        for front in self.front_list:
+        for front in self.current_front_list:
             nodes = front.node_elems
             num_nodes = len(nodes)
             for i, node in enumerate(nodes):
@@ -542,11 +542,8 @@ class Adlayers2:
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""
-        for front in self.front_list:
+        for front in self.initial_front_list:
             for part in self.part_params:
                 if part.name == front.part_name:
                     part.front_list.append(front)
                     break
-
-        # 清空adlyaers对象中的front_list，后续计算均以part_params中的front_list为准
-        self.front_list = []
