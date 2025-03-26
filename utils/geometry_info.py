@@ -20,6 +20,36 @@ def normal_vector2d(front):
     return (-dy / magnitude, dx / magnitude)
 
 
+def calculate_angle(p1, p2, p3):
+    """计算空间中三个点的夹角（弧度制），自动适配2D/3D坐标"""
+    # 自动补充z坐标（二维点z=0）
+    coord1 = [*p1, 0] if len(p1) == 2 else p1
+    coord2 = [*p2, 0] if len(p2) == 2 else p2
+    coord3 = [*p3, 0] if len(p3) == 2 else p3
+
+    v1 = np.array([coord2[i] - coord1[i] for i in range(3)])
+    v2 = np.array([coord3[i] - coord2[i] for i in range(3)])
+
+    # 计算向量模长
+    magnitude_v1 = np.linalg.norm(v1)
+    magnitude_v2 = np.linalg.norm(v2)
+
+    # 处理零向量情况
+    if magnitude_v1 == 0 or magnitude_v2 == 0:
+        return 0.0
+
+    # 计算夹角的余弦值
+    cos_theta = np.dot(v1, v2) / (magnitude_v1 * magnitude_v2)
+
+    # 处理余弦值超出范围的情况
+    cos_theta = max(-1.0, min(1.0, cos_theta))
+
+    # 计算夹角（弧度制）
+    theta = np.arccos(cos_theta)
+
+    return np.degrees(theta)
+
+
 def calculate_distance(p1, p2):
     """计算二维/三维点间距"""
     return sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
@@ -570,6 +600,25 @@ class Quadrilateral:
         # min_edge = min(edges)
         # return max_edge / min_edge if min_edge > 1e-12 else 0.0
         return (edges[0] + edges[2]) / (edges[1] + edges[3])
+
+    def get_skewness(self):
+        # 四边形的四个内角
+        angles = [
+            calculate_angle(self.p1, self.p2, self.p3),
+            calculate_angle(self.p2, self.p3, self.p4),
+            calculate_angle(self.p3, self.p4, self.p1),
+            calculate_angle(self.p4, self.p1, self.p2),
+        ]
+
+        # 计算最大和最小角度
+        max_angle = max(angles)
+        min_angle = min(angles)
+
+        skew1 = (max_angle - 90) / 90
+        skew2 = (90 - min_angle) / 90
+        skewness = max([skew1, skew2])
+
+        return skewness
 
 
 class Unstructured_Grid:

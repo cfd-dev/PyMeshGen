@@ -1,5 +1,5 @@
 {
-    "debug_level": 1,
+    "debug_level": 0,
     "input_file": "./config/input/naca0012-tri-coarse.cas",
     "output_file": "output",
     "parts": [
