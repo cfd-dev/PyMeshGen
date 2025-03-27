@@ -80,6 +80,8 @@ class Adlayers2:
 
         self.construct_unstr_grid()
 
+        self.draw_prism_cap()
+
         return self.unstr_grid, self.all_boundary_fronts
 
     def draw_prism_cap(self):
@@ -119,42 +121,42 @@ class Adlayers2:
         self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
-        # 逐个部件进行推进
-        new_interior_list = []  # 新增的边界层法向面，设置为内部面
-        new_prism_cap_list = []  # 新增的边界层流向面
+        new_interior_list = []  # 新增的边界层法向面，设置为interior
+        new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
 
         # 逐个阵面进行推进
         for front in self.current_part.front_list:
             if front.bc_type == "interior":
-                # 未推进的阵面仍然加入到新阵面列表中
-                new_interior_list.append(front)
+                new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
 
-            if front.node_ids == (53, 54) or front.node_ids == (61, 62):
+            if front.early_stop_flag:
+                new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
+                continue
+
+            if front.node_ids == (441, 416) or front.node_ids == (61, 62):
                 print("")
 
             new_cell_nodes = front.node_elems.copy()
 
             # 如果early_stop_flag为True，则跳过该阵面
-            if new_cell_nodes[0].early_stop_flag or new_cell_nodes[1].early_stop_flag:
-                # 未推进的阵面仍然加入到新阵面列表中
-                new_prism_cap_list.append(front)
-                continue
+            # if new_cell_nodes[0].early_stop_flag or new_cell_nodes[1].early_stop_flag:
+            # new_prism_cap_list.append(front) # 未推进的阵面仍然加入到新阵面列表中
+            # continue
 
             # 逐个节点进行推进
-            new_node_generated = [False, False]  # 记录新节点是否生成
+            new_node_generated = [None, None]  # 记录新节点是否生成
             temp_num_nodes = self.num_nodes  # 记录当前节点数量
             for i, node_elem in enumerate(front.node_elems):
                 if node_elem.corresponding_node is None:
-                    new_node_generated[i] = True
-
+                    # 推进生成一个新点
                     new_node = (
                         np.array(node_elem.coords)
                         + np.array(node_elem.marching_direction)
                         * node_elem.marching_distance
                     )
 
-                    # 创建新节点元素
+                    # 创建临时新节点元素
                     new_node_elem = NodeElementALM(
                         coords=new_node.tolist(),
                         idx=temp_num_nodes,
@@ -162,12 +164,14 @@ class Adlayers2:
                     )
 
                     temp_num_nodes += 1
-                    node_elem.corresponding_node = new_node_elem
+                    new_node_generated[i] = new_node_elem
+                    # node_elem.corresponding_node = new_node_elem
                     new_cell_nodes.append(new_node_elem)
                 else:
+                    # 当前节点已经推进过了，找出其对应的新节点
                     new_cell_nodes.append(node_elem.corresponding_node)
 
-            # 创建新阵面
+            # 创建临时新阵面
             alm_front = Front(
                 new_cell_nodes[2],
                 new_cell_nodes[3],
@@ -202,22 +206,39 @@ class Adlayers2:
             # 检查新单元质量，质量不合格则当前front早停
             quality = new_cell.get_skewness()
             if quality < self.quality_threshold:
-                new_cell_nodes[0].early_stop_flag = True
-                new_cell_nodes[1].early_stop_flag = True
+                # new_cell_nodes[0].early_stop_flag = True
+                # new_cell_nodes[1].early_stop_flag = True
+                front.early_stop_flag = True
+                new_prism_cap_list.append(front)
+                continue
+
+            # 单元大小、长宽比、full_layer判断早停
+            cell_size = new_cell.get_element_size()
+            cell_aspect_ratio = new_cell.get_aspect_ratio()
+            isotropic_size = self.sizing_system.spacing_at(front.center)
+            if (
+                cell_size < 1.1 * isotropic_size
+                and cell_aspect_ratio <= 1.1
+                and self.ilayer >= self.full_layers - 1
+            ):
+                # new_cell_nodes[0].early_stop_flag = True
+                # new_cell_nodes[1].early_stop_flag = True
+                front.early_stop_flag = True
                 new_prism_cap_list.append(front)
                 continue
 
             # 邻近检查，检查3个阵面附近是否有其他阵面，若有，则对当前阵面进行早停
             all_fronts = []
             seen = set()
-            for front2 in (
+            temp_list = (
                 self.current_part.front_list + new_interior_list + new_prism_cap_list
-            ):
-                if front2.hash not in seen:
-                    seen.add(front2.hash)
-                    all_fronts.append(front2)
+            )
+            for tmp_front in temp_list:
+                if tmp_front.hash not in seen:
+                    seen.add(tmp_front.hash)
+                    all_fronts.append(tmp_front)
 
-            # 建立矩形背景网格
+            # 建立矩形背景网格，便于快速查询
             self._build_space_index(all_fronts)
 
             check_fronts = [alm_front, new_front1, new_front2]
@@ -262,39 +283,35 @@ class Adlayers2:
                                 print(
                                     f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
                                 )
-                                new_cell_nodes[0].early_stop_flag = True
-                                new_cell_nodes[1].early_stop_flag = True
+                                # new_cell_nodes[0].early_stop_flag = True
+                                # new_cell_nodes[1].early_stop_flag = True
+                                front.early_stop_flag = True
 
                                 if self.debug_level >= 1:
                                     self._highlight_intersection(new_front, candidate)
                                 break
 
-                        if new_cell_nodes[0].early_stop_flag:
+                        if front.early_stop_flag:
+                            # if new_cell_nodes[0].early_stop_flag:
                             break
-                    if new_cell_nodes[0].early_stop_flag:
+                    if front.early_stop_flag:
+                        # if new_cell_nodes[0].early_stop_flag:
                         break
-                if new_cell_nodes[0].early_stop_flag:
+                if front.early_stop_flag:
+                    # if new_cell_nodes[0].early_stop_flag:
                     break
 
-            if new_cell_nodes[0].early_stop_flag:
+            if front.early_stop_flag:
+                # if new_cell_nodes[0].early_stop_flag:
                 new_prism_cap_list.append(front)
                 continue
 
-            # 早停条件判断
-            cell_size = new_cell.get_element_size()
-            cell_aspect_ratio = new_cell.get_aspect_ratio()
-            isotropic_size = self.sizing_system.spacing_at(front.center)
-            if (
-                cell_size < 1.1 * isotropic_size
-                and cell_aspect_ratio <= 1.1
-                and self.ilayer >= self.full_layers - 1
-            ):
-                new_cell_nodes[2].early_stop_flag = True
-                new_cell_nodes[3].early_stop_flag = True
-
+            # 若没有早停，则更新节点、单元和阵面列表
             # 更新节点：检查新节点是否生成，若生成，则加入到节点列表中
+            # 注意corresponding_node也要在此更新，而不是在其他地方更新
             for i in range(2):
-                if new_node_generated[i]:
+                if new_node_generated[i] is not None:
+                    front.node_elems[i].corresponding_node = new_node_generated[i]
                     self.node_coords.append(new_cell_nodes[i + 2].coords)
                     self.num_nodes += 1
 
@@ -302,17 +319,16 @@ class Adlayers2:
             self.cell_container.append(new_cell)
             self.num_cells += 1
 
-            # 检查新阵面是否已经存在于堆中
-            # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
+            # 更新阵面列表
             new_prism_cap_list.append(alm_front)
             if self.ax and self.debug_level >= 1:
                 alm_front.draw_front("g-", self.ax)
 
             exists_new1 = any(
-                front.hash == new_front1.hash for front in new_interior_list
+                tmp_front.hash == new_front1.hash for tmp_front in new_interior_list
             )
             exists_new2 = any(
-                front.hash == new_front2.hash for front in new_interior_list
+                tmp_front.hash == new_front2.hash for tmp_front in new_interior_list
             )
 
             if not exists_new1:
@@ -322,9 +338,9 @@ class Adlayers2:
             else:
                 # 移除相同位置的旧阵面
                 new_interior_list = [
-                    front2
-                    for front2 in new_interior_list
-                    if front2.hash != new_front1.hash
+                    tmp_front
+                    for tmp_front in new_interior_list
+                    if tmp_front.hash != new_front1.hash
                 ]
 
             if not exists_new2:
@@ -333,17 +349,17 @@ class Adlayers2:
                     new_front2.draw_front("g-", self.ax)
             else:
                 new_interior_list = [
-                    front2
-                    for front2 in new_interior_list
-                    if front2.hash != new_front2.hash
+                    tmp_front
+                    for tmp_front in new_interior_list
+                    if tmp_front.hash != new_front2.hash
                 ]
 
         # 更新part阵面列表
         self.current_part.front_list = []
-        for front2 in new_prism_cap_list:
-            self.current_part.front_list.append(front2)
-        for front2 in new_interior_list:
-            self.current_part.front_list.append(front2)
+        for tmp_front in new_prism_cap_list:
+            self.current_part.front_list.append(tmp_front)
+        for tmp_front in new_interior_list:
+            self.current_part.front_list.append(tmp_front)
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
@@ -383,7 +399,7 @@ class Adlayers2:
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
-        if self.ax is None or self.debug_level < 2:
+        if self.ax is None or self.debug_level < 3:
             return
 
         for node in self.front_node_list:

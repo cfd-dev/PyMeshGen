@@ -8,7 +8,7 @@
             "max_size": 2.0,
             "PRISM_SWITCH": true,
             "first_height": 0.1,
-            "max_layers": 10,
+            "max_layers": 30,
             "full_layers": 5,
             "multi_direction": false
         }
