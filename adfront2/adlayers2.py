@@ -80,10 +80,11 @@ class Adlayers2:
 
         self.construct_unstr_grid()
 
+        return self.unstr_grid, self.all_boundary_fronts
+
+    def draw_prism_cap(self):
         for front in self.all_boundary_fronts:
             front.draw_front("r-", self.ax, linewidth=3)
-
-        return self.unstr_grid, self.all_boundary_fronts
 
     def construct_unstr_grid(self):
         """构造非结构化网格"""

@@ -1,5 +1,5 @@
 {
-    "debug_level": 2,
+    "debug_level": 0,
     "input_file": "./config/input/concave.cas",
     "output_file": "output",
     "parts": [

@@ -1,5 +1,5 @@
 {
-    "debug_level": 1,
+    "debug_level": 0,
     "input_file": "./config/input/30p30n-small.cas",
     "output_file": "output",
     "parts": [
