@@ -290,7 +290,6 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self.num_multi_direction = 1  # 节点处的多方向数量
         self.local_step_factor = 1.0  # 节点处的局部步长因子
         self.corresponding_node = None  # 节点的对应节点
-        self.early_stop_flag = False  # 节点的提前停止标志
 
     @classmethod
     def from_existing_node(cls, node_elem):

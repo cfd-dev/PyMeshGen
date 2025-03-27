@@ -80,7 +80,7 @@ class Adlayers2:
 
         self.construct_unstr_grid()
 
-        self.draw_prism_cap()
+        # self.draw_prism_cap()
 
         return self.unstr_grid, self.all_boundary_fronts
 
@@ -137,14 +137,8 @@ class Adlayers2:
             if front.node_ids == (441, 416) or front.node_ids == (61, 62):
                 print("")
 
+            # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
             new_cell_nodes = front.node_elems.copy()
-
-            # 如果early_stop_flag为True，则跳过该阵面
-            # if new_cell_nodes[0].early_stop_flag or new_cell_nodes[1].early_stop_flag:
-            # new_prism_cap_list.append(front) # 未推进的阵面仍然加入到新阵面列表中
-            # continue
-
-            # 逐个节点进行推进
             new_node_generated = [None, None]  # 记录新节点是否生成
             temp_num_nodes = self.num_nodes  # 记录当前节点数量
             for i, node_elem in enumerate(front.node_elems):
@@ -165,7 +159,6 @@ class Adlayers2:
 
                     temp_num_nodes += 1
                     new_node_generated[i] = new_node_elem
-                    # node_elem.corresponding_node = new_node_elem
                     new_cell_nodes.append(new_node_elem)
                 else:
                     # 当前节点已经推进过了，找出其对应的新节点
@@ -206,8 +199,6 @@ class Adlayers2:
             # 检查新单元质量，质量不合格则当前front早停
             quality = new_cell.get_skewness()
             if quality < self.quality_threshold:
-                # new_cell_nodes[0].early_stop_flag = True
-                # new_cell_nodes[1].early_stop_flag = True
                 front.early_stop_flag = True
                 new_prism_cap_list.append(front)
                 continue
@@ -221,8 +212,6 @@ class Adlayers2:
                 and cell_aspect_ratio <= 1.1
                 and self.ilayer >= self.full_layers - 1
             ):
-                # new_cell_nodes[0].early_stop_flag = True
-                # new_cell_nodes[1].early_stop_flag = True
                 front.early_stop_flag = True
                 new_prism_cap_list.append(front)
                 continue
@@ -283,8 +272,6 @@ class Adlayers2:
                                 print(
                                     f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
                                 )
-                                # new_cell_nodes[0].early_stop_flag = True
-                                # new_cell_nodes[1].early_stop_flag = True
                                 front.early_stop_flag = True
 
                                 if self.debug_level >= 1:
@@ -292,17 +279,13 @@ class Adlayers2:
                                 break
 
                         if front.early_stop_flag:
-                            # if new_cell_nodes[0].early_stop_flag:
                             break
                     if front.early_stop_flag:
-                        # if new_cell_nodes[0].early_stop_flag:
                         break
                 if front.early_stop_flag:
-                    # if new_cell_nodes[0].early_stop_flag:
                     break
 
             if front.early_stop_flag:
-                # if new_cell_nodes[0].early_stop_flag:
                 new_prism_cap_list.append(front)
                 continue
 
