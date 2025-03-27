@@ -20,8 +20,9 @@ from parameters import Parameters, PartMeshParameters
 
 def PyMeshGen():
     # 建立参数管理对象
+    parameters = Parameters("./config/quad.json")
     # parameters = Parameters("./config/quad_quad.json")
-    parameters = Parameters("./config/concave.json")
+    # parameters = Parameters("./config/concave.json")
     # parameters = Parameters("./config/convex.json")
     # parameters = Parameters("./config/cylinder.json")
     # parameters = Parameters("./config/naca0012.json")

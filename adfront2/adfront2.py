@@ -89,7 +89,7 @@ class Adfront2:
         if not __debug__:
             return
 
-        if self.base_front.node_ids == (5113, 5110):
+        if self.base_front.node_ids == (62, 68) or self.base_front.node_ids == (61, 62):
             # self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
             kkk = 0
 

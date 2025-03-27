@@ -69,13 +69,13 @@ class Front:
     def __eq__(self, other):
         return self.hash == other.hash
 
-    def draw_front(self, marker="b-", ax=None):
+    def draw_front(self, marker="b-", ax=None, linewidth=1):
         """绘制阵面"""
         if ax is None:
             ax = plt.gca()
 
         node1, node2 = [self.node_elems[i].coords for i in range(2)]
-        ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker)
+        ax.plot([node1[0], node2[0]], [node1[1], node2[1]], marker, linewidth=linewidth)
 
         for node_elem in self.node_elems:
             ax.text(

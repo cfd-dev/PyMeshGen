@@ -1,0 +1,16 @@
+{
+    "debug_level": 2,
+    "input_file": "./config/input/quad.cas",
+    "output_file": "output",
+    "parts": [
+        {
+            "name": "wall",
+            "max_size": 2.0,
+            "PRISM_SWITCH": true,
+            "first_height": 0.05,
+            "max_layers": 20,
+            "full_layers": 5,
+            "multi_direction": false
+        }
+    ]
+}

@@ -27,7 +27,7 @@ def calculate_angle(p1, p2, p3):
     coord2 = [*p2, 0] if len(p2) == 2 else p2
     coord3 = [*p3, 0] if len(p3) == 2 else p3
 
-    v1 = np.array([coord2[i] - coord1[i] for i in range(3)])
+    v1 = np.array([coord1[i] - coord2[i] for i in range(3)])
     v2 = np.array([coord3[i] - coord2[i] for i in range(3)])
 
     # 计算向量模长
@@ -609,6 +609,10 @@ class Quadrilateral:
             calculate_angle(self.p3, self.p4, self.p1),
             calculate_angle(self.p4, self.p1, self.p2),
         ]
+        # 检查内角和是否为360度
+        if abs(np.sum(angles) - 360) > 1e-3:
+            skewness = 0.0
+            return skewness
 
         # 计算最大和最小角度
         max_angle = max(angles)
@@ -616,7 +620,7 @@ class Quadrilateral:
 
         skew1 = (max_angle - 90) / 90
         skew2 = (90 - min_angle) / 90
-        skewness = max([skew1, skew2])
+        skewness = 1.0 - max([skew1, skew2])
 
         return skewness
 
