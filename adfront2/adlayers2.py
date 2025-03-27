@@ -86,7 +86,7 @@ class Adlayers2:
         )
 
         if self.debug_level == 1:
-            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
+            self.debug_save()
 
         # 汇总所有边界阵面
         self.all_boundary_fronts = []
@@ -102,8 +102,14 @@ class Adlayers2:
         print(f"当前单元数量：{self.num_cells} \n")
 
         if self.debug_level >= 2:
-            self.construct_unstr_grid()
-            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
+            self.debug_save()
+
+    def debug_save(self):
+        if self.debug_level < 1:
+            return
+
+        self.construct_unstr_grid()
+        self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
         # 逐个部件进行推进
