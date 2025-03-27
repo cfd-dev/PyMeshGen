@@ -134,7 +134,7 @@ class Adlayers2:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
 
-            if front.node_ids == (441, 416) or front.node_ids == (61, 62):
+            if front.node_ids == (720, 734) or front.node_ids == (61, 62):
                 print("")
 
             # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
@@ -205,13 +205,25 @@ class Adlayers2:
 
             # 单元大小、长宽比、full_layer判断早停
             cell_size = new_cell.get_element_size()
-            cell_aspect_ratio = new_cell.get_aspect_ratio()
             isotropic_size = self.sizing_system.spacing_at(front.center)
-            if (
-                cell_size < 1.1 * isotropic_size
-                and cell_aspect_ratio <= 1.1
-                and self.ilayer >= self.full_layers - 1
-            ):
+            size_factor = 1.3  # 限制调整头部和尾部的单元size：[1.2-1.5]
+            size_condition = cell_size > size_factor * isotropic_size
+
+            # 单元长宽比<1.1
+            cell_aspect_ratio = new_cell.get_aspect_ratio2()
+            aspect_ratio_condition = cell_aspect_ratio < 1.1
+
+            # 当前层数 > full_layer
+            full_layer_condition = self.ilayer >= self.full_layers
+
+            # 长宽比<1.1且当前层数>full_layer，则当前front早停
+            if aspect_ratio_condition and full_layer_condition:
+                front.early_stop_flag = True
+                new_prism_cap_list.append(front)
+                continue
+
+            # 单元size>1.5*isotropic_size且当前层数>full_layer，则当前front早停
+            if size_condition and full_layer_condition:
                 front.early_stop_flag = True
                 new_prism_cap_list.append(front)
                 continue

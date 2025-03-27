@@ -595,9 +595,20 @@ class Quadrilateral:
             calculate_distance(self.p4, self.p1),
         ]
 
-        # max_edge = max(edges)
-        # min_edge = min(edges)
-        # return max_edge / min_edge if min_edge > 1e-12 else 0.0
+        max_edge = max(edges)
+        min_edge = min(edges)
+        return max_edge / min_edge if min_edge > 1e-12 else 0.0
+
+    def get_aspect_ratio2(self):
+        """基于底边/侧边的长宽比"""
+        # 计算所有边长
+        edges = [
+            calculate_distance(self.p1, self.p2),
+            calculate_distance(self.p2, self.p3),
+            calculate_distance(self.p3, self.p4),
+            calculate_distance(self.p4, self.p1),
+        ]
+
         return (edges[0] + edges[2]) / (edges[1] + edges[3])
 
     def get_skewness(self):
