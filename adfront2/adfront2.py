@@ -68,8 +68,9 @@ class Adfront2:
             self.node_coords = []  # 准备初始化节点坐标
 
         for front in self.front_list:
+            front.priority = True  # 初始化优先级为True
+            front.al = self.al  # 初始化搜索半径系数
             for node_elem in front.node_elems:
-                front.priority = True  # 初始化优先级为True
                 if node_elem.hash not in self.node_hash_list:
                     self.node_hash_list.add(node_elem.hash)
                     self.boundary_nodes.add(node_elem)  # 添加边界节点
@@ -83,17 +84,17 @@ class Adfront2:
         for front in self.front_list:
             front.draw_front("r-", self.ax)
 
-    def debug_draw(self, ax):
+    def debug_draw(self):
         """绘制候选节点、候选阵面"""
         if not __debug__:
             return
 
-        if ax is None or self.debug_level < 1:
-            return
+        if self.base_front.node_ids == (5113, 5110):
+            # self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
+            kkk = 0
 
-        # if self.base_front.node_ids == (895, 738):
-        #     self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
-        #     kkk = 0
+        if self.ax is None or self.debug_level < 1:
+            return
 
         if self.debug_level >= 1:
             # 绘制基准阵面
@@ -104,7 +105,7 @@ class Adfront2:
             )
             # 绘制节点编号
             # for idx, (x, y) in enumerate(self.node_coords):
-            #     ax.text(x, y, str(i), fontsize=8, ha="center", va="top")
+            #     self.ax.text(x, y, str(i), fontsize=8, ha="center", va="top")
 
         if self.debug_level >= 2:
             # 绘制虚线圆
@@ -122,10 +123,10 @@ class Adfront2:
 
             # 绘制候选节点
             for node_elem in self.node_candidates:
-                ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
+                self.ax.plot(node_elem.coords[0], node_elem.coords[1], "r.")
             # 绘制候选阵面
             for front in self.front_candidates:
-                front.draw_front("y-", ax)
+                front.draw_front("y-", self.ax)
 
     def generate_elements(self):
         while self.front_list:
@@ -135,9 +136,9 @@ class Adfront2:
 
             self.add_new_point(spacing)
 
-            self.search_candidates(self.al * spacing)
+            self.search_candidates(self.base_front.al * spacing)
 
-            self.debug_draw(self.ax)
+            self.debug_draw()
 
             self.select_point()
 
@@ -160,11 +161,12 @@ class Adfront2:
             print(f"当前节点数量：{self.num_nodes}")
             print(f"当前单元数量：{self.num_cells} \n")
 
-            if self.debug_level >= 1:
-                self.construct_unstr_grid()
-                self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
+            self.debug_save()
 
     def update_cells(self):
+        if self.pselected is None:
+            return
+
         # 更新节点
         if self.best_flag and self.pselected is not None:
             node_hash = self.pselected.hash
@@ -286,11 +288,19 @@ class Adfront2:
             self.best_flag = True
 
         if self.pselected == None:
-            self.construct_unstr_grid()
-            self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
-            raise (f"候选点列表中没有合适的点，可能需要扩大搜索范围，请检查！")
+            print(
+                f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
+            )
+            self.debug_save()
+            self.base_front.al *= 1.2
 
         return self.pselected
+
+    def debug_save(self):
+        if self.debug_level < 1:
+            return
+        self.construct_unstr_grid()
+        self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):
         for front in self.front_candidates:

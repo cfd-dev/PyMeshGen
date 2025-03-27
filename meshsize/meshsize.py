@@ -92,7 +92,7 @@ class QuadtreeSizing:
         initial_front=None,  # 初始阵面列表（包含几何边界信息）
         max_size=1.0,  # 最大允许网格尺寸
         resolution=0.1,  # 网格细分分辨率阈值（尺寸差百分比）
-        decay=1.2,  # 尺寸场衰减系数（>1时尺寸随距离增大）
+        decay=0.8,  # 尺寸场衰减系数（>1时尺寸随距离增大）
         visual_obj=None,  # matplotlib可视化对象
     ):
 
@@ -133,10 +133,10 @@ class QuadtreeSizing:
 
         # draw_quadtree(self.quad_tree, self.ax)
 
-        # 根据decay参数计算网格尺度场的decay
+        # 根据decay参数计算网格尺度场的decay TODO: 待验证
         self.compute_spacing_decay()
 
-        # 网格尺度场过渡
+        # 网格尺度场过渡 TODO: 待验证
         self.spacing_transition()
 
         self.grid_summary()

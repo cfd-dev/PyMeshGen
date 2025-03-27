@@ -24,10 +24,10 @@ def PyMeshGen():
     # parameters = Parameters("./config/concave.json")
     # parameters = Parameters("./config/convex.json")
     # parameters = Parameters("./config/cylinder.json")
-    parameters = Parameters("./config/naca0012.json")
+    # parameters = Parameters("./config/naca0012.json")
     # parameters = Parameters("./config/30p30n.json")
     # parameters = Parameters("./config/anw.json")
-    # parameters = Parameters("./config/rae2822.json")
+    parameters = Parameters("./config/rae2822.json")
     # 建立可视化对象
     visual_obj = Visualization()
 

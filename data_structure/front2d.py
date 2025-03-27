@@ -20,6 +20,7 @@ class Front:
         self.part_name = part_name  # 边界所属部件
 
         self.priority = False  # 优先推进标记
+        self.al = 3.0  # 候选点搜索范围系数
         self.center = None  # 阵面中心坐标
         self.length = None  # 阵面长度
         self.direction = None  # 单位方向向量

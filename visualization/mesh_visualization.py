@@ -3,9 +3,12 @@ import numpy as np
 
 
 class Visualization:
-    def __init__(self):
+    def __init__(self, SWITCH=False):
         self.ax = None
         self.fig = None
+
+        if __debug__ or SWITCH:
+            self.create_figure()
 
     def create_figure(self, figsize=(10, 8)):
         self.fig, self.ax = plt.subplots(figsize=figsize)

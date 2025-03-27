@@ -85,11 +85,12 @@ class Adlayers2:
             self.cell_container, self.node_coords, self.boundary_nodes
         )
 
+        if self.debug_level == 1:
+            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
+
         # 汇总所有边界阵面
         self.all_boundary_fronts = []
         for part in self.part_params:
-            # if not part.PRISM_SWITCH:
-            #     continue
             self.all_boundary_fronts.extend(part.front_list)
 
         heapq.heapify(self.all_boundary_fronts)
@@ -100,9 +101,9 @@ class Adlayers2:
         print(f"当前节点数量：{self.num_nodes}")
         print(f"当前单元数量：{self.num_cells} \n")
 
-        # if self.debug_level >= 1:
-        # self.construct_unstr_grid()
-        # self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
+        if self.debug_level >= 2:
+            self.construct_unstr_grid()
+            self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
         # 逐个部件进行推进
@@ -128,6 +129,9 @@ class Adlayers2:
             for node_elem in front.node_elems:
                 if node_elem.early_stop_flag:
                     continue
+
+                if node_elem.idx == 630:
+                    print("stop")
 
                 if node_elem.corresponding_node is None:
                     new_node = (
@@ -230,7 +234,7 @@ class Adlayers2:
             cell_aspect_ratio = new_cell.get_aspect_ratio()
             isotropic_size = self.sizing_system.spacing_at(front.center)
             if (
-                cell_size <= 1.1 * isotropic_size
+                cell_size < 1.1 * isotropic_size
                 and cell_aspect_ratio <= 1.1
                 and self.ilayer >= self.full_layers - 1
             ):
