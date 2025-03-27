@@ -167,7 +167,8 @@ class Adfront2:
         if self.pselected is None:
             return
 
-        # 更新节点
+        # 更新节点，如果选择了最佳点，best_flag为True，且pselected为Pbest
+        # 此时将pselected添加到node_coords中，同时更新num_nodes，若选择的不是Pbest，则无需更新节点
         if self.best_flag and self.pselected is not None:
             node_hash = self.pselected.hash
             if node_hash not in self.node_hash_list:
@@ -176,51 +177,46 @@ class Adfront2:
                 self.num_nodes += 1
 
         # 更新阵面
-        if self.pselected is not None:
-            new_front1 = front2d.Front(
-                self.base_front.node_elems[0],
-                self.pselected,
-                -1,
-                "interior",
-                "internal",
-            )
-            new_front2 = front2d.Front(
-                self.pselected,
-                self.base_front.node_elems[1],
-                -1,
-                "interior",
-                "internal",
-            )
+        new_front1 = front2d.Front(
+            self.base_front.node_elems[0],
+            self.pselected,
+            -1,
+            "interior",
+            "internal",
+        )
+        new_front2 = front2d.Front(
+            self.pselected,
+            self.base_front.node_elems[1],
+            -1,
+            "interior",
+            "internal",
+        )
 
-            # 判断front_list中是否存在new_front，若不存在，
-            # 则将其压入front_list，若已存在，则将其从front_list中删除
-            exists_new1 = any(
-                front.hash == new_front1.hash for front in self.front_list
-            )
-            exists_new2 = any(
-                front.hash == new_front2.hash for front in self.front_list
-            )
+        # 判断front_list中是否存在new_front，若不存在，
+        # 则将其压入front_list，若已存在，则将其从front_list中删除
+        exists_new1 = any(front.hash == new_front1.hash for front in self.front_list)
+        exists_new2 = any(front.hash == new_front2.hash for front in self.front_list)
 
-            if not exists_new1:
-                heapq.heappush(self.front_list, new_front1)
-                if self.ax and self.debug_level >= 1:
-                    new_front1.draw_front("g-", self.ax)
-            else:
-                # 移除相同位置的旧阵面
-                self.front_list = [
-                    front for front in self.front_list if front.hash != new_front1.hash
-                ]
-                heapq.heapify(self.front_list)  # 重新堆化
+        if not exists_new1:
+            heapq.heappush(self.front_list, new_front1)
+            if self.ax and self.debug_level >= 1:
+                new_front1.draw_front("g-", self.ax)
+        else:
+            # 移除相同位置的旧阵面
+            self.front_list = [
+                front for front in self.front_list if front.hash != new_front1.hash
+            ]
+            heapq.heapify(self.front_list)  # 重新堆化
 
-            if not exists_new2:
-                heapq.heappush(self.front_list, new_front2)
-                if self.ax and self.debug_level >= 1:
-                    new_front2.draw_front("g-", self.ax)
-            else:
-                self.front_list = [
-                    front for front in self.front_list if front.hash != new_front2.hash
-                ]
-                heapq.heapify(self.front_list)
+        if not exists_new2:
+            heapq.heappush(self.front_list, new_front2)
+            if self.ax and self.debug_level >= 1:
+                new_front2.draw_front("g-", self.ax)
+        else:
+            self.front_list = [
+                front for front in self.front_list if front.hash != new_front2.hash
+            ]
+            heapq.heapify(self.front_list)
 
         # 更新单元
         new_cell = geo_info.Triangle(
