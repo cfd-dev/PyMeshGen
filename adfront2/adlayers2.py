@@ -27,6 +27,8 @@ class Adlayers2:
         self.part_params = param_obj.part_params  # 层推进部件参数
 
         self.current_part = None  # 当前推进部件
+        self.space_grid = None  # 空间查询网格
+        self.grid_size = None  # 查询网格尺寸
 
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
@@ -123,6 +125,9 @@ class Adlayers2:
                 new_interior_list.append(front)
                 continue
 
+            if front.node_ids == (880, 881) or front.node_ids == (885, 886):
+                print("")
+
             new_cell_nodes = front.node_elems.copy()
 
             # 如果early_stop_flag为True，则跳过该阵面
@@ -132,35 +137,28 @@ class Adlayers2:
                 continue
 
             # 逐个节点进行推进
-            for node_elem in front.node_elems:
-                if node_elem.early_stop_flag:
-                    continue
-
-                if node_elem.idx == 630:
-                    print("stop")
-
+            new_node_generated = [False, False]  # 记录新节点是否生成
+            temp_num_nodes = self.num_nodes  # 记录当前节点数量
+            for i, node_elem in enumerate(front.node_elems):
                 if node_elem.corresponding_node is None:
+                    new_node_generated[i] = True
+
                     new_node = (
                         np.array(node_elem.coords)
                         + np.array(node_elem.marching_direction)
                         * node_elem.marching_distance
                     )
 
-                    # TODO: 相交判断
-
-                    # 更新节点坐标
-                    self.node_coords.append(new_node.tolist())
-
                     # 创建新节点元素
                     new_node_elem = NodeElementALM(
                         coords=new_node.tolist(),
-                        idx=self.num_nodes,
+                        idx=temp_num_nodes,
                         bc_type="interior",
                     )
 
+                    temp_num_nodes += 1
                     node_elem.corresponding_node = new_node_elem
                     new_cell_nodes.append(new_node_elem)
-                    self.num_nodes += 1
                 else:
                     new_cell_nodes.append(node_elem.corresponding_node)
 
@@ -186,6 +184,54 @@ class Adlayers2:
                 "interior",
                 self.current_part.name,
             )
+
+            all_fronts = (
+                self.current_part.front_list + new_interior_list + new_prism_cap_list
+            )
+            self._build_space_index(all_fronts)
+            # 邻近检查，检查3个阵面附近是否有其他阵面，若有，则对当前阵面进行早停
+            for new_front in [alm_front, new_front1, new_front2]:
+                # 查询邻近网格
+                x_coords = [n.coords[0] for n in new_front.node_elems]
+                y_coords = [n.coords[1] for n in new_front.node_elems]
+                i_min = int(min(x_coords) // self.grid_size)
+                i_max = int(max(x_coords) // self.grid_size)
+                j_min = int(min(y_coords) // self.grid_size)
+                j_max = int(max(y_coords) // self.grid_size)
+
+                # 检查相邻网格中的阵面
+                for i in range(i_min - 1, i_max + 2):
+                    for j in range(j_min - 1, j_max + 2):
+                        for candidate in self.space_grid.get((i, j), []):
+                            # 排除自身和相邻阵面
+                            if candidate.hash in [
+                                front.hash,
+                                new_front1.hash,
+                                new_front2.hash,
+                            ]:
+                                continue
+
+                            if self._segments_intersect(
+                                new_front.node_elems, candidate.node_elems
+                            ):
+                                new_cell_nodes[0].early_stop_flag = True
+                                new_cell_nodes[1].early_stop_flag = True
+                                break
+                        if new_cell_nodes[0].early_stop_flag:
+                            break
+                    if new_cell_nodes[0].early_stop_flag:
+                        break
+                if new_cell_nodes[0].early_stop_flag:
+                    break
+
+            if new_cell_nodes[0].early_stop_flag:
+                continue
+
+            # 检查新节点是否生成，若生成，则加入到节点列表中
+            for i in range(2):
+                if new_node_generated[i]:
+                    self.node_coords.append(new_cell_nodes[i + 2].coords)
+                    self.num_nodes += 1
 
             # 检查新阵面是否已经存在于堆中
             # exists_alm = any(front.hash == alm_front.hash for front in new_prism_cap_list)
@@ -553,3 +599,62 @@ class Adlayers2:
                 if part.name == front.part_name:
                     part.front_list.append(front)
                     break
+
+    def _build_space_index(self, fronts):
+        """构建空间索引加速相交检测"""
+        from collections import defaultdict
+
+        # 使用均匀网格空间划分
+        self.grid_size = 1.5 * self.sizing_system.global_spacing
+        self.space_grid = defaultdict(list)
+
+        for front in fronts:
+            # 计算包围盒
+            x_min = min(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
+            x_max = max(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
+            y_min = min(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
+            y_max = max(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
+
+            # 计算网格索引
+            i_min = int(x_min // self.grid_size)
+            i_max = int(x_max // self.grid_size)
+            j_min = int(y_min // self.grid_size)
+            j_max = int(y_max // self.grid_size)
+
+            # 将阵面注册到覆盖的网格
+            for i in range(i_min, i_max + 1):
+                for j in range(j_min, j_max + 1):
+                    self.space_grid[(i, j)].append(front)
+
+    def _segments_intersect(self, seg1, seg2):
+        """精确线段相交检测（排除端点接触）"""
+        p1, p2 = np.array(seg1[0].coords), np.array(seg1[1].coords)
+        q1, q2 = np.array(seg2[0].coords), np.array(seg2[1].coords)
+
+        # 快速包围盒排除
+        if (
+            max(p1[0], p2[0]) < min(q1[0], q2[0])
+            or min(p1[0], p2[0]) > max(q1[0], q2[0])
+            or max(p1[1], p2[1]) < min(q1[1], q2[1])
+            or min(p1[1], p2[1]) > max(q1[1], q2[1])
+        ):
+            return False
+
+        # 向量叉积法判断相交
+        v1 = q1 - p1
+        v2 = q2 - p1
+        v3 = p2 - p1
+        cross1 = np.cross(v3, v1)
+        cross2 = np.cross(v3, v2)
+        if (cross1 * cross2) >= 0:
+            return False
+
+        v4 = p1 - q1
+        v5 = p2 - q1
+        v6 = q2 - q1
+        cross3 = np.cross(v6, v4)
+        cross4 = np.cross(v6, v5)
+        if (cross3 * cross4) >= 0:
+            return False
+
+        return True

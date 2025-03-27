@@ -21,19 +21,19 @@ from parameters import Parameters, PartMeshParameters
 def PyMeshGen():
     # 建立参数管理对象
     # parameters = Parameters("./config/quad_quad.json")
-    # parameters = Parameters("./config/concave.json")
+    parameters = Parameters("./config/concave.json")
     # parameters = Parameters("./config/convex.json")
     # parameters = Parameters("./config/cylinder.json")
     # parameters = Parameters("./config/naca0012.json")
     # parameters = Parameters("./config/30p30n.json")
     # parameters = Parameters("./config/anw.json")
-    parameters = Parameters("./config/rae2822.json")
+    # parameters = Parameters("./config/rae2822.json")
     # 建立可视化对象
-    visual_obj = Visualization()
+    visual_obj = Visualization(True)
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
-    # visual_obj.plot_mesh(input_grid, boundary_only=True)
+    visual_obj.plot_mesh(input_grid, boundary_only=True)
 
     # 构造初始阵面
     front_heap = construct_initial_front(input_grid)

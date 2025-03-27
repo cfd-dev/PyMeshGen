@@ -1,5 +1,5 @@
 {
-    "debug_level": 0,
+    "debug_level": 2,
     "input_file": "./config/input/concave.cas",
     "output_file": "output",
     "parts": [
@@ -8,7 +8,7 @@
             "max_size": 2.0,
             "PRISM_SWITCH": true,
             "first_height": 0.1,
-            "max_layers": 5,
+            "max_layers": 10,
             "full_layers": 5,
             "multi_direction": false
         }
