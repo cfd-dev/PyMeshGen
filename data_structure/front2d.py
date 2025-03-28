@@ -88,6 +88,8 @@ class Front:
                 va="top",
             )
 
+        plt.show(block=False)
+
 
 def process_initial_front(grid):
     """从网格数据中构造初始阵面，并按长度排序"""

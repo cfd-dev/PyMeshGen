@@ -101,6 +101,7 @@ class Adlayers2:
         self.unstr_grid = Unstructured_Grid(
             self.cell_container, self.node_coords, self.boundary_nodes
         )
+        print("构建非结构网格数据..., Done.")
 
         if self.debug_level == 1:
             self.debug_save()
@@ -111,6 +112,7 @@ class Adlayers2:
             self.all_boundary_fronts.extend(part.front_list)
 
         heapq.heapify(self.all_boundary_fronts)
+        print("构建全局边界阵面..., Done.")
 
     def show_progress(self):
         """显示推进进度"""
@@ -129,9 +131,9 @@ class Adlayers2:
         self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def advancing_fronts(self):
+        print("逐个阵面推进生成单元...")
         new_interior_list = []  # 新增的边界层法向面，设置为interior
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
-
         # 逐个阵面进行推进
         for front in self.current_part.front_list:
             if front.bc_type == "interior":
@@ -141,6 +143,9 @@ class Adlayers2:
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
+
+            if front.node_ids == (7, 5) or front.node_ids == (5, 6):
+                print("debug")
 
             # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
             new_cell_nodes = front.node_elems.copy()
@@ -191,6 +196,9 @@ class Adlayers2:
                 "interior",
                 self.current_part.name,
             )
+
+            if front.node_ids == (7, 5) or front.node_ids == (5, 6):
+                print("debug")
 
             # 创建新单元
             new_cell = Quadrilateral(
@@ -248,7 +256,7 @@ class Adlayers2:
             check_fronts = [alm_front, new_front1, new_front2]
             for new_front in check_fronts:
 
-                if front.node_ids == (4, 5) or front.node_ids == (61, 62):
+                if front.node_ids == [5, 6] or front.node_ids == (61, 62):
                     print("")
 
                 if new_front.node_ids == (926, 886):
@@ -286,8 +294,24 @@ class Adlayers2:
                             ):
                                 continue
 
+                            # 若candidate是在front推进方向的反方向，则跳过
+                            AB = np.array(front.direction)
+                            AC = np.array(new_front1.direction)
+                            AE = np.array(candidate.node_elems[0].coords) - np.array(
+                                front.node_elems[0].coords
+                            )
+                            AF = np.array(candidate.node_elems[1].coords) - np.array(
+                                front.node_elems[0].coords
+                            )
+
+                            prod1 = np.cross(AB, AC)
+                            prod2 = np.cross(AB, AE)
+                            prod3 = np.cross(AB, AF)
+                            if prod1 * prod2 <= 0 and prod1 * prod3 <= 0:
+                                continue
+
                             # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
-                            # safe_distance通常取为当前推进步长的0.8倍
+                            # safe_distance通常取为当前推进步长的0.5倍
                             dis = self._fronts_distance(new_front, candidate)
                             safe_distance = 0.5 * min(
                                 front.node_elems[0].marching_distance,
@@ -375,17 +399,20 @@ class Adlayers2:
                     if tmp_front.hash != new_front2.hash
                 ]
 
+        print("逐个阵面推进生成单元..., Done.")
         # 更新part阵面列表
         self.current_part.front_list = []
         for tmp_front in new_prism_cap_list:
             self.current_part.front_list.append(tmp_front)
         for tmp_front in new_interior_list:
             self.current_part.front_list.append(tmp_front)
+        print(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.")
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
-        self.current_step_size = 0.0
 
+        print("计算节点推进步长...")
+        self.current_step_size = 0.0
         if self.current_part.growth_method == "geometric":
             # 计算几何增长距离
             first_height = self.current_part.first_height
@@ -393,6 +420,8 @@ class Adlayers2:
             self.current_step_size = first_height * growth_rate**self.ilayer
         else:
             raise ValueError("未知的步长计算方法！")
+
+        print(f"第{self.ilayer+1}层推进步长：{round(self.current_step_size, 6)}")
 
         for front in self.current_part.front_list:
             # 计算节点推进距离
@@ -419,6 +448,8 @@ class Adlayers2:
                     * node.local_step_factor
                     / np.mean([proj1, proj2])
                 )  # min(abs(proj1), abs(proj2))
+
+        print("计算节点推进步长..., Done.")
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
@@ -449,6 +480,8 @@ class Adlayers2:
 
     def compute_point_normals(self):
         """计算节点推进方向"""
+
+        print("计算节点初始推进方向...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
                 continue
@@ -521,8 +554,11 @@ class Adlayers2:
 
             node_elem.marching_direction = tuple(new_direction)
 
+        print("计算节点初始推进方向..., Done.")
+
     def laplacian_smooth_normals(self):
         """拉普拉斯平滑节点推进方向"""
+        print("节点推进方向光滑....")
         for node_elem in self.front_node_list:
             num_neighbors = len(node_elem.node2node)
             if num_neighbors < 2:
@@ -542,6 +578,8 @@ class Adlayers2:
                     new_direction / np.linalg.norm(new_direction)
                 )
                 iteration += 1
+
+        print("节点推进方向光滑..., Done.")
 
     def prepare_geometry_info(self):
         """准备几何信息"""
@@ -622,6 +660,7 @@ class Adlayers2:
                     node.node2node.append(next_node)
                     existing_hashes.add(next_node.hash)
 
+        print("计算物面几何信息...")
         # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
@@ -682,6 +721,8 @@ class Adlayers2:
             else:
                 node_elem.num_multi_direction = 1
                 node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
+
+        print("物面凹/凸角局部步长因子、多方向推进计算完成...")
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""

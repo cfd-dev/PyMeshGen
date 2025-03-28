@@ -12,6 +12,7 @@ class Visualization:
 
     def create_figure(self, figsize=(10, 8)):
         self.fig, self.ax = plt.subplots(figsize=figsize)
+        self.ax.axis("equal")
 
     def plot_mesh(self, mesh, boundary_only=False):
         if self.ax is None:

@@ -34,7 +34,7 @@ def PyMeshGen():
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
-    visual_obj.plot_mesh(input_grid, boundary_only=True)
+    # visual_obj.plot_mesh(input_grid, boundary_only=True)
 
     # 构造初始阵面
     front_heap = construct_initial_front(input_grid)
@@ -81,12 +81,12 @@ def PyMeshGen():
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
 
-    # global_unstr_grid.visualize_unstr_grid_2d()
+    global_unstr_grid.visualize_unstr_grid_2d()
 
     # 输出网格文件
-    global_unstr_grid.save_to_vtkfile("./out/final_mesh.vtk")
+    global_unstr_grid.save_to_vtkfile(parameters.output_file)
 
 
 if __name__ == "__main__":
     PyMeshGen()
-    # input("Press Enter to continue...")
+    input("Press Enter to continue...")

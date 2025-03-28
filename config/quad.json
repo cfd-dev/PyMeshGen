@@ -1,7 +1,8 @@
 {
-    "debug_level": 0,
+    "debug_level": 2,
     "input_file": "./config/input/quad.cas",
-    "output_file": "output",
+    "output_file": "./out/quad.vtk",
+	"plot_mesh":true,
     "parts": [
         {
             "name": "wall",
