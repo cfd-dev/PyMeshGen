@@ -3,6 +3,7 @@ from pathlib import Path
 import unittest
 from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
+from math import sqrt
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
@@ -89,37 +90,108 @@ class TestTriangle(unittest.TestCase):
         self.assertFalse(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
-    def test_minimum_distance_between_segments(self):
-        """测试线段间最小距离计算"""
-        # 案例1：线段相交于内部点
-        A, B = (0, 0), (2, 2)
-        C, D = (1, 1), (3, 3)
-        self.assertAlmostEqual(
-            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
-        )
 
-        # 案例2：平行线段
-        A, B = (0, 0), (1, 0)
-        C, D = (2, 0), (3, 0)
-        self.assertAlmostEqual(
-            geo_info.min_distance_between_segments(A, B, C, D), 1.0, delta=1e-6
-        )
+def test_minimum_distance_between_segments(self):
+    """测试线段间最小距离计算"""
+    # 案例1：线段相交于内部点
+    A, B = (0, 0), (2, 2)
+    C, D = (1, 1), (3, 3)
+    self.assertAlmostEqual(
+        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+    )
 
-        # 案例3：线段垂直相交
-        A, B = (0, 0), (2, 0)
-        C, D = (1, 1), (1, -1)
-        self.assertAlmostEqual(
-            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
-        )
+    # 案例2：平行线段
+    A, B = (0, 0), (1, 0)
+    C, D = (2, 0), (3, 0)
+    self.assertAlmostEqual(
+        geo_info.min_distance_between_segments(A, B, C, D), 1.0, delta=1e-6
+    )
 
-        # 案例4：浮点数精度测试
-        A = [-4.99, -4.85]
-        B = [-5.98, -4.85]
-        C = [-5.14, -4.00]
-        D = [-5.14, -5.00]
-        self.assertAlmostEqual(
-            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
-        )
+    # 案例3：线段垂直相交
+    A, B = (0, 0), (2, 0)
+    C, D = (1, 1), (1, -1)
+    self.assertAlmostEqual(
+        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+    )
+
+    # 案例4：浮点数精度测试
+    A = [-4.99, -4.85]
+    B = [-5.98, -4.85]
+    C = [-5.14, -4.00]
+    D = [-5.14, -5.00]
+    self.assertAlmostEqual(
+        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+    )
+
+
+class TestPointToSegmentDistance(unittest.TestCase):
+    """测试点到线段距离计算函数"""
+
+    def test_point_at_segment_start(self):
+        """测试点在线段起点的情况"""
+        point = (0, 0)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 0.0, delta=1e-6)
+
+    def test_point_at_segment_end(self):
+        """测试点在线段终点的情况"""
+        point = (2, 0)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 0.0, delta=1e-6)
+
+    def test_point_projection_inside_segment(self):
+        """测试投影点在线段内部的情况"""
+        point = (1, 1)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, delta=1e-6)
+
+    def test_point_projection_beyond_start(self):
+        """测试投影点在线段起点延长线的情况"""
+        point = (-1, 0)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, delta=1e-6)
+
+    def test_point_projection_beyond_end(self):
+        """测试投影点在线段终点延长线的情况"""
+        point = (3, 0)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, delta=1e-6)
+
+    def test_horizontal_segment(self):
+        """测试水平线段的情况"""
+        point = (1, 1)
+        seg_start = (0, 0)
+        seg_end = (2, 0)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, delta=1e-6)
+
+    def test_vertical_segment(self):
+        """测试垂直线段的情况"""
+        point = (1, 1)
+        seg_start = (0, 0)
+        seg_end = (0, 2)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, delta=1e-6)
+
+    def test_diagonal_segment_with_external_point(self):
+        """测试斜线段外部点的情况"""
+        point = (0, 1)
+        seg_start = (0, 0)
+        seg_end = (1, 1)
+        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        expected = sqrt(2) / 2
+        print(f"Expected distance: {expected}")
+        self.assertAlmostEqual(distance, expected, delta=1e-6)
 
 
 if __name__ == "__main__":
