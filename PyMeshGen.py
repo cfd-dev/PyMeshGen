@@ -34,7 +34,7 @@ def PyMeshGen():
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
-    # visual_obj.plot_mesh(input_grid, boundary_only=True)
+    visual_obj.plot_mesh(input_grid, boundary_only=True)
 
     # 构造初始阵面
     front_heap = construct_initial_front(input_grid)

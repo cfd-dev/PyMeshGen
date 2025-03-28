@@ -2,6 +2,106 @@ from math import sqrt, isnan, isinf
 import numpy as np
 import matplotlib.pyplot as plt
 
+import math
+
+
+def point_to_segment_distance(point, segment_start, segment_end):
+    """
+    计算点到线段的最短距离（使用numpy）
+    :param point: 点的坐标 (x, y)
+    :param segment_start: 线段起点 (x, y)
+    :param segment_end: 线段终点 (x, y)
+    :return: 最短距离
+    """
+    point = np.array(point, dtype=np.float64)
+    s = np.array(segment_start, dtype=np.float64)
+    e = np.array(segment_end, dtype=np.float64)
+
+    # 线段方向向量
+    v = e - s
+    w = point - s
+
+    # 计算投影参数t
+    c1 = np.dot(w, v)
+    if c1 <= 0:
+        return np.linalg.norm(point - s)
+
+    c2 = np.dot(v, v)
+    if c2 <= c1:
+        return np.linalg.norm(point - e)
+
+    # 投影点在中间
+    t = c1 / c2
+    projection = s + t * v
+    return np.linalg.norm(point - projection)
+
+
+def segments_closest_distance(A, B, C, D):
+    """
+    计算两条线段的最小距离（使用numpy）
+    :param A: 线段AB的起点 (x, y)
+    :param B: 线段AB的终点 (x, y)
+    :param C: 线段CD的起点 (x, y)
+    :param D: 线段CD的终点 (x, y)
+    :return: 最小距离
+    """
+    A = np.array(A, dtype=np.float64)
+    B = np.array(B, dtype=np.float64)
+    C = np.array(C, dtype=np.float64)
+    D = np.array(D, dtype=np.float64)
+
+    # 计算端点到对面线段的距离
+    d1 = point_to_segment_distance(A, C, D)
+    d2 = point_to_segment_distance(B, C, D)
+    d3 = point_to_segment_distance(C, A, B)
+    d4 = point_to_segment_distance(D, A, B)
+    candidates = [d1, d2, d3, d4]
+
+    # 计算线段间的内部距离
+    AB = B - A
+    CD = D - C
+    AC = C - A
+
+    # 向量点积
+    AB_dot_AB = np.dot(AB, AB)
+    AB_dot_CD = np.dot(AB, CD)
+    CD_dot_CD = np.dot(CD, CD)
+    AC_dot_AB = np.dot(AC, AB)
+    AC_dot_CD = np.dot(AC, CD)
+
+    # 计算行列式D
+    D_det = AB_dot_AB * CD_dot_CD - AB_dot_CD**2
+
+    # 处理平行或接近平行的情况
+    if D_det < 1e-10:  # 更严格的平行判断阈值
+        return min(candidates)
+
+    # 解参数s和t
+    s_num = AC_dot_AB * CD_dot_CD - AC_dot_CD * AB_dot_CD
+    t_num = AC_dot_AB * AB_dot_CD - AC_dot_CD * AB_dot_AB
+    s = s_num / D_det
+    t = t_num / D_det
+
+    if 0 <= s <= 1 and 0 <= t <= 1:
+        P = A + s * AB
+        Q = C + t * CD
+        distance = np.linalg.norm(P - Q)
+        candidates.append(distance)
+
+    return min(candidates)
+
+
+def min_distance_between_segments(A, B, C, D):
+    """
+    主函数：计算两条线段的最小距离
+    :param A: 线段AB的起点 (x, y)
+    :param B: 线段AB的终点 (x, y)
+    :param C: 线段CD的起点 (x, y)
+    :param D: 线段CD的终点 (x, y)
+    :return: 最小距离
+    """
+    return segments_closest_distance(A, B, C, D)
+
 
 def normal_vector2d(front):
     """计算二维平面阵面的单位法向量"""

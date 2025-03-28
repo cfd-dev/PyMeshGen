@@ -6,7 +6,13 @@ import heapq
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
-from geometry_info import NodeElement, NodeElementALM, Quadrilateral, Unstructured_Grid
+from geometry_info import (
+    NodeElement,
+    NodeElementALM,
+    Quadrilateral,
+    Unstructured_Grid,
+    min_distance_between_segments,
+)
 from front2d import Front
 
 
@@ -134,7 +140,7 @@ class Adlayers2:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
 
-            if front.node_ids == (720, 734) or front.node_ids == (61, 62):
+            if front.node_ids == (933, 934) or front.node_ids == (61, 62):
                 print("")
 
             # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
@@ -206,7 +212,8 @@ class Adlayers2:
             # 单元大小、长宽比、full_layer判断早停
             cell_size = new_cell.get_element_size()
             isotropic_size = self.sizing_system.spacing_at(front.center)
-            size_factor = 1.3  # 限制调整头部和尾部的单元size：[1.2-1.5]
+            # TODO 限制调整头部和尾部的单元size：[1.2-1.5]
+            size_factor = 1.3
             size_condition = cell_size > size_factor * isotropic_size
 
             # 单元长宽比<1.1
@@ -245,12 +252,11 @@ class Adlayers2:
             check_fronts = [alm_front, new_front1, new_front2]
             safe_distance = new_front1.length * 0.8  # 安全距离阈值
             for new_front in check_fronts:
-                if new_front.node_ids == (810, 746):
+                if new_front.node_ids == (991, 992):
                     print("")
-                if new_front.length > safe_distance * 2:
-                    search_range = 2  # 长边阵面扩大搜索范围
-                else:
-                    search_range = 1
+
+                # 长边阵面扩大搜索范围
+                search_range = 2 if new_front.length > safe_distance * 2 else 1
 
                 x_coords = [n.coords[0] for n in new_front.node_elems]
                 y_coords = [n.coords[1] for n in new_front.node_elems]
@@ -274,10 +280,24 @@ class Adlayers2:
                                 print("")
 
                             # 快速距离筛选（避免不必要的精确相交检测）
-                            # dis = self._fronts_distance(new_front, candidate)
-                            # if dis > safe_distance:
-                            #     continue
+                            dis = self._fronts_distance(new_front, candidate)
+                            if dis > safe_distance:
+                                continue
 
+                            # 若距离小于0.8*safe_distance，则认为是相交
+                            # 此时不进行精确相交检测，直接进行早停
+                            # dotprod = np.dot(new_front.normal, candidate.normal)
+                            # if dotprod < 0.2 and dis < safe_distance:
+                            #     print(
+                            #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
+                            #     )
+                            #     front.early_stop_flag = True
+
+                            #     if self.debug_level >= 1:
+                            #         self._highlight_intersection(new_front, candidate)
+                            #     break
+
+                            # 精确相交检测
                             if self._segments_intersect(
                                 new_front.node_elems, candidate.node_elems
                             ):
@@ -433,13 +453,17 @@ class Adlayers2:
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
+            # TODO 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
             if front1.bc_type == "interior":
                 node_elem.marching_direction = tuple(normal2)
+                # node_elem.marching_direction = tuple(front2.direction)
                 continue
+                # normal1 = np.array(front2.direction)
             elif front2.bc_type == "interior":
                 node_elem.marching_direction = tuple(normal1)
+                # node_elem.marching_direction = tuple(front1.direction)
                 continue
+                # normal2 = np.array(front1.direction)
 
             # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0
@@ -724,38 +748,13 @@ class Adlayers2:
 
     def _fronts_distance(self, front1, front2):
         """计算两个阵面之间的最小距离"""
-        p1 = np.array(front1.node_elems[0].coords)
-        p2 = np.array(front1.node_elems[1].coords)
-        q1 = np.array(front2.node_elems[0].coords)
-        q2 = np.array(front2.node_elems[1].coords)
+        # 获取线段端点坐标
+        PA = front1.node_elems[0].coords
+        PB = front1.node_elems[1].coords
+        PC = front2.node_elems[0].coords
+        PD = front2.node_elems[1].coords
 
-        # 计算线段间最短距离
-        v = p2 - p1
-        w = q2 - q1
-        u = q1 - p1
-
-        a = np.dot(v, v)
-        b = np.dot(v, w)
-        c = np.dot(w, w)
-        d = np.dot(v, u)
-        e = np.dot(w, u)
-        D = a * c - b * b
-
-        if D < 1e-6:  # 平行线段
-            return min(
-                np.linalg.norm(p1 - q1),
-                np.linalg.norm(p1 - q2),
-                np.linalg.norm(p2 - q1),
-                np.linalg.norm(p2 - q2),
-            )
-
-        s = (b * e - c * d) / D
-        t = (a * e - b * d) / D
-        s = np.clip(s, 0, 1)
-        t = np.clip(t, 0, 1)
-
-        distance = np.linalg.norm(p1 + s * v - (q1 + t * w))
-        return distance
+        return min_distance_between_segments(PA, PB, PC, PD)
 
     def _highlight_intersection(self, front1, front2):
         """在调试模式下高亮显示相交阵面"""

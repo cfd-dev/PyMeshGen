@@ -89,6 +89,38 @@ class TestTriangle(unittest.TestCase):
         self.assertFalse(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
+    def test_minimum_distance_between_segments(self):
+        """测试线段间最小距离计算"""
+        # 案例1：线段相交于内部点
+        A, B = (0, 0), (2, 2)
+        C, D = (1, 1), (3, 3)
+        self.assertAlmostEqual(
+            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        )
+
+        # 案例2：平行线段
+        A, B = (0, 0), (1, 0)
+        C, D = (2, 0), (3, 0)
+        self.assertAlmostEqual(
+            geo_info.min_distance_between_segments(A, B, C, D), 1.0, delta=1e-6
+        )
+
+        # 案例3：线段垂直相交
+        A, B = (0, 0), (2, 0)
+        C, D = (1, 1), (1, -1)
+        self.assertAlmostEqual(
+            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        )
+
+        # 案例4：浮点数精度测试
+        A = [-4.99, -4.85]
+        B = [-5.98, -4.85]
+        C = [-5.14, -4.00]
+        D = [-5.14, -5.00]
+        self.assertAlmostEqual(
+            geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
