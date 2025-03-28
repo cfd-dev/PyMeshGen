@@ -362,7 +362,7 @@ class Adlayers2:
             #     print("debug")
 
             (
-                new_cell,  # 新单元 Quadrilateral对象，0-1-3-2 顺序
+                new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
                 alm_front,  # 新阵面Front对象，prism-cap，2-3
                 new_front1,  # 新阵面Front对象，interior，0-2
                 new_front2,  # 新阵面Front对象，interior，3-1
@@ -602,12 +602,7 @@ class Adlayers2:
 
         self.num_nodes = len(self.node_coords)
 
-    def compute_front_geometry(self):
-        """计算阵面几何信息"""
-        # 建立矩形背景网格，便于快速查询
-        self._build_space_index(self.current_part.front_list)
-
-        # node2front
+    def reconstruct_node2front(self):
         self.front_node_list = []
         processed_nodes = set()
         hash_idx_map = {}  # 节点hash值到节点索引的映射
@@ -631,7 +626,8 @@ class Adlayers2:
 
                 front.node_elems[i].node2front.append(front)
 
-        # 计算node2node
+    def reconstruct_node2node(self):
+        """重构node2node关系"""
         for front in self.current_part.front_list:
             nodes = front.node_elems
             num_nodes = len(nodes)
@@ -661,8 +657,8 @@ class Adlayers2:
                     node.node2node.append(next_node)
                     existing_hashes.add(next_node.hash)
 
-        print("计算物面几何信息...")
-        # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
+    def compute_corner_attributes(self):
+        """计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量"""
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
                 continue
@@ -723,7 +719,22 @@ class Adlayers2:
                 node_elem.num_multi_direction = 1
                 node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
 
-        print("物面凹/凸角局部步长因子、多方向推进计算完成...")
+    def compute_front_geometry(self):
+        """计算阵面几何信息"""
+        print("计算物面几何信息...")
+        # 建立矩形背景网格，便于快速查询
+        self._build_space_index(self.current_part.front_list)
+
+        # 计算node2front
+        self.reconstruct_node2front()
+
+        # 计算node2node
+        self.reconstruct_node2node()
+
+        # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
+        self.compute_corner_attributes()
+
+        print("计算物面几何信息..., Done.")
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""
