@@ -245,9 +245,6 @@ class Adlayers2:
                     seen.add(tmp_front.hash)
                     all_fronts.append(tmp_front)
 
-            # 建立矩形背景网格，便于快速查询
-            self._build_space_index(all_fronts)
-
             check_fronts = [alm_front, new_front1, new_front2]
             for new_front in check_fronts:
 
@@ -355,6 +352,7 @@ class Adlayers2:
 
             if not exists_new1:
                 new_interior_list.append(new_front1)
+                self._add_front_to_space([new_front1])
                 if self.ax and self.debug_level >= 1:
                     new_front1.draw_front("g-", self.ax)
             else:
@@ -367,6 +365,7 @@ class Adlayers2:
 
             if not exists_new2:
                 new_interior_list.append(new_front2)
+                self._add_front_to_space([new_front2])
                 if self.ax and self.debug_level >= 1:
                     new_front2.draw_front("g-", self.ax)
             else:
@@ -566,6 +565,9 @@ class Adlayers2:
 
     def compute_front_geometry(self):
         """计算阵面几何信息"""
+        # 建立矩形背景网格，便于快速查询
+        self._build_space_index(self.current_part.front_list)
+
         # node2front
         self.front_node_list = []
         processed_nodes = set()
@@ -689,10 +691,31 @@ class Adlayers2:
                     part.front_list.append(front)
                     break
 
+    def _add_front_to_space(self, fronts):
+        """将阵面添加到已有背景网格"""
+        for front in fronts:
+            # 计算包围盒
+            x_min = min(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
+            x_max = max(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
+            y_min = min(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
+            y_max = max(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
+
+            # 计算网格索引
+            i_min = int(x_min // self.grid_size)
+            i_max = int(x_max // self.grid_size)
+            j_min = int(y_min // self.grid_size)
+            j_max = int(y_max // self.grid_size)
+
+            # 将阵面注册到覆盖的网格
+            for i in range(i_min, i_max + 1):
+                for j in range(j_min, j_max + 1):
+                    self.space_grid[(i, j)].append(front)
+
     def _build_space_index(self, fronts):
         """构建空间索引加速相交检测"""
         from collections import defaultdict
 
+        print("构建查询辅助背景网格...")
         # 动态计算网格尺寸（基于当前层推进步长）
         if self.current_part.growth_method == "geometric":
             current_step = self.current_part.first_height * (
@@ -721,6 +744,10 @@ class Adlayers2:
             for i in range(i_min, i_max + 1):
                 for j in range(j_min, j_max + 1):
                     self.space_grid[(i, j)].append(front)
+
+        print(f"全局最大网格尺度：{round(self.sizing_system.global_spacing,6)}")
+        print(f"辅助查询网格尺寸：{round(self.grid_size,6)}")
+        print(f"辅助查询网格维度：{len(self.space_grid)}\n")
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""
