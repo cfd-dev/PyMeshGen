@@ -194,5 +194,72 @@ class TestPointToSegmentDistance(unittest.TestCase):
         self.assertAlmostEqual(distance, expected, delta=1e-6)
 
 
+class TestSegmentIntersection(unittest.TestCase):
+    """测试线段相交判断函数"""
+
+    def test_parallel_segments(self):
+        """测试平行线段不相交"""
+        a1, a2 = (0, 0), (2, 0)
+        b1, b2 = (0, 1), (2, 1)
+        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+
+    def test_collinear_overlap(self):
+        """测试共线重叠线段"""
+        a1, a2 = (0, 0), (2, 0)
+        b1, b2 = (1, 0), (3, 0)
+        self.assertTrue(geo_info.segments_intersect(a1, a2, b1, b2))
+
+    def test_intersecting_at_midpoint(self):
+        """测试线段中点相交"""
+        a1, a2 = (0, 0), (2, 2)
+        b1, b2 = (0, 2), (2, 0)
+        self.assertTrue(geo_info.segments_intersect(a1, a2, b1, b2))
+
+    def test_touching_endpoints(self):
+        """测试端点接触，共用端点，不相交"""
+        a1, a2 = (0, 0), (1, 1)
+        b1, b2 = (1, 1), (2, 2)
+        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+
+    def test_epsilon_precision(self):
+        """测试浮点精度边界情况，共用端点，不相交"""
+        a1, a2 = (0.000001, 0), (0, 0.000001)
+        b1, b2 = (0, 0), (0.000001, 0)
+        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+
+
+class TestPointEquality(unittest.TestCase):
+    """测试点相等判断函数"""
+
+    def test_identical_points(self):
+        """测试完全相同点"""
+        p1 = (1.234567, 5.678901)
+        p2 = (1.234567, 5.678901)
+        self.assertTrue(geo_info.points_equal(p1, p2))
+
+    def test_epsilon_range(self):
+        """测试epsilon范围内视为相等"""
+        p1 = (1.0, 2.0)
+        p2 = (1.0 + 1e-7, 2.0 - 1e-7)
+        self.assertTrue(geo_info.points_equal(p1, p2))
+
+    def test_exceed_epsilon(self):
+        """测试超出epsilon范围"""
+        p1 = (1.0, 2.0)
+        p2 = (1.0 + 2e-6, 2.0 - 2e-6)
+        self.assertFalse(geo_info.points_equal(p1, p2))
+
+    def test_different_coordinates(self):
+        """测试不同坐标组合"""
+        cases = [
+            ((1.0, 2.0), (1.0, 2.000002)),
+            ((1.0, 2.0), (1.000002, 2.0)),
+            ((1.000002, 2.000001), (1.0, 2.0)),
+        ]
+        for p1, p2 in cases:
+            with self.subTest(p1=p1, p2=p2):
+                self.assertFalse(geo_info.points_equal(p1, p2))
+
+
 if __name__ == "__main__":
     unittest.main()

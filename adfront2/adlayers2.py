@@ -12,6 +12,7 @@ from geometry_info import (
     Quadrilateral,
     Unstructured_Grid,
     min_distance_between_segments,
+    segments_intersect,
 )
 from front2d import Front
 
@@ -33,6 +34,7 @@ class Adlayers2:
         self.part_params = param_obj.part_params  # 层推进部件参数
 
         self.current_part = None  # 当前推进部件
+        self.current_step_size = 0  # 当前推进步长
         self.space_grid = None  # 空间查询网格
         self.grid_size = None  # 查询网格尺寸
 
@@ -139,9 +141,6 @@ class Adlayers2:
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
-
-            if front.node_ids == (933, 934) or front.node_ids == (61, 62):
-                print("")
 
             # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
             new_cell_nodes = front.node_elems.copy()
@@ -250,13 +249,17 @@ class Adlayers2:
             self._build_space_index(all_fronts)
 
             check_fronts = [alm_front, new_front1, new_front2]
-            safe_distance = new_front1.length * 0.8  # 安全距离阈值
             for new_front in check_fronts:
-                if new_front.node_ids == (991, 992):
+
+                if front.node_ids == (4, 5) or front.node_ids == (61, 62):
+                    print("")
+
+                if new_front.node_ids == (926, 886):
                     print("")
 
                 # 长边阵面扩大搜索范围
-                search_range = 2 if new_front.length > safe_distance * 2 else 1
+                # search_range = 2 if new_front.length > safe_distance * 2 else 1
+                search_range = 1
 
                 x_coords = [n.coords[0] for n in new_front.node_elems]
                 y_coords = [n.coords[1] for n in new_front.node_elems]
@@ -268,47 +271,51 @@ class Adlayers2:
                 j_max = int((max(y_coords) + self.grid_size) // self.grid_size)
 
                 # 检查相邻网格中的阵面
+                seen_candidates = set()
                 for i in range(i_min - search_range, i_max + search_range + 1):
                     for j in range(j_min - search_range, j_max + search_range + 1):
                         for candidate in self.space_grid.get((i, j), []):
-                            # 排除同一部件的相邻阵面
-                            # if candidate.part_name == self.current_part.name:
-                            #     if abs(candidate.id - front.id) < 2:
-                            #         continue
+                            # 避免重复检查
+                            if candidate.hash in seen_candidates:
+                                continue
+                            seen_candidates.add(candidate.hash)
 
-                            if candidate.node_ids == (751, 739):
+                            if candidate.node_ids == (882, 883):
                                 print("")
 
-                            # 快速距离筛选（避免不必要的精确相交检测）
-                            dis = self._fronts_distance(new_front, candidate)
-                            if dis > safe_distance:
+                            # 若candidate与new_front共点，则跳过
+                            if any(
+                                id in new_front.node_ids for id in candidate.node_ids
+                            ):
                                 continue
 
-                            # 若距离小于0.8*safe_distance，则认为是相交
-                            # 此时不进行精确相交检测，直接进行早停
-                            # dotprod = np.dot(new_front.normal, candidate.normal)
-                            # if dotprod < 0.2 and dis < safe_distance:
-                            #     print(
-                            #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
-                            #     )
-                            #     front.early_stop_flag = True
+                            # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
+                            # safe_distance通常取为当前推进步长的0.8倍
+                            dis = self._fronts_distance(new_front, candidate)
+                            safe_distance = 0.5 * min(
+                                front.node_elems[0].marching_distance,
+                                front.node_elems[1].marching_distance,
+                            )
 
-                            #     if self.debug_level >= 1:
-                            #         self._highlight_intersection(new_front, candidate)
-                            #     break
-
-                            # 精确相交检测
-                            if self._segments_intersect(
-                                new_front.node_elems, candidate.node_elems
-                            ):
+                            if dis < safe_distance:
                                 print(
-                                    f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
+                                    f"邻近信息：阵面{new_front.node_ids}与{candidate.node_ids}距离小于{round(safe_distance,6)}"
                                 )
                                 front.early_stop_flag = True
 
                                 if self.debug_level >= 1:
                                     self._highlight_intersection(new_front, candidate)
                                 break
+
+                            # 精确相交检测，无需再进行，注释掉
+                            # if self._segments_intersect(
+                            #     new_front.node_elems, candidate.node_elems
+                            # ):
+                            #     print(
+                            #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
+                            #     )
+                            #     front.early_stop_flag = True
+                            #     break
 
                         if front.early_stop_flag:
                             break
@@ -378,18 +385,20 @@ class Adlayers2:
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
-        global_marching_distance = 0.0  # 全局推进距离
+        self.current_step_size = 0.0
 
         if self.current_part.growth_method == "geometric":
             # 计算几何增长距离
             first_height = self.current_part.first_height
             growth_rate = self.current_part.growth_rate
-            global_marching_distance = first_height * growth_rate**self.ilayer
+            self.current_step_size = first_height * growth_rate**self.ilayer
+        else:
+            raise ValueError("未知的步长计算方法！")
 
         for front in self.current_part.front_list:
             # 计算节点推进距离
             for node in front.node_elems:
-                node.marching_distance = global_marching_distance
+                node.marching_distance = self.current_step_size
                 front1, front2 = node.node2front[:2]
 
                 # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
@@ -407,7 +416,7 @@ class Adlayers2:
 
                 # 节点推进距离
                 node.marching_distance = (
-                    global_marching_distance
+                    self.current_step_size
                     * node.local_step_factor
                     / np.mean([proj1, proj2])
                 )  # min(abs(proj1), abs(proj2))
@@ -714,47 +723,20 @@ class Adlayers2:
                     self.space_grid[(i, j)].append(front)
 
     def _segments_intersect(self, seg1, seg2):
-        """精确线段相交检测（排除端点接触）"""
-        p1, p2 = np.array(seg1[0].coords), np.array(seg1[1].coords)
-        q1, q2 = np.array(seg2[0].coords), np.array(seg2[1].coords)
+        """精确线段相交检测（排除共端点情况）"""
+        p1, p2 = seg1[0].coords, seg1[1].coords
+        q1, q2 = seg2[0].coords, seg2[1].coords
 
-        # 快速包围盒排除
-        if (
-            max(p1[0], p2[0]) < min(q1[0], q2[0])
-            or min(p1[0], p2[0]) > max(q1[0], q2[0])
-            or max(p1[1], p2[1]) < min(q1[1], q2[1])
-            or min(p1[1], p2[1]) > max(q1[1], q2[1])
-        ):
-            return False
-
-        # 向量叉积法判断相交
-        v1 = q1 - p1
-        v2 = q2 - p1
-        v3 = p2 - p1
-        cross1 = np.cross(v3, v1)
-        cross2 = np.cross(v3, v2)
-        if (cross1 * cross2) >= 0:
-            return False
-
-        v4 = p1 - q1
-        v5 = p2 - q1
-        v6 = q2 - q1
-        cross3 = np.cross(v6, v4)
-        cross4 = np.cross(v6, v5)
-        if (cross3 * cross4) >= 0:
-            return False
-
-        return True
+        return segments_intersect(p1, p2, q1, q2)
 
     def _fronts_distance(self, front1, front2):
         """计算两个阵面之间的最小距离"""
-        # 获取线段端点坐标
-        PA = front1.node_elems[0].coords
-        PB = front1.node_elems[1].coords
-        PC = front2.node_elems[0].coords
-        PD = front2.node_elems[1].coords
+        p1 = front1.node_elems[0].coords
+        p2 = front1.node_elems[1].coords
+        q1 = front2.node_elems[0].coords
+        q2 = front2.node_elems[1].coords
 
-        return min_distance_between_segments(PA, PB, PC, PD)
+        return min_distance_between_segments(p1, p2, q1, q2)
 
     def _highlight_intersection(self, front1, front2):
         """在调试模式下高亮显示相交阵面"""
