@@ -1,0 +1,15 @@
+{
+    "case_file": "config/rae2822.json",
+    "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
+    "available_cases": [
+        "config/quad.json",
+        "config/quad_quad.json",
+        "config/naca0012.json",
+        "config/rae2822.json",
+        "config/anw.json",
+        "config/concave.json",
+        "config/convex.json",
+        "config/cylinder.json",
+        "config/30p30n.json"
+    ]
+}
