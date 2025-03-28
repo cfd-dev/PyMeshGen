@@ -715,7 +715,7 @@ class Adlayers2:
         """构建空间索引加速相交检测"""
         from collections import defaultdict
 
-        print("构建查询辅助背景网格...")
+        print("构建辅助查询背景网格...")
         # 动态计算网格尺寸（基于当前层推进步长）
         if self.current_part.growth_method == "geometric":
             current_step = self.current_part.first_height * (
