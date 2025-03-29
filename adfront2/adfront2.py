@@ -200,9 +200,9 @@ class Adfront2:
         # 判断front_list中是否存在new_front，若不存在，
         # 则将其压入front_list，若已存在，则将其从front_list中删除
         new_fronts = [new_front1, new_front2]
+        front_hashes = {f.hash for f in self.front_list}
         for chk_fro in new_fronts:
-            exists = any(tmp_fro.hash == chk_fro.hash for tmp_fro in self.front_list)
-            if not exists:
+            if chk_fro.hash not in front_hashes:
                 heapq.heappush(self.front_list, chk_fro)
 
                 if self.ax and self.debug_level >= 1:

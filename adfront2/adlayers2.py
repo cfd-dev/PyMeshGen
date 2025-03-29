@@ -319,6 +319,7 @@ class Adlayers2:
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
         added = []
+        front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
             if chk_fro.bc_type == "prism-cap":
                 # prism-cap不会出现重复，必须加入到新阵面列表中
@@ -326,10 +327,7 @@ class Adlayers2:
                 added.append(chk_fro)
             elif chk_fro.bc_type == "interior":
                 # interior可能会出现重复，需要检查是否已经存在
-                exists = any(
-                    tmp_fro.hash == chk_fro.hash for tmp_fro in new_interior_list
-                )
-                if not exists:
+                if chk_fro.hash not in front_hashes:
                     new_interior_list.append(chk_fro)
                     added.append(chk_fro)
                 else:  # 移除相同位置的旧阵面，此处可能会重新生成new_interior_list
