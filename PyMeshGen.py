@@ -21,7 +21,7 @@ from timer import TimeSpan
 
 
 def PyMeshGen():
-    # 开始计时器
+    # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
     # 建立参数管理对象

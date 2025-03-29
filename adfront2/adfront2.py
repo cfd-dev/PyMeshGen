@@ -9,6 +9,7 @@ import front2d
 import matplotlib.pyplot as plt
 from geometry_info import NodeElement, Unstructured_Grid
 from timer import TimeSpan
+from message import info, debug, verbose, warning, error
 
 
 class Adfront2:
@@ -161,9 +162,9 @@ class Adfront2:
 
     def show_progress(self):
         if self.num_cells % 500 == 0 or len(self.front_list) == 0:
-            print(f"当前阵面数量：{len(self.front_list)}")
-            print(f"当前节点数量：{self.num_nodes}")
-            print(f"当前单元数量：{self.num_cells} \n")
+            info(f"当前阵面数量：{len(self.front_list)}")
+            info(f"当前节点数量：{self.num_nodes}")
+            info(f"当前单元数量：{self.num_cells} ")
 
             self.debug_save()
 
@@ -235,7 +236,7 @@ class Adfront2:
             self.cell_container.append(new_cell)
             self.num_cells += 1
         else:
-            print(f"发现重复单元：{new_cell.node_ids}")
+            warning(f"发现重复单元：{new_cell.node_ids}")
             self.debug_level = 1
 
     def select_point(self):
@@ -288,7 +289,7 @@ class Adfront2:
             self.best_flag = True
 
         if self.pselected == None:
-            print(
+            warning(
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
             self.debug_save()
@@ -319,7 +320,7 @@ class Adfront2:
 
         for tri_cell in self.cell_candidates:
             if len(tri_cell.node_ids) != 3:
-                raise (f"节点数量错误：{tri_cell.node_ids}")
+                raise ValueError(f"节点数量错误：{tri_cell.node_ids}")
 
             if tri_cell.is_intersect(cell_to_add):
                 return True

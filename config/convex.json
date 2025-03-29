@@ -1,7 +1,7 @@
 {
     "debug_level": 0,
     "input_file": "./config/input/convex.cas",
-    "output_file": "output",
+    "output_file": "./out/convex.vtk",
     "parts": [
         {
             "name": "farfield",

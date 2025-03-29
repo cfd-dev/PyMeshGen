@@ -1,7 +1,7 @@
 {
     "debug_level": 0,
     "input_file": "./config/input/rae2822.cas",
-    "output_file": "output",
+    "output_file": "./out/rae2822.vtk",
     "parts": [
         {
             "name": "farfield",

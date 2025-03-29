@@ -6,6 +6,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent / "utils"))
 from timer import TimeSpan
+from message import info, debug, verbose
 
 
 class QuadTreeNode:
@@ -148,13 +149,13 @@ class QuadtreeSizing:
 
         self.grid_summary()
 
-        timer.show_to_console("quadtree背景网格生成完成！")
+        timer.show_to_console("生成quadtree背景网格..., Done.")
 
         return
 
     def compute_global_parameters(self):
 
-        print(f"计算域的BoundingBox...")
+        verbose(f"计算域的BoundingBox...")
         all_points = []
         min_edge_len = float("inf")
         max_edge_len = 0
@@ -181,7 +182,7 @@ class QuadtreeSizing:
             y_max + y_range * pad,
         )
 
-        print(f"计算最大尺度及树深度...")
+        verbose(f"计算最大尺度及树深度...")
         # 计算全局尺寸及叉树深度
         if self.max_size > min_edge_len and self.max_size < max_edge_len:
             self.global_spacing = self.max_size
@@ -207,7 +208,7 @@ class QuadtreeSizing:
 
     def initial_quadtree(self):
         """初始化四叉树网格"""
-        print(f"初始quadtree生成...")
+        verbose(f"初始quadtree生成...")
 
         # 计算背景网格分割数
         dist = [
@@ -298,7 +299,7 @@ class QuadtreeSizing:
             diff = (current_spacing - target_size) / current_spacing
             return diff > self.resolution
 
-        print(f"细化初始quadtree...")
+        verbose(f"细化初始quadtree...")
 
         # 遍历所有表面节点
         for front in self.initial_front:
@@ -377,7 +378,7 @@ class QuadtreeSizing:
                         changed += 1
             return changed
 
-        print(f"平衡quadtree，保证层级差<2...")
+        verbose(f"平衡quadtree，保证层级差<2...")
         # 主循环
         changed = 1
         while changed:
@@ -441,7 +442,7 @@ class QuadtreeSizing:
             pwr = min(pwr, 50.0)  # 限制最大指数
             return base_size * math.exp(pwr)
 
-        print(f"计算尺寸场decay...")
+        verbose(f"计算尺寸场decay...")
 
         if self.decay < 1.0:
             return
@@ -517,7 +518,7 @@ class QuadtreeSizing:
                                 changed += 1
             return changed
 
-        print(f"尺寸场光滑transition...")
+        verbose(f"尺寸场光滑transition...")
         # 主循环
         changed = 1
         while changed:
@@ -545,14 +546,14 @@ class QuadtreeSizing:
 
     def grid_summary(self):
         """输出网格统计信息"""
-        print(f"输出背景网格信息...")
+        info(f"输出背景网格信息...")
         data = {"nCells": 0, "maxLevel": 0}
 
         enumerate_quadtree(self.quad_tree, CountNode, data)
 
-        print(f"网格统计:")
-        print(f"- 总节点数: {data['nCells']}")
-        print(f"- 最大深度: {data['maxLevel']}")
+        info(f"网格统计:")
+        info(f"- 总节点数: {data['nCells']}")
+        info(f"- 最大深度: {data['maxLevel']}")
 
     def spacing_at(self, point):
         """计算指定点的网格尺寸（二维双线性插值）"""

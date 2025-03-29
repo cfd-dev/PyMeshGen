@@ -73,10 +73,10 @@ class Adlayers2:
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
 
-            timer.show_to_console(f"开始生成{part.name}的边界层网格...")
+            info(f"开始生成{part.name}的边界层网格...\n")
             for self.ilayer in range(self.max_layers):
 
-                timer.show_to_console(f"第{self.ilayer + 1}层推进中...")
+                info(f"第{self.ilayer + 1}层推进中...")
 
                 self.prepare_geometry_info()
 
@@ -88,9 +88,9 @@ class Adlayers2:
 
                 self.show_progress()
 
-                self.ilayer += 1
-
                 timer.show_to_console(f"第{self.ilayer + 1}层推进完成.")
+
+                self.ilayer += 1
 
         self.construct_unstr_grid()
 
@@ -107,7 +107,7 @@ class Adlayers2:
         self.unstr_grid = Unstructured_Grid(
             self.cell_container, self.node_coords, self.boundary_nodes
         )
-        print("构建非结构网格数据..., Done.")
+        verbose("构建非结构网格数据..., Done.")
 
         if self.debug_level == 1:
             self.debug_save()
@@ -118,13 +118,13 @@ class Adlayers2:
             self.all_boundary_fronts.extend(part.front_list)
 
         heapq.heapify(self.all_boundary_fronts)
-        print("构建全局边界阵面..., Done.")
+        verbose("构建全局边界阵面..., Done.\n")
 
     def show_progress(self):
         """显示推进进度"""
-        print(f"第{self.ilayer + 1}层推进..., Done.")
-        print(f"当前节点数量：{self.num_nodes}")
-        print(f"当前单元数量：{self.num_cells} \n")
+        info(f"第{self.ilayer + 1}层推进..., Done.")
+        info(f"当前节点数量：{self.num_nodes}")
+        info(f"当前单元数量：{self.num_cells} ")
 
         if self.debug_level >= 2:
             self.debug_save()
@@ -354,7 +354,8 @@ class Adlayers2:
         return new_interior_list, new_prism_cap_list
 
     def advancing_fronts(self):
-        print("逐个阵面推进生成单元...")
+        timer = TimeSpan("逐个阵面推进生成单元...")
+
         new_interior_list = []  # 新增的边界层法向面，设置为interior
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
         # 逐个阵面进行推进
@@ -410,18 +411,19 @@ class Adlayers2:
                 check_fronts, new_interior_list, new_prism_cap_list
             )
 
-        print("逐个阵面推进生成单元..., Done.")
+        timer.show_to_console("逐个阵面推进生成单元..., Done.")
+
         # 更新part阵面列表
         self.current_part.front_list = []
         for tmp_front in new_prism_cap_list:
             self.current_part.front_list.append(tmp_front)
         for tmp_front in new_interior_list:
             self.current_part.front_list.append(tmp_front)
-        print(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.")
+        verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
 
     def calculate_marching_distance(self):
         """计算节点推进距离"""
-        print("计算节点推进步长...")
+        verbose("计算节点推进步长...")
         self.current_step_size = 0.0
         if self.current_part.growth_method == "geometric":
             # 计算几何增长距离
@@ -431,7 +433,7 @@ class Adlayers2:
         else:
             raise ValueError("未知的步长计算方法！")
 
-        print(f"第{self.ilayer+1}层推进步长：{round(self.current_step_size, 6)}")
+        info(f"第{self.ilayer+1}层推进步长：{self.current_step_size:.6f}")
 
         for front in self.current_part.front_list:
             # 计算节点推进距离
@@ -448,7 +450,7 @@ class Adlayers2:
                     and front1.bc_type != "interior"
                     and front2.bc_type != "interior"
                 ):
-                    print(
+                    warning(
                         f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
                     )
 
@@ -459,7 +461,7 @@ class Adlayers2:
                     / np.mean([proj1, proj2])
                 )  # min(abs(proj1), abs(proj2))
 
-        print("计算节点推进步长..., Done.")
+        verbose("计算节点推进步长..., Done.\n")
 
     def visualize_point_normals(self):
         """可视化节点推进方向"""
@@ -491,7 +493,7 @@ class Adlayers2:
     def compute_point_normals(self):
         """计算节点推进方向"""
 
-        print("计算节点初始推进方向...")
+        verbose("计算节点初始推进方向...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
                 continue
@@ -564,11 +566,11 @@ class Adlayers2:
 
             node_elem.marching_direction = tuple(new_direction)
 
-        print("计算节点初始推进方向..., Done.")
+        verbose("计算节点初始推进方向..., Done.\n")
 
     def laplacian_smooth_normals(self):
         """拉普拉斯平滑节点推进方向"""
-        print("节点推进方向光滑....")
+        verbose("节点推进方向光滑....")
         for node_elem in self.front_node_list:
             num_neighbors = len(node_elem.node2node)
             if num_neighbors < 2:
@@ -589,7 +591,7 @@ class Adlayers2:
                 )
                 iteration += 1
 
-        print("节点推进方向光滑..., Done.")
+        verbose("节点推进方向光滑..., Done.\n")
 
     def prepare_geometry_info(self):
         """准备几何信息"""
@@ -637,6 +639,7 @@ class Adlayers2:
 
     def reconstruct_node2node(self):
         """重构node2node关系"""
+        verbose("重构node2node关系...")
         for front in self.current_part.front_list:
             nodes = front.node_elems
             num_nodes = len(nodes)
@@ -666,8 +669,11 @@ class Adlayers2:
                     node.node2node.append(next_node)
                     existing_hashes.add(next_node.hash)
 
+        verbose("重构node2node关系..., Done.\n")
+
     def compute_corner_attributes(self):
         """计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量"""
+        verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
                 continue
@@ -728,10 +734,12 @@ class Adlayers2:
                 node_elem.num_multi_direction = 1
                 node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
 
+        verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量..., Done.\n")
+
     def compute_front_geometry(self):
         """计算阵面几何信息"""
-        timer = TimeSpan("计算物面几何信息...")
-        # print("计算物面几何信息...")
+        verbose("计算物面几何信息...")
+
         # 建立矩形背景网格，便于快速查询
         self._build_space_index(self.current_part.front_list)
 
@@ -744,8 +752,7 @@ class Adlayers2:
         # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
         self.compute_corner_attributes()
 
-        # print("计算物面几何信息..., Done.")
-        timer.show_to_console("计算物面几何信息..., Done.")
+        verbose("计算物面几何信息..., Done.\n")
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""

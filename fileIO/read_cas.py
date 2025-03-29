@@ -38,7 +38,7 @@ CELL_ZONE_TYPE = {"DEAD": 0, "FLUID": 1}
 
 
 def parse_fluent_msh(file_path):
-    timer = TimeSpan("开始解析fluent .cas网格...")
+    timer = TimeSpan("解析fluent .cas网格...")
 
     data = {
         "nodes": [],
@@ -252,5 +252,5 @@ def parse_fluent_msh(file_path):
                 }
                 data["faces"].append(face_with_bc)
 
-    timer.show_to_console("解析fluent .cas网格完成.")
+    timer.show_to_console("解析fluent .cas网格..., Done.")
     return data
