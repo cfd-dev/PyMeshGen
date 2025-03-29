@@ -242,6 +242,7 @@ class Adlayers2:
 
     def proximity_checker(self, front, check_fronts):
         # 预计算安全距离
+        # TODO safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
         safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
         safe_distance_sq = safe_distance * safe_distance  # 使用平方距离避免开方
 
@@ -292,28 +293,14 @@ class Adlayers2:
                     continue
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
-                # TODO safe_distance暂时取为当前推进步长的0.5倍
-                # dis = self._fronts_distance(new_front, candidate)
-                # safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
-
-                # if dis < safe_distance:
                 q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
-                if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):                
+                if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
                     info(
                         f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
                     if self.debug_level >= 1:
                         self._highlight_intersection(new_front, candidate)
                     return True
-
-                # 精确相交检测，无需再进行，注释掉
-                # if self._segments_intersect(
-                #     new_front.node_elems, candidate.node_elems
-                # ):
-                #     print(
-                #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
-                #     )
-                #     return True
 
         return False
 
@@ -324,9 +311,9 @@ class Adlayers2:
             for q in [q0, q1]:
                 dx = p[0] - q[0]
                 dy = p[1] - q[1]
-                if dx*dx + dy*dy < safe_distance_sq:
+                if dx * dx + dy * dy < safe_distance_sq:
                     return True
-        
+
         # 线段间距离检查
         return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
@@ -422,7 +409,7 @@ class Adlayers2:
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
         # 更新part阵面列表
-        self.current_part.front_list = new_prism_cap_list + new_interior_list 
+        self.current_part.front_list = new_prism_cap_list + new_interior_list
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
 
     def calculate_marching_distance(self):
