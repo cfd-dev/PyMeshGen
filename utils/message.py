@@ -3,7 +3,7 @@ DEBUG_LEVEL_INFO = 0
 DEBUG_LEVEL_DEBUG = 1
 DEBUG_LEVEL_VERBOSE = 2
 
-# 当前的调试级别
+# 默认调试级别
 current_debug_level = DEBUG_LEVEL_INFO
 
 

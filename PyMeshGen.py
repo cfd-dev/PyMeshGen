@@ -79,7 +79,7 @@ def PyMeshGen():
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
 
-    global_unstr_grid.visualize_unstr_grid_2d()
+    global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
 
     # 输出网格文件
     global_unstr_grid.save_to_vtkfile(parameters.output_file)

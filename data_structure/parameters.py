@@ -1,5 +1,9 @@
 import json
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent / "utils"))
+from message import set_debug_level
 
 
 class Parameters:
@@ -19,6 +23,7 @@ class Parameters:
         self.output_file = []
 
         self.load_cofig()
+        set_debug_level(self.debug_level)
 
     # 配置文件读取函数
     def load_cofig(self):

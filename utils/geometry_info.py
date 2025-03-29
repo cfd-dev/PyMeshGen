@@ -3,6 +3,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import math
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent / "utils"))
+from message import info
 
 
 def point_to_segment_distance(point, segment_start, segment_end):
@@ -806,9 +811,12 @@ class Unstructured_Grid:
         file_path = f"./out/debug_mesh_{status}.vtk"
         self.save_to_vtkfile(file_path)
 
-    def visualize_unstr_grid_2d(self):
+    def visualize_unstr_grid_2d(self, visual_obj):
         """可视化二维网格"""
-        fig, ax = plt.subplots(figsize=(10, 8))
+        if visual_obj is None:
+            fig, ax = plt.subplots(figsize=(10, 8))
+        else:
+            fig, ax = visual_obj.fig, visual_obj.ax
 
         # 绘制所有节点
         xs = [n[0] for n in self.node_coords]
@@ -885,4 +893,4 @@ class Unstructured_Grid:
             file.write("LOOKUP_TABLE default\n")
             file.write("\n".join(map(str, range(total_cells))) + "\n")
 
-        print(f"网格已保存到 {file_path}")
+        info(f"网格已保存到 {file_path}")
