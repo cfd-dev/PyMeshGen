@@ -284,7 +284,10 @@ class Adfront2:
     def debug_save(self):
         if self.debug_level < 1:
             return
-        self.construct_unstr_grid()
+
+        if self.unstr_grid is None:
+            self.construct_unstr_grid()
+
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):
