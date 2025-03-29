@@ -371,7 +371,7 @@ class Adfront2:
         ]
 
     def add_new_point(self, spacing):
-        normal_vec = geo_info.normal_vector2d(self.base_front)
+        normal_vec = self.base_front.normal
 
         # 分量式计算向量相加
         fc = self.base_front.center
