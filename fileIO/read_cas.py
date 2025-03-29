@@ -1,4 +1,9 @@
 import re
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent / "utils"))
+from timer import TimeSpan
 
 # Fluent网格类型定义
 FACE_TYPES = {"MIXED": 0, "LINEAR": 2, "TRI": 3, "QUAD": 4}
@@ -33,6 +38,8 @@ CELL_ZONE_TYPE = {"DEAD": 0, "FLUID": 1}
 
 
 def parse_fluent_msh(file_path):
+    timer = TimeSpan("开始解析fluent .cas网格...")
+
     data = {
         "nodes": [],
         "faces": [],
@@ -244,4 +251,6 @@ def parse_fluent_msh(file_path):
                     "part_name": part_name,
                 }
                 data["faces"].append(face_with_bc)
+
+    timer.show_to_console("解析fluent .cas网格完成.")
     return data

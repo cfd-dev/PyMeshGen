@@ -15,6 +15,8 @@ from geometry_info import (
     segments_intersect,
 )
 from front2d import Front
+from message import info, debug, verbose
+from timer import TimeSpan
 
 
 class Adlayers2:
@@ -60,6 +62,7 @@ class Adlayers2:
 
     def generate_elements(self):
         """生成边界层网格"""
+        timer = TimeSpan("开始生成边界层网格...")
         for part in self.part_params:
             if not part.PRISM_SWITCH:
                 continue
@@ -70,9 +73,10 @@ class Adlayers2:
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
 
+            timer.show_to_console(f"开始生成{part.name}的边界层网格...")
             for self.ilayer in range(self.max_layers):
 
-                print(f"第{self.ilayer + 1}层推进中...")
+                timer.show_to_console(f"第{self.ilayer + 1}层推进中...")
 
                 self.prepare_geometry_info()
 
@@ -85,6 +89,8 @@ class Adlayers2:
                 self.show_progress()
 
                 self.ilayer += 1
+
+                timer.show_to_console(f"第{self.ilayer + 1}层推进完成.")
 
         self.construct_unstr_grid()
 
@@ -724,7 +730,8 @@ class Adlayers2:
 
     def compute_front_geometry(self):
         """计算阵面几何信息"""
-        print("计算物面几何信息...")
+        timer = TimeSpan("计算物面几何信息...")
+        # print("计算物面几何信息...")
         # 建立矩形背景网格，便于快速查询
         self._build_space_index(self.current_part.front_list)
 
@@ -737,7 +744,8 @@ class Adlayers2:
         # 计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量
         self.compute_corner_attributes()
 
-        print("计算物面几何信息..., Done.")
+        # print("计算物面几何信息..., Done.")
+        timer.show_to_console("计算物面几何信息..., Done.")
 
     def match_parts_with_fronts(self):
         """匹配部件和初始阵面"""
@@ -771,7 +779,7 @@ class Adlayers2:
         """构建空间索引加速相交检测"""
         from collections import defaultdict
 
-        print("构建辅助查询背景网格...")
+        verbose("构建辅助查询背景网格...")
         # 动态计算网格尺寸（基于当前层推进步长）
         if self.current_part.growth_method == "geometric":
             current_step = self.current_part.first_height * (
@@ -801,9 +809,9 @@ class Adlayers2:
                 for j in range(j_min, j_max + 1):
                     self.space_grid[(i, j)].append(front)
 
-        print(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
-        print(f"辅助查询网格尺寸：{self.grid_size:.3f}")
-        print(f"辅助查询网格数量：{len(self.space_grid)}\n")
+        verbose(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
+        verbose(f"辅助查询网格尺寸：{self.grid_size:.3f}")
+        verbose(f"辅助查询网格数量：{len(self.space_grid)}\n")
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""

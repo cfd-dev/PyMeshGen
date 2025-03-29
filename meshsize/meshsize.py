@@ -1,6 +1,11 @@
 from math import log
 import math
 import matplotlib.pyplot as plt
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent / "utils"))
+from timer import TimeSpan
 
 
 class QuadTreeNode:
@@ -115,6 +120,8 @@ class QuadtreeSizing:
         draw_quadtree(self.quad_tree, self.ax)
 
     def generate_bg_mesh(self):
+        timer = TimeSpan("生成quadtree背景网格...")
+
         # 初始化计算域的BoundingBox及全局尺寸及叉树深度
         self.compute_global_parameters()
 
@@ -140,6 +147,8 @@ class QuadtreeSizing:
         self.spacing_transition()
 
         self.grid_summary()
+
+        timer.show_to_console("quadtree背景网格生成完成！")
 
         return
 

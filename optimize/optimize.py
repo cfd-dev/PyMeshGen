@@ -5,10 +5,11 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
+from timer import TimeSpan
 
 
 def edge_swap(unstr_grid):
-    print(f"开始进行边交换优化...")
+    timer = TimeSpan("开始进行边交换优化...")
     node_coords = unstr_grid.node_coords
     edge_map = {}
 
@@ -118,13 +119,14 @@ def edge_swap(unstr_grid):
                         edge_map[edge] = []
                     edge_map[edge].append(cell_idx)
 
-    print(f"共进行了{num_swapped}次边交换.\n")
+    print(f"共进行了{num_swapped}次边交换.")
+    timer.show_to_console("边交换优化完成.")
 
     return unstr_grid
 
 
 def laplacian_smooth(unstr_grid, num_iter=10):
-    print(f"开始进行laplacian优化...")
+    timer = TimeSpan("开始进行laplacian优化...")
 
     node_coords = unstr_grid.node_coords
     # 将键改为节点索引
@@ -158,6 +160,6 @@ def laplacian_smooth(unstr_grid, num_iter=10):
 
         unstr_grid.node_coords = new_coords
         print(f"第{i+1}轮laplacian优化完成.")
-    print(f"laplacian优化完成.\n")
+    timer.show_to_console("laplacian优化完成.")
 
     return unstr_grid

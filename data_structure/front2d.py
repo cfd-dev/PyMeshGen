@@ -1,10 +1,11 @@
+import heapq
+import matplotlib.pyplot as plt
 import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
-import heapq
-import matplotlib.pyplot as plt
 from geometry_info import NodeElement, calculate_distance
+from timer import TimeSpan
 
 
 class Front:
@@ -145,6 +146,7 @@ def process_initial_front(grid):
 
 def construct_initial_front(grid):
     """从网格数据中构造初始阵面，并按长度排序"""
+    timer = TimeSpan("开始构造初始阵面...")
     front_heap = process_initial_front(grid)
 
     # 重新计算节点索引,对初始阵面的节点重新编号
@@ -164,6 +166,7 @@ def construct_initial_front(grid):
 
             front.node_ids.append(node_elem.idx)
 
+    timer.show_to_console("构造初始阵面完成.")
     return front_heap
 
 

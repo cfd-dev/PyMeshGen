@@ -8,6 +8,7 @@ import geometry_info as geo_info
 import front2d
 import matplotlib.pyplot as plt
 from geometry_info import NodeElement, Unstructured_Grid
+from timer import TimeSpan
 
 
 class Adfront2:
@@ -129,6 +130,7 @@ class Adfront2:
                 front.draw_front("y-", self.ax)
 
     def generate_elements(self):
+        timer = TimeSpan("开始推进生成三角形...")
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
 
@@ -147,6 +149,8 @@ class Adfront2:
             self.show_progress()
 
         self.construct_unstr_grid()
+
+        timer.show_to_console("完成三角形网格生成.")
 
         return self.unstr_grid
 

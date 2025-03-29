@@ -1,5 +1,4 @@
 import sys
-import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent / "fileIO"))
@@ -8,6 +7,7 @@ sys.path.append(str(Path(__file__).parent / "meshsize"))
 sys.path.append(str(Path(__file__).parent / "visualization"))
 sys.path.append(str(Path(__file__).parent / "adfront2"))
 sys.path.append(str(Path(__file__).parent / "optimize"))
+sys.path.append(str(Path(__file__).parent / "utils"))
 
 from read_cas import parse_fluent_msh
 from front2d import construct_initial_front
@@ -17,11 +17,12 @@ from optimize import edge_swap, laplacian_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters, PartMeshParameters
+from timer import TimeSpan
 
 
 def PyMeshGen():
     # 开始计时器
-    start_time = time.time()
+    global_timer = TimeSpan("PyMeshGen开始运行...")
 
     # 建立参数管理对象
     parameters = Parameters("FROM_MAIN_JSON")
@@ -83,10 +84,8 @@ def PyMeshGen():
     # 输出网格文件
     global_unstr_grid.save_to_vtkfile(parameters.output_file)
 
-    # 结束计时器
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"程序运行时间: {elapsed_time:.2f} 秒")
+    # 结束计时
+    global_timer.show_to_console("程序运行退出.")
 
 
 if __name__ == "__main__":
