@@ -164,7 +164,7 @@ class Adfront2:
         if self.num_cells % 500 == 0 or len(self.front_list) == 0:
             info(f"当前阵面数量：{len(self.front_list)}")
             info(f"当前节点数量：{self.num_nodes}")
-            info(f"当前单元数量：{self.num_cells} ")
+            info(f"当前单元数量：{self.num_cells}\n")
 
             self.debug_save()
 
@@ -233,43 +233,35 @@ class Adfront2:
             self.debug_level = 1
 
     def select_point(self):
+        # 预计算基准点坐标
+        p0 = self.base_front.node_elems[0].coords
+        p1 = self.base_front.node_elems[1].coords
+
         # 存储带质量的候选节点元组 (质量, 节点)
         scored_candidates = []
         # 遍历所有候选节点计算质量
         for node_elem in self.node_candidates:
-            quality = geo_info.triangle_quality(
-                self.base_front.node_elems[0].coords,
-                self.base_front.node_elems[1].coords,
-                node_elem.coords,
-            )
-            scored_candidates.append((quality, node_elem))
+            quality = geo_info.triangle_quality(p0, p1, node_elem.coords)
+            if quality > 0:
+                scored_candidates.append((quality, node_elem))
 
         # 添加Pbest节点的质量（带折扣系数）
         pbest_quality = (
-            geo_info.triangle_quality(
-                self.base_front.node_elems[0].coords,
-                self.base_front.node_elems[1].coords,
-                self.pbest.coords,
-            )
+            geo_info.triangle_quality(p0, p1, self.pbest.coords) * self.discount
             if self.pbest
             else 0
         )
-        scored_candidates.append((pbest_quality * self.discount, self.pbest))
 
-        # 去掉quality为0的节点
-        scored_candidates = [(q, n) for q, n in scored_candidates if q > 0]
+        if pbest_quality > 0:
+            scored_candidates.append((pbest_quality, self.pbest))
 
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
         self.pselected = None
         self.best_flag = False
-        for idx, (quality, node_elem) in enumerate(scored_candidates):
-            if not geo_info.is_left2d(
-                self.base_front.node_elems[0].coords,
-                self.base_front.node_elems[1].coords,
-                node_elem.coords,
-            ):
+        for quality, node_elem in scored_candidates:
+            if not geo_info.is_left2d(p0, p1, node_elem.coords):
                 continue
 
             if self.is_cross(node_elem):
@@ -278,15 +270,14 @@ class Adfront2:
             self.pselected = node_elem
             break
 
-        if self.pselected == self.pbest:
-            self.best_flag = True
+        self.best_flag = self.pselected == self.pbest
 
         if self.pselected == None:
             warning(
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
-            self.debug_save()
             self.base_front.al *= 1.2
+            self.debug_save()
 
         return self.pselected
 
@@ -297,19 +288,18 @@ class Adfront2:
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):
+        p0 = self.base_front.node_elems[0]
+        p1 = self.base_front.node_elems[1]
+
+        line1 = geo_info.LineSegment(node_elem, p0)
+        line2 = geo_info.LineSegment(node_elem, p1)
+
         for front in self.front_candidates:
             front_line = geo_info.LineSegment(front.node_elems[0], front.node_elems[1])
-            line1 = geo_info.LineSegment(node_elem, self.base_front.node_elems[0])
-            line2 = geo_info.LineSegment(node_elem, self.base_front.node_elems[1])
-
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
 
-        cell_to_add = geo_info.Triangle(
-            node_elem,
-            self.base_front.node_elems[0],
-            self.base_front.node_elems[1],
-        )
+        cell_to_add = geo_info.Triangle(node_elem, p0, p1)
 
         for tri_cell in self.cell_candidates:
             if len(tri_cell.node_ids) != 3:
@@ -317,58 +307,65 @@ class Adfront2:
 
             if tri_cell.is_intersect(cell_to_add):
                 return True
+
         return False
 
     def search_candidates(self, radius):
         self.node_candidates = []
         self.front_candidates = []
         self.cell_candidates = []
-
         self.search_radius = radius
-        radius2 = radius * radius
 
+        # 使用预计算的边界框信息进行快速筛选
         point = self.pbest.coords
-        possible_fronts = []
-        for front in self.front_list:
+        min_x = point[0] - radius
+        max_x = point[0] + radius
+        min_y = point[1] - radius
+        max_y = point[1] + radius
+
+        # 使用生成器表达式减少内存使用
+        possible_fronts = (
+            front
+            for front in self.front_list
             if (
-                point[0] > front.bbox[0] - radius  # xmin
-                and point[0] < front.bbox[2] + radius  # xmax
-                and point[1] > front.bbox[1] - radius  # ymin
-                and point[1] < front.bbox[3] + radius  # ymax
-            ):
-                possible_fronts.append(front)
+                front.bbox[0] <= max_x
+                and front.bbox[2] >= min_x
+                and front.bbox[1] <= max_y
+                and front.bbox[3] >= min_y
+            )
+        )
 
         seen_nodes = set()
         seen_fronts = set()
+        radius2 = radius * radius
         for front in possible_fronts:
             front_hash = front.hash
+            if front_hash in seen_fronts:
+                continue
             for node_elem in front.node_elems:
                 node_hash = node_elem.hash
+                if node_hash in seen_nodes:
+                    continue
+
                 node_coord = node_elem.coords
                 if geo_info.calculate_distance2(point, node_coord) <= radius2:
-                    if node_hash not in seen_nodes:
-                        self.node_candidates.append(node_elem)
-                        seen_nodes.add(node_hash)
+                    self.node_candidates.append(node_elem)
+                    seen_nodes.add(node_hash)
+
                     if front_hash not in seen_fronts:
                         self.front_candidates.append(front)
                         seen_fronts.add(front_hash)
 
-        possible_cells = []
-        for cell in self.cell_container:
+        self.cell_candidates = [
+            cell
+            for cell in self.cell_container
             if (
-                point[0] > cell.bbox[0] - radius  # xmin
-                and point[0] < cell.bbox[2] + radius  # xmax
-                and point[1] > cell.bbox[1] - radius  # ymin
-                and point[1] < cell.bbox[3] + radius  # ymax
-            ):
-                possible_cells.append(cell)
-
-        seen_cells = set()
-        for cell in possible_cells:
-            cell_hash = cell.hash
-            if cell_hash not in seen_cells:
-                self.cell_candidates.append(cell)
-                seen_cells.add(cell_hash)
+                cell.bbox[0] <= max_x
+                and cell.bbox[2] >= min_x
+                and cell.bbox[1] <= max_y
+                and cell.bbox[3] >= min_y
+            )
+        ]
 
     def add_new_point(self, spacing):
         normal_vec = geo_info.normal_vector2d(self.base_front)

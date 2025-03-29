@@ -276,7 +276,7 @@ def is_valid_triangle(cell, node_coords):
     return area > 1e-10
 
 
-# 检查两点是否重合
+# 检查两点是否重合 TODO:epsilon取值对实际问题的影响
 def points_equal(p1, p2, epsilon=1e-6):
     return abs(p1[0] - p2[0]) < epsilon and abs(p1[1] - p2[1]) < epsilon
 
@@ -425,32 +425,9 @@ class LineSegment:
 
     def is_intersect(self, line):
         """判断两条线段是否相交"""
-        # 快速排斥实验
-        if (
-            self.bbox[0] > line.bbox[2]
-            or self.bbox[2] < line.bbox[0]
-            or self.bbox[1] > line.bbox[3]
-            or self.bbox[3] < line.bbox[1]
-        ):
-            return False
-
-        # 跨立实验
-        if is_left2d(self.p1, self.p2, line.p1) != is_left2d(
-            self.p1, self.p2, line.p2
-        ) and is_left2d(line.p1, line.p2, self.p1) != is_left2d(
-            line.p1, line.p2, self.p2
-        ):
-            # 新增端点重合检查
-            if (
-                self.p1 == line.p1
-                or self.p1 == line.p2
-                or self.p2 == line.p1
-                or self.p2 == line.p2
-            ):
-                return False
-            return True
-
-        return False
+        p3 = line.p1
+        p4 = line.p2
+        return segments_intersect(self.p1, self.p2, p3, p4)
 
 
 class Triangle:
@@ -480,7 +457,7 @@ class Triangle:
             )
         )
         # 生成逻辑级哈希
-        id_hash = hash(tuple(sorted(self.node_ids)))
+        id_hash = hash(tuple(sorted(self.node_ids))) if self.node_ids else 0
         # 组合哈希
         self.hash = hash((coord_hash, id_hash))
 
@@ -496,67 +473,74 @@ class Triangle:
     def __hash__(self):
         return self.hash
 
+    def __eq__(self, other):
+        if isinstance(other, Triangle):
+            return self.hash == other.hash
+        return False
+
     def init_metrics(self):
         self.area = triangle_area(self.p1, self.p2, self.p3)
         self.quality = triangle_quality(self.p1, self.p2, self.p3)
 
     def is_intersect(self, triangle):
-        self_edges = [(self.p1, self.p2), (self.p2, self.p3), (self.p3, self.p1)]
-        tri_edges = [
-            (triangle.p1, triangle.p2),
-            (triangle.p2, triangle.p3),
-            (triangle.p3, triangle.p1),
-        ]
+        p4 = triangle.p1
+        p5 = triangle.p2
+        p6 = triangle.p3
+        return triangle_intersect_triangle(self.p1, self.p2, self.p3, p4, p5, p6)
 
-        # 检查边是否相交（排除共边）
-        for e1 in self_edges:
-            a1, a2 = e1
-            for e2 in tri_edges:
-                b1, b2 = e2
-                if segments_intersect(a1, a2, b1, b2):
-                    # 检查是否为共边（顶点完全相同）
-                    if (points_equal(a1, b1) and points_equal(a2, b2)) or (
-                        points_equal(a1, b2) and points_equal(a2, b1)
-                    ):
-                        continue  # 共边，视为不相交
-                    else:
-                        return True  # 非共边的相交
 
-        # 检查顶点是否在另一个三角形内部或边上（严格内部或边上，但排除共享顶点）
-        for p in [self.p1, self.p2, self.p3]:
-            if any(
-                points_equal(p, tri_p)
-                for tri_p in [triangle.p1, triangle.p2, triangle.p3]
-            ):
-                continue
-            if is_point_inside_or_on(p, triangle.p1, triangle.p2, triangle.p3):
-                return True
+def triangle_intersect_triangle(p1, p2, p3, p4, p5, p6):
+    """判断两个三角形是否相交，仅共享一条边不算相交、仅共享一个顶点不算相交"""
+    tri1_edges = [(p1, p2), (p2, p3), (p3, p1)]
+    tri2_edges = [(p4, p5), (p5, p6), (p6, p4)]
 
-        for p in [triangle.p1, triangle.p2, triangle.p3]:
-            if any(points_equal(p, self_p) for self_p in [self.p1, self.p2, self.p3]):
-                continue
-            if is_point_inside_or_on(p, self.p1, self.p2, self.p3):
-                return True
+    # 检查边是否相交（排除共边）
+    for e1 in tri1_edges:
+        a1, a2 = e1
+        for e2 in tri2_edges:
+            b1, b2 = e2
+            if segments_intersect(a1, a2, b1, b2):
+                # 检查是否为共边（顶点完全相同）
+                if (points_equal(a1, b1) and points_equal(a2, b2)) or (
+                    points_equal(a1, b2) and points_equal(a2, b1)
+                ):
+                    continue  # 共边，视为不相交
+                else:
+                    return True  # 非共边的相交
 
-        # 检查当前三角形是否完全在另一个三角形内部（非共享顶点）
-        all_in_self = True
-        for p in [self.p1, self.p2, self.p3]:
-            if not is_point_inside_or_on(p, triangle.p1, triangle.p2, triangle.p3):
-                all_in_self = False
-                break
-        if all_in_self:
+    # 检查顶点是否在另一个三角形内部或边上（严格内部或边上，但排除共享顶点）
+    for p in [p1, p2, p3]:
+        if any(points_equal(p, tri_p) for tri_p in [p4, p5, p6]):
+            continue
+        if is_point_inside_or_on(p, p4, p5, p6):
             return True
 
-        # 检查另一个三角形是否完全在当前三角形内部
-        all_in_other = True
-        for p in [triangle.p1, triangle.p2, triangle.p3]:
-            if not is_point_inside_or_on(p, self.p1, self.p2, self.p3):
-                all_in_other = False
-                break
-        if all_in_other:
+    for p in [p4, p5, p6]:
+        if any(points_equal(p, self_p) for self_p in [p1, p2, p3]):
+            continue
+        if is_point_inside_or_on(p, p1, p2, p3):
             return True
 
-        return False
+    # 检查当前三角形是否完全在另一个三角形内部（非共享顶点）
+    all_in_self = True
+    for p in [p1, p2, p3]:
+        if not is_point_inside_or_on(p, p4, p5, p6):
+            all_in_self = False
+            break
+    if all_in_self:
+        return True
+
+    # 检查另一个三角形是否完全在当前三角形内部
+    all_in_other = True
+    for p in [p4, p5, p6]:
+        if not is_point_inside_or_on(p, p1, p2, p3):
+            all_in_other = False
+            break
+    if all_in_other:
+        return True
+
+    return False
+
 
 def quadrilateral_area(p1, p2, p3, p4):
     """使用鞋带公式计算任意简单四边形面积（顶点需按顺序排列）"""
@@ -564,9 +548,7 @@ def quadrilateral_area(p1, p2, p3, p4):
     x = points[:, 0]
     y = points[:, 1]
 
-    return 0.5 * np.abs(
-        np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))
-    )
+    return 0.5 * np.abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
 
 def is_valid_quadrilateral(p1, p2, p3, p4):
@@ -662,7 +644,7 @@ class Quadrilateral:
             )
         )
         # 生成逻辑级哈希
-        id_hash = hash(tuple(sorted(self.node_ids)))
+        id_hash = hash(tuple(sorted(self.node_ids))) if self.node_ids else 0
         # 组合哈希
         self.hash = hash((coord_hash, id_hash))
 
@@ -680,9 +662,11 @@ class Quadrilateral:
 
     def init_metrics(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
-        
-        if(self.area == 0.0):
-            raise ValueError(f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}")
+
+        if self.area == 0.0:
+            raise ValueError(
+                f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
+            )
 
         # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
         self.quality = self.get_skewness()
