@@ -15,7 +15,7 @@ from geometry_info import (
     segments_intersect,
 )
 from front2d import Front
-from message import info, debug, verbose
+from message import info, debug, verbose, warning
 from timer import TimeSpan
 
 
@@ -133,7 +133,9 @@ class Adlayers2:
         if self.debug_level < 1:
             return
 
-        self.construct_unstr_grid()
+        if self.unstr_grid is None:
+            self.construct_unstr_grid()
+
         self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def create_new_cell_and_front(self, front):
@@ -305,8 +307,8 @@ class Adlayers2:
         return False
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
+        added = []
         for chk_fro in check_fronts:
-            added = []
             if chk_fro.bc_type == "prism-cap":
                 # prism-cap不会出现重复，必须加入到新阵面列表中
                 new_prism_cap_list.append(chk_fro)
@@ -325,11 +327,12 @@ class Adlayers2:
                         for tmp_fro in new_interior_list
                         if tmp_fro.hash != chk_fro.hash
                     ]
-            # 将新阵面加入到空间查询网格中
-            self._add_front_to_space(added)
+        # 将新阵面加入到空间查询网格中
+        self._add_front_to_space(added)
 
-            if added and self.ax and self.debug_level >= 1:
-                chk_fro.draw_front("g-", self.ax)
+        if added and self.ax and self.debug_level >= 1:
+            for fro in added:
+                fro.draw_front("g-", self.ax)
 
         # 注意此处必须返回值，并且使用更新过的返回值
         return new_interior_list, new_prism_cap_list
@@ -395,11 +398,7 @@ class Adlayers2:
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
         # 更新part阵面列表
-        self.current_part.front_list = []
-        for tmp_front in new_prism_cap_list:
-            self.current_part.front_list.append(tmp_front)
-        for tmp_front in new_interior_list:
-            self.current_part.front_list.append(tmp_front)
+        self.current_part.front_list = new_prism_cap_list + new_interior_list 
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
 
     def calculate_marching_distance(self):

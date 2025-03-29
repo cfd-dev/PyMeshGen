@@ -558,16 +558,15 @@ class Triangle:
 
         return False
 
-
 def quadrilateral_area(p1, p2, p3, p4):
     """使用鞋带公式计算任意简单四边形面积（顶点需按顺序排列）"""
-    # 将顶点坐标转换为numpy数组并按顺序排列
     points = np.array([p1, p2, p3, p4])
-
-    # 鞋带公式计算面积
     x = points[:, 0]
     y = points[:, 1]
-    return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+
+    return 0.5 * np.abs(
+        np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))
+    )
 
 
 def is_valid_quadrilateral(p1, p2, p3, p4):
@@ -681,6 +680,10 @@ class Quadrilateral:
 
     def init_metrics(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+        
+        if(self.area == 0.0):
+            raise ValueError(f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}")
+
         # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
         self.quality = self.get_skewness()
 
@@ -850,13 +853,15 @@ class Unstructured_Grid:
         print(f"  Min Quality: {min(quality_values):.4f}")
         print(f"  Max Quality: {max(quality_values):.4f}")
         print(f"  Mean Quality: {np.mean(quality_values):.4f}")
-        print(f"  Min Area: {min(area_values):.4f}")
+        print(f"  Min Area: {min(area_values):.4e}")
 
         # 绘制直方图
         plt.figure(figsize=(10, 6))
-        plt.hist(quality_values, bins=50, alpha=0.7, color="blue")
-        plt.xlabel("Quality")
-        plt.ylabel("Frequency")
+        plt.hist(quality_values, bins=10, alpha=0.7, color="blue")
+        plt.xlim(0, 1)
+        plt.xticks(np.arange(0, 1.1, 0.1))
+        plt.xlabel("Skewness Quality")
+        plt.ylabel("Number of Cells")
         plt.title("Quality Histogram")
         plt.show(block=False)
 

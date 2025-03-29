@@ -4,10 +4,9 @@ import unittest
 from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 from math import sqrt
-
+import numpy as np
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
-
 
 class TestTriangle(unittest.TestCase):
     def plot_triangle(self, tri1, tri2):
@@ -260,6 +259,56 @@ class TestPointEquality(unittest.TestCase):
             with self.subTest(p1=p1, p2=p2):
                 self.assertFalse(geo_info.points_equal(p1, p2))
 
+class TestQuadrilateral(unittest.TestCase):
+    def test_quadrilateral_area_basic_shapes(self):
+        """测试基本四边形形状面积"""
+        # 使用subTest分隔测试案例
+        with self.subTest("矩形"):
+            area = geo_info.quadrilateral_area([0,0], [2,0], [2,3], [0,3])
+            self.assertAlmostEqual(area, 6.0, delta=1e-6)
+        
+        with self.subTest("平行四边形"):
+            area = geo_info.quadrilateral_area([0,0], [2,0], [3,2], [1,2])
+            self.assertAlmostEqual(area, 4.0, delta=1e-6)
+        
+        with self.subTest("梯形"):
+            area = geo_info.quadrilateral_area([0,0], [4,0], [3,3], [1,3])
+            self.assertAlmostEqual(area, 9.0, delta=1e-6)
+
+    def test_quadrilateral_area_special_cases(self):
+        """测试特殊四边形情况"""
+        test_cases = [
+            ("凹四边形", [[0,0], [2,0], [1,1], [0,3]], 2.5),
+            ("退化四边形", [[0,0], [1,1], [2,2], [3,3]], 0.0),
+            ("自相交四边形", [[0,0], [2,2], [2,0], [0,2]], 0.0)
+        ]
+        
+        for desc, points, expected in test_cases:
+            with self.subTest(desc):
+                p1, p2, p3, p4 = points
+                area = geo_info.quadrilateral_area(p1, p2, p3, p4)
+                self.assertAlmostEqual(area, expected, delta=1e-6)
+
+    def test_quadrilateral_area_floating_point(self):
+        """测试浮点数精度"""
+        area = geo_info.quadrilateral_area(
+            [0.1, 0.2], [2.3, 0.4], 
+            [2.5, 3.6], [0.7, 3.8]
+        )
+        # 使用numpy计算精确值
+        points = np.array([[0.1,0.2], [2.3,0.4], [2.5,3.6], [0.7,3.8]])
+        x, y = points[:,0], points[:,1]
+        expected = 0.5 * abs(np.dot(x, np.roll(y,-1)) - np.dot(y, np.roll(x,-1)))
+        self.assertAlmostEqual(area, expected, delta=1e-10)
+
+    def test_quadrilateral_area_ordering(self):
+        """测试顶点顺序不变性"""
+        points_clockwise = [[0,0], [2,0], [2,3], [0,3]]
+        points_counter = [[0,0], [0,3], [2,3], [2,0]]
+        
+        area1 = geo_info.quadrilateral_area(*points_clockwise)
+        area2 = geo_info.quadrilateral_area(*points_counter)
+        self.assertAlmostEqual(abs(area1), abs(area2), delta=1e-10)
 
 if __name__ == "__main__":
     unittest.main()
