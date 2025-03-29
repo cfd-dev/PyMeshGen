@@ -1,5 +1,5 @@
 import numpy as np
-from math import pi
+from math import pi, sqrt
 import sys
 from pathlib import Path
 import heapq
@@ -241,16 +241,25 @@ class Adlayers2:
         return False
 
     def proximity_checker(self, front, check_fronts):
+        # 预计算安全距离
+        safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
+        safe_distance_sq = safe_distance * safe_distance  # 使用平方距离避免开方
+
         for new_front in check_fronts:
             # 提前计算网格索引范围
-            x_coords = [n.coords[0] for n in new_front.node_elems]
-            y_coords = [n.coords[1] for n in new_front.node_elems]
+            p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
+
+            # 计算网格索引范围
+            x_min = min(p0[0], p1[0]) - safe_distance
+            x_max = max(p0[0], p1[0]) + safe_distance
+            y_min = min(p0[1], p1[1]) - safe_distance
+            y_max = max(p0[1], p1[1]) + safe_distance
 
             # 计算网格索引边界
-            i_min = int((min(x_coords) - self.grid_size) // self.grid_size)
-            i_max = int((max(x_coords) + self.grid_size) // self.grid_size)
-            j_min = int((min(y_coords) - self.grid_size) // self.grid_size)
-            j_max = int((max(y_coords) + self.grid_size) // self.grid_size)
+            i_min = int(x_min // self.grid_size)
+            i_max = int(x_max // self.grid_size)
+            j_min = int(y_min // self.grid_size)
+            j_max = int(y_max // self.grid_size)
 
             # 生成网格坐标范围
             i_range = range(i_min, i_max + 1)
@@ -284,12 +293,14 @@ class Adlayers2:
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
                 # TODO safe_distance暂时取为当前推进步长的0.5倍
-                dis = self._fronts_distance(new_front, candidate)
-                safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
+                # dis = self._fronts_distance(new_front, candidate)
+                # safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
 
-                if dis < safe_distance:
+                # if dis < safe_distance:
+                q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
+                if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):                
                     info(
-                        f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离{dis:.6f}<{safe_distance:.6f}"
+                        f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
                     if self.debug_level >= 1:
                         self._highlight_intersection(new_front, candidate)
@@ -305,6 +316,19 @@ class Adlayers2:
                 #     return True
 
         return False
+
+    def _fast_distance_check(self, p0, p1, q0, q1, safe_distance_sq):
+        """快速距离检查"""
+        # 线段端点距离检查
+        for p in [p0, p1]:
+            for q in [q0, q1]:
+                dx = p[0] - q[0]
+                dy = p[1] - q[1]
+                if dx*dx + dy*dy < safe_distance_sq:
+                    return True
+        
+        # 线段间距离检查
+        return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
         added = []
