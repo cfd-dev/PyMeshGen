@@ -199,29 +199,22 @@ class Adfront2:
 
         # 判断front_list中是否存在new_front，若不存在，
         # 则将其压入front_list，若已存在，则将其从front_list中删除
-        exists_new1 = any(front.hash == new_front1.hash for front in self.front_list)
-        exists_new2 = any(front.hash == new_front2.hash for front in self.front_list)
+        new_fronts = [new_front1, new_front2]
+        for chk_fro in new_fronts:
+            exists = any(tmp_fro.hash == chk_fro.hash for tmp_fro in self.front_list)
+            if not exists:
+                heapq.heappush(self.front_list, chk_fro)
 
-        if not exists_new1:
-            heapq.heappush(self.front_list, new_front1)
-            if self.ax and self.debug_level >= 1:
-                new_front1.draw_front("g-", self.ax)
-        else:
-            # 移除相同位置的旧阵面
-            self.front_list = [
-                front for front in self.front_list if front.hash != new_front1.hash
-            ]
-            heapq.heapify(self.front_list)  # 重新堆化
+                if self.ax and self.debug_level >= 1:
+                    chk_fro.draw_front("g-", self.ax)
+            else:  # 移除相同位置的旧阵面
+                self.front_list = [
+                    tmp_fro
+                    for tmp_fro in self.front_list
+                    if tmp_fro.hash != chk_fro.hash
+                ]
 
-        if not exists_new2:
-            heapq.heappush(self.front_list, new_front2)
-            if self.ax and self.debug_level >= 1:
-                new_front2.draw_front("g-", self.ax)
-        else:
-            self.front_list = [
-                front for front in self.front_list if front.hash != new_front2.hash
-            ]
-            heapq.heapify(self.front_list)
+        heapq.heapify(self.front_list)  # 重新堆化
 
         # 更新单元
         new_cell = geo_info.Triangle(

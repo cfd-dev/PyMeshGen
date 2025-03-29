@@ -493,6 +493,9 @@ class Triangle:
             max(self.p1[1], self.p2[1], self.p3[1]),
         ]
 
+    def __hash__(self):
+        return self.hash
+
     def init_metrics(self):
         self.area = triangle_area(self.p1, self.p2, self.p3)
         self.quality = triangle_quality(self.p1, self.p2, self.p3)
@@ -580,7 +583,7 @@ def quadrilateral_quality(p1, p2, p3, p4):
         return 0.0
 
     # 凸性检查（使用现有is_convex函数适配）
-    if not is_convex([0, 1, 2, 3], [p1, p2, p3, p4], lambda i: [p1, p2, p3, p4][i]):
+    if not is_convex(0, 1, 2, 3, [p1, p2, p3, p4]):
         return 0.0
 
     # 计算对角线交点
@@ -673,9 +676,13 @@ class Quadrilateral:
             max(self.p1[1], self.p2[1], self.p3[1], self.p4[1]),
         ]
 
+    def __hash__(self):
+        return self.hash
+
     def init_metrics(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
-        self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+        # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+        self.quality = self.get_skewness()
 
     def get_area(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
@@ -810,6 +817,48 @@ class Unstructured_Grid:
         self.num_cells = len(self.cell_container)
         file_path = f"./out/debug_mesh_{status}.vtk"
         self.save_to_vtkfile(file_path)
+
+    def summary(self):
+        """输出网格信息"""
+        self.num_cells = len(self.cell_container)
+        self.num_nodes = len(self.node_coords)
+        self.num_boundary_nodes = len(self.boundary_nodes)
+        self.calculate_edges()
+        self.num_edges = len(self.edges)
+        print(f"Mesh Summary:")
+        print(f"  Dimension: {self.dim}")
+        print(f"  Number of Cells: {self.num_cells}")
+        print(f"  Number of Nodes: {self.num_nodes}")
+        print(f"  Number of Boundary Nodes: {self.num_boundary_nodes}")
+        print(f"  Number of Edges: {self.num_edges}")
+        print(f"  Number of Faces: {self.num_faces}")
+
+    def quality_histogram(self):
+        """绘制质量直方图"""
+        # 计算所有单元的质量
+        for c in self.cell_container:
+            c.init_metrics()
+
+        quality_values = [
+            c.quality for c in self.cell_container if c.quality is not None
+        ]
+
+        area_values = [c.area for c in self.cell_container if c.area is not None]
+
+        # 输出质量信息
+        print(f"Quality Statistics:")
+        print(f"  Min Quality: {min(quality_values):.4f}")
+        print(f"  Max Quality: {max(quality_values):.4f}")
+        print(f"  Mean Quality: {np.mean(quality_values):.4f}")
+        print(f"  Min Area: {min(area_values):.4f}")
+
+        # 绘制直方图
+        plt.figure(figsize=(10, 6))
+        plt.hist(quality_values, bins=50, alpha=0.7, color="blue")
+        plt.xlabel("Quality")
+        plt.ylabel("Frequency")
+        plt.title("Quality Histogram")
+        plt.show(block=False)
 
     def visualize_unstr_grid_2d(self, visual_obj):
         """可视化二维网格"""

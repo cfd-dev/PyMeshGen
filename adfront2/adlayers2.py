@@ -239,88 +239,69 @@ class Adlayers2:
         return False
 
     def proximity_checker(self, front, check_fronts):
-        # 邻近检查，检查3个阵面附近是否有其他阵面，若有，则对当前阵面进行早停
         for new_front in check_fronts:
-            # if new_front.node_ids == (926, 886):
-            #     print("debug")
-
-            # 长边阵面扩大搜索范围
-            # search_range = 2 if new_front.length > safe_distance * 2 else 1
-            search_range = 0
-
+            # 提前计算网格索引范围
             x_coords = [n.coords[0] for n in new_front.node_elems]
             y_coords = [n.coords[1] for n in new_front.node_elems]
 
-            # 扩展搜索范围
+            # 计算网格索引边界
             i_min = int((min(x_coords) - self.grid_size) // self.grid_size)
             i_max = int((max(x_coords) + self.grid_size) // self.grid_size)
             j_min = int((min(y_coords) - self.grid_size) // self.grid_size)
             j_max = int((max(y_coords) + self.grid_size) // self.grid_size)
 
-            # 检查相邻网格中的阵面
-            seen_candidates = set()
-            num_checks = 0
-            for i in range(i_min - search_range, i_max + search_range + 1):
-                for j in range(j_min - search_range, j_max + search_range + 1):
-                    for candidate in self.space_grid.get((i, j), []):
-                        # 避免重复检查
-                        if candidate.hash in seen_candidates:
-                            continue
-                        seen_candidates.add(candidate.hash)
+            # 生成网格坐标范围
+            i_range = range(i_min, i_max + 1)
+            j_range = range(j_min, j_max + 1)
 
-                        # if candidate.node_ids == (882, 883):
-                        #     print("debug")
-                        num_checks += 1
+            # 使用集合推导式快速获取候选网格
+            grid_coords = {(i, j) for i in i_range for j in j_range}
 
-                        # 若candidate与new_front共点，则跳过
-                        if any(id in new_front.node_ids for id in candidate.node_ids):
-                            continue
+            # 批量获取候选阵面并去重
+            candidates = set()
+            for coord in grid_coords:
+                candidates.update(self.space_grid.get(coord, []))
 
-                        # 若candidate是在front推进方向的反方向，则跳过
-                        AB = np.array(front.direction)  # 当前推进的阵面
-                        AC = np.array(check_fronts[1].direction)  # new_front1
-                        AE = np.array(candidate.node_elems[0].coords) - np.array(
-                            front.node_elems[0].coords
-                        )
-                        AF = np.array(candidate.node_elems[1].coords) - np.array(
-                            front.node_elems[0].coords
-                        )
+            for candidate in candidates:
+                # 若candidate与new_front共点，则跳过
+                if any(id in candidate.node_ids for id in new_front.node_ids):
+                    continue
 
-                        prod1 = np.cross(AB, AC)
-                        prod2 = np.cross(AB, AE)
-                        prod3 = np.cross(AB, AF)
-                        if prod1 * prod2 <= 0 and prod1 * prod3 <= 0:
-                            continue
+                # 若candidate是在front推进方向的反方向，则跳过
+                AB = np.array(front.direction)  # 当前推进的阵面
+                AC = np.array(check_fronts[1].direction)  # new_front1
+                node0_coords = np.array(front.node_elems[0].coords)
+                AE = np.array(candidate.node_elems[0].coords) - node0_coords
+                AF = np.array(candidate.node_elems[1].coords) - node0_coords
 
-                        # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
-                        # TODO safe_distance暂时取为当前推进步长的0.5倍
-                        dis = self._fronts_distance(new_front, candidate)
-                        safe_distance = 0.5 * min(
-                            front.node_elems[0].marching_distance,
-                            front.node_elems[1].marching_distance,
-                        )
+                if (
+                    np.cross(AB, AC) * np.cross(AB, AE) <= 0
+                    and np.cross(AB, AC) * np.cross(AB, AF) <= 0
+                ):
+                    continue
 
-                        if dis < safe_distance:
-                            print(
-                                f"阵面{front.node_ids}邻近信息：待新增阵面{new_front.node_ids}"
-                                f"与{candidate.node_ids}距离小于{safe_distance:.3f}"
-                            )
+                # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
+                # TODO safe_distance暂时取为当前推进步长的0.5倍
+                dis = self._fronts_distance(new_front, candidate)
+                safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
 
-                            if self.debug_level >= 1:
-                                self._highlight_intersection(new_front, candidate)
+                if dis < safe_distance:
+                    info(
+                        f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离{dis:.6f}<{safe_distance:.6f}"
+                    )
+                    if self.debug_level >= 1:
+                        self._highlight_intersection(new_front, candidate)
+                    return True
 
-                            return True
+                # 精确相交检测，无需再进行，注释掉
+                # if self._segments_intersect(
+                #     new_front.node_elems, candidate.node_elems
+                # ):
+                #     print(
+                #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
+                #     )
+                #     return True
 
-                        # 精确相交检测，无需再进行，注释掉
-                        # if self._segments_intersect(
-                        #     new_front.node_elems, candidate.node_elems
-                        # ):
-                        #     print(
-                        #         f"检测到相交：{new_front.node_ids} 与 {candidate.node_ids}"
-                        #     )
-                        #     return True
-
-            # print(f"{new_front.node_ids}共检查了{num_checks}个阵面.")
         return False
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):

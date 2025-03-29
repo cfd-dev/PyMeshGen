@@ -71,6 +71,9 @@ class Front:
     def __eq__(self, other):
         return self.hash == other.hash
 
+    def __hash__(self):
+        return self.hash
+
     def draw_front(self, marker="b-", ax=None, linewidth=1):
         """绘制阵面"""
         if ax is None:
