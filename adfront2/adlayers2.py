@@ -240,7 +240,7 @@ class Adlayers2:
 
             # 长边阵面扩大搜索范围
             # search_range = 2 if new_front.length > safe_distance * 2 else 1
-            search_range = 1
+            search_range = 0
 
             x_coords = [n.coords[0] for n in new_front.node_elems]
             y_coords = [n.coords[1] for n in new_front.node_elems]
@@ -253,6 +253,7 @@ class Adlayers2:
 
             # 检查相邻网格中的阵面
             seen_candidates = set()
+            num_checks = 0
             for i in range(i_min - search_range, i_max + search_range + 1):
                 for j in range(j_min - search_range, j_max + search_range + 1):
                     for candidate in self.space_grid.get((i, j), []):
@@ -263,6 +264,7 @@ class Adlayers2:
 
                         # if candidate.node_ids == (882, 883):
                         #     print("debug")
+                        num_checks += 1
 
                         # 若candidate与new_front共点，则跳过
                         if any(id in new_front.node_ids for id in candidate.node_ids):
@@ -295,7 +297,7 @@ class Adlayers2:
                         if dis < safe_distance:
                             print(
                                 f"阵面{front.node_ids}邻近信息：待新增阵面{new_front.node_ids}"
-                                f"与{candidate.node_ids}距离小于{round(safe_distance,6)}"
+                                f"与{candidate.node_ids}距离小于{safe_distance:.3f}"
                             )
 
                             if self.debug_level >= 1:
@@ -312,6 +314,7 @@ class Adlayers2:
                         #     )
                         #     return True
 
+            # print(f"{new_front.node_ids}共检查了{num_checks}个阵面.")
         return False
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
@@ -798,8 +801,8 @@ class Adlayers2:
                 for j in range(j_min, j_max + 1):
                     self.space_grid[(i, j)].append(front)
 
-        print(f"全局最大网格尺度：{round(self.sizing_system.global_spacing,6)}")
-        print(f"辅助查询网格尺寸：{round(self.grid_size,6)}")
+        print(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
+        print(f"辅助查询网格尺寸：{self.grid_size:.3f}")
         print(f"辅助查询网格数量：{len(self.space_grid)}\n")
 
     def _segments_intersect(self, seg1, seg2):

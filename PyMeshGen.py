@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent / "fileIO"))
@@ -19,6 +20,9 @@ from parameters import Parameters, PartMeshParameters
 
 
 def PyMeshGen():
+    # 开始计时器
+    start_time = time.time()
+
     # 建立参数管理对象
     parameters = Parameters("FROM_MAIN_JSON")
 
@@ -78,6 +82,11 @@ def PyMeshGen():
 
     # 输出网格文件
     global_unstr_grid.save_to_vtkfile(parameters.output_file)
+
+    # 结束计时器
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"程序运行时间: {elapsed_time:.2f} 秒")
 
 
 if __name__ == "__main__":
