@@ -50,32 +50,33 @@ def add_fronts_to_space_index_with_cartesian_grid(fronts, grid_size=1.0):
 
     return space_index
 
-    def get_candidate_fronts(front, space_index, grid_size, search_radius):
-        # 计算网格索引范围
-        x_min = front.bbox[0] - search_radius
-        x_max = front.bbox[2] + search_radius
-        y_min = front.bbox[1] - search_radius
-        y_max = front.bbox[3] + search_radius
 
-        # 计算网格索引边界
-        i_min = int(x_min // grid_size)
-        i_max = int(x_max // grid_size)
-        j_min = int(y_min // grid_size)
-        j_max = int(y_max // grid_size)
+def get_candidate_fronts(front, space_index, grid_size, search_radius):
+    # 计算网格索引范围
+    x_min = front.bbox[0] - search_radius
+    x_max = front.bbox[2] + search_radius
+    y_min = front.bbox[1] - search_radius
+    y_max = front.bbox[3] + search_radius
 
-        # 生成网格坐标范围
-        i_range = range(i_min, i_max + 1)
-        j_range = range(j_min, j_max + 1)
+    # 计算网格索引边界
+    i_min = int(x_min // grid_size)
+    i_max = int(x_max // grid_size)
+    j_min = int(y_min // grid_size)
+    j_max = int(y_max // grid_size)
 
-        # 使用集合推导式快速获取候选网格
-        grid_coords = {(i, j) for i in i_range for j in j_range}
+    # 生成网格坐标范围
+    i_range = range(i_min, i_max + 1)
+    j_range = range(j_min, j_max + 1)
 
-        # 批量获取候选阵面并去重
-        candidates = set()
-        for coord in grid_coords:
-            candidates.update(space_index.get(coord, []))
+    # 使用集合推导式快速获取候选网格
+    grid_coords = {(i, j) for i in i_range for j in j_range}
 
-        return list(candidates)
+    # 批量获取候选阵面并去重
+    candidates = set()
+    for coord in grid_coords:
+        candidates.update(space_index.get(coord, []))
+
+    return list(candidates)
 
 
 def build_space_index_with_RTree(fronts):

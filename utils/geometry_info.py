@@ -371,6 +371,13 @@ class NodeElement:
 
         self.bc_type = bc_type
 
+        self.bbox = [
+            min(self.coords[0], self.coords[0]),
+            min(self.coords[1], self.coords[1]),
+            max(self.coords[0], self.coords[0]),
+            max(self.coords[1], self.coords[1]),
+        ]
+
     def __hash__(self):
         return self.hash
 

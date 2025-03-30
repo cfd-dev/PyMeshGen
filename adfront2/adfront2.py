@@ -10,6 +10,11 @@ import matplotlib.pyplot as plt
 from geometry_info import NodeElement, Unstructured_Grid
 from timer import TimeSpan
 from message import info, debug, verbose, warning, error
+from rtree_space import (
+    build_space_index_with_RTree,
+    add_fronts_to_space_index_with_RTree,
+    get_candidate_fronts_id,
+)
 
 
 class Adfront2:
@@ -37,10 +42,18 @@ class Adfront2:
         self.pbest = None  #  当前Pbest，NodeElement对象
         self.pselected = None  # 当前选中的节点，NodeElement对象
         self.best_flag = False  # 标记是否采用pbest
+
+        self.search_radius = None  # 搜索半径
         self.node_candidates = None  # 候选节点列表
         self.front_candidates = None  # 候选阵面列表
         self.cell_candidates = None  # 候选单元列表
-        self.search_radius = None  # 搜索半径
+
+        self.space_index_node = None  # 空间索引
+        self.node_dict = {}  # 节点id字典，用于快速查找
+        self.space_index_front = None  # 空间索引
+        self.front_dict = {}  # 阵面id字典，用于快速查找
+        self.space_index_cell = None  # 单元空间索引
+        self.cell_dict = {}  # 单元id字典，用于快速查找
 
         self.num_cells = 0  # 单元计数器
         self.num_nodes = 0  # 节点计数器
@@ -139,7 +152,10 @@ class Adfront2:
 
             self.add_new_point(spacing)
 
-            self.search_candidates(self.base_front.al * spacing)
+            self.build_front_and_cell_rtree()
+            self.search_candidates_with_rtree(self.base_front.al * spacing)
+
+            # self.search_candidates(self.base_front.al * spacing)
 
             self.debug_draw()
 
@@ -154,6 +170,53 @@ class Adfront2:
         timer.show_to_console("完成三角形网格生成.")
 
         return self.unstr_grid
+
+    def build_front_and_cell_rtree(self):
+        """构建RTree索引"""
+        front_node_list = []
+        processed_nodes = set()
+        for front in self.front_list:
+            for node_elem in front.node_elems:
+                if node_elem.hash not in processed_nodes:
+                    processed_nodes.add(node_elem.hash)
+                    front_node_list.append(node_elem)
+
+        self.node_dict, self.space_index_node = build_space_index_with_RTree(
+            front_node_list
+        )
+
+        self.front_dict, self.space_index_front = build_space_index_with_RTree(
+            self.front_list
+        )
+
+        self.cell_dict, self.space_index_cell = build_space_index_with_RTree(
+            self.cell_container
+        )
+
+    def search_candidates_with_rtree(self, search_radius):
+        """使用RTree索引搜索候选节点和阵面"""
+        self.search_radius = search_radius
+        self.node_candidates = []
+        self.front_candidates = []
+        self.cell_candidates = []
+
+        # 搜索节点
+        node_ids = get_candidate_fronts_id(
+            self.base_front, self.space_index_node, self.search_radius
+        )
+        self.node_candidates = [self.node_dict[node_id] for node_id in node_ids]
+
+        # 搜索阵面
+        front_ids = get_candidate_fronts_id(
+            self.base_front, self.space_index_front, self.search_radius
+        )
+        self.front_candidates = [self.front_dict[front_id] for front_id in front_ids]
+
+        # 搜索单元
+        cell_ids = get_candidate_fronts_id(
+            self.base_front, self.space_index_cell, self.search_radius
+        )
+        self.cell_candidates = [self.cell_dict[cell_id] for cell_id in cell_ids]
 
     def construct_unstr_grid(self):
         self.unstr_grid = Unstructured_Grid(
