@@ -17,6 +17,14 @@ from geometry_info import (
 from front2d import Front
 from message import info, debug, verbose, warning
 from timer import TimeSpan
+from rtree_space import (
+    build_space_index_with_RTree,
+    add_fronts_to_space_index_with_RTree,
+    get_candidate_fronts_id,
+    build_space_index_with_cartesian_grid,
+    add_fronts_to_space_index_with_cartesian_grid,
+    get_candidate_fronts,
+)
 
 
 class Adlayers2:
@@ -30,7 +38,6 @@ class Adlayers2:
         self.max_layers = 100  # 最大推进层数
         self.full_layers = 0  # 完整推进层数
         self.multi_direction = False  # 是否多方向推进
-        self.al = 3.0  # TODO 邻近检查候选阵面搜索范围系数
 
         self.initial_front_list = boundary_front  # 初始阵面
         self.sizing_system = sizing_system  # 尺寸场系统对象
@@ -38,8 +45,11 @@ class Adlayers2:
 
         self.current_part = None  # 当前推进部件
         self.current_step_size = 0  # 当前推进步长
-        self.space_grid = None  # 空间查询网格
-        self.grid_size = None  # 查询网格尺寸
+
+        self.al = 3.0  # TODO 邻近检查候选阵面搜索范围系数
+        self.space_index = None  # 空间索引
+        self.grid_size = None  # Cartesian查询网格尺寸
+        self.front_dict = {}  # 阵面id字典，用于快速查找
 
         self.normal_points = []  # 节点推进方向
         self.normal_fronts = []  # 阵面法向
@@ -57,7 +67,6 @@ class Adlayers2:
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
-        self.front_dict = {}  # 阵面id字典，用于快速查找
 
         self.initialize_nodes()
         self.match_parts_with_fronts()
@@ -247,16 +256,11 @@ class Adlayers2:
             # 提前计算网格索引范围
             p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
 
-            # 计算网格索引范围
+            # 搜索范围
             search_radius = self.al * 2.0 * safe_distance
-            x_min = min(p0[0], p1[0]) - search_radius
-            x_max = max(p0[0], p1[0]) + search_radius
-            y_min = min(p0[1], p1[1]) - search_radius
-            y_max = max(p0[1], p1[1]) + search_radius
-
-            # 使用R树进行范围查询
-            query_bbox = (x_min, y_min, x_max, y_max)
-            candidates = list(self.space_index.intersection(query_bbox))
+            candidates = get_candidate_fronts_id(
+                new_front, self.space_index, search_radius
+            )
 
             for f_id in candidates:
                 candidate = self.front_dict.get(f_id)
@@ -292,7 +296,7 @@ class Adlayers2:
 
         return False
 
-    def proximity_checker_old(self, front, check_fronts):
+    def proximity_checker_with_cartesian_index(self, front, check_fronts):
         # 预计算安全距离
         # TODO safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
         safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
@@ -302,29 +306,10 @@ class Adlayers2:
             # 提前计算网格索引范围
             p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
 
-            # 计算网格索引范围
-            x_min = min(p0[0], p1[0]) - safe_distance
-            x_max = max(p0[0], p1[0]) + safe_distance
-            y_min = min(p0[1], p1[1]) - safe_distance
-            y_max = max(p0[1], p1[1]) + safe_distance
-
-            # 计算网格索引边界
-            i_min = int(x_min // self.grid_size)
-            i_max = int(x_max // self.grid_size)
-            j_min = int(y_min // self.grid_size)
-            j_max = int(y_max // self.grid_size)
-
-            # 生成网格坐标范围
-            i_range = range(i_min, i_max + 1)
-            j_range = range(j_min, j_max + 1)
-
-            # 使用集合推导式快速获取候选网格
-            grid_coords = {(i, j) for i in i_range for j in j_range}
-
-            # 批量获取候选阵面并去重
-            candidates = set()
-            for coord in grid_coords:
-                candidates.update(self.space_grid.get(coord, []))
+            search_radius = self.al * 2.0 * safe_distance
+            candidates = get_candidate_fronts(
+                new_front, self.space_index, self.grid_size, search_radius
+            )
 
             for candidate in candidates:
                 # 若candidate与new_front共点，则跳过
@@ -390,13 +375,7 @@ class Adlayers2:
                     ]
 
         # R树索引更新
-        for fro in added:
-            try:
-                inserted = self.space_index.insert(id(fro), fro.bbox)
-                # 注意此处必须同步更新front_dict
-                self.front_dict[id(fro)] = fro
-            except index.RTreeError as e:
-                print(f"R树插入失败: {e}")
+        add_fronts_to_space_index_with_RTree(added, self.space_index, self.front_dict)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
@@ -427,7 +406,7 @@ class Adlayers2:
                         if tmp_fro.hash != chk_fro.hash
                     ]
         # 将新阵面加入到空间查询网格中
-        self._add_front_to_space(added)
+        add_fronts_to_space_index_with_cartesian_grid(added, self.grid_size)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
@@ -812,12 +791,40 @@ class Adlayers2:
 
         verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量..., Done.\n")
 
+    def build_front_rtree(self):
+        verbose("构建辅助查询R-Tree...")
+        self.front_dict, self.space_index = build_space_index_with_RTree(
+            self.current_part.front_list
+        )
+        verbose(f"R树索引构建完成，包含{len(self.front_dict)}个阵面")
+
+    def build_front_cartesian_space_index(self):
+        """构建辅助查询Cartesian背景网格"""
+        verbose("构建辅助查询背景网格...")
+        # 动态计算网格尺寸（基于当前层推进步长）
+        if self.current_part.growth_method == "geometric":
+            current_step = (
+                self.current_part.first_height
+                * self.current_part.growth_rate**self.ilayer
+            )
+            self.grid_size = max(current_step * 2.0, 0.1)  # 保持网格尺寸≥0.1
+        else:  # 当使用其他增长方式时回退到尺寸场
+            self.grid_size = 1.5 * self.sizing_system.global_spacing
+
+        self.space_index = build_space_index_with_cartesian_grid(
+            self.current_part.front_list, self.grid_size
+        )
+
+        verbose(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
+        verbose(f"辅助查询网格尺寸：{self.grid_size:.3f}")
+        verbose(f"辅助查询网格数量：{len(self.space_index)}\n")
+
     def compute_front_geometry(self):
         """计算阵面几何信息"""
         verbose("计算物面几何信息...")
 
-        # 建立矩形背景网格，便于快速查询
-        self._build_space_index(self.current_part.front_list)
+        # 建立RTree，便于快速查询
+        self.build_front_rtree()
 
         # 计算node2front
         self.reconstruct_node2front()
@@ -837,79 +844,6 @@ class Adlayers2:
                 if part.name == front.part_name:
                     part.front_list.append(front)
                     break
-
-    def _add_front_to_space(self, fronts):
-        """将阵面添加到已有背景网格"""
-        for front in fronts:
-            # 计算包围盒
-            x_min = min(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
-            x_max = max(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
-            y_min = min(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
-            y_max = max(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
-
-            # 计算网格索引
-            i_min = int(x_min // self.grid_size)
-            i_max = int(x_max // self.grid_size)
-            j_min = int(y_min // self.grid_size)
-            j_max = int(y_max // self.grid_size)
-
-            # 将阵面注册到覆盖的网格
-            for i in range(i_min, i_max + 1):
-                for j in range(j_min, j_max + 1):
-                    self.space_grid[(i, j)].append(front)
-
-    def _build_space_index_old(self, fronts):
-        """构建空间索引加速相交检测"""
-        from collections import defaultdict
-
-        verbose("构建辅助查询背景网格...")
-        # 动态计算网格尺寸（基于当前层推进步长）
-        if self.current_part.growth_method == "geometric":
-            current_step = self.current_part.first_height * (
-                self.current_part.growth_rate**self.ilayer
-            )
-            self.grid_size = max(current_step * 2.0, 0.1)  # 保持网格尺寸≥0.1
-        else:  # 当使用其他增长方式时回退到尺寸场
-            self.grid_size = 1.5 * self.sizing_system.global_spacing
-
-        self.space_grid = defaultdict(list)
-        for front in fronts:
-            # 计算包围盒
-            x_min = min(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
-            x_max = max(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
-            y_min = min(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
-            y_max = max(front.node_elems[0].coords[1], front.node_elems[1].coords[1])
-
-            # 计算网格索引
-            i_min = int(x_min // self.grid_size)
-            i_max = int(x_max // self.grid_size)
-            j_min = int(y_min // self.grid_size)
-            j_max = int(y_max // self.grid_size)
-
-            # 将阵面注册到覆盖的网格
-            for i in range(i_min, i_max + 1):
-                for j in range(j_min, j_max + 1):
-                    self.space_grid[(i, j)].append(front)
-
-        verbose(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
-        verbose(f"辅助查询网格尺寸：{self.grid_size:.3f}")
-        verbose(f"辅助查询网格数量：{len(self.space_grid)}\n")
-
-    def _build_space_index(self, fronts):
-        """构建空间索引加速相交检测"""
-        from rtree import index
-
-        verbose("构建辅助查询R树...")
-
-        # 由于front的hash值不是一一对应的，因此暂时先不用hash值创建字典，后续再考虑
-        # self.front_dict = {hash(f): f for f in fronts}  # 存储front对象的字典
-        self.front_dict = {id(f): f for f in fronts}
-
-        self.space_index = index.Index()
-        for f_id, front in self.front_dict.items():
-            self.space_index.insert(f_id, front.bbox)
-
-        verbose(f"R树索引构建完成，包含{len(fronts)}个阵面")
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""
