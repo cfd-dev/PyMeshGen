@@ -60,6 +60,7 @@ class Adfront2:
 
         self.cell_container = None  # 单元对象（Triangle）对象列表
         self.node_coords = node_coords  # 节点坐标列表
+        self.front_node_list = None  # 阵面节点列表
 
         self.boundary_nodes = None  # 边界节点对象列表
         self.unstr_grid = None  # Unstructured_Grid网格对象
@@ -75,6 +76,7 @@ class Adfront2:
         self.node_hash_list = set()
         self.cell_hash_list = set()
         self.cell_container = []
+        self.front_node_list = []
 
         # 如果未传入已生成网格的节点坐标，则生成新的节点坐标
         flag_given_node = True
@@ -92,7 +94,10 @@ class Adfront2:
                     if not flag_given_node:  # 如果未给定节点坐标，则添加节点坐标
                         self.node_coords.append(node_elem.coords)
 
+        self.front_node_list = list(self.boundary_nodes)
         self.num_nodes = len(self.node_coords)
+
+        self.build_front_and_cell_rtree()
 
     def draw_front_list(self, ax=None):
         """绘制阵面列表"""
@@ -152,7 +157,6 @@ class Adfront2:
 
             self.add_new_point(spacing)
 
-            self.build_front_and_cell_rtree()
             self.search_candidates_with_rtree(self.base_front.al * spacing)
 
             # self.search_candidates(self.base_front.al * spacing)
@@ -173,16 +177,8 @@ class Adfront2:
 
     def build_front_and_cell_rtree(self):
         """构建RTree索引"""
-        front_node_list = []
-        processed_nodes = set()
-        for front in self.front_list:
-            for node_elem in front.node_elems:
-                if node_elem.hash not in processed_nodes:
-                    processed_nodes.add(node_elem.hash)
-                    front_node_list.append(node_elem)
-
         self.node_dict, self.space_index_node = build_space_index_with_RTree(
-            front_node_list
+            self.front_node_list
         )
 
         self.front_dict, self.space_index_front = build_space_index_with_RTree(
@@ -242,6 +238,11 @@ class Adfront2:
             if node_hash not in self.node_hash_list:
                 self.node_hash_list.add(node_hash)
                 self.node_coords.append(self.pselected.coords)
+
+                add_fronts_to_space_index_with_RTree(
+                    [self.pselected], self.space_index_node, self.node_dict
+                )
+
                 self.num_nodes += 1
 
         # 更新阵面
@@ -268,6 +269,10 @@ class Adfront2:
             if chk_fro.hash not in front_hashes:
                 heapq.heappush(self.front_list, chk_fro)
 
+                add_fronts_to_space_index_with_RTree(
+                    [chk_fro], self.space_index_front, self.front_dict
+                )
+
                 if self.ax and self.debug_level >= 1:
                     chk_fro.draw_front("g-", self.ax)
             else:  # 移除相同位置的旧阵面
@@ -290,6 +295,11 @@ class Adfront2:
         if new_cell.hash not in self.cell_hash_list:
             self.cell_hash_list.add(new_cell.hash)
             self.cell_container.append(new_cell)
+
+            add_fronts_to_space_index_with_RTree(
+                [new_cell], self.space_index_cell, self.cell_dict
+            )
+
             self.num_cells += 1
         else:
             warning(f"发现重复单元：{new_cell.node_ids}")
