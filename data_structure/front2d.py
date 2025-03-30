@@ -47,7 +47,7 @@ class Front:
         self.normal = None  # 单位法向量
         self.bbox = None  # 边界框
         self.hash = None  # 阵面hash值
-        self.node_ids = (node_elem1.idx, node_elem2.idx)  # 节点元素列表
+        self.node_ids = [node_elem1.idx, node_elem2.idx]  # 节点元素列表
         # self.node_pair = [round(self.node_elems[i].coords, 6) for i in range(2)]
 
         node1 = node_elem1.coords

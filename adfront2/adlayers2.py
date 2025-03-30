@@ -30,6 +30,7 @@ class Adlayers2:
         self.max_layers = 100  # 最大推进层数
         self.full_layers = 0  # 完整推进层数
         self.multi_direction = False  # 是否多方向推进
+        self.al = 3.0  # TODO 邻近检查候选阵面搜索范围系数
 
         self.initial_front_list = boundary_front  # 初始阵面
         self.sizing_system = sizing_system  # 尺寸场系统对象
@@ -110,9 +111,6 @@ class Adlayers2:
         )
         verbose("构建非结构网格数据..., Done.")
 
-        if self.debug_level == 1:
-            self.debug_save()
-
         # 汇总所有边界阵面
         self.all_boundary_fronts = []
         for part in self.part_params:
@@ -134,9 +132,7 @@ class Adlayers2:
         if self.debug_level < 1:
             return
 
-        if self.unstr_grid is None:
-            self.construct_unstr_grid()
-
+        self.construct_unstr_grid()
         self.unstr_grid.save_debug_file(f"layer{self.ilayer + 1}")
 
     def create_new_cell_and_front(self, front):
@@ -252,10 +248,11 @@ class Adlayers2:
             p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
 
             # 计算网格索引范围
-            x_min = min(p0[0], p1[0]) - safe_distance
-            x_max = max(p0[0], p1[0]) + safe_distance
-            y_min = min(p0[1], p1[1]) - safe_distance
-            y_max = max(p0[1], p1[1]) + safe_distance
+            search_radius = self.al * 2.0 * safe_distance
+            x_min = min(p0[0], p1[0]) - search_radius
+            x_max = max(p0[0], p1[0]) + search_radius
+            y_min = min(p0[1], p1[1]) - search_radius
+            y_max = max(p0[1], p1[1]) + search_radius
 
             # 使用R树进行范围查询
             query_bbox = (x_min, y_min, x_max, y_max)
@@ -394,7 +391,12 @@ class Adlayers2:
 
         # R树索引更新
         for fro in added:
-            self.space_index.insert(id(fro), fro.bbox)
+            try:
+                inserted = self.space_index.insert(id(fro), fro.bbox)
+                # 注意此处必须同步更新front_dict
+                self.front_dict[id(fro)] = fro
+            except index.RTreeError as e:
+                print(f"R树插入失败: {e}")
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
@@ -448,9 +450,6 @@ class Adlayers2:
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
-
-            # if front.node_ids == (7, 5) or front.node_ids == (5, 6):
-            #     print("debug")
 
             (
                 new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
