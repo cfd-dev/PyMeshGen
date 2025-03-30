@@ -12,8 +12,8 @@ from timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from rtree_space import (
     build_space_index_with_RTree,
-    add_fronts_to_space_index_with_RTree,
-    get_candidate_fronts_id,
+    add_elems_to_space_index_with_RTree,
+    get_candidate_elements_id,
 )
 
 
@@ -197,19 +197,19 @@ class Adfront2:
         self.cell_candidates = []
 
         # 搜索节点
-        node_ids = get_candidate_fronts_id(
+        node_ids = get_candidate_elements_id(
             self.base_front, self.space_index_node, self.search_radius
         )
         self.node_candidates = [self.node_dict[node_id] for node_id in node_ids]
 
         # 搜索阵面
-        front_ids = get_candidate_fronts_id(
+        front_ids = get_candidate_elements_id(
             self.base_front, self.space_index_front, self.search_radius
         )
         self.front_candidates = [self.front_dict[front_id] for front_id in front_ids]
 
         # 搜索单元
-        cell_ids = get_candidate_fronts_id(
+        cell_ids = get_candidate_elements_id(
             self.base_front, self.space_index_cell, self.search_radius
         )
         self.cell_candidates = [self.cell_dict[cell_id] for cell_id in cell_ids]
@@ -239,7 +239,7 @@ class Adfront2:
                 self.node_hash_list.add(node_hash)
                 self.node_coords.append(self.pselected.coords)
 
-                add_fronts_to_space_index_with_RTree(
+                add_elems_to_space_index_with_RTree(
                     [self.pselected], self.space_index_node, self.node_dict
                 )
 
@@ -269,7 +269,7 @@ class Adfront2:
             if chk_fro.hash not in front_hashes:
                 heapq.heappush(self.front_list, chk_fro)
 
-                add_fronts_to_space_index_with_RTree(
+                add_elems_to_space_index_with_RTree(
                     [chk_fro], self.space_index_front, self.front_dict
                 )
 
@@ -296,7 +296,7 @@ class Adfront2:
             self.cell_hash_list.add(new_cell.hash)
             self.cell_container.append(new_cell)
 
-            add_fronts_to_space_index_with_RTree(
+            add_elems_to_space_index_with_RTree(
                 [new_cell], self.space_index_cell, self.cell_dict
             )
 

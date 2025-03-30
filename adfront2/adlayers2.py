@@ -19,11 +19,11 @@ from message import info, debug, verbose, warning
 from timer import TimeSpan
 from rtree_space import (
     build_space_index_with_RTree,
-    add_fronts_to_space_index_with_RTree,
-    get_candidate_fronts_id,
+    add_elems_to_space_index_with_RTree,
+    get_candidate_elements_id,
     build_space_index_with_cartesian_grid,
-    add_fronts_to_space_index_with_cartesian_grid,
-    get_candidate_fronts,
+    add_elems_to_space_index_with_cartesian_grid,
+    get_candidate_elements,
 )
 
 
@@ -258,7 +258,7 @@ class Adlayers2:
 
             # 搜索范围
             search_radius = self.al * 2.0 * safe_distance
-            candidates = get_candidate_fronts_id(
+            candidates = get_candidate_elements_id(
                 new_front, self.space_index, search_radius
             )
 
@@ -307,7 +307,7 @@ class Adlayers2:
             p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
 
             search_radius = self.al * 2.0 * safe_distance
-            candidates = get_candidate_fronts(
+            candidates = get_candidate_elements(
                 new_front, self.space_index, self.grid_size, search_radius
             )
 
@@ -375,7 +375,7 @@ class Adlayers2:
                     ]
 
         # R树索引更新
-        add_fronts_to_space_index_with_RTree(added, self.space_index, self.front_dict)
+        add_elems_to_space_index_with_RTree(added, self.space_index, self.front_dict)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
@@ -406,7 +406,7 @@ class Adlayers2:
                         if tmp_fro.hash != chk_fro.hash
                     ]
         # 将新阵面加入到空间查询网格中
-        add_fronts_to_space_index_with_cartesian_grid(added, self.grid_size)
+        add_elems_to_space_index_with_cartesian_grid(added, self.grid_size)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
