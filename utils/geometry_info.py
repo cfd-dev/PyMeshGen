@@ -367,7 +367,7 @@ class NodeElement:
 
         # 使用处理后的坐标生成哈希
         # 此处注意！！！hash(-1.0)和hash(-2.0)的结果是一样的！！！因此必须使用字符串
-        self.hash = hash(tuple(f"{round(coord, 6):.6f}" for coord in coords))
+        self.hash = hash(tuple(f"{coord:.6f}" for coord in coords))
 
         self.bc_type = bc_type
 
@@ -451,9 +451,9 @@ class Triangle:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p1),
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p2),
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p3),
+                tuple(f"{coord:.6f}" for coord in self.p1),
+                tuple(f"{coord:.6f}" for coord in self.p2),
+                tuple(f"{coord:.6f}" for coord in self.p3),
             )
         )
         # 生成逻辑级哈希
@@ -637,10 +637,10 @@ class Quadrilateral:
         # 生成几何级哈希
         coord_hash = hash(
             (
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p1),
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p2),
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p3),
-                tuple(f"{round(coord, 6):.6f}" for coord in self.p4),
+                tuple(f"{coord:.6f}" for coord in self.p1),
+                tuple(f"{coord:.6f}" for coord in self.p2),
+                tuple(f"{coord:.6f}" for coord in self.p3),
+                tuple(f"{coord:.6f}" for coord in self.p4),
             )
         )
         # 生成逻辑级哈希

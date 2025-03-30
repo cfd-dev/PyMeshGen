@@ -56,6 +56,7 @@ class Adlayers2:
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
+        self.front_dict = {}  # 阵面id字典，用于快速查找
 
         self.initialize_nodes()
         self.match_parts_with_fronts()
@@ -256,6 +257,60 @@ class Adlayers2:
             y_min = min(p0[1], p1[1]) - safe_distance
             y_max = max(p0[1], p1[1]) + safe_distance
 
+            # 使用R树进行范围查询
+            query_bbox = (x_min, y_min, x_max, y_max)
+            candidates = list(self.space_index.intersection(query_bbox))
+
+            for f_id in candidates:
+                candidate = self.front_dict.get(f_id)
+                if candidate is None:
+                    continue
+
+                # 若candidate与new_front共点，则跳过
+                if any(id in candidate.node_ids for id in new_front.node_ids):
+                    continue
+
+                # 若candidate是在front推进方向的反方向，则跳过
+                AB = np.array(front.direction)  # 当前推进的阵面
+                AC = np.array(check_fronts[1].direction)  # new_front1
+                node0_coords = np.array(front.node_elems[0].coords)
+                AE = np.array(candidate.node_elems[0].coords) - node0_coords
+                AF = np.array(candidate.node_elems[1].coords) - node0_coords
+
+                if (
+                    np.cross(AB, AC) * np.cross(AB, AE) <= 0
+                    and np.cross(AB, AC) * np.cross(AB, AF) <= 0
+                ):
+                    continue
+
+                # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
+                q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
+                if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+                    info(
+                        f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
+                    )
+                    if self.debug_level >= 1:
+                        self._highlight_intersection(new_front, candidate)
+                    return True
+
+        return False
+
+    def proximity_checker_old(self, front, check_fronts):
+        # 预计算安全距离
+        # TODO safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
+        safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
+        safe_distance_sq = safe_distance * safe_distance  # 使用平方距离避免开方
+
+        for new_front in check_fronts:
+            # 提前计算网格索引范围
+            p0, p1 = new_front.node_elems[0].coords, new_front.node_elems[1].coords
+
+            # 计算网格索引范围
+            x_min = min(p0[0], p1[0]) - safe_distance
+            x_max = max(p0[0], p1[0]) + safe_distance
+            y_min = min(p0[1], p1[1]) - safe_distance
+            y_max = max(p0[1], p1[1]) + safe_distance
+
             # 计算网格索引边界
             i_min = int(x_min // self.grid_size)
             i_max = int(x_max // self.grid_size)
@@ -318,6 +373,39 @@ class Adlayers2:
         return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
+        added = []
+        front_hashes = {f.hash for f in new_interior_list}
+        for chk_fro in check_fronts:
+            if chk_fro.bc_type == "prism-cap":
+                # prism-cap不会出现重复，必须加入到新阵面列表中
+                new_prism_cap_list.append(chk_fro)
+                added.append(chk_fro)
+            elif chk_fro.bc_type == "interior":
+                # interior可能会出现重复，需要检查是否已经存在
+                if chk_fro.hash not in front_hashes:
+                    new_interior_list.append(chk_fro)
+                    added.append(chk_fro)
+                else:  # 移除相同位置的旧阵面，此处可能会重新生成new_interior_list
+                    new_interior_list = [
+                        tmp_fro
+                        for tmp_fro in new_interior_list
+                        if tmp_fro.hash != chk_fro.hash
+                    ]
+
+        # R树索引更新
+        for fro in added:
+            self.space_index.insert(id(fro), fro.bbox)
+
+        if added and self.ax and self.debug_level >= 1:
+            for fro in added:
+                fro.draw_front("g-", self.ax)
+
+        # 注意此处必须返回值，并且使用更新过的返回值
+        return new_interior_list, new_prism_cap_list
+
+    def update_front_list_old(
+        self, check_fronts, new_interior_list, new_prism_cap_list
+    ):
         added = []
         front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
@@ -771,7 +859,7 @@ class Adlayers2:
                 for j in range(j_min, j_max + 1):
                     self.space_grid[(i, j)].append(front)
 
-    def _build_space_index(self, fronts):
+    def _build_space_index_old(self, fronts):
         """构建空间索引加速相交检测"""
         from collections import defaultdict
 
@@ -786,7 +874,6 @@ class Adlayers2:
             self.grid_size = 1.5 * self.sizing_system.global_spacing
 
         self.space_grid = defaultdict(list)
-
         for front in fronts:
             # 计算包围盒
             x_min = min(front.node_elems[0].coords[0], front.node_elems[1].coords[0])
@@ -808,6 +895,22 @@ class Adlayers2:
         verbose(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
         verbose(f"辅助查询网格尺寸：{self.grid_size:.3f}")
         verbose(f"辅助查询网格数量：{len(self.space_grid)}\n")
+
+    def _build_space_index(self, fronts):
+        """构建空间索引加速相交检测"""
+        from rtree import index
+
+        verbose("构建辅助查询R树...")
+
+        # 由于front的hash值不是一一对应的，因此暂时先不用hash值创建字典，后续再考虑
+        # self.front_dict = {hash(f): f for f in fronts}  # 存储front对象的字典
+        self.front_dict = {id(f): f for f in fronts}
+
+        self.space_index = index.Index()
+        for f_id, front in self.front_dict.items():
+            self.space_index.insert(f_id, front.bbox)
+
+        verbose(f"R树索引构建完成，包含{len(fronts)}个阵面")
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""

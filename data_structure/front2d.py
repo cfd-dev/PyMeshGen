@@ -8,7 +8,25 @@ from geometry_info import NodeElement, calculate_distance
 from timer import TimeSpan
 
 
+# 使用__slots__减少内存占用
 class Front:
+    __slots__ = [
+        "node_elems",
+        "idx",
+        "bc_type",
+        "part_name",
+        "priority",
+        "al",
+        "center",
+        "length",
+        "direction",
+        "normal",
+        "bbox",
+        "hash",
+        "node_ids",
+        "early_stop_flag",
+    ]
+
     def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None):
         if not isinstance(node_elem1, NodeElement) or not isinstance(
             node_elem1, NodeElement
@@ -57,10 +75,19 @@ class Front:
 
         self.bbox = (min_x, min_y, max_x, max_y)
 
-        length_hash = hash(round(self.length, 3))
-
-        center_hash = hash(tuple(f"{round(coord, 6):.6f}" for coord in self.center))
+        length_hash = hash(f"{self.length:.3f}")
+        center_hash = hash(tuple(f"{coord:.6f}" for coord in self.center))
+        # 这里之所以用center和length生成hash，是因为在阵面推进时，阵面会出现2次，
+        # 只是方向不同，对于这种方向不同的阵面，我们认为其是相同的阵面，应该具有相同的hash值
         self.hash = hash((center_hash, length_hash))
+
+        # 备用精确坐标生成唯一hash
+        # self.hash = hash(
+        #     (
+        #         tuple(f"{x:.8f}" for x in node_elem1.coords),
+        #         tuple(f"{x:.8f}" for x in node_elem2.coords),
+        #     )
+        # )
 
     def __lt__(self, other):
         # 优先比较priority属性，其次比较长度
