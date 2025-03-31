@@ -2,6 +2,7 @@
     "debug_level": 0,
     "input_file": "./config/input/anw-hybrid.cas",
     "output_file": "./out/anw.vtk",
+    "viz_enabled": false,
     "parts": [
         {
             "name": "farfield",

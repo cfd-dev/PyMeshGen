@@ -13,6 +13,7 @@ from geometry_info import (
     Unstructured_Grid,
     min_distance_between_segments,
     segments_intersect,
+    is_left2d,
 )
 from front2d import Front
 from message import info, debug, verbose, warning
@@ -83,9 +84,10 @@ class Adlayers2:
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
+            self.num_prism_cap = len(part.front_list)
 
             info(f"开始生成{part.name}的边界层网格...\n")
-            for self.ilayer in range(self.max_layers):
+            while self.ilayer < self.max_layers and self.num_prism_cap > 0:
 
                 info(f"第{self.ilayer + 1}层推进中...")
 
@@ -264,7 +266,7 @@ class Adlayers2:
 
             for f_id in candidates:
                 candidate = self.front_dict.get(f_id)
-                if candidate is None:
+                if candidate is None or candidate.hash == front.hash:
                     continue
 
                 # 若candidate与new_front共点，则跳过
@@ -272,16 +274,12 @@ class Adlayers2:
                     continue
 
                 # 若candidate是在front推进方向的反方向，则跳过
-                AB = np.array(front.direction)  # 当前推进的阵面
-                AC = np.array(check_fronts[1].direction)  # new_front1
-                node0_coords = np.array(front.node_elems[0].coords)
-                AE = np.array(candidate.node_elems[0].coords) - node0_coords
-                AF = np.array(candidate.node_elems[1].coords) - node0_coords
+                A = front.node_elems[0].coords
+                B = front.node_elems[1].coords
+                C = candidate.node_elems[0].coords
+                D = candidate.node_elems[1].coords
 
-                if (
-                    np.cross(AB, AC) * np.cross(AB, AE) <= 0
-                    and np.cross(AB, AC) * np.cross(AB, AF) <= 0
-                ):
+                if not is_left2d(A, B, C) and not is_left2d(A, B, D):
                     continue
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
@@ -421,6 +419,7 @@ class Adlayers2:
         new_interior_list = []  # 新增的边界层法向面，设置为interior
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
         # 逐个阵面进行推进
+        num_old_prism_cap = 0  # 当前层early stop的prism-cap数量
         for front in self.current_part.front_list:
             if front.bc_type == "interior":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
@@ -428,6 +427,7 @@ class Adlayers2:
 
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
+                num_old_prism_cap += 1
                 continue
 
             (
@@ -472,6 +472,8 @@ class Adlayers2:
 
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
+        # 下一层需要推进的prism-cap的数量
+        self.num_prism_cap = len(new_prism_cap_list) - num_old_prism_cap
         # 更新part阵面列表
         self.current_part.front_list = new_prism_cap_list + new_interior_list
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")

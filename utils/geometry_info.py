@@ -875,10 +875,10 @@ class Unstructured_Grid:
 
     def visualize_unstr_grid_2d(self, visual_obj=None):
         """可视化二维网格"""
-        if visual_obj is None:
-            fig, ax = plt.subplots(figsize=(10, 8))
-        else:
-            fig, ax = visual_obj.fig, visual_obj.ax
+        if visual_obj.ax is None:
+            return
+
+        fig, ax = visual_obj.fig, visual_obj.ax
 
         # 绘制所有节点
         xs = [n[0] for n in self.node_coords]

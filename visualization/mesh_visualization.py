@@ -7,7 +7,7 @@ class Visualization:
         self.ax = None
         self.fig = None
 
-        if __debug__ or SWITCH:
+        if SWITCH:
             self.create_figure()
 
     def create_figure(self, figsize=(10, 8)):
@@ -15,8 +15,8 @@ class Visualization:
         self.ax.axis("equal")
 
     def plot_mesh(self, mesh, boundary_only=False):
-        # if self.ax is None:
-        #     self.create_figure()
+        if self.ax is None:
+            return
 
         visualize_mesh_2d(mesh, self.ax, boundary_only)
 
@@ -24,7 +24,7 @@ class Visualization:
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     """可视化完整的2D网格结构"""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(12, 8))
+        return
 
     if not BoundaryOnly:
         # 绘制所有网格节点（半透明显示）

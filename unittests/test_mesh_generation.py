@@ -4,9 +4,8 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 sys.path.append(str(Path(__file__).parent / "data_structure"))
 import unittest
-from unittest.mock import patch
-from pathlib import Path
-import PyMeshGen
+import time
+from PyMeshGen import PyMeshGen
 from read_vtk import parse_vtk_msh
 from parameters import Parameters
 
@@ -25,63 +24,79 @@ class TestMeshGeneration(unittest.TestCase):
 
     def test_rae2822_generation(self):
         """测试Rae2822网格生成"""
-        with patch("PyMeshGen.Parameters") as mock_params:
-            # 模拟参数配置
-            case_file = self.test_dir / "rae2822.json"
-            output_file = self.output_dir / "test_rae2822_output.vtk"
+        # 模拟参数配置
+        case_file = self.test_dir / "rae2822.json"
+        output_file = self.output_dir / "test_rae2822_output.vtk"
 
-            # 执行主函数
-            PyMeshGen.PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
 
-            # 验证单元数、节点数
-            grid = parse_vtk_msh(output_file)
-            self.assertEqual(grid.num_cells, 5901)  # 预期单元数
-            self.assertEqual(grid.num_nodes, 5149)  # 预期节点数
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertEqual(grid.num_cells, 5901)  # 预期单元数
+        self.assertEqual(grid.num_nodes, 5149)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 50)  # 预期耗时
 
     def test_naca0012_generation(self):
         """测试naca0012网格生成"""
-        with patch("PyMeshGen.Parameters") as mock_params:
-            # 模拟参数配置
-            case_file = self.test_dir / "naca0012.json"
-            output_file = self.output_dir / "test_naca0012_output.vtk"
+        # 参数配置
+        case_file = self.test_dir / "naca0012.json"
+        output_file = self.output_dir / "test_naca0012_output.vtk"
 
-            # 执行主函数
-            PyMeshGen.PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
 
-            # 验证单元数、节点数
-            grid = parse_vtk_msh(output_file)
-            self.assertEqual(grid.num_cells, 2911)  # 预期单元数
-            self.assertEqual(grid.num_nodes, 2200)  # 预期节点数
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertEqual(grid.num_cells, 2911)  # 预期单元数
+        self.assertEqual(grid.num_nodes, 2200)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 35)  # 预期耗时
 
     def test_30p30n_generation(self):
         """测试30p30n网格生成"""
-        with patch("PyMeshGen.Parameters") as mock_params:
-            # 模拟参数配置
-            case_file = self.test_dir / "30p30n.json"
-            output_file = self.output_dir / "test_30p30n_output.vtk"
+        # 模拟参数配置
+        case_file = self.test_dir / "30p30n.json"
+        output_file = self.output_dir / "test_30p30n_output.vtk"
 
-            # 执行主函数
-            PyMeshGen.PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
 
-            # 验证单元数、节点数
-            grid = parse_vtk_msh(output_file)
-            self.assertEqual(grid.num_cells, 12441)  # 预期单元数
-            self.assertEqual(grid.num_nodes, 11187)  # 预期节点数
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertEqual(grid.num_cells, 12441)  # 预期单元数
+        self.assertEqual(grid.num_nodes, 11187)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 75)  # 预期耗时
 
-    # def test_anw_generation(self):
-    #     """测试anw网格生成"""
-    #     with patch("PyMeshGen.Parameters") as mock_params:
-    #         # 模拟参数配置
-    #         case_file = self.test_dir / "anw.json"
-    #         output_file = self.output_dir / "test_anw_output.vtk"
+    def test_anw_generation(self):
+        """测试anw网格生成"""
+        # 模拟参数配置
+        case_file = self.test_dir / "anw.json"
+        output_file = self.output_dir / "test_anw_output.vtk"
 
-    #         # 执行主函数
-    #         PyMeshGen.PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
 
-    #         # 验证单元数、节点数
-    #         grid = parse_vtk_msh(output_file)
-    #         self.assertEqual(grid.num_cells, 12441)  # 预期单元数
-    #         self.assertEqual(grid.num_nodes, 11187)  # 预期节点数
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertEqual(grid.num_cells, 2926)  # 预期单元数
+        self.assertEqual(grid.num_nodes, 2454)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 25)  # 预期耗时
 
 
 if __name__ == "__main__":

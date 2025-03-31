@@ -91,7 +91,7 @@ def PyMeshGen(parameters=None):
     global_unstr_grid.save_to_vtkfile(parameters.output_file)
 
     # 结束计时
-    global_timer.show_to_console("程序运行退出.")
+    global_timer.show_to_console("程序运行正常退出.")
 
 
 if __name__ == "__main__":
