@@ -3,9 +3,10 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent / "fileIO"))
-sys.path.append(str(Path(__file__).parent.parent / "visualization"))
-import read_cas as rc
-import mesh_visualization as viz
+sys.path.append(str(Path(__file__).parent / "utils"))
+from read_cas import parse_fluent_msh
+from read_vtk import parse_vtk_msh
+from geometry_info import Unstructured_Grid, Triangle, Quadrilateral
 
 
 class TestCASParser(unittest.TestCase):
@@ -20,7 +21,7 @@ class TestCASParser(unittest.TestCase):
         if not cls.sample_file.exists():
             raise FileNotFoundError(f"测试文件未找到：{cls.sample_file}")
 
-        cls.grid = rc.parse_fluent_msh(str(cls.sample_file))
+        cls.grid = parse_fluent_msh(str(cls.sample_file))
 
     def test_basic_data_structure(self):
         """验证基础数据结构完整性"""
@@ -118,6 +119,71 @@ class TestCASParser(unittest.TestCase):
         self.assertEqual(cell_count, 5648, "单元数量异常")
 
 
+class TestVTKParser(unittest.TestCase):
+    """VTK文件解析测试套件"""
+
+    @classmethod
+    def setUpClass(cls):
+        test_dir = Path(__file__).parent
+        cls.sample_file = test_dir / "test_files/naca0012.vtk"
+
+        if not cls.sample_file.exists():
+            raise FileNotFoundError(f"测试文件未找到：{cls.sample_file}")
+
+        cls.unstr_grid = parse_vtk_msh(str(cls.sample_file))
+
+    def test_node_parsing(self):
+        """验证节点坐标解析"""
+        node_coords = self.unstr_grid.node_coords
+        self.assertEqual(len(node_coords), 2200, "节点数量异常")
+
+        # 验证前5个节点坐标
+        expected_coords = [
+            (1.974237792185365e-05, -0.0006353139005032415),
+            (0.0, 0.0),
+            (1.974237792300345e-05, 0.0006353139005402422),
+            (0.986556812279211, -0.001890644533031036),
+            (0.9823045281426278, -0.002482556906843521),
+        ]
+
+        for i, node in enumerate(node_coords[:5]):
+            self.assertAlmostEqual(node[0], expected_coords[i][0], places=5)
+            self.assertAlmostEqual(node[1], expected_coords[i][1], places=5)
+
+    def test_cell_parsing(self):
+        """验证单元数据解析"""
+        cells = self.unstr_grid.cell_container
+        self.assertEqual(len(cells), 2911, "总单元数量异常")
+
+        # 验证前5个三角形单元
+        expected_cells = [
+            [333, 334, 1529],
+            [527, 528, 1530],
+            [344, 332, 1531],
+            [334, 348, 1532],
+            [548, 549, 1533],
+        ]
+        for i, cell in enumerate(cells[:5]):
+            self.assertIsInstance(cell, Triangle)  # 确保单元类型正确
+            self.assertEqual(cell.node_ids, expected_cells[i])  # 验证节点索引
+
+    def test_boundary_nodes(self):
+        """验证边界节点解析"""
+        boundary_nodes = self.unstr_grid.boundary_nodes
+        self.assertEqual(len(boundary_nodes), 136, "边界节点数量异常")
+
+    def test_hybrid_mesh(self):
+        """验证混合网格解析"""
+        tri_count = sum(
+            1 for c in self.unstr_grid.cell_container if isinstance(c, Triangle)
+        )
+        quad_count = sum(
+            1 for c in self.unstr_grid.cell_container if isinstance(c, Quadrilateral)
+        )
+
+        self.assertEqual(tri_count, 1558, "三角形单元数量错误")
+        self.assertEqual(quad_count, 1353, "四边形单元单元数量错误")
+
+
 if __name__ == "__main__":
     unittest.main()
-    # viz.visualize_mesh_2d(grid, BoundaryOnly=True)

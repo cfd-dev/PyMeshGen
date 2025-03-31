@@ -16,19 +16,20 @@ from adfront2 import Adfront2
 from optimize import edge_swap, laplacian_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
-from parameters import Parameters, PartMeshParameters
+from parameters import Parameters
 from timer import TimeSpan
 
 
-def PyMeshGen():
+def PyMeshGen(parameters=None):
     # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
     # 建立参数管理对象
-    parameters = Parameters("FROM_MAIN_JSON")
+    if parameters is None:
+        parameters = Parameters("FROM_MAIN_JSON")
 
     # 建立可视化对象
-    visual_obj = Visualization(True)
+    visual_obj = Visualization(parameters.visualization_enabled)
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
