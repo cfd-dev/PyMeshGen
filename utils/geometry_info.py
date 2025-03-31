@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent / "utils"))
-from message import info
+from vtk_io import write_vtk, VTK_ELEMENT_TYPE
 
 
 def point_to_segment_distance(point, segment_start, segment_end):
@@ -906,53 +906,20 @@ class Unstructured_Grid:
 
     def save_to_vtkfile(self, file_path):
         """将网格保存到VTK文件"""
-        # 分类二维单元
-        tri_cells = [c.node_ids for c in self.cell_container if len(c.node_ids) == 3]
-        quad_cells = [c.node_ids for c in self.cell_container if len(c.node_ids) == 4]
+        cell_idx_container = []
+        cell_type_container = []
+        for cell in self.cell_container:
+            cell_idx_container.append(cell.node_ids)
+            if isinstance(cell, Quadrilateral):
+                vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
+            elif isinstance(cell, Triangle):
+                vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
+            cell_type_container.append(vtk_cell_type)
 
-        # 准备单元数据
-        cell_data = []
-        for cells, n_nodes in [(tri_cells, 3), (quad_cells, 4)]:
-            cell_data.extend([f"{n_nodes} " + " ".join(map(str, c)) for c in cells])
-
-        # 计算单元类型
-        cell_types = []
-        cell_types.extend([5] * len(tri_cells))  # VTK_TRIANGLE = 5
-        cell_types.extend([9] * len(quad_cells))  # VTK_QUAD = 9
-
-        with open(file_path, "w") as file:
-            file.write("# vtk DataFile Version 2.0\n")
-            file.write("Unstructured Grid\n")
-            file.write("ASCII\n")
-            file.write("DATASET UNSTRUCTURED_GRID\n")
-            file.write(f"POINTS {self.num_nodes} float\n")
-            for coord in self.node_coords:
-                coord_tmp = coord.copy()
-                if len(coord) == 2:
-                    coord_tmp.append(0.0)  # 添加Z坐标
-                file.write(" ".join(map(str, coord_tmp)) + "\n")
-
-            # 写入单元信息
-            total_cells = len(tri_cells) + len(quad_cells)
-            total_data_size = len(tri_cells) * 4 + len(quad_cells) * 5  # 3+1 和 4+1
-            file.write(f"CELLS {total_cells} {total_data_size}\n")
-            file.write("\n".join(cell_data) + "\n")
-
-            file.write(f"CELL_TYPES {total_cells}\n")
-            file.write("\n".join(map(str, cell_types)) + "\n")
-
-            # 写入边界节点标记
-            file.write(f"POINT_DATA {self.num_nodes}\n")
-            file.write("SCALARS node_id int 1\n")
-            file.write("LOOKUP_TABLE default\n")
-            for i in range(self.num_nodes):
-                file.write(
-                    f"{1 if i in self.boundary_nodes_list else 0}\n"
-                )  # 标记边界节点
-
-            file.write(f"CELL_DATA {total_cells}\n")
-            file.write("SCALARS cell_id int 1\n")
-            file.write("LOOKUP_TABLE default\n")
-            file.write("\n".join(map(str, range(total_cells))) + "\n")
-
-        info(f"网格已保存到 {file_path}")
+        write_vtk(
+            file_path,
+            self.node_coords,
+            cell_idx_container,
+            self.boundary_nodes_list,
+            cell_type_container,
+        )

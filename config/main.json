@@ -1,5 +1,5 @@
 {
-    "case_file": "config/anw.json",
+    "case_file": "config/quad.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",

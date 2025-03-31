@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).parent / "data_structure"))
 import unittest
 import time
 from PyMeshGen import PyMeshGen
-from read_vtk import parse_vtk_msh
+from vtk_io import parse_vtk_msh
 from parameters import Parameters
 
 

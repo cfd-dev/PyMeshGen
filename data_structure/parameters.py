@@ -42,7 +42,13 @@ class Parameters:
             config = json.load(f2)
 
         # 必要字段校验
-        required_fields = ["debug_level", "input_file", "output_file", "parts"]
+        required_fields = [
+            "debug_level",
+            "input_file",
+            "output_file",
+            "parts",
+            "viz_enabled",
+        ]
         for field in required_fields:
             if field not in config:
                 raise ValueError(f"配置文件中缺少必要字段: {field}")
