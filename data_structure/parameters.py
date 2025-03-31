@@ -21,7 +21,7 @@ class Parameters:
         self.part_params = []  # 网格生成部件参数
         self.input_file = []
         self.output_file = []
-        self.visualization_enabled = False
+        self.viz_enabled = False
 
         self.load_cofig()
         set_debug_level(self.debug_level)
@@ -50,7 +50,7 @@ class Parameters:
         self.debug_level = config["debug_level"]
         self.input_file = config["input_file"]
         self.output_file = config["output_file"]
-        self.visualization_enabled = config["visualization_enabled"]
+        self.viz_enabled = config["viz_enabled"]
 
         self.part_params = []
         for part in config["parts"]:

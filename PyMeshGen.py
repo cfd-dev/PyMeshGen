@@ -29,7 +29,7 @@ def PyMeshGen(parameters=None):
         parameters = Parameters("FROM_MAIN_JSON")
 
     # 建立可视化对象
-    visual_obj = Visualization(parameters.visualization_enabled)
+    visual_obj = Visualization(parameters.viz_enabled)
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
