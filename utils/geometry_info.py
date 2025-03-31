@@ -486,8 +486,18 @@ class Triangle:
         return False
 
     def init_metrics(self):
-        self.area = triangle_area(self.p1, self.p2, self.p3)
-        self.quality = triangle_quality(self.p1, self.p2, self.p3)
+        if self.area is None:
+            self.area = triangle_area(self.p1, self.p2, self.p3)
+            if self.area == 0.0:
+                raise ValueError(
+                    f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
+                )
+        if self.quality is None:
+            self.quality = triangle_quality(self.p1, self.p2, self.p3)
+            if self.quality == 0.0:
+                raise ValueError(
+                    f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
+                )
 
     def is_intersect(self, triangle):
         p4 = triangle.p1
@@ -668,15 +678,19 @@ class Quadrilateral:
         return self.hash
 
     def init_metrics(self):
-        self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
-
-        if self.area == 0.0:
-            raise ValueError(
-                f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
-            )
-
-        # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
-        self.quality = self.get_skewness()
+        if self.area is None:
+            self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+            if self.area == 0.0:
+                raise ValueError(
+                    f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
+                )
+        if self.quality is None:
+            # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+            self.quality = self.get_skewness()
+            if self.quality == 0.0:
+                raise ValueError(
+                    f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
+                )
 
     def get_area(self):
         self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
