@@ -66,6 +66,12 @@ def edge_swap(unstr_grid):
             swapped_cell1 = [a, c, d]
             swapped_cell2 = [b, c, d]
 
+            # 确保构成的单元节点逆时针
+            if not geo_info.is_left2d(node_coords[a], node_coords[c], node_coords[d]):
+                swapped_cell1 = [d, c, a]
+            if not geo_info.is_left2d(node_coords[b], node_coords[c], node_coords[d]):
+                swapped_cell2 = [d, c, b]
+
             # 有效性检查
             if not (
                 geo_info.is_valid_triangle(swapped_cell1, node_coords)
@@ -91,18 +97,18 @@ def edge_swap(unstr_grid):
                 # 执行交换
                 # 创建新的Triangle对象
                 new_cell1 = geo_info.Triangle(
-                    node_coords[a],
-                    node_coords[c],
-                    node_coords[d],
+                    node_coords[swapped_cell1[0]],
+                    node_coords[swapped_cell1[1]],
+                    node_coords[swapped_cell1[2]],
                     cell1.idx,
-                    node_ids=(a, c, d),
+                    node_ids=swapped_cell1,
                 )
                 new_cell2 = geo_info.Triangle(
-                    node_coords[b],
-                    node_coords[c],
-                    node_coords[d],
+                    node_coords[swapped_cell2[0]],
+                    node_coords[swapped_cell2[1]],
+                    node_coords[swapped_cell2[2]],
                     cell2.idx,
-                    node_ids=(b, c, d),
+                    node_ids=swapped_cell2,
                 )
 
                 unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点

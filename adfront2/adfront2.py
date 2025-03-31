@@ -136,8 +136,8 @@ class Adfront2:
         if not __debug__:
             return
 
-        if self.base_front.node_ids == (62, 68) or self.base_front.node_ids == (61, 62):
-            # self.unstr_grid.save_to_vtkfile("./out/debug_output_mesh.vtk")
+        if self.base_front.node_ids == [650, 986]:
+            self.debug_save()
             kkk = 0
 
         if self.ax is None or self.debug_level < 1:
@@ -425,9 +425,7 @@ class Adfront2:
         if self.debug_level < 1:
             return
 
-        if self.unstr_grid is None:
-            self.construct_unstr_grid()
-
+        self.construct_unstr_grid()
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):

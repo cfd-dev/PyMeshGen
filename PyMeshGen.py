@@ -84,7 +84,7 @@ def PyMeshGen():
 
     # 输出网格信息
     global_unstr_grid.summary()
-    global_unstr_grid.quality_histogram()
+    # global_unstr_grid.quality_histogram()
 
     # 输出网格文件
     global_unstr_grid.save_to_vtkfile(parameters.output_file)

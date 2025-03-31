@@ -447,7 +447,7 @@ class Triangle:
             self.p1 = p1.coords
             self.p2 = p2.coords
             self.p3 = p3.coords
-            self.node_ids = (p1.idx, p2.idx, p3.idx)
+            self.node_ids = [p1.idx, p2.idx, p3.idx]
         else:
             self.p1 = p1
             self.p2 = p2
@@ -642,7 +642,7 @@ class Quadrilateral:
             self.p2 = p2.coords
             self.p3 = p3.coords
             self.p4 = p4.coords
-            self.node_ids = (p1.idx, p2.idx, p3.idx, p4.idx)
+            self.node_ids = [p1.idx, p2.idx, p3.idx, p4.idx]
         else:
             self.p1 = p1
             self.p2 = p2
@@ -841,8 +841,6 @@ class Unstructured_Grid:
         print(f"  Number of Edges: {self.num_edges}")
         print(f"  Number of Faces: {self.num_faces}")
 
-    def quality_histogram(self):
-        """绘制质量直方图"""
         # 计算所有单元的质量
         for c in self.cell_container:
             c.init_metrics()
@@ -860,7 +858,12 @@ class Unstructured_Grid:
         print(f"  Mean Quality: {np.mean(quality_values):.4f}")
         print(f"  Min Area: {min(area_values):.4e}")
 
+    def quality_histogram(self):
+        """绘制质量直方图"""
         # 绘制直方图
+        quality_values = [
+            c.quality for c in self.cell_container if c.quality is not None
+        ]
         plt.figure(figsize=(10, 6))
         plt.hist(quality_values, bins=10, alpha=0.7, color="blue")
         plt.xlim(0, 1)
@@ -870,7 +873,7 @@ class Unstructured_Grid:
         plt.title("Quality Histogram")
         plt.show(block=False)
 
-    def visualize_unstr_grid_2d(self, visual_obj):
+    def visualize_unstr_grid_2d(self, visual_obj=None):
         """可视化二维网格"""
         if visual_obj is None:
             fig, ax = plt.subplots(figsize=(10, 8))

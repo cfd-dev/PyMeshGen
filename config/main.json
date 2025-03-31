@@ -1,5 +1,5 @@
 {
-    "case_file": "config/30p30n.json",
+    "case_file": "config/convex.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",
