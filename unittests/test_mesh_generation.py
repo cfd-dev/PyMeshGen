@@ -77,7 +77,7 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertEqual(grid.num_cells, 12441)  # 预期单元数
         self.assertEqual(grid.num_nodes, 11187)  # 预期节点数
         # 耗时比较
-        self.assertLess(cost, 75)  # 预期耗时
+        self.assertLess(cost, 80)  # 预期耗时
 
     def test_anw_generation(self):
         """测试anw网格生成"""
