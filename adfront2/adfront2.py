@@ -14,6 +14,9 @@ from rtree_space import (
     build_space_index_with_RTree,
     add_elems_to_space_index_with_RTree,
     get_candidate_elements_id,
+    build_space_index_with_cartesian_grid,
+    add_elems_to_space_index_with_cartesian_grid,
+    get_candidate_elements,
 )
 
 
@@ -48,9 +51,13 @@ class Adfront2:
         self.front_candidates = None  # 候选阵面列表
         self.cell_candidates = None  # 候选单元列表
 
-        self.space_index_node = None  # 空间索引
+        self.search_method = (
+            "bbox"  # 搜索方法，"bbox"或"rtree"或"cartesian"，默认为"bbox"
+        )
+        self.space_grid_size = 1.0  # 背景网格大小，默认为1.0
+        self.space_index_node = None  # 节点空间索引
         self.node_dict = {}  # 节点id字典，用于快速查找
-        self.space_index_front = None  # 空间索引
+        self.space_index_front = None  # 阵面空间索引
         self.front_dict = {}  # 阵面id字典，用于快速查找
         self.space_index_cell = None  # 单元空间索引
         self.cell_dict = {}  # 单元id字典，用于快速查找
@@ -97,7 +104,27 @@ class Adfront2:
         self.front_node_list = list(self.boundary_nodes)
         self.num_nodes = len(self.node_coords)
 
-        self.build_front_and_cell_rtree()
+        self.build_space_index()
+
+    def build_space_index(self):
+        """构建空间索引"""
+        if self.search_method == "cartesian":
+            self.build_front_and_cell_cartesian_index()
+        elif self.search_method == "rtree":
+            self.build_front_and_cell_rtree()
+
+    def build_front_and_cell_cartesian_index(self):
+        """构建阵面和单元的笛卡尔网格索引"""
+        self.space_grid_size = self.sizing_system.global_spacing
+        self.space_index_node = build_space_index_with_cartesian_grid(
+            self.front_node_list, self.space_grid_size
+        )
+        self.space_index_front = build_space_index_with_cartesian_grid(
+            self.front_list, self.space_grid_size
+        )
+        self.space_index_cell = build_space_index_with_cartesian_grid(
+            self.cell_container, self.space_grid_size
+        )
 
     def draw_front_list(self, ax=None):
         """绘制阵面列表"""
@@ -157,9 +184,7 @@ class Adfront2:
 
             self.add_new_point(spacing)
 
-            self.search_candidates_with_rtree(self.base_front.al * spacing)
-
-            # self.search_candidates(self.base_front.al * spacing)
+            self.search_candidates(self.base_front.al * spacing)
 
             self.debug_draw()
 
@@ -175,6 +200,41 @@ class Adfront2:
 
         return self.unstr_grid
 
+    def search_candidates(self, search_radius):
+        """搜索候选节点和阵面"""
+        self.search_radius = search_radius
+
+        if self.search_method == "cartesian":
+            self.search_candidates_with_cartesian_grid()
+        elif self.search_method == "rtree":
+            self.search_candidates_with_rtree()
+        elif self.search_method == "bbox":
+            self.search_candidates_with_bbox()
+        else:
+            warning("无效的搜索方法，采用默认bbox搜索方法.")
+            self.search_candidates_with_bbox()
+
+    def search_candidates_with_cartesian_grid(self):
+        """使用笛卡尔网格搜索候选节点和阵面"""
+        self.node_candidates = get_candidate_elements(
+            self.base_front,
+            self.space_index_node,
+            self.space_grid_size,
+            self.search_radius,
+        )
+        self.front_candidates = get_candidate_elements(
+            self.base_front,
+            self.space_index_front,
+            self.space_grid_size,
+            self.search_radius,
+        )
+        self.cell_candidates = get_candidate_elements(
+            self.base_front,
+            self.space_index_cell,
+            self.space_grid_size,
+            self.search_radius,
+        )
+
     def build_front_and_cell_rtree(self):
         """构建RTree索引"""
         self.node_dict, self.space_index_node = build_space_index_with_RTree(
@@ -189,9 +249,8 @@ class Adfront2:
             self.cell_container
         )
 
-    def search_candidates_with_rtree(self, search_radius):
+    def search_candidates_with_rtree(self):
         """使用RTree索引搜索候选节点和阵面"""
-        self.search_radius = search_radius
         self.node_candidates = []
         self.front_candidates = []
         self.cell_candidates = []
@@ -227,6 +286,15 @@ class Adfront2:
 
             self.debug_save()
 
+    def add_elems_to_space_index(self, elems, space_index, elem_dict):
+        """将新阵面和节点添加到空间索引"""
+        if self.search_method == "cartesian":
+            add_elems_to_space_index_with_cartesian_grid(
+                elems, space_index, self.space_grid_size
+            )
+        elif self.search_method == "rtree":
+            add_elems_to_space_index_with_RTree(elems, space_index, elem_dict)
+
     def update_cells(self):
         if self.pselected is None:
             return
@@ -238,8 +306,7 @@ class Adfront2:
             if node_hash not in self.node_hash_list:
                 self.node_hash_list.add(node_hash)
                 self.node_coords.append(self.pselected.coords)
-
-                add_elems_to_space_index_with_RTree(
+                self.add_elems_to_space_index(
                     [self.pselected], self.space_index_node, self.node_dict
                 )
 
@@ -269,7 +336,7 @@ class Adfront2:
             if chk_fro.hash not in front_hashes:
                 heapq.heappush(self.front_list, chk_fro)
 
-                add_elems_to_space_index_with_RTree(
+                self.add_elems_to_space_index(
                     [chk_fro], self.space_index_front, self.front_dict
                 )
 
@@ -296,7 +363,7 @@ class Adfront2:
             self.cell_hash_list.add(new_cell.hash)
             self.cell_container.append(new_cell)
 
-            add_elems_to_space_index_with_RTree(
+            self.add_elems_to_space_index(
                 [new_cell], self.space_index_cell, self.cell_dict
             )
 
@@ -386,18 +453,17 @@ class Adfront2:
 
         return False
 
-    def search_candidates(self, radius):
+    def search_candidates_with_bbox(self):
         self.node_candidates = []
         self.front_candidates = []
         self.cell_candidates = []
-        self.search_radius = radius
 
         # 使用预计算的边界框信息进行快速筛选
         point = self.pbest.coords
-        min_x = point[0] - radius
-        max_x = point[0] + radius
-        min_y = point[1] - radius
-        max_y = point[1] + radius
+        min_x = point[0] - self.search_radius
+        max_x = point[0] + self.search_radius
+        min_y = point[1] - self.search_radius
+        max_y = point[1] + self.search_radius
 
         # 使用生成器表达式减少内存使用
         possible_fronts = (
@@ -413,7 +479,7 @@ class Adfront2:
 
         seen_nodes = set()
         seen_fronts = set()
-        radius2 = radius * radius
+        radius2 = self.search_radius * self.search_radius
         for front in possible_fronts:
             front_hash = front.hash
             if front_hash in seen_fronts:

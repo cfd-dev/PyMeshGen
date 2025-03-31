@@ -2,7 +2,7 @@ from rtree import index
 from collections import defaultdict
 
 
-def build_space_index_with_cartesian_grid(elems, grid_size=1.0):
+def build_space_index_with_cartesian_grid(elems, space_grid_size=1.0):
     """构建空间索引加速相交检测"""
     space_index = defaultdict(list)
 
@@ -14,10 +14,10 @@ def build_space_index_with_cartesian_grid(elems, grid_size=1.0):
         y_max = ele.bbox[3]
 
         # 计算网格索引
-        i_min = int(x_min // grid_size)
-        i_max = int(x_max // grid_size)
-        j_min = int(y_min // grid_size)
-        j_max = int(y_max // grid_size)
+        i_min = int(x_min // space_grid_size)
+        i_max = int(x_max // space_grid_size)
+        j_min = int(y_min // space_grid_size)
+        j_max = int(y_max // space_grid_size)
 
         # 将阵面注册到覆盖的网格
         for i in range(i_min, i_max + 1):
@@ -27,7 +27,9 @@ def build_space_index_with_cartesian_grid(elems, grid_size=1.0):
     return space_index
 
 
-def add_elems_to_space_index_with_cartesian_grid(elems, grid_size=1.0):
+def add_elems_to_space_index_with_cartesian_grid(
+    elems, space_index, space_grid_size=1.0
+):
     for ele in elems:
         # 计算包围盒
         x_min = ele.bbox[0]
@@ -36,10 +38,10 @@ def add_elems_to_space_index_with_cartesian_grid(elems, grid_size=1.0):
         y_max = ele.bbox[3]
 
         # 计算网格索引
-        i_min = int(x_min // grid_size)
-        i_max = int(x_max // grid_size)
-        j_min = int(y_min // grid_size)
-        j_max = int(y_max // grid_size)
+        i_min = int(x_min // space_grid_size)
+        i_max = int(x_max // space_grid_size)
+        j_min = int(y_min // space_grid_size)
+        j_max = int(y_max // space_grid_size)
 
         # 将阵面注册到覆盖的网格
         for i in range(i_min, i_max + 1):
@@ -49,7 +51,7 @@ def add_elems_to_space_index_with_cartesian_grid(elems, grid_size=1.0):
     return space_index
 
 
-def get_candidate_elements(base_elem, space_index, grid_size, search_radius):
+def get_candidate_elements(base_elem, space_index, space_grid_size, search_radius):
     # 计算网格索引范围
     x_min = base_elem.bbox[0] - search_radius
     x_max = base_elem.bbox[2] + search_radius
@@ -57,10 +59,10 @@ def get_candidate_elements(base_elem, space_index, grid_size, search_radius):
     y_max = base_elem.bbox[3] + search_radius
 
     # 计算网格索引边界
-    i_min = int(x_min // grid_size)
-    i_max = int(x_max // grid_size)
-    j_min = int(y_min // grid_size)
-    j_max = int(y_max // grid_size)
+    i_min = int(x_min // space_grid_size)
+    i_max = int(x_max // space_grid_size)
+    j_min = int(y_min // space_grid_size)
+    j_max = int(y_max // space_grid_size)
 
     # 生成网格坐标范围
     i_range = range(i_min, i_max + 1)

@@ -48,7 +48,7 @@ class Adlayers2:
 
         self.al = 3.0  # TODO 邻近检查候选阵面搜索范围系数
         self.space_index = None  # 空间索引
-        self.grid_size = None  # Cartesian查询网格尺寸
+        self.space_grid_size = None  # Cartesian查询网格尺寸
         self.front_dict = {}  # 阵面id字典，用于快速查找
 
         self.normal_points = []  # 节点推进方向
@@ -308,7 +308,7 @@ class Adlayers2:
 
             search_radius = self.al * 2.0 * safe_distance
             candidates = get_candidate_elements(
-                new_front, self.space_index, self.grid_size, search_radius
+                new_front, self.space_index, self.space_grid_size, search_radius
             )
 
             for candidate in candidates:
@@ -406,7 +406,7 @@ class Adlayers2:
                         if tmp_fro.hash != chk_fro.hash
                     ]
         # 将新阵面加入到空间查询网格中
-        add_elems_to_space_index_with_cartesian_grid(added, self.grid_size)
+        add_elems_to_space_index_with_cartesian_grid(added, self.space_grid_size)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
@@ -807,16 +807,16 @@ class Adlayers2:
                 self.current_part.first_height
                 * self.current_part.growth_rate**self.ilayer
             )
-            self.grid_size = max(current_step * 2.0, 0.1)  # 保持网格尺寸≥0.1
+            self.space_grid_size = max(current_step * 2.0, 0.1)  # 保持网格尺寸≥0.1
         else:  # 当使用其他增长方式时回退到尺寸场
-            self.grid_size = 1.5 * self.sizing_system.global_spacing
+            self.space_grid_size = 1.5 * self.sizing_system.global_spacing
 
         self.space_index = build_space_index_with_cartesian_grid(
-            self.current_part.front_list, self.grid_size
+            self.current_part.front_list, self.space_grid_size
         )
 
         verbose(f"全局最大网格尺度：{self.sizing_system.global_spacing:.3f}")
-        verbose(f"辅助查询网格尺寸：{self.grid_size:.3f}")
+        verbose(f"辅助查询网格尺寸：{self.space_grid_size:.3f}")
         verbose(f"辅助查询网格数量：{len(self.space_index)}\n")
 
     def compute_front_geometry(self):
