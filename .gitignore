@@ -1,0 +1,10 @@
+/.myenv
+__pycache__/
+*.py[cod]
+/neural/model
+/neural/sample_grids
+/.vscode
+/out
+/config/input
+/unittests/test_files/2d_cases/test_outputs/
+
