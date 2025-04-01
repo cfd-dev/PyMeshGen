@@ -1,6 +1,6 @@
 import heapq
 import matplotlib.pyplot as plt
-from geometry_info import (
+from geom_toolkit import (
     triangle_quality,
     is_left2d,
     calculate_distance2,

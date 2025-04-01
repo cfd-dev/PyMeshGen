@@ -1,6 +1,6 @@
 import heapq
 import matplotlib.pyplot as plt
-from geometry_info import calculate_distance
+from geom_toolkit import calculate_distance
 from basic_elements import NodeElement
 from utils.timer import TimeSpan
 

@@ -8,7 +8,7 @@ import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
-import geometry_info as geo_info
+import geom_toolkit as geom_tool
 from basic_elements import Triangle
 
 
@@ -91,7 +91,7 @@ class TestTriangle(unittest.TestCase):
     def test_float_number(self):
         """测试浮点数"""
         self.assertTrue(
-            geo_info.triangle_intersect_triangle(
+            geom_tool.triangle_intersect_triangle(
                 (-4.99, -4.85),
                 (-5.98, -4.85),
                 (-5.14, -5.00),  # 三角形1
@@ -158,21 +158,21 @@ def test_minimum_distance_between_segments(self):
     A, B = (0, 0), (2, 2)
     C, D = (1, 1), (3, 3)
     self.assertAlmostEqual(
-        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        geom_tool.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
     )
 
     # 案例2：平行线段
     A, B = (0, 0), (1, 0)
     C, D = (2, 0), (3, 0)
     self.assertAlmostEqual(
-        geo_info.min_distance_between_segments(A, B, C, D), 1.0, delta=1e-6
+        geom_tool.min_distance_between_segments(A, B, C, D), 1.0, delta=1e-6
     )
 
     # 案例3：线段垂直相交
     A, B = (0, 0), (2, 0)
     C, D = (1, 1), (1, -1)
     self.assertAlmostEqual(
-        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        geom_tool.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
     )
 
     # 案例4：浮点数精度测试
@@ -181,7 +181,7 @@ def test_minimum_distance_between_segments(self):
     C = [-5.14, -4.00]
     D = [-5.14, -5.00]
     self.assertAlmostEqual(
-        geo_info.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
+        geom_tool.min_distance_between_segments(A, B, C, D), 0.0, delta=1e-6
     )
 
 
@@ -193,7 +193,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (0, 0)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 0.0, delta=1e-6)
 
     def test_point_at_segment_end(self):
@@ -201,7 +201,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (2, 0)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 0.0, delta=1e-6)
 
     def test_point_projection_inside_segment(self):
@@ -209,7 +209,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (1, 1)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 1.0, delta=1e-6)
 
     def test_point_projection_beyond_start(self):
@@ -217,7 +217,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (-1, 0)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 1.0, delta=1e-6)
 
     def test_point_projection_beyond_end(self):
@@ -225,7 +225,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (3, 0)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 1.0, delta=1e-6)
 
     def test_horizontal_segment(self):
@@ -233,7 +233,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (1, 1)
         seg_start = (0, 0)
         seg_end = (2, 0)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 1.0, delta=1e-6)
 
     def test_vertical_segment(self):
@@ -241,7 +241,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (1, 1)
         seg_start = (0, 0)
         seg_end = (0, 2)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         self.assertAlmostEqual(distance, 1.0, delta=1e-6)
 
     def test_diagonal_segment_with_external_point(self):
@@ -249,7 +249,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
         point = (0, 1)
         seg_start = (0, 0)
         seg_end = (1, 1)
-        distance = geo_info.point_to_segment_distance(point, seg_start, seg_end)
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
         expected = sqrt(2) / 2
         print(f"Expected distance: {expected}")
         self.assertAlmostEqual(distance, expected, delta=1e-6)
@@ -262,31 +262,31 @@ class TestSegmentIntersection(unittest.TestCase):
         """测试平行线段不相交"""
         a1, a2 = (0, 0), (2, 0)
         b1, b2 = (0, 1), (2, 1)
-        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+        self.assertFalse(geom_tool.segments_intersect(a1, a2, b1, b2))
 
     def test_collinear_overlap(self):
         """测试共线重叠线段"""
         a1, a2 = (0, 0), (2, 0)
         b1, b2 = (1, 0), (3, 0)
-        self.assertTrue(geo_info.segments_intersect(a1, a2, b1, b2))
+        self.assertTrue(geom_tool.segments_intersect(a1, a2, b1, b2))
 
     def test_intersecting_at_midpoint(self):
         """测试线段中点相交"""
         a1, a2 = (0, 0), (2, 2)
         b1, b2 = (0, 2), (2, 0)
-        self.assertTrue(geo_info.segments_intersect(a1, a2, b1, b2))
+        self.assertTrue(geom_tool.segments_intersect(a1, a2, b1, b2))
 
     def test_touching_endpoints(self):
         """测试端点接触，共用端点，不相交"""
         a1, a2 = (0, 0), (1, 1)
         b1, b2 = (1, 1), (2, 2)
-        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+        self.assertFalse(geom_tool.segments_intersect(a1, a2, b1, b2))
 
     def test_epsilon_precision(self):
         """测试浮点精度边界情况，共用端点，不相交"""
         a1, a2 = (0.000001, 0), (0, 0.000001)
         b1, b2 = (0, 0), (0.000001, 0)
-        self.assertFalse(geo_info.segments_intersect(a1, a2, b1, b2))
+        self.assertFalse(geom_tool.segments_intersect(a1, a2, b1, b2))
 
 
 class TestPointEquality(unittest.TestCase):
@@ -296,19 +296,19 @@ class TestPointEquality(unittest.TestCase):
         """测试完全相同点"""
         p1 = (1.234567, 5.678901)
         p2 = (1.234567, 5.678901)
-        self.assertTrue(geo_info.points_equal(p1, p2))
+        self.assertTrue(geom_tool.points_equal(p1, p2))
 
     def test_epsilon_range(self):
         """测试epsilon范围内视为相等"""
         p1 = (1.0, 2.0)
         p2 = (1.0 + 1e-7, 2.0 - 1e-7)
-        self.assertTrue(geo_info.points_equal(p1, p2))
+        self.assertTrue(geom_tool.points_equal(p1, p2))
 
     def test_exceed_epsilon(self):
         """测试超出epsilon范围"""
         p1 = (1.0, 2.0)
         p2 = (1.0 + 2e-6, 2.0 - 2e-6)
-        self.assertFalse(geo_info.points_equal(p1, p2))
+        self.assertFalse(geom_tool.points_equal(p1, p2))
 
     def test_different_coordinates(self):
         """测试不同坐标组合"""
@@ -319,7 +319,7 @@ class TestPointEquality(unittest.TestCase):
         ]
         for p1, p2 in cases:
             with self.subTest(p1=p1, p2=p2):
-                self.assertFalse(geo_info.points_equal(p1, p2))
+                self.assertFalse(geom_tool.points_equal(p1, p2))
 
 
 class TestQuadrilateral(unittest.TestCase):
@@ -327,15 +327,15 @@ class TestQuadrilateral(unittest.TestCase):
         """测试基本四边形形状面积"""
         # 使用subTest分隔测试案例
         with self.subTest("矩形"):
-            area = geo_info.quadrilateral_area([0, 0], [2, 0], [2, 3], [0, 3])
+            area = geom_tool.quadrilateral_area([0, 0], [2, 0], [2, 3], [0, 3])
             self.assertAlmostEqual(area, 6.0, delta=1e-6)
 
         with self.subTest("平行四边形"):
-            area = geo_info.quadrilateral_area([0, 0], [2, 0], [3, 2], [1, 2])
+            area = geom_tool.quadrilateral_area([0, 0], [2, 0], [3, 2], [1, 2])
             self.assertAlmostEqual(area, 4.0, delta=1e-6)
 
         with self.subTest("梯形"):
-            area = geo_info.quadrilateral_area([0, 0], [4, 0], [3, 3], [1, 3])
+            area = geom_tool.quadrilateral_area([0, 0], [4, 0], [3, 3], [1, 3])
             self.assertAlmostEqual(area, 9.0, delta=1e-6)
 
     def test_quadrilateral_area_special_cases(self):
@@ -349,12 +349,12 @@ class TestQuadrilateral(unittest.TestCase):
         for desc, points, expected in test_cases:
             with self.subTest(desc):
                 p1, p2, p3, p4 = points
-                area = geo_info.quadrilateral_area(p1, p2, p3, p4)
+                area = geom_tool.quadrilateral_area(p1, p2, p3, p4)
                 self.assertAlmostEqual(area, expected, delta=1e-6)
 
     def test_quadrilateral_area_floating_point(self):
         """测试浮点数精度"""
-        area = geo_info.quadrilateral_area(
+        area = geom_tool.quadrilateral_area(
             [0.1, 0.2], [2.3, 0.4], [2.5, 3.6], [0.7, 3.8]
         )
         # 使用numpy计算精确值
@@ -368,8 +368,8 @@ class TestQuadrilateral(unittest.TestCase):
         points_clockwise = [[0, 0], [2, 0], [2, 3], [0, 3]]
         points_counter = [[0, 0], [0, 3], [2, 3], [2, 0]]
 
-        area1 = geo_info.quadrilateral_area(*points_clockwise)
-        area2 = geo_info.quadrilateral_area(*points_counter)
+        area1 = geom_tool.quadrilateral_area(*points_clockwise)
+        area2 = geom_tool.quadrilateral_area(*points_counter)
         self.assertAlmostEqual(abs(area1), abs(area2), delta=1e-10)
 
 

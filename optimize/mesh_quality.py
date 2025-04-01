@@ -4,9 +4,9 @@
 def calculate_triangle_twist(triangle):
     """计算三角形的扭曲度"""
     p1, p2, p3 = triangle.p1, triangle.p2, triangle.p3
-    a = geo_info.calculate_distance(p1, p2)
-    b = geo_info.calculate_distance(p2, p3)
-    c = geo_info.calculate_distance(p3, p1)
+    a = geom_tool.calculate_distance(p1, p2)
+    b = geom_tool.calculate_distance(p2, p3)
+    c = geom_tool.calculate_distance(p3, p1)
     s = (a + b + c) / 2
     area = math.sqrt(s * (s - a) * (s - b) * (s - c))
     return 4 * area / (a * b * c)

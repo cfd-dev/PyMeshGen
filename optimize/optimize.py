@@ -1,6 +1,6 @@
 import numpy as np
 from itertools import combinations
-import geometry_info as geo_info
+import geom_toolkit as geom_tool
 from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from basic_elements import Triangle
@@ -50,13 +50,13 @@ def edge_swap(unstr_grid):
             c, d = other_points
 
             # 凸性检查
-            if not geo_info.is_convex(a, b, c, d, node_coords):
+            if not geom_tool.is_convex(a, b, c, d, node_coords):
                 continue
 
             # 计算交换前的最小角
             current_min = min(
-                geo_info.calculate_min_angle(cell1, node_coords),
-                geo_info.calculate_min_angle(cell2, node_coords),
+                geom_tool.calculate_min_angle(cell1, node_coords),
+                geom_tool.calculate_min_angle(cell2, node_coords),
             )
 
             # 交换后的单元
@@ -64,26 +64,26 @@ def edge_swap(unstr_grid):
             swapped_cell2 = [b, c, d]
 
             # 确保构成的单元节点逆时针
-            if not geo_info.is_left2d(node_coords[a], node_coords[c], node_coords[d]):
+            if not geom_tool.is_left2d(node_coords[a], node_coords[c], node_coords[d]):
                 swapped_cell1 = [d, c, a]
-            if not geo_info.is_left2d(node_coords[b], node_coords[c], node_coords[d]):
+            if not geom_tool.is_left2d(node_coords[b], node_coords[c], node_coords[d]):
                 swapped_cell2 = [d, c, b]
 
             # 有效性检查
             if not (
-                geo_info.is_valid_triangle(swapped_cell1, node_coords)
-                and geo_info.is_valid_triangle(swapped_cell2, node_coords)
+                geom_tool.is_valid_triangle(swapped_cell1, node_coords)
+                and geom_tool.is_valid_triangle(swapped_cell2, node_coords)
             ):
                 continue
 
             # 计算交换后的最小角
             swapped_min = min(
-                geo_info.calculate_min_angle(swapped_cell1, node_coords),
-                geo_info.calculate_min_angle(swapped_cell2, node_coords),
+                geom_tool.calculate_min_angle(swapped_cell1, node_coords),
+                geom_tool.calculate_min_angle(swapped_cell2, node_coords),
             )
 
             # 凸性检查
-            if not geo_info.is_convex(c, d, a, b, node_coords):
+            if not geom_tool.is_convex(c, d, a, b, node_coords):
                 continue
 
             # 交换条件：最小角优化且不创建新边界边

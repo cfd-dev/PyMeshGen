@@ -19,7 +19,7 @@ class TestCalculateTriangleTwist(unittest.TestCase):
         self.triangle.p3 = (0.5, math.sqrt(3) / 2)
 
         # 模拟geo_info的calculate_distance方法
-        self.patcher = patch("geo_info.calculate_distance")
+        self.patcher = patch("geom_tool.calculate_distance")
         self.mock_calculate = self.patcher.start()
         self.mock_calculate.side_effect = lambda p1, p2: math.dist(p1, p2)
 

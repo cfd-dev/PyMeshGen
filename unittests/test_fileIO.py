@@ -6,7 +6,7 @@ sys.path.append(str(Path(__file__).parent.parent / "fileIO"))
 sys.path.append(str(Path(__file__).parent / "utils"))
 from read_cas import parse_fluent_msh
 from vtk_io import parse_vtk_msh
-from geometry_info import Unstructured_Grid, Triangle, Quadrilateral
+from geom_toolkit import Unstructured_Grid, Triangle, Quadrilateral
 
 
 class TestCASParser(unittest.TestCase):

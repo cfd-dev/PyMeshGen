@@ -2,7 +2,7 @@ import numpy as np
 from math import pi, sqrt
 import heapq
 
-from geometry_info import (
+from geom_toolkit import (
     min_distance_between_segments,
     segments_intersect,
     is_left2d,
