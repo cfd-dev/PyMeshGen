@@ -273,7 +273,7 @@ def is_valid_triangle(cell, node_coords):
     return area > 1e-10
 
 
-# 检查两点是否重合 TODO:epsilon取值对实际问题的影响
+# 检查两点是否重合 TODO: epsilon取值对实际问题的影响
 def points_equal(p1, p2, epsilon=1e-6):
     return abs(p1[0] - p2[0]) < epsilon and abs(p1[1] - p2[1]) < epsilon
 

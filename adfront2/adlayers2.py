@@ -45,7 +45,7 @@ class Adlayers2:
         self.current_part = None  # 当前推进部件
         self.current_step_size = 0  # 当前推进步长
 
-        self.al = 3.0  # TODO 邻近检查候选阵面搜索范围系数
+        self.al = 3.0  # TODO: 邻近检查候选阵面搜索范围系数
         self.space_index = None  # 空间索引
         self.space_grid_size = None  # Cartesian查询网格尺寸
         self.front_dict = {}  # 阵面id字典，用于快速查找
@@ -228,7 +228,7 @@ class Adlayers2:
         # 单元大小、长宽比、full_layer判断早停
         cell_size = new_cell.get_element_size()
         isotropic_size = self.sizing_system.spacing_at(front.center)
-        # TODO 限制调整头部和尾部的单元size：[1.2-1.5]
+        # TODO: 限制调整头部和尾部的单元size：[1.2-1.5]
         size_factor = 1.3
         size_condition = cell_size > size_factor * isotropic_size
 
@@ -248,7 +248,7 @@ class Adlayers2:
 
     def proximity_checker(self, front, check_fronts):
         # 预计算安全距离
-        # TODO safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
+        # TODO: safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
         safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
         safe_distance_sq = safe_distance * safe_distance  # 使用平方距离避免开方
 
@@ -294,7 +294,7 @@ class Adlayers2:
 
     def proximity_checker_with_cartesian_index(self, front, check_fronts):
         # 预计算安全距离
-        # TODO safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
+        # TODO: safe_distance暂时取为当前推进步长的0.5倍，后续可考虑调整优化
         safe_distance = 0.5 * min(n.marching_distance for n in front.node_elems)
         safe_distance_sq = safe_distance * safe_distance  # 使用平方距离避免开方
 
@@ -561,7 +561,7 @@ class Adlayers2:
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # TODO 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
+            # TODO: 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
             if front1.bc_type == "interior":
                 node_elem.marching_direction = tuple(normal2)
                 # node_elem.marching_direction = tuple(front2.direction)

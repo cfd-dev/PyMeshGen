@@ -2,7 +2,7 @@
     "debug_level": 0,
     "input_file": "./config/input/quad.cas",
     "output_file": "./out/quad.vtk",
-    "viz_enabled": false,
+    "viz_enabled": true,
     "parts": [
         {
             "name": "wall",
