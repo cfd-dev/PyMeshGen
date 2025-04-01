@@ -77,7 +77,7 @@ class PartMeshParameters:
         self,
         name,
         max_size=1.0,
-        PRISM_SWITCH=False,
+        PRISM_SWITCH="off",
         first_height=0.1,
         max_layers=3,
         full_layers=0,

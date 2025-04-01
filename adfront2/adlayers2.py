@@ -75,7 +75,7 @@ class Adlayers2:
         timer = TimeSpan("开始生成边界层网格...")
         num_parts = len(self.part_params)
         for i, part in enumerate(self.part_params):
-            if not part.PRISM_SWITCH:
+            if part.PRISM_SWITCH != "wall":
                 continue
 
             # 将部件参数设置为当前推进参数

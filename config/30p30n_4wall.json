@@ -7,7 +7,7 @@
         {
             "name": "farfield",
             "max_size": 2.0,
-            "PRISM_SWITCH": true,
+            "PRISM_SWITCH": "wall",
             "first_height": 0.01,
             "max_layers": 5,
             "full_layers": 5,
@@ -16,7 +16,7 @@
         {
             "name": "wall1",
             "max_size": 2.0,
-            "PRISM_SWITCH": true,
+            "PRISM_SWITCH": "wall",
             "first_height": 1e-4,
             "max_layers": 10,
             "full_layers": 5,
@@ -25,7 +25,7 @@
         {
             "name": "wall2",
             "max_size": 2.0,
-            "PRISM_SWITCH": true,
+            "PRISM_SWITCH": "wall",
             "first_height": 1e-5,
             "max_layers": 60,
             "full_layers": 5,
@@ -34,7 +34,7 @@
         {
             "name": "wall3",
             "max_size": 2.0,
-            "PRISM_SWITCH": true,
+            "PRISM_SWITCH": "wall",
             "first_height": 1e-4,
             "max_layers": 10,
             "full_layers": 5,

@@ -7,7 +7,7 @@
         {
             "name": "farfield",
             "max_size": 2.0,
-            "PRISM_SWITCH": false,
+            "PRISM_SWITCH": "off",
             "first_height": 0.1,
             "max_layers": 5,
             "full_layers": 5,
@@ -16,7 +16,7 @@
         {
             "name": "wall",
             "max_size": 2.0,
-            "PRISM_SWITCH": true,
+            "PRISM_SWITCH": "wall",
             "first_height": 0.1,
             "max_layers": 5,
             "full_layers": 5,
