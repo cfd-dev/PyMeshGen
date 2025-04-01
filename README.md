@@ -26,7 +26,7 @@ An open-source unstructured mesh generator for CFD/FEA analysis, providing user-
 pip install -r requirements.txt
 
 # Generate sample mesh
-python PyMeshGen.py
+python PyMeshGen.py --case "./config/30p30n.json"
 ```
 
 ## Contact

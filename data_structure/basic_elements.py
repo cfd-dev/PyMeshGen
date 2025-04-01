@@ -1,5 +1,6 @@
 import numpy as np
 from math import sqrt
+import matplotlib.pyplot as plt
 from vtk_io import write_vtk, VTK_ELEMENT_TYPE
 from geometry_info import (
     calculate_distance,

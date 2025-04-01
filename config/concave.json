@@ -2,6 +2,7 @@
     "debug_level": 0,
     "input_file": "./config/input/concave.cas",
     "output_file": "./out/concave.vtk",
+    "viz_enabled": true,
     "parts": [
         {
             "name": "wall",

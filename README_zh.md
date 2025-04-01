@@ -26,7 +26,7 @@
 pip install -r requirements.txt
 
 # 生成示例网格
-python PyMeshGen.py
+python PyMeshGen.py --case "./config/30p30n.json"
 ```
 
 ## 开发团队

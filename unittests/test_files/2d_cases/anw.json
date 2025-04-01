@@ -2,7 +2,7 @@
     "debug_level": 0,
     "input_file": "./unittests/test_files/2d_cases/anw.cas",
     "output_file": "./unittests/test_files/2d_cases/test_outputs/test_anw_output.vtk",
-    "viz_enabled": false,
+    "viz_enabled": true,
     "parts": [
         {
             "name": "farfield",

@@ -2,6 +2,7 @@
     "debug_level": 0,
     "input_file": "./config/input/quad_quad.cas",
     "output_file": "./out/quad_quad.vtk",
+    "viz_enabled": true,
     "parts": [
         {
             "name": "farfield",

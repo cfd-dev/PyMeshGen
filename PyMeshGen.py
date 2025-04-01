@@ -25,8 +25,8 @@ def PyMeshGen(parameters=None):
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
     # 建立参数管理对象
-    if parameters is None:
-        parameters = Parameters("FROM_MAIN_JSON")
+    # if parameters is None:
+    #     parameters = Parameters("FROM_MAIN_JSON")
 
     # 建立可视化对象
     visual_obj = Visualization(parameters.viz_enabled)
@@ -95,5 +95,24 @@ def PyMeshGen(parameters=None):
 
 
 if __name__ == "__main__":
-    PyMeshGen()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="PyMeshGen 非结构网格生成器")
+    parser.add_argument(
+        "--case",
+        type=str,
+        default="",
+        help="算例文件路径 (默认: 空)",
+    )
+    args = parser.parse_args()
+
+    # 创建参数对象并应用命令行参数
+    params = (
+        Parameters("FROM_CASE_JSON", args.case)
+        if args.case
+        else Parameters("FROM_MAIN_JSON")
+    )
+
+    PyMeshGen(params)
+
     input("Press Enter to continue...")
