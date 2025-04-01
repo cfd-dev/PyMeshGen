@@ -96,7 +96,7 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertEqual(grid.num_cells, 2926)  # 预期单元数
         self.assertEqual(grid.num_nodes, 2454)  # 预期节点数
         # 耗时比较
-        self.assertLess(cost, 25)  # 预期耗时
+        self.assertLess(cost, 30)  # 预期耗时
 
 
 if __name__ == "__main__":

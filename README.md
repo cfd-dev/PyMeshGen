@@ -3,15 +3,15 @@
 ![Mesh Example](./docs/images/demo_mesh.png)
 
 ## Project Overview
-An open-source unstructured mesh generator for CFD/FEA analysis, providing user-friendly 2D mesh generation solutions.
+An open-source python-based unstructured mesh generator(PyMeshGen) for CFD/FEA analysis, providing user-friendly 2D mesh generation solutions.
 
 ## Project：
 - Nianhua Wang，nianhuawong@qq.com
-- 
+
 ## Key Features
 - **Input/Output**
   - Import Fluent `.cas` format
-  - Export VTK visualization format
+  - Export VTK visualization `.vtk` format
 - **Core Algorithms**
   - 2D Advancing Front Method
   - Boundary Layer Advancing Technique
