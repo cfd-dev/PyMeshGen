@@ -631,6 +631,7 @@ class Adlayers2:
 
     def laplacian_smooth_normals(self):
         """拉普拉斯平滑节点推进方向"""
+        # FIXME: 边界层推进方向不够光滑，待检查debug
         verbose("节点推进方向光滑....")
         for node_elem in self.front_node_list:
             num_neighbors = len(node_elem.node2node)
