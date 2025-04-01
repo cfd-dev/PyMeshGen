@@ -1,7 +1,7 @@
 import numpy as np
 from itertools import combinations
 import geometry_info as geo_info
-from timer import TimeSpan
+from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from basic_elements import Triangle
 

@@ -15,7 +15,7 @@ from basic_elements import (
 )
 from front2d import Front
 from message import info, debug, verbose, warning
-from timer import TimeSpan
+from utils.timer import TimeSpan
 from rtree_space import (
     build_space_index_with_RTree,
     add_elems_to_space_index_with_RTree,

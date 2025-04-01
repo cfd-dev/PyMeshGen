@@ -17,7 +17,7 @@ from optimize import edge_swap, laplacian_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters
-from timer import TimeSpan
+from utils.timer import TimeSpan
 
 
 def PyMeshGen(parameters=None):

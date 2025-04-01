@@ -2,7 +2,7 @@ import heapq
 import matplotlib.pyplot as plt
 from geometry_info import calculate_distance
 from basic_elements import NodeElement
-from timer import TimeSpan
+from utils.timer import TimeSpan
 
 
 # 使用__slots__减少内存占用

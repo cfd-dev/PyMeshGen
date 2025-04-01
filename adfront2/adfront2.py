@@ -7,7 +7,7 @@ from geometry_info import (
 )
 from front2d import Front
 from basic_elements import NodeElement, Triangle, Unstructured_Grid, LineSegment
-from timer import TimeSpan
+from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from rtree_space import (
     build_space_index_with_RTree,
