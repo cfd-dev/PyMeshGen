@@ -1,8 +1,5 @@
 import json
-import sys
 from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent / "utils"))
 from message import set_debug_level
 
 

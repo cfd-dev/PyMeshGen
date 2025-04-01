@@ -1,10 +1,6 @@
 from math import log
 import math
 import matplotlib.pyplot as plt
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent / "utils"))
 from timer import TimeSpan
 from message import info, debug, verbose
 

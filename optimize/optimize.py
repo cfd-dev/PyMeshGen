@@ -1,12 +1,9 @@
 import numpy as np
 from itertools import combinations
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
 import geometry_info as geo_info
 from timer import TimeSpan
 from message import info, debug, verbose, warning, error
+from basic_elements import Triangle
 
 
 def edge_swap(unstr_grid):
@@ -96,14 +93,14 @@ def edge_swap(unstr_grid):
             ):
                 # 执行交换
                 # 创建新的Triangle对象
-                new_cell1 = geo_info.Triangle(
+                new_cell1 = Triangle(
                     node_coords[swapped_cell1[0]],
                     node_coords[swapped_cell1[1]],
                     node_coords[swapped_cell1[2]],
                     cell1.idx,
                     node_ids=swapped_cell1,
                 )
-                new_cell2 = geo_info.Triangle(
+                new_cell2 = Triangle(
                     node_coords[swapped_cell2[0]],
                     node_coords[swapped_cell2[1]],
                     node_coords[swapped_cell2[2]],

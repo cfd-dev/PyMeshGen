@@ -7,7 +7,9 @@ from math import sqrt
 import numpy as np
 
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
+sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
 import geometry_info as geo_info
+from basic_elements import Triangle
 
 
 class TestTriangle(unittest.TestCase):
@@ -35,50 +37,50 @@ class TestTriangle(unittest.TestCase):
 
     def test_initialization(self):
         """测试三角形初始化及边界框计算"""
-        tri = geo_info.Triangle((0, 0), (2, 0), (1, 2))
+        tri = Triangle((0, 0), (2, 0), (1, 2))
         self.assertEqual(tri.bbox, [0, 0, 2, 2])
 
     def test_area_calculation(self):
         """测试三角形面积计算"""
-        tri = geo_info.Triangle((0, 0), (2, 0), (1, 3))
+        tri = Triangle((0, 0), (2, 0), (1, 3))
         tri.init_metrics()
         self.assertAlmostEqual(tri.area, 3.0, delta=1e-6)
 
     def test_non_intersecting_triangles(self):
         """测试不相交的三角形"""
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
-        tri2 = geo_info.Triangle((3, 3), (5, 3), (4, 5))
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))
+        tri2 = Triangle((3, 3), (5, 3), (4, 5))
         self.assertFalse(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
     def test_edge_intersection(self):
         """测试边相交的三角形"""
         fig, ax = plt.subplots(figsize=(8, 6))
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
-        tri2 = geo_info.Triangle((1, 1), (3, 1), (2, 3))
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))
+        tri2 = Triangle((1, 1), (3, 1), (2, 3))
         self.assertTrue(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
     def test_containment_intersection(self):
         """测试包含关系的三角形"""
-        tri1 = geo_info.Triangle((0, 0), (4, 0), (2, 4))
-        tri2 = geo_info.Triangle((1, 1), (3, 1), (2, 2))
+        tri1 = Triangle((0, 0), (4, 0), (2, 4))
+        tri2 = Triangle((1, 1), (3, 1), (2, 2))
         self.assertTrue(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
     def test_shared_edge_no_intersection(self):
         """测试共享边但不相交的情况"""
         # 共享边 (0,0)-(2,0) 的情况
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))  # 原三角形
-        tri2 = geo_info.Triangle((0, 0), (2, 0), (1, -1))  # 共享底边，第三个顶点在下方
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))  # 原三角形
+        tri2 = Triangle((0, 0), (2, 0), (1, -1))  # 共享底边，第三个顶点在下方
         self.assertFalse(tri1.is_intersect(tri2))
 
-        tri1 = geo_info.Triangle(
+        tri1 = Triangle(
             (-0.62349, 0.781831),
             (0.222521, 0.974928),
             (-0.3971206125805886, 1.7398963243961139),
         )
-        tri2 = geo_info.Triangle(
+        tri2 = Triangle(
             (0.6836290115743794, 1.9818825590168105),
             (-0.397121, 1.739896),
             (0.222521, 0.974928),
@@ -101,52 +103,52 @@ class TestTriangle(unittest.TestCase):
 
     def test_vertex_touching(self):
         """测试顶点接触但不相交的情况"""
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
-        tri2 = geo_info.Triangle((1, 2), (3, 2), (2, 4))
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))
+        tri2 = Triangle((1, 2), (3, 2), (2, 4))
         self.assertFalse(tri1.is_intersect(tri2))
         # self.plot_triangle(tri1, tri2)
 
     def test_fully_contained(self):
         """测试一个三角形完全包含另一个三角形"""
-        tri1 = geo_info.Triangle((0, 0), (3, 0), (0, 3))
-        tri2 = geo_info.Triangle((1, 1), (2, 1), (1, 2))
+        tri1 = Triangle((0, 0), (3, 0), (0, 3))
+        tri2 = Triangle((1, 1), (2, 1), (1, 2))
         self.assertTrue(tri1.is_intersect(tri2))
 
     def test_vertex_on_edge(self):
         """测试顶点位于另一三角形的边上（非顶点）"""
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
-        tri2 = geo_info.Triangle((1, 0), (3, 1), (2, 3))
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))
+        tri2 = Triangle((1, 0), (3, 1), (2, 3))
         self.assertTrue(tri1.is_intersect(tri2))
 
     def test_edge_cross_middle(self):
         """测试边相交于中间点（非共边）"""
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 1))
-        tri2 = geo_info.Triangle((1, -1), (1, 1), (2, 2))
+        tri1 = Triangle((0, 0), (2, 0), (1, 1))
+        tri2 = Triangle((1, -1), (1, 1), (2, 2))
         self.assertTrue(tri1.is_intersect(tri2))
 
     def test_bounding_box_overlap_no_intersection(self):
         """测试边界框相交但三角形不相交"""
-        tri1 = geo_info.Triangle((0, 0), (3, 0), (0, 3))
-        tri2 = geo_info.Triangle((3, 3), (6, 3), (3, 6))
+        tri1 = Triangle((0, 0), (3, 0), (0, 3))
+        tri2 = Triangle((3, 3), (6, 3), (3, 6))
         self.assertFalse(tri1.is_intersect(tri2))
 
     def test_completely_overlapping(self):
         """测试完全重叠的三角形"""
-        tri1 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
-        tri2 = geo_info.Triangle((0, 0), (2, 0), (1, 2))
+        tri1 = Triangle((0, 0), (2, 0), (1, 2))
+        tri2 = Triangle((0, 0), (2, 0), (1, 2))
         self.assertFalse(tri1.is_intersect(tri2))
 
     def test_edge_intersection_at_vertex(self):
         """测试边相交于顶点但非共边的情况"""
-        tri1 = geo_info.Triangle((0, 0), (2, 2), (0, 2))
-        tri2 = geo_info.Triangle((2, 2), (3, 3), (1, 1))
+        tri1 = Triangle((0, 0), (2, 2), (0, 2))
+        tri2 = Triangle((2, 2), (3, 3), (1, 1))
         # self.plot_triangle(tri1, tri2)
         self.assertTrue(tri1.is_intersect(tri2))
 
     def test_edge_cross_other(self):
         """测试两条边在中间相交"""
-        tri1 = geo_info.Triangle((0, 0), (3, 0), (0, 3))
-        tri2 = geo_info.Triangle((1, 2), (2, -1), (4, 1))
+        tri1 = Triangle((0, 0), (3, 0), (0, 3))
+        tri2 = Triangle((1, 2), (2, -1), (4, 1))
         self.assertTrue(tri1.is_intersect(tri2))
 
 

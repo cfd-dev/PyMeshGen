@@ -1,10 +1,7 @@
 import heapq
 import matplotlib.pyplot as plt
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
-from geometry_info import NodeElement, calculate_distance
+from geometry_info import calculate_distance
+from basic_elements import NodeElement
 from timer import TimeSpan
 
 

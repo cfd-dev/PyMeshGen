@@ -1,8 +1,4 @@
 import re
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
 from timer import TimeSpan
 
 # Fluent网格类型定义

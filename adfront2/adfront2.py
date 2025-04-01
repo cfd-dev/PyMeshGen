@@ -1,13 +1,12 @@
 import heapq
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
-import geometry_info as geo_info
-import front2d
 import matplotlib.pyplot as plt
-from geometry_info import NodeElement, Unstructured_Grid
+from geometry_info import (
+    triangle_quality,
+    is_left2d,
+    calculate_distance2,
+)
+from front2d import Front
+from basic_elements import NodeElement, Triangle, Unstructured_Grid, LineSegment
 from timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from rtree_space import (
@@ -313,14 +312,14 @@ class Adfront2:
                 self.num_nodes += 1
 
         # 更新阵面
-        new_front1 = front2d.Front(
+        new_front1 = Front(
             self.base_front.node_elems[0],
             self.pselected,
             -1,
             "interior",
             "internal",
         )
-        new_front2 = front2d.Front(
+        new_front2 = Front(
             self.pselected,
             self.base_front.node_elems[1],
             -1,
@@ -352,7 +351,7 @@ class Adfront2:
         heapq.heapify(self.front_list)  # 重新堆化
 
         # 更新单元
-        new_cell = geo_info.Triangle(
+        new_cell = Triangle(
             self.base_front.node_elems[0],
             self.base_front.node_elems[1],
             self.pselected,
@@ -381,13 +380,13 @@ class Adfront2:
         scored_candidates = []
         # 遍历所有候选节点计算质量
         for node_elem in self.node_candidates:
-            quality = geo_info.triangle_quality(p0, p1, node_elem.coords)
+            quality = triangle_quality(p0, p1, node_elem.coords)
             if quality > 0:
                 scored_candidates.append((quality, node_elem))
 
         # 添加Pbest节点的质量（带折扣系数）
         pbest_quality = (
-            geo_info.triangle_quality(p0, p1, self.pbest.coords) * self.discount
+            triangle_quality(p0, p1, self.pbest.coords) * self.discount
             if self.pbest
             else 0
         )
@@ -401,7 +400,7 @@ class Adfront2:
         self.pselected = None
         self.best_flag = False
         for quality, node_elem in scored_candidates:
-            if not geo_info.is_left2d(p0, p1, node_elem.coords):
+            if not is_left2d(p0, p1, node_elem.coords):
                 continue
 
             if self.is_cross(node_elem):
@@ -432,15 +431,15 @@ class Adfront2:
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
 
-        line1 = geo_info.LineSegment(node_elem, p0)
-        line2 = geo_info.LineSegment(node_elem, p1)
+        line1 = LineSegment(node_elem, p0)
+        line2 = LineSegment(node_elem, p1)
 
         for front in self.front_candidates:
-            front_line = geo_info.LineSegment(front.node_elems[0], front.node_elems[1])
+            front_line = LineSegment(front.node_elems[0], front.node_elems[1])
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
 
-        cell_to_add = geo_info.Triangle(node_elem, p0, p1)
+        cell_to_add = Triangle(node_elem, p0, p1)
 
         for tri_cell in self.cell_candidates:
             if len(tri_cell.node_ids) != 3:
@@ -488,7 +487,7 @@ class Adfront2:
                     continue
 
                 node_coord = node_elem.coords
-                if geo_info.calculate_distance2(point, node_coord) <= radius2:
+                if calculate_distance2(point, node_coord) <= radius2:
                     self.node_candidates.append(node_elem)
                     seen_nodes.add(node_hash)
 

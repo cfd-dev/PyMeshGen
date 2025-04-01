@@ -1,19 +1,17 @@
 import numpy as np
 from math import pi, sqrt
-import sys
-from pathlib import Path
 import heapq
 
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
-sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
 from geometry_info import (
+    min_distance_between_segments,
+    segments_intersect,
+    is_left2d,
+)
+from basic_elements import (
     NodeElement,
     NodeElementALM,
     Quadrilateral,
     Unstructured_Grid,
-    min_distance_between_segments,
-    segments_intersect,
-    is_left2d,
 )
 from front2d import Front
 from message import info, debug, verbose, warning

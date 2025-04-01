@@ -1,8 +1,4 @@
 import numpy as np
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent / "utils"))
 from enum import IntEnum
 from message import info
 
@@ -174,7 +170,7 @@ def read_vtk(filename):
 def reconstruct_mesh_from_vtk(
     node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
 ):
-    from geometry_info import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
+    from basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
 
     num_nodes = len(node_coords)
     num_cells = len(cell_idx_container)
