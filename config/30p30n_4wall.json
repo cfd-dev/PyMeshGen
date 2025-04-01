@@ -1,0 +1,44 @@
+{
+    "debug_level": 0,
+    "input_file": "./config/input/30p30n-4walls.cas",
+    "output_file": "./out/30p30n-4walls.vtk",
+    "viz_enabled": true,
+    "parts": [
+        {
+            "name": "farfield",
+            "max_size": 2.0,
+            "PRISM_SWITCH": true,
+            "first_height": 0.01,
+            "max_layers": 5,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "name": "wall1",
+            "max_size": 2.0,
+            "PRISM_SWITCH": true,
+            "first_height": 1e-4,
+            "max_layers": 10,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "name": "wall2",
+            "max_size": 2.0,
+            "PRISM_SWITCH": true,
+            "first_height": 1e-5,
+            "max_layers": 60,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "name": "wall3",
+            "max_size": 2.0,
+            "PRISM_SWITCH": true,
+            "first_height": 1e-4,
+            "max_layers": 10,
+            "full_layers": 5,
+            "multi_direction": false
+        }
+    ]
+}

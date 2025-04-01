@@ -73,7 +73,8 @@ class Adlayers2:
     def generate_elements(self):
         """生成边界层网格"""
         timer = TimeSpan("开始生成边界层网格...")
-        for part in self.part_params:
+        num_parts = len(self.part_params)
+        for i, part in enumerate(self.part_params):
             if not part.PRISM_SWITCH:
                 continue
 
@@ -83,11 +84,14 @@ class Adlayers2:
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
             self.num_prism_cap = len(part.front_list)
+            self.ilayer = 0
 
             info(f"开始生成{part.name}的边界层网格...\n")
             while self.ilayer < self.max_layers and self.num_prism_cap > 0:
 
-                info(f"第{self.ilayer + 1}层推进中...")
+                info(
+                    f"第{i+1}/{num_parts}个部件[{part.name}]：第{self.ilayer + 1}层推进中..."
+                )
 
                 self.prepare_geometry_info()
 
@@ -99,7 +103,9 @@ class Adlayers2:
 
                 self.show_progress()
 
-                timer.show_to_console(f"第{self.ilayer + 1}层推进完成.")
+                timer.show_to_console(
+                    f"第{i}/{num_parts}个部件[{part.name}]：第{self.ilayer + 1}层推进完成."
+                )
 
                 self.ilayer += 1
 
