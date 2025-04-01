@@ -4,13 +4,14 @@
 - [x] 基础数据结构`[data_structure]`：阵面、单元、网格、参数 ✔️ 2025.03
 - [x] 基础几何工具算法`geom_toolkit`：相交、距离、面积/质量 ✔️ 2025.03
 - [x] 辅助查询空间索引`rtree_space`: rtree、cartesian空间索引 ✔️ 2025.03
-- [x] 常用辅助工具`message`, `timer`：消息、计时 ✔️ 2025.03
+- [x] 常用辅助工具`[utils]`、`message`、 `timer`：消息、计时 ✔️ 2025.03
 - [x] 基础2D阵面推进`adfront2` ✔️ 2025.03
 - [x] 基础2D边界层层推进`adlayers2` ✔️ 2025.03
 - [x] quadtree网格尺寸控制`meshsize` ✔️ 2025.03
 - [x] 2D三角形网格质量优化`optimize`：EdgeSwap+Laplacian光滑 ✔️ 2025.03
 - [x] 2D`.vtk`网格导入导出`vtk_io` ✔️ 2025.03
 - [x] `.cas`网格导入`read_cas` ✔️ 2025.03
+- [x] 网格可视化`[visualization]` ✔️ 2025.03
 - [x] 单元测试用例`[unittests]` ✔️ 2025.03
 - [x] 支持多部件边界层网格生成 ✔️ 2025.04
 - [ ] 边界层网格与其他边界的match匹配
