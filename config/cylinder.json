@@ -5,7 +5,7 @@
     "viz_enabled": true,
     "parts": [
         {
-            "name": "farfield",
+            "part_name": "farfield",
             "max_size": 2.0,
             "PRISM_SWITCH": "off",
             "first_height": 0.1,
@@ -14,7 +14,7 @@
             "multi_direction": false
         },
         {
-            "name": "wall",
+            "part_name": "wall",
             "max_size": 2.0,
             "PRISM_SWITCH": "wall",
             "first_height": 0.1,

@@ -15,15 +15,15 @@ from geom_toolkit import (
 
 
 class NodeElement:
-    def __init__(self, coords, idx, bc_type=None):
-        self.coords = coords
+    def __init__(self, coords, idx, part_name=None, bc_type=None):
+        self.coords = coords.tolist() if isinstance(coords, tuple) else coords
         self.idx = idx
+        self.part_name = part_name
+        self.bc_type = bc_type
 
         # 使用处理后的坐标生成哈希
         # 此处注意！！！hash(-1.0)和hash(-2.0)的结果是一样的！！！因此必须使用字符串
         self.hash = hash(tuple(f"{coord:.6f}" for coord in coords))
-
-        self.bc_type = bc_type
 
         self.bbox = [
             min(self.coords[0], self.coords[0]),
@@ -44,7 +44,15 @@ class NodeElement:
 
 # 继承自NodeElement，用于存储额外的信息
 class NodeElementALM(NodeElement):  # 添加父类继承
-    def __init__(self, coords, idx, bc_type=None, convex_flag=False, concav_flag=False):
+    def __init__(
+        self,
+        coords,
+        idx,
+        bc_type=None,
+        match_bound=None,
+        convex_flag=False,
+        concav_flag=False,
+    ):
         super().__init__(coords, idx, bc_type)  # 调用父类构造函数
         self.node2front = []  # 节点关联的阵面列表
         self.node2node = []  # 节点关联的节点列表
@@ -56,6 +64,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self.num_multi_direction = 1  # 节点处的多方向数量
         self.local_step_factor = 1.0  # 节点处的局部步长因子
         self.corresponding_node = None  # 节点的对应节点
+        self.matching_boundary = match_bound  # 节点所属的match边界
 
     @classmethod
     def from_existing_node(cls, node_elem):
@@ -92,7 +101,7 @@ class LineSegment:
 
 
 class Triangle:
-    def __init__(self, p1, p2, p3, idx=None, node_ids=None):
+    def __init__(self, p1, p2, p3, part_name=None, idx=None, node_ids=None):
         if (
             isinstance(p1, NodeElement)
             and isinstance(p2, NodeElement)
@@ -108,6 +117,7 @@ class Triangle:
             self.p3 = p3
             self.node_ids = node_ids
 
+        self.part_name = part_name
         self.idx = idx
         # 生成几何级哈希
         coord_hash = hash(
@@ -161,7 +171,7 @@ class Triangle:
 
 
 class Quadrilateral:
-    def __init__(self, p1, p2, p3, p4, idx=None, node_ids=None):
+    def __init__(self, p1, p2, p3, p4, part_name=None, idx=None, node_ids=None):
         if (
             isinstance(p1, NodeElement)
             and isinstance(p2, NodeElement)
@@ -180,7 +190,9 @@ class Quadrilateral:
             self.p4 = p4
             self.node_ids = node_ids
 
+        self.part_name = part_name
         self.idx = idx
+
         # 生成几何级哈希
         coord_hash = hash(
             (
@@ -453,3 +465,17 @@ class Unstructured_Grid:
             self.boundary_nodes_list,
             cell_type_container,
         )
+
+
+class Connector:
+    def __init__(self, part_name, curve_name, cad_obj=None):
+        self.part_name = part_name
+        self.curve_name = curve_name
+        self.cad_obj = cad_obj
+        self.front_list = []
+
+
+class Part:
+    def __init__(self, part_params, conns):
+        self.part_params = part_params
+        self.conns = conns
