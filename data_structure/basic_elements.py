@@ -468,14 +468,20 @@ class Unstructured_Grid:
 
 
 class Connector:
-    def __init__(self, part_name, curve_name, cad_obj=None):
-        self.part_name = part_name
-        self.curve_name = curve_name
-        self.cad_obj = cad_obj
-        self.front_list = []
+    """曲线对象，包含曲线的几何对象、网格生成参数和所属部件名称，以及曲线网格本身"""
+
+    def __init__(self, part_name, curve_name, param, cad_obj=None):
+        self.part_name = part_name  # 部件名称
+        self.curve_name = curve_name  # 曲线名称
+        self.cad_obj = cad_obj  # 绑定的几何对象，预留给CAD引擎
+        self.param = param  # 面网格生成参数
+        self.front_list = []  # 曲线网格
 
 
 class Part:
+    """部件对象，包含网格生成参数和所有曲线对象"""
+
     def __init__(self, part_params, conns):
-        self.part_params = part_params
-        self.conns = conns
+        self.part_params = part_params  # 部件级网格生成参数
+        self.conns = conns  # 部件所包含的曲线对象
+        # 后续可扩展部件包含的曲面对象等等
