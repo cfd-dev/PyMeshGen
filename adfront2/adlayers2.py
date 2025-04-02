@@ -1082,21 +1082,16 @@ class Adlayers2:
         verbose("计算物面几何信息..., Done.\n")
 
     def match_parts_with_fronts(self):
-        """匹配部件和初始阵面"""
+        """匹配初始阵面到曲线对象connector中"""
+        # 所有阵面列表均按照part_name存储到connectors中
+        # TODO 后续几何引擎做好之后要改为按照几何curve与connector一一对应的方式
+        # 每一条curve对应一条connector
         for front in self.initial_front_list:
             for part in self.part_params:
-                # 优先以curve_name进行匹配，如果curve_name为空，则使用part_name进行匹配
-                if (
-                    part.curve_name
-                    and part.curve_name == front.part_name
-                    or part.part_name == front.part_name
-                ):
-                    part.front_list.append(front)
+                for conn in part.connectors:
+                    if conn.curve_name == front.part_name:
+                        conn.front_list.append(front)
                     break
-
-                # if part.part_name == front.part_name:
-                #     part.front_list.append(front)
-                #     break
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""
