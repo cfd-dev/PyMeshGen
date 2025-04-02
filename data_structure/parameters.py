@@ -24,8 +24,38 @@ class Parameters:
         self.load_cofig()
         set_debug_level(self.debug_level)
 
-    # 配置文件读取函数
-    def load_cofig(self):
+    def check_main_fields(self, config):
+        required_fields = [
+            "debug_level",
+            "input_file",
+            "output_file",
+            "parts",
+            "viz_enabled",
+        ]
+
+        for field in required_fields:
+            if field not in config:
+                raise ValueError(f"配置文件中缺少必要字段: {field}")
+
+    def check_part_fields(self, part):
+        # TODO 部件必须参数视情况添加
+        required_fields = [
+            "part_name",
+            # "max_size",
+            # "PRISM_SWITCH",
+            # "first_height",
+            # "growth_rate",
+            # "growth_method",
+            # "max_layers",
+            # "full_layers",
+            # "multi_direction",
+        ]
+
+        for field in required_fields:
+            if field not in part:
+                raise ValueError(f"配置文件中缺少必要字段: {field}")
+
+    def open_config_file(self):
         # 第一种方式，从main.json读取案例配置文件路径
         if self.get_param_from == "FROM_MAIN_JSON":
             self.json_file = Path(__file__).parent.parent / "config/main.json"
@@ -39,17 +69,14 @@ class Parameters:
         with open(self.case_file, "r") as f2:
             config = json.load(f2)
 
+        return config
+
+    def load_cofig(self):
+        """加载配置文件"""
+        config = self.open_config_file()
+
         # 必要字段校验
-        required_fields = [
-            "debug_level",
-            "input_file",
-            "output_file",
-            "parts",
-            "viz_enabled",
-        ]
-        for field in required_fields:
-            if field not in config:
-                raise ValueError(f"配置文件中缺少必要字段: {field}")
+        self.check_main_fields(config)
 
         self.debug_level = config["debug_level"]
         self.input_file = config["input_file"]
@@ -71,13 +98,10 @@ class Parameters:
 
     def _create_part_params(self, params):
         """创建部件参数对象（支持单curve和多curve模式）"""
-        required_fields = [
-            "part_name",
-        ]
-        for field in required_fields:
-            if field not in params:
-                raise ValueError(f"配置文件中缺少必要字段: {field}")
 
+        self.check_part_fields(params)  # 校验必要字段
+
+        # 处理部件参数，优先使用part参数，如果没有定义，则使用默认值
         part_param = MeshParameters(
             part_name=params["part_name"],
             max_size=params.get("max_size", 1.0),
@@ -90,6 +114,7 @@ class Parameters:
             multi_direction=params.get("multi_direction", False),
         )
 
+        # 处理curve定义
         connectors = []
         if "curves" in params:
             for curve in params["curves"]:
@@ -144,7 +169,6 @@ class MeshParameters:
         max_layers=3,
         full_layers=0,
         multi_direction=False,
-        curve_name=None,
     ):
         self.part_name = part_name  # 部件名称
         self.max_size = max_size  # 最大网格尺寸
@@ -155,5 +179,3 @@ class MeshParameters:
         self.growth_rate = growth_rate  # 网格高度增长比例
         self.growth_method = growth_method  # 网格高度增长方法
         self.multi_direction = multi_direction  # 是否多方向推进
-        self.front_list = []  # 阵面列表
-        self.curve_name = curve_name  # 曲线名称
