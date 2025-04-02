@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from message import set_debug_level
+from basic_elements import Connector, Part
 
 
 class Parameters:
@@ -59,12 +60,12 @@ class Parameters:
         for part in config["parts"]:
             # 处理包含多曲线定义的部件
             if "curves" in part:
-                # 提取公共参数（排除curves字段）
-                base_params = {k: v for k, v in part.items() if k != "curves"}
-                # 为每个curve创建独立参数对象
-                for curve in part["curves"]:
-                    merged_params = {**base_params, **curve}
-                    self._create_part_params(merged_params)
+                # 创建单个部件对象并添加所有curves
+                merged_params = {
+                    **{k: v for k, v in part.items() if k != "curves"},
+                    "curves": part["curves"],  # 保留所有curve定义
+                }
+                self._create_part_params(merged_params)
             else:
                 self._create_part_params(part)
 
@@ -72,30 +73,65 @@ class Parameters:
         """创建部件参数对象（支持单curve和多curve模式）"""
         required_fields = [
             "part_name",
-            "PRISM_SWITCH",
         ]
         for field in required_fields:
             if field not in params:
                 raise ValueError(f"配置文件中缺少必要字段: {field}")
 
-        self.part_params.append(
-            PartMeshParameters(
+        part_param = MeshParameters(
+            part_name=params["part_name"],
+            max_size=params.get("max_size", 1.0),
+            PRISM_SWITCH=params.get("PRISM_SWITCH", "off"),
+            first_height=params.get("first_height", 0.1),
+            growth_rate=params.get("growth_rate", 1.2),
+            growth_method=params.get("growth_method", "geometric"),
+            max_layers=params.get("max_layers", 3),
+            full_layers=params.get("full_layers", 0),
+            multi_direction=params.get("multi_direction", False),
+        )
+
+        connectors = []
+        if "curves" in params:
+            for curve in params["curves"]:
+                # 对于每个curve，优先使用自己的参数，如果自己没有定义参数，则使用部件参数
+                curve_param = MeshParameters(
+                    part_name=params["part_name"],
+                    max_size=curve.get("max_size", part_param.max_size),
+                    PRISM_SWITCH=curve.get("PRISM_SWITCH", part_param.PRISM_SWITCH),
+                    first_height=curve.get("first_height", part_param.first_height),
+                    growth_rate=curve.get("growth_rate", part_param.growth_rate),
+                    growth_method=curve.get("growth_method", part_param.growth_method),
+                    max_layers=curve.get("max_layers", part_param.max_layers),
+                    full_layers=curve.get("full_layers", part_param.full_layers),
+                    multi_direction=curve.get(
+                        "multi_direction", part_param.multi_direction
+                    ),
+                )
+
+                connectors.append(
+                    Connector(
+                        part_name=params["part_name"],
+                        curve_name=curve.get("curve_name"),
+                        param=curve_param,
+                    )
+                )
+
+        # 对于每个part自动创建一个other线对象（connector），
+        # 用于收集未明确定义参数的曲线，或者不存在curve定义的情况
+        connectors.append(
+            Connector(
                 part_name=params["part_name"],
-                max_size=params.get("max_size", 1.0),
-                PRISM_SWITCH=params.get("PRISM_SWITCH", "off"),
-                first_height=params.get("first_height", 0.1),
-                growth_rate=params.get("growth_rate", 1.2),
-                growth_method=params.get("growth_method", "geometric"),
-                max_layers=params.get("max_layers", 3),
-                full_layers=params.get("full_layers", 0),
-                multi_direction=params.get("multi_direction", False),
-                curve_name=params.get("curve_name", ""),
+                curve_name="other",
+                param=part_param,
             )
         )
 
+        current_part = Part(part_param, connectors)
+        self.part_params.append(current_part)
 
-class PartMeshParameters:
-    """网格生成部件参数"""
+
+class MeshParameters:
+    """网格生成参数"""
 
     def __init__(
         self,

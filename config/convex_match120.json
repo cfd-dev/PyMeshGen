@@ -7,7 +7,16 @@
         {
             "part_name": "farfield",
             "max_size": 2.0,
-            "PRISM_SWITCH": "off"
+            "curves": [
+                {
+                    "curve_name": "match1",
+                    "PRISM_SWITCH": "match"
+                },
+                {
+                    "curve_name": "match2",
+                    "PRISM_SWITCH": "match"
+                }
+            ]
         },
         {
             "part_name": "wall",
@@ -17,19 +26,8 @@
             "growth_rate": 1.2,
             "max_layers": 5,
             "full_layers": 5,
-            "multi_direction": false
-        },
-        {
-            "part_name": "farfield",
-            "PRISM_SWITCH": "match",
-            "curves": [
-                {
-                    "curve_name": "match1"
-                },
-                {
-                    "curve_name": "match2"
-                }
-            ]
+            "multi_direction": false,
+            "curves": []
         }
     ]
 }
