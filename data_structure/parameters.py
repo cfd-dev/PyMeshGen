@@ -57,17 +57,41 @@ class Parameters:
 
         self.part_params = []
         for part in config["parts"]:
-            self.part_params.append(
-                PartMeshParameters(
-                    name=part["name"],
-                    max_size=part["max_size"],
-                    PRISM_SWITCH=part["PRISM_SWITCH"],
-                    first_height=part["first_height"],
-                    max_layers=part["max_layers"],
-                    full_layers=part["full_layers"],
-                    multi_direction=part["multi_direction"],
-                )
+            # 处理包含多曲线定义的部件
+            if "curves" in part:
+                # 提取公共参数（排除curves字段）
+                base_params = {k: v for k, v in part.items() if k != "curves"}
+                # 为每个curve创建独立参数对象
+                for curve in part["curves"]:
+                    merged_params = {**base_params, **curve}
+                    self._create_part_params(merged_params)
+            else:
+                self._create_part_params(part)
+
+    def _create_part_params(self, params):
+        """创建部件参数对象（支持单curve和多curve模式）"""
+        required_fields = [
+            "part_name",
+            "PRISM_SWITCH",
+        ]
+        for field in required_fields:
+            if field not in params:
+                raise ValueError(f"配置文件中缺少必要字段: {field}")
+
+        self.part_params.append(
+            PartMeshParameters(
+                part_name=params["part_name"],
+                max_size=params.get("max_size", 1.0),
+                PRISM_SWITCH=params.get("PRISM_SWITCH", "off"),
+                first_height=params.get("first_height", 0.1),
+                growth_rate=params.get("growth_rate", 1.2),
+                growth_method=params.get("growth_method", "geometric"),
+                max_layers=params.get("max_layers", 3),
+                full_layers=params.get("full_layers", 0),
+                multi_direction=params.get("multi_direction", False),
+                curve_name=params.get("curve_name", ""),
             )
+        )
 
 
 class PartMeshParameters:
@@ -75,17 +99,18 @@ class PartMeshParameters:
 
     def __init__(
         self,
-        name,
+        part_name,
         max_size=1.0,
         PRISM_SWITCH="off",
         first_height=0.1,
-        max_layers=3,
-        full_layers=0,
         growth_rate=1.2,
         growth_method="geometric",
+        max_layers=3,
+        full_layers=0,
         multi_direction=False,
+        curve_name=None,
     ):
-        self.name = name  # 部件名称
+        self.part_name = part_name  # 部件名称
         self.max_size = max_size  # 最大网格尺寸
         self.PRISM_SWITCH = PRISM_SWITCH  # 是否生成边界层网格
         self.first_height = first_height  # 第一层网格高度
@@ -95,3 +120,4 @@ class PartMeshParameters:
         self.growth_method = growth_method  # 网格高度增长方法
         self.multi_direction = multi_direction  # 是否多方向推进
         self.front_list = []  # 阵面列表
+        self.curve_name = curve_name  # 曲线名称

@@ -1,5 +1,5 @@
 {
-    "case_file": "config/30p30n_4wall.json",
+    "case_file": "config/convex_match120.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",
@@ -11,6 +11,8 @@
         "config/convex.json",
         "config/cylinder.json",
         "config/30p30n.json",
-        "config/30p30n_4wall.json"
+        "config/30p30n_4wall.json",
+        "config/convex_match.json",
+		"config/convex_match120.json"
     ]
 }

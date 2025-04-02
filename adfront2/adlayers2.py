@@ -6,6 +6,7 @@ from geom_toolkit import (
     min_distance_between_segments,
     segments_intersect,
     is_left2d,
+    points_equal,
 )
 from basic_elements import (
     NodeElement,
@@ -66,9 +67,144 @@ class Adlayers2:
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
+        self.matching_boundaries = []  # match边界的信息
 
-        self.initialize_nodes()
         self.match_parts_with_fronts()
+        self.initialize_match_boundary()
+        self.reorder_node_index_and_front()
+
+    def initialize_match_boundary(self):
+        """初始化边界层match部件"""
+        num_wall_parts = 0
+        wall_part_idx = -1
+        for i, part in enumerate(self.part_params):
+            if part.PRISM_SWITCH == "wall":
+                num_wall_parts += 1
+                wall_part_idx = i
+                self.max_layers = part.max_layers
+                self.full_layers = part.full_layers
+                self.first_height = part.first_height
+                self.growth_method = part.growth_method
+                self.growth_rate = part.growth_rate
+
+        if num_wall_parts == 0:
+            raise ValueError("没有找到有效的边界层部件，请检查配置文件.")
+        elif num_wall_parts > 1:
+            raise ValueError("只支持match一个边界层部件，请检查配置文件.")
+
+        for part in self.part_params:
+            if part.PRISM_SWITCH != "match":
+                continue
+            self.rediscretize_part_to_match(part)
+
+            # 将match部件的front_list添加到wall部件的front_list中
+            self.part_params[wall_part_idx].front_list.extend(part.front_list)
+
+        # 删除part_params中的match部件
+        self.part_params = [
+            part for part in self.part_params if part.PRISM_SWITCH != "match"
+        ]
+
+        # 将"wall"部件放在前面，其他部件放在后面
+        self.part_params = [
+            part for part in self.part_params if part.PRISM_SWITCH == "wall"
+        ] + [part for part in self.part_params if part.PRISM_SWITCH != "wall"]
+
+    def rediscretize_part_to_match(self, part):
+        """将部件重新离散化以匹配边界层网格"""
+        # 暂时认为match部件均为直线，先求出front_list所代表的直线，再对直线重新离散化
+        # 如果有几何线的话，可以直接重新运行曲线离散程序，重新生成loop
+        # 收集所有端点坐标
+        all_points = []
+        old_diretion = part.front_list[0].direction
+        for front in part.front_list:
+            all_points.extend([front.node_elems[0].coords, front.node_elems[1].coords])
+
+        # 找到直线起点终点（任意方向）
+        points_array = np.array(all_points)
+        centroid = np.mean(points_array, axis=0)
+        _, _, v = np.linalg.svd(points_array - centroid)
+        direction_vector = v[0]  # 第一主成分方向
+
+        # 计算各点在主方向的投影
+        projections = np.dot(points_array - centroid, direction_vector)
+        start_idx = np.argmin(projections)
+        end_idx = np.argmax(projections)
+        start = points_array[start_idx]
+        end = points_array[end_idx]
+
+        # 验证共线性
+        vec = end - start
+        for p in points_array:
+            if np.linalg.norm(np.cross(p - start, vec)) > 1e-6:
+                raise ValueError("线段不共线，无法进行直线离散化")
+
+        # 找到起点和终点在front_list中对应的node_elem
+        # start_node = []
+        # end_node = []
+        # for front in part.front_list:
+        #     if np.array_equal(front.node_elems[0].coords, start):
+        #         start_node = front.node_elems[0]
+        #     if np.array_equal(front.node_elems[1].coords, start):
+        #         start_node = front.node_elems[1]
+        #     if np.array_equal(front.node_elems[0].coords, end):
+        #         end_node = front.node_elems[0]
+        #     if np.array_equal(front.node_elems[1].coords, end):
+        #         end_node = front.node_elems[1]
+
+        # 计算直线方向向量
+        direction_vector = end - start
+        total_length = np.linalg.norm(direction_vector)
+        if total_length < 1e-6:
+            raise ValueError("线段长度过小，无法进行离散化")
+        unit_vector = direction_vector / total_length
+
+        # 推进方向还是
+        match_bound = MatchingBoundary(None, None, unit_vector, part.curve_name)
+        self.matching_boundaries.append(match_bound)
+
+        # 生成几何增长离散点
+        discretized_points = [start]
+        cumulative = 0.0
+        ilayer = 0
+        while True:
+            step = self.first_height * (self.growth_rate**ilayer)
+            ilayer += 1
+            # 检查步长是否超出剩余长度
+            if cumulative + step > total_length:
+                break  # 提前终止循环
+
+            cumulative += step
+            new_point = start + unit_vector * cumulative
+            discretized_points.append(new_point)
+
+        # 确保最后一个点正好是终点（考虑浮点精度）
+        if np.linalg.norm(discretized_points[-1] - end) > 1e-3:
+            discretized_points.append(end)
+
+        # 创建新front列表
+        bc_type = part.front_list[0].bc_type
+        part.front_list = []
+        for i in range(0, len(discretized_points) - 1):
+            # 转换为tuple保持坐标类型一致
+            p1 = discretized_points[i].tolist()
+            p2 = discretized_points[i + 1].tolist()
+
+            node1 = NodeElementALM(
+                coords=p1, idx=-1, bc_type=bc_type, match_bound=match_bound
+            )
+            node2 = NodeElementALM(
+                coords=p2, idx=-1, bc_type=bc_type, match_bound=match_bound
+            )
+
+            # if i == 0:
+            #     node1 = start_node
+            # elif i == len(discretized_points) - 2:
+            #     node2 = end_node
+            if np.dot(unit_vector, old_diretion) < 0:
+                part.front_list.append(Front(node2, node1, -1, bc_type, part.part_name))
+            else:
+                part.front_list.append(Front(node1, node2, -1, bc_type, part.part_name))
 
     def generate_elements(self):
         """生成边界层网格"""
@@ -80,17 +216,18 @@ class Adlayers2:
 
             # 将部件参数设置为当前推进参数
             self.current_part = part
+            self.first_height = part.first_height
             self.max_layers = part.max_layers
             self.full_layers = part.full_layers
             self.multi_direction = part.multi_direction
             self.num_prism_cap = len(part.front_list)
             self.ilayer = 0
 
-            info(f"开始生成{part.name}的边界层网格...\n")
+            info(f"开始生成{part.part_name}的边界层网格...\n")
             while self.ilayer < self.max_layers and self.num_prism_cap > 0:
 
                 info(
-                    f"第{i+1}/{num_parts}个部件[{part.name}]：第{self.ilayer + 1}层推进中..."
+                    f"第{i+1}/{num_parts}个部件[{part.part_name}]：第{self.ilayer + 1}层推进中..."
                 )
 
                 self.prepare_geometry_info()
@@ -104,7 +241,7 @@ class Adlayers2:
                 self.show_progress()
 
                 timer.show_to_console(
-                    f"第{i}/{num_parts}个部件[{part.name}]：第{self.ilayer + 1}层推进完成."
+                    f"第{i}/{num_parts}个部件[{part.part_name}]：第{self.ilayer + 1}层推进完成."
                 )
 
                 self.ilayer += 1
@@ -164,15 +301,33 @@ class Adlayers2:
                     * node_elem.marching_distance
                 )
 
-                # 创建临时新节点元素
-                new_node_elem = NodeElementALM(
-                    coords=new_node.tolist(),
-                    idx=temp_num_nodes,
-                    bc_type="interior",
+                # 查询是否已经有已有合适点
+                search_radius = self.al * node_elem.marching_distance
+                candidates = get_candidate_elements_id(
+                    front, self.space_index, search_radius
                 )
 
-                temp_num_nodes += 1
-                new_node_generated[i] = new_node_elem
+                existed = False
+                for f_id in candidates:
+                    candidate = self.front_dict.get(f_id)
+                    for node_tmp in candidate.node_elems:
+                        if points_equal(node_tmp.coords, new_node.tolist(), 1e-3):
+                            new_node_elem = node_tmp
+                            existed = True
+                            break
+                    if existed:
+                        break
+
+                if not existed:
+                    # 创建临时新节点元素
+                    new_node_elem = NodeElementALM(
+                        coords=new_node.tolist(),
+                        idx=temp_num_nodes,
+                        bc_type="interior",
+                    )
+                    temp_num_nodes += 1
+                    new_node_generated[i] = new_node_elem
+
                 new_cell_nodes.append(new_node_elem)
             else:
                 # 当前节点已经推进过了，找出其对应的新节点
@@ -184,21 +339,21 @@ class Adlayers2:
             new_cell_nodes[3],
             -1,
             "prism-cap",
-            self.current_part.name,
+            self.current_part.part_name,
         )
         new_front1 = Front(
             new_cell_nodes[0],
             new_cell_nodes[2],
             -1,
             "interior",
-            self.current_part.name,
+            self.current_part.part_name,
         )
         new_front2 = Front(
             new_cell_nodes[3],
             new_cell_nodes[1],
             -1,
             "interior",
-            self.current_part.name,
+            self.current_part.part_name,
         )
 
         # if front.node_ids == (7, 5) or front.node_ids == (5, 6):
@@ -424,15 +579,25 @@ class Adlayers2:
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
         # 逐个阵面进行推进
         num_old_prism_cap = 0  # 当前层early stop的prism-cap数量
+
         for front in self.current_part.front_list:
-            if front.bc_type == "interior":
+            if front.bc_type != "wall" and front.bc_type != "prism-cap":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
+
+        for front in self.current_part.front_list:
+            # if front.bc_type == "interior" or front.bc_type == "pressure-far-field":
+            # new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
+            # continue
+            if front.bc_type != "wall" and front.bc_type != "prism-cap":
                 continue
 
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 num_old_prism_cap += 1
                 continue
+
+            if front.node_ids == [50, 60]:
+                print("debug")
 
             (
                 new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
@@ -499,10 +664,26 @@ class Adlayers2:
         for front in self.current_part.front_list:
             # 计算节点推进距离
             for node in front.node_elems:
+                if node.idx == 23:
+                    print("debug")
+
                 node.marching_distance = self.current_step_size
+
+                if node.bc_type != "wall" and node.bc_type != "prism-cap":
+                    continue
+
                 front1, front2 = node.node2front[:2]
 
                 # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
+                # proj1 = np.dot(node.marching_direction, front1.normal)
+                # proj2 = np.dot(node.marching_direction, front2.normal)
+
+                if not (
+                    (front1.bc_type == "wall" or front1.bc_type == "prism-cap")
+                    and (front2.bc_type == "wall" or front2.bc_type == "prism-cap")
+                ):
+                    continue
+
                 proj1 = np.dot(node.marching_direction, front1.normal)
                 proj2 = np.dot(node.marching_direction, front2.normal)
 
@@ -530,6 +711,8 @@ class Adlayers2:
             return
 
         for node in self.front_node_list:
+            if node.matching_boundary is not None:
+                continue
             # 绘制front_node_list
             self.ax.plot(
                 [node.coords[0]],
@@ -557,7 +740,11 @@ class Adlayers2:
         verbose("计算节点初始推进方向...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
+                # raise ValueError("节点必须连接至少2个阵面！")
                 continue
+
+            if node_elem.idx == 50 or node_elem.idx == 38:
+                print("debug")
 
             # 对于凸角点，在此不计算，也不光滑
             if len(node_elem.marching_direction) > 1:
@@ -567,17 +754,26 @@ class Adlayers2:
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # TODO: 应对节点只有一侧有流向阵面，另一侧是法向阵面的情况
-            if front1.bc_type == "interior":
-                node_elem.marching_direction = tuple(normal2)
-                # node_elem.marching_direction = tuple(front2.direction)
+            # TODO: 应对节点只有一侧有流向阵面，另一侧是法向阵面或其他边界阵面的情况
+            # front1是其他阵面，而front2是流向阵面
+            if (front1.bc_type != "wall" and front1.bc_type != "prism-cap") and (
+                front2.bc_type == "wall" or front2.bc_type == "prism-cap"
+            ):
+                node_elem.marching_direction = normal2
                 continue
                 # normal1 = np.array(front2.direction)
-            elif front2.bc_type == "interior":
-                node_elem.marching_direction = tuple(normal1)
-                # node_elem.marching_direction = tuple(front1.direction)
+            # front2是其他阵面，而front1是流向阵面
+            elif (front2.bc_type != "wall" and front2.bc_type != "prism-cap") and (
+                front1.bc_type == "wall" or front1.bc_type == "prism-cap"
+            ):
+                node_elem.marching_direction = normal1
                 continue
                 # normal2 = np.array(front1.direction)
+            elif (front2.bc_type != "wall" and front2.bc_type != "prism-cap") and (
+                front1.bc_type != "wall" and front1.bc_type != "prism-cap"
+            ):
+                warning(f"节点{node_elem.idx}2个相邻阵面为其他阵面！")
+                continue
 
             # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0
@@ -638,10 +834,16 @@ class Adlayers2:
             if num_neighbors < 2:
                 continue
 
+            if node_elem.idx == 35 or node_elem.idx == 38:
+                print("debug")
             iteration = 0
             while iteration < self.smooth_iterions:
                 summation = np.zeros_like(np.array(node_elem.marching_direction))
                 for neighbor in node_elem.node2node:
+                    if neighbor.matching_boundary:
+                        neighbor.marching_direction = (
+                            neighbor.matching_boundary.direction_vector
+                        )
                     summation += np.array(neighbor.marching_direction)
 
                 new_direction = (1 - self.relax_factor) * np.array(
@@ -663,15 +865,32 @@ class Adlayers2:
 
         self.laplacian_smooth_normals()
 
-    def initialize_nodes(self):
+    def reorder_node_index_and_front(self):
         """初始化节点"""
+        node_count = 0
         processed_nodes = set()
-        for front in self.initial_front_list:
-            for node_elem in front.node_elems:
-                if node_elem.hash not in processed_nodes:
-                    self.boundary_nodes.append(node_elem)
-                    self.node_coords.append(node_elem.coords)
-                    processed_nodes.add(node_elem.hash)
+        hash_idx_map = {}  # 节点hash值到节点索引的映射
+        self.all_boundary_fronts = []
+        for part in self.part_params:
+            self.all_boundary_fronts.extend(part.front_list)
+
+            for front in part.front_list:
+                front.node_ids = []
+                for node_elem in front.node_elems:
+                    if node_elem.idx == 28 or node_elem.idx == 14:
+                        print("debug")
+
+                    if node_elem.hash not in processed_nodes:
+                        node_elem.idx = node_count
+                        hash_idx_map[node_elem.hash] = node_elem.idx
+                        self.boundary_nodes.append(node_elem)
+                        self.node_coords.append(node_elem.coords)
+                        processed_nodes.add(node_elem.hash)
+                        node_count += 1
+                    else:
+                        node_elem.idx = hash_idx_map[node_elem.hash]
+
+                    front.node_ids.append(node_elem.idx)
 
         self.num_nodes = len(self.node_coords)
 
@@ -738,9 +957,18 @@ class Adlayers2:
         verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
+                # raise ValueError(f"节点{node_elem.idx}的邻接阵面数量小于2！")
                 continue
 
             front1, front2 = node_elem.node2front[:2]
+
+            # 只有当相邻阵面为wall或者prism-cap类型才需要计算凹凸角信息
+            if not (
+                (front1.bc_type == "wall" or front1.bc_type == "prism-cap")
+                and (front2.bc_type == "wall" or front2.bc_type == "prism-cap")
+            ):
+                continue
+
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
             # 计算夹角（0-180度）
@@ -800,9 +1028,18 @@ class Adlayers2:
 
     def build_front_rtree(self):
         verbose("构建辅助查询R-Tree...")
+        # self.front_dict, self.space_index = build_space_index_with_RTree(
+        #     self.current_part.front_list
+        # )
+
+        self.all_boundary_fronts = []
+        for part in self.part_params:
+            self.all_boundary_fronts.extend(part.front_list)
+
         self.front_dict, self.space_index = build_space_index_with_RTree(
-            self.current_part.front_list
+            self.all_boundary_fronts
         )
+
         verbose(f"R树索引构建完成，包含{len(self.front_dict)}个阵面")
 
     def build_front_cartesian_space_index(self):
@@ -848,9 +1085,18 @@ class Adlayers2:
         """匹配部件和初始阵面"""
         for front in self.initial_front_list:
             for part in self.part_params:
-                if part.name == front.part_name:
+                # 优先以curve_name进行匹配，如果curve_name为空，则使用part_name进行匹配
+                if (
+                    part.curve_name
+                    and part.curve_name == front.part_name
+                    or part.part_name == front.part_name
+                ):
                     part.front_list.append(front)
                     break
+
+                # if part.part_name == front.part_name:
+                #     part.front_list.append(front)
+                #     break
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""
@@ -875,3 +1121,19 @@ class Adlayers2:
             front2.draw_front("m--", self.ax, linewidth=2)
             mid_point = (np.array(front1.center) + np.array(front2.center)) / 2
             self.ax.text(mid_point[0], mid_point[1], "X", color="red", fontsize=14)
+
+
+class MatchingBoundary:
+    def __init__(self, start_node, end_node, direction_vector, part_name):
+        self.start_node = start_node
+        self.end_node = end_node
+        self.part_name = part_name
+
+        if direction_vector is None:
+            self.direction_vector = np.array(end_node.coords) - np.array(
+                start_node.coords
+            )
+            self.direction_vector /= np.linalg.norm(self.direction_vector)
+            self.direction_vector = self.direction_vector.tolist()
+        else:
+            self.direction_vector = direction_vector

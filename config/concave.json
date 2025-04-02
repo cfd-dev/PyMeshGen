@@ -5,7 +5,7 @@
     "viz_enabled": true,
     "parts": [
         {
-            "name": "wall",
+            "part_name": "wall",
             "max_size": 2.0,
             "PRISM_SWITCH": "wall",
             "first_height": 0.1,
