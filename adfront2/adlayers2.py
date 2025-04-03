@@ -82,16 +82,11 @@ class Adlayers2:
     def initialize_match_boundary(self):
         """初始化边界层match部件"""
         num_wall_parts = 0
-        wall_part_idx = -1
-        for i, part in enumerate(self.part_params):
-            if part.PRISM_SWITCH == "wall":
+        matched_wall_part = []
+        for part in self.part_params:
+            if part.part_params.PRISM_SWITCH == "wall":
                 num_wall_parts += 1
-                wall_part_idx = i
-                self.max_layers = part.max_layers
-                self.full_layers = part.full_layers
-                self.first_height = part.first_height
-                self.growth_method = part.growth_method
-                self.growth_rate = part.growth_rate
+                matched_wall_part = part
 
         if num_wall_parts == 0:
             raise ValueError("没有找到有效的边界层部件，请检查配置文件.")
@@ -99,125 +94,30 @@ class Adlayers2:
             raise ValueError("只支持match一个边界层部件，请检查配置文件.")
 
         for part in self.part_params:
-            if part.PRISM_SWITCH != "match":
-                continue
-            self.rediscretize_part_to_match(part)
+            for conn in part.connectors:
+                if conn.param.PRISM_SWITCH == "match":  
+                    conn.rediscretize_conn_to_match_wall(matched_wall_part)
 
-            # 将match部件的front_list添加到wall部件的front_list中
-            self.part_params[wall_part_idx].front_list.extend(part.front_list)
+        #     # 将match部件的front_list添加到wall部件的front_list中
+        #     self.part_params[match_wall_part_idx].front_list.extend(part.front_list)
 
-        # 删除part_params中的match部件
-        self.part_params = [
-            part for part in self.part_params if part.PRISM_SWITCH != "match"
-        ]
+        # # 删除part_params中的match部件
+        # self.part_params = [
+        #     part for part in self.part_params if part.PRISM_SWITCH != "match"
+        # ]
 
-        # 将"wall"部件放在前面，其他部件放在后面
-        self.part_params = [
-            part for part in self.part_params if part.PRISM_SWITCH == "wall"
-        ] + [part for part in self.part_params if part.PRISM_SWITCH != "wall"]
+        # # 将"wall"部件放在前面，其他部件放在后面
+        # self.part_params = [
+        #     part for part in self.part_params if part.PRISM_SWITCH == "wall"
+        # ] + [part for part in self.part_params if part.PRISM_SWITCH != "wall"]
 
-    def rediscretize_part_to_match(self, part):
-        """将部件重新离散化以匹配边界层网格"""
-        # 暂时认为match部件均为直线，先求出front_list所代表的直线，再对直线重新离散化
-        # 如果有几何线的话，可以直接重新运行曲线离散程序，重新生成loop
-        # 收集所有端点坐标
-        all_points = []
-        old_diretion = part.front_list[0].direction
-        for front in part.front_list:
-            all_points.extend([front.node_elems[0].coords, front.node_elems[1].coords])
-
-        # 找到直线起点终点（任意方向）
-        points_array = np.array(all_points)
-        centroid = np.mean(points_array, axis=0)
-        _, _, v = np.linalg.svd(points_array - centroid)
-        direction_vector = v[0]  # 第一主成分方向
-
-        # 计算各点在主方向的投影
-        projections = np.dot(points_array - centroid, direction_vector)
-        start_idx = np.argmin(projections)
-        end_idx = np.argmax(projections)
-        start = points_array[start_idx]
-        end = points_array[end_idx]
-
-        # 验证共线性
-        vec = end - start
-        for p in points_array:
-            if np.linalg.norm(np.cross(p - start, vec)) > 1e-6:
-                raise ValueError("线段不共线，无法进行直线离散化")
-
-        # 找到起点和终点在front_list中对应的node_elem
-        # start_node = []
-        # end_node = []
-        # for front in part.front_list:
-        #     if np.array_equal(front.node_elems[0].coords, start):
-        #         start_node = front.node_elems[0]
-        #     if np.array_equal(front.node_elems[1].coords, start):
-        #         start_node = front.node_elems[1]
-        #     if np.array_equal(front.node_elems[0].coords, end):
-        #         end_node = front.node_elems[0]
-        #     if np.array_equal(front.node_elems[1].coords, end):
-        #         end_node = front.node_elems[1]
-
-        # 计算直线方向向量
-        direction_vector = end - start
-        total_length = np.linalg.norm(direction_vector)
-        if total_length < 1e-6:
-            raise ValueError("线段长度过小，无法进行离散化")
-        unit_vector = direction_vector / total_length
-
-        # 推进方向还是
-        match_bound = MatchingBoundary(None, None, unit_vector, part.curve_name)
-        self.matching_boundaries.append(match_bound)
-
-        # 生成几何增长离散点
-        discretized_points = [start]
-        cumulative = 0.0
-        ilayer = 0
-        while True:
-            step = self.first_height * (self.growth_rate**ilayer)
-            ilayer += 1
-            # 检查步长是否超出剩余长度
-            if cumulative + step > total_length:
-                break  # 提前终止循环
-
-            cumulative += step
-            new_point = start + unit_vector * cumulative
-            discretized_points.append(new_point)
-
-        # 确保最后一个点正好是终点（考虑浮点精度）
-        if np.linalg.norm(discretized_points[-1] - end) > 1e-3:
-            discretized_points.append(end)
-
-        # 创建新front列表
-        bc_type = part.front_list[0].bc_type
-        part.front_list = []
-        for i in range(0, len(discretized_points) - 1):
-            # 转换为tuple保持坐标类型一致
-            p1 = discretized_points[i].tolist()
-            p2 = discretized_points[i + 1].tolist()
-
-            node1 = NodeElementALM(
-                coords=p1, idx=-1, bc_type=bc_type, match_bound=match_bound
-            )
-            node2 = NodeElementALM(
-                coords=p2, idx=-1, bc_type=bc_type, match_bound=match_bound
-            )
-
-            # if i == 0:
-            #     node1 = start_node
-            # elif i == len(discretized_points) - 2:
-            #     node2 = end_node
-            if np.dot(unit_vector, old_diretion) < 0:
-                part.front_list.append(Front(node2, node1, -1, bc_type, part.part_name))
-            else:
-                part.front_list.append(Front(node1, node2, -1, bc_type, part.part_name))
 
     def generate_elements(self):
         """生成边界层网格"""
         timer = TimeSpan("开始生成边界层网格...")
         num_parts = len(self.part_params)
         for i, part in enumerate(self.part_params):
-            if part.PRISM_SWITCH != "wall":
+            if part.part_params.PRISM_SWITCH != "wall":
                 continue
 
             # 将部件参数设置为当前推进参数
@@ -1114,16 +1014,16 @@ class Adlayers2:
 
 
 class MatchingBoundary:
-    def __init__(self, start_node, end_node, direction_vector, part_name):
+    def __init__(self, start_node, end_node, marching_vector, part_name):
         self.start_node = start_node
         self.end_node = end_node
         self.part_name = part_name
 
-        if direction_vector is None:
-            self.direction_vector = np.array(end_node.coords) - np.array(
+        if marching_vector is None:
+            self.marching_vector = np.array(end_node.coords) - np.array(
                 start_node.coords
             )
-            self.direction_vector /= np.linalg.norm(self.direction_vector)
-            self.direction_vector = self.direction_vector.tolist()
+            self.marching_vector /= np.linalg.norm(self.direction_vector)
+            self.marching_vector = self.marching_vector.tolist()
         else:
-            self.direction_vector = direction_vector
+            self.marching_vector = marching_vector

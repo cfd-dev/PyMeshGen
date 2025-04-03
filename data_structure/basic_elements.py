@@ -476,7 +476,147 @@ class Connector:
         self.cad_obj = cad_obj  # 绑定的几何对象，预留给CAD引擎
         self.param = param  # 面网格生成参数
         self.front_list = []  # 曲线网格
+    
+    @property
+    def start_point(self):
+        """通过端点统计获取拓扑起点"""
+        endpoints = []
+        for front in self.front_list:
+            endpoints.extend(front.node_elems)
+            
+        # 使用哈希值统计出现次数
+        count = {}
+        for p in endpoints:
+            count[p.hash] = count.get(p.hash, 0) + 1
+        
+        # 找出只出现一次的端点（拓扑端点）
+        endpoints = [p for p in endpoints if count[p.hash] % 2 != 0]
+        return endpoints[0] if endpoints else None
 
+    @property
+    def end_point(self):
+        """通过端点统计获取拓扑终点"""
+        endpoints = []
+        for front in self.front_list:
+            endpoints.extend(front.node_elems)
+            
+        count = {}
+        for p in endpoints:
+            count[p.hash] = count.get(p.hash, 0) + 1
+            
+        endpoints = [p for p in endpoints if count[p.hash] % 2 != 0]
+        return endpoints[-1] if len(endpoints)>=2 else None
+    
+    
+    def check_fronts_are_linear(self):  
+        """检查front_list中的所有front是否共线"""
+        all_points = []
+        for front in self.front_list:
+            all_points.extend([front.node_elems[0].coords, front.node_elems[1].coords])
+
+        # 找到直线起点终点（任意方向）
+        points_array = np.array(all_points)
+        centroid = np.mean(points_array, axis=0)
+        _, _, v = np.linalg.svd(points_array - centroid)
+        direction_vector = v[0]  
+
+        # 计算各点在主方向的投影
+        projections = np.dot(points_array - centroid, direction_vector)
+        start_idx = np.argmin(projections)
+        end_idx = np.argmax(projections)
+        start = points_array[start_idx]
+        end = points_array[end_idx]
+
+        # 验证共线性
+        vec = end - start
+        for p in points_array:
+            if np.linalg.norm(np.cross(p - start, vec)) > 1e-6:
+                raise ValueError("线段不共线，无法进行直线离散化")
+            
+    def rediscretize_conn_to_match_wall(self, wall_part):
+        from adlayers2 import MatchingBoundary
+        from front2d import Front
+        
+        """按照wall_part的边界层参数重新对当前connector进行离散化（暂时只考虑connector为直线）"""
+        # 检查conn中的front_list是否共线
+        self.check_fronts_are_linear()
+        
+        start = self.start_point
+        end = self.end_point
+        
+        # 真正的起点是与wall_part共点的点，找出该点
+        found = False
+        for front in wall_part.front_list:
+            # 如果start_point出现在front的两个端点中，则该端点为真正的起点
+            if (front.node_elems[0].hash == start.hash or 
+                front.node_elems[1].hash == start.hash 
+                ):
+                found = True
+                break
+            # 如果end_point出现在front的两个端点中，则该端点为真正的起点
+            elif (front.node_elems[0].hash == end.hash or
+                  front.node_elems[1].hash == end.hash
+                  ):
+                start, end = end, start
+                found = True
+                break
+            # 如果start_point和end_point都不在front的两个端点中，则该front不是边界层
+        
+        if not found:
+            raise ValueError("connector与wall_part不共点，无法进行匹配重离散！")
+            
+        marching_vector = np.array(end.coords) - np.array(start.coords)
+        total_length = np.linalg.norm(marching_vector)
+        if total_length < 1e-6:
+            raise ValueError("线段长度过小，无法进行离散化")
+        marching_vector /= total_length
+
+        match_bound = MatchingBoundary(start, end, marching_vector, self.curve_name)
+        # self.matching_boundaries.append(match_bound)
+                    
+        # 计算新的离散化参数
+        first_height = wall_part.part_params.first_height
+        growth_rate = wall_part.part_params.growth_rate
+        growth_method = wall_part.part_params.growth_method
+        max_layers = wall_part.part_params.max_layers
+
+        if growth_method != "geometric":
+            raise ValueError("目前只支持几何增长方法")
+        
+        # 生成几何增长离散点
+        discretized_points = [np.array(start.coords)]
+        cumulative = 0.0
+        ilayer = 0
+        while True:
+            step = first_height * (growth_rate**ilayer)
+            ilayer += 1
+            # 检查步长是否超出剩余长度
+            if cumulative + step > total_length:
+                break  # 提前终止循环
+
+            cumulative += step
+            new_point = np.array(start.coords) + marching_vector * cumulative
+            discretized_points.append(new_point)
+
+        # 确保最后一个点正好是终点（考虑浮点精度）
+        if np.linalg.norm(discretized_points[-1] - np.array(end.coords)) > 1e-3:
+            discretized_points.append(np.array(end.coords))        
+        
+        # 创建connector的新front_list
+        bc_type = self.front_list[0].bc_type
+        self.front_list = []
+        for i in range(0, len(discretized_points) - 1):
+            p1 = discretized_points[i].tolist()
+            p2 = discretized_points[i + 1].tolist()  
+            
+            node1 = NodeElementALM(
+                coords=p1, idx=-1, bc_type=bc_type, match_bound=match_bound
+            )
+            node2 = NodeElementALM(
+                coords=p2, idx=-1, bc_type=bc_type, match_bound=match_bound
+            )            
+            self.front_list.append(Front(node1, node2, -1, bc_type, self.part_name))      
+        return
 
 class Part:
     """部件对象，包含网格生成参数和所有曲线对象"""
@@ -509,3 +649,4 @@ class Part:
         """初始化part的front_list"""
         for conn in self.connectors:
             self.front_list.extend(conn.front_list)
+            
