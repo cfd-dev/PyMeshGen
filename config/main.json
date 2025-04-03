@@ -11,6 +11,10 @@
         "config/convex.json",
         "config/cylinder.json",
         "config/30p30n.json",
-        "config/30p30n_4wall.json"
+        "config/30p30n_4wall.json",
+        "config/convex_match90.json",
+		"config/concav_match90.json",
+		"config/convex_match120.json",
+		"config/concav_match120.json"
     ]
 }
