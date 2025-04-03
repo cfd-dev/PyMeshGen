@@ -479,18 +479,15 @@ class Adfront2:
         radius2 = self.search_radius * self.search_radius
         for front in possible_fronts:
             front_hash = front.hash
-            if front_hash in seen_fronts:
-                continue
             for node_elem in front.node_elems:
                 node_hash = node_elem.hash
-                if node_hash in seen_nodes:
-                    continue
-
                 node_coord = node_elem.coords
+                # 若节点在范围内，且没有处理过，则先将节点加入候选点列表，
+                # 同时节点所在的阵面也要加入候选阵面列表（如果没有被处理过的话）
                 if calculate_distance2(point, node_coord) <= radius2:
-                    self.node_candidates.append(node_elem)
-                    seen_nodes.add(node_hash)
-
+                    if node_hash not in seen_nodes:
+                        self.node_candidates.append(node_elem)
+                        seen_nodes.add(node_hash)
                     if front_hash not in seen_fronts:
                         self.front_candidates.append(front)
                         seen_fronts.add(front_hash)

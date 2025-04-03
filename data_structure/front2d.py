@@ -171,27 +171,37 @@ def process_initial_front(grid):
     return heap
 
 
-def construct_initial_front(grid):
-    """从网格数据中构造初始阵面，并按长度排序"""
-    timer = TimeSpan("构造初始阵面...")
-    front_heap = process_initial_front(grid)
-
+def reorder_node_index_and_front(front_list):
     # 重新计算节点索引,对初始阵面的节点重新编号
     node_count = 0
     node_hash_list = set()
     hash_idx_map = {}  # 节点hash值到节点索引的映射
-    for front in front_heap:
+    node_coords = []
+    boundary_nodes = []
+    for front in front_list:
         front.node_ids = []
         for node_elem in front.node_elems:
             if node_elem.hash not in node_hash_list:
                 node_elem.idx = node_count
                 hash_idx_map[node_elem.hash] = node_elem.idx
                 node_hash_list.add(node_elem.hash)
+                node_coords.append(node_elem.coords)
+                boundary_nodes.append(node_elem)
                 node_count += 1
             else:
                 node_elem.idx = hash_idx_map[node_elem.hash]
 
             front.node_ids.append(node_elem.idx)
+
+    return front_list, node_coords, boundary_nodes
+
+
+def construct_initial_front(grid):
+    """从网格数据中构造初始阵面，并按长度排序"""
+    timer = TimeSpan("构造初始阵面...")
+    front_heap = process_initial_front(grid)
+
+    # reorder_node_index_and_front(front_heap)
 
     timer.show_to_console("构造初始阵面..., Done.")
     return front_heap
