@@ -151,7 +151,7 @@ class Parameters:
             )
         )
 
-        current_part = Part(part_param, connectors)
+        current_part = Part(params["part_name"], part_param, connectors)
         self.part_params.append(current_part)
 
 

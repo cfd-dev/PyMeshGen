@@ -481,7 +481,31 @@ class Connector:
 class Part:
     """部件对象，包含网格生成参数和所有曲线对象"""
 
-    def __init__(self, part_params, connectors):
+    def __init__(self, part_name, part_params, connectors):
         self.part_params = part_params  # 部件级网格生成参数
         self.connectors = connectors  # 部件所包含的曲线对象
+        self.part_name = part_name  # 部件名称
+        self.front_list = []  # 部件的阵面列表=所有曲线的阵面列表
         # 后续可扩展部件包含的曲面对象等等
+        
+    def match_fronts_with_connectors(self, front_list):
+        """匹配初始阵面到曲线对象connector中"""
+        # TODO 后续几何引擎做好之后要改为按照几何curve与connector对应的方式
+        # 要将每个阵面归类到不同的connector中去，归类的依据是：
+        # 1. 优先按照curve_name匹配
+        # 2. 若没有匹配到curve_name，则放到对应part的最后一个默认connector中         
+        for conn in self.connectors:
+            for front in front_list:
+                # 如果curve_name不为"default"，则只匹配该名称的曲线
+                if conn.curve_name == front.part_name:
+                    conn.front_list.append(front)
+                        
+                # 如果curve_name为"default"，则将阵面归类到与conn同一个part中去
+                if conn.curve_name == "default" and front.part_name == conn.part_name:
+                    conn.front_list.append(front)
+        
+        
+    def init_part_front_list(self):
+        """初始化part的front_list"""
+        for conn in self.connectors:
+            self.front_list.extend(conn.front_list)
