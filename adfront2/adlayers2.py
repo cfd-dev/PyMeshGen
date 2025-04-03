@@ -98,19 +98,6 @@ class Adlayers2:
                 if conn.param.PRISM_SWITCH == "match":  
                     conn.rediscretize_conn_to_match_wall(matched_wall_part)
 
-        #     # 将match部件的front_list添加到wall部件的front_list中
-        #     self.part_params[match_wall_part_idx].front_list.extend(part.front_list)
-
-        # # 删除part_params中的match部件
-        # self.part_params = [
-        #     part for part in self.part_params if part.PRISM_SWITCH != "match"
-        # ]
-
-        # # 将"wall"部件放在前面，其他部件放在后面
-        # self.part_params = [
-        #     part for part in self.part_params if part.PRISM_SWITCH == "wall"
-        # ] + [part for part in self.part_params if part.PRISM_SWITCH != "wall"]
-
 
     def generate_elements(self):
         """生成边界层网格"""
@@ -771,34 +758,6 @@ class Adlayers2:
 
         self.laplacian_smooth_normals()
 
-    def reorder_node_index_and_front(self):
-        """初始化节点"""
-        node_count = 0
-        processed_nodes = set()
-        hash_idx_map = {}  # 节点hash值到节点索引的映射
-        self.all_boundary_fronts = []
-        for part in self.part_params:
-            self.all_boundary_fronts.extend(part.front_list)
-
-            for front in part.front_list:
-                front.node_ids = []
-                for node_elem in front.node_elems:
-                    if node_elem.idx == 28 or node_elem.idx == 14:
-                        print("debug")
-
-                    if node_elem.hash not in processed_nodes:
-                        node_elem.idx = node_count
-                        hash_idx_map[node_elem.hash] = node_elem.idx
-                        self.boundary_nodes.append(node_elem)
-                        self.node_coords.append(node_elem.coords)
-                        processed_nodes.add(node_elem.hash)
-                        node_count += 1
-                    else:
-                        node_elem.idx = hash_idx_map[node_elem.hash]
-
-                    front.node_ids.append(node_elem.idx)
-
-        self.num_nodes = len(self.node_coords)
 
     def reconstruct_node2front(self):
         self.front_node_list = []

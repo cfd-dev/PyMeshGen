@@ -12,7 +12,7 @@ from geom_toolkit import (
     quadrilateral_quality,
     calculate_angle,
 )
-
+from message import info, debug, warning, verbose
 
 class NodeElement:
     def __init__(self, coords, idx, part_name=None, bc_type=None):
@@ -616,6 +616,9 @@ class Connector:
                 coords=p2, idx=-1, bc_type=bc_type, match_bound=match_bound
             )            
             self.front_list.append(Front(node1, node2, -1, bc_type, self.part_name))      
+        
+        debug(f"connector {self.curve_name} 匹配 {wall_part.part_name} 重离散化完成！")
+        
         return
 
 class Part:
