@@ -462,7 +462,7 @@ class Adlayers2:
                 added.append(chk_fro)
             elif chk_fro.bc_type == "interior":
                 # interior可能会出现重复，需要检查是否已经存在
-                found = False
+                found1 = False
                 part_idx = -1
                 con_idx = -1
                 
@@ -470,24 +470,36 @@ class Adlayers2:
                     for icon, conn in enumerate(part.connectors):
                         for front in conn.front_list:
                             if front.hash == chk_fro.hash:
-                                found = True
+                                found1 = True
                                 part_idx = ipart
                                 con_idx = icon
                                 break
-                        if found:
+                        if found1:
                             break
-                    if found:
+                    if found1:
                         break
-                if not found:
-                    new_interior_list.append(chk_fro)
-                    added.append(chk_fro)                   
-                else:
+                
+                if found1:
                     # 移除part_idx中con_idx中重复的front
                     conn = self.part_params[part_idx].connectors[con_idx]
                     conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
                     self.part_params[part_idx].init_part_front_list()
                     
-
+                found2 = False
+                if chk_fro.hash in front_hashes:
+                    found2 = True
+                    
+                if found2:
+                     new_interior_list = [
+                        tmp_fro
+                        for tmp_fro in new_interior_list
+                        if tmp_fro.hash != chk_fro.hash
+                    ]    
+                     
+                if not found1 and not found2:
+                    new_interior_list.append(chk_fro)
+                    added.append(chk_fro)                   
+                   
         # R树索引更新
         add_elems_to_space_index_with_RTree(added, self.space_index, self.front_dict)
 
@@ -570,7 +582,7 @@ class Adlayers2:
         for front in self.current_part.front_list:
             if front.bc_type == "interior":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
-            continue
+                continue
 
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
