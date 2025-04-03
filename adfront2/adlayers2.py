@@ -98,7 +98,35 @@ class Adlayers2:
                 if conn.param.PRISM_SWITCH == "match":  
                     conn.rediscretize_conn_to_match_wall(matched_wall_part)
 
+    def reorder_node_index_and_front(self):
+        """初始化节点"""
+        node_count = 0
+        processed_nodes = set()
+        hash_idx_map = {}  # 节点hash值到节点索引的映射
+        self.all_boundary_fronts = []
+        for part in self.part_params:
+            self.all_boundary_fronts.extend(part.front_list)
 
+            for front in part.front_list:
+                front.node_ids = []
+                for node_elem in front.node_elems:
+                    if node_elem.idx == 28 or node_elem.idx == 14:
+                        print("debug")
+
+                    if node_elem.hash not in processed_nodes:
+                        node_elem.idx = node_count
+                        hash_idx_map[node_elem.hash] = node_elem.idx
+                        self.boundary_nodes.append(node_elem)
+                        self.node_coords.append(node_elem.coords)
+                        processed_nodes.add(node_elem.hash)
+                        node_count += 1
+                    else:
+                        node_elem.idx = hash_idx_map[node_elem.hash]
+
+                    front.node_ids.append(node_elem.idx)
+
+        self.num_nodes = len(self.node_coords)
+        
     def generate_elements(self):
         """生成边界层网格"""
         timer = TimeSpan("开始生成边界层网格...")
