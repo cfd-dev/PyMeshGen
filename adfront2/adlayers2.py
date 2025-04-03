@@ -81,9 +81,20 @@ class Adlayers2:
         for part in self.part_params:
             part.match_fronts_with_connectors(self.initial_front_list)
             part.init_part_front_list()
-            
+    
+    def match_boundary_exists(self):
+        """检查是否存在match边界"""
+        for part in self.part_params:
+            for conn in part.connectors:
+                if conn.param.PRISM_SWITCH == "match":
+                    return True
+        return False
+    
     def initialize_match_boundary(self):
-        """初始化边界层match部件"""
+        """初始化边界层match部件"""      
+        if not self.match_boundary_exists():
+            return
+        
         num_wall_parts = 0
         matched_wall_part = []
         for part in self.part_params:
@@ -180,7 +191,7 @@ class Adlayers2:
                 self.show_progress()
 
                 timer.show_to_console(
-                    f"第{i}/{num_parts}个部件[{part.part_name}]：第{self.ilayer + 1}层推进完成."
+                    f"第{i+1}/{num_parts}个部件[{part.part_name}]：第{self.ilayer + 1}层推进完成."
                 )
 
                 self.ilayer += 1
@@ -249,7 +260,7 @@ class Adlayers2:
                     candidate = self.front_dict.get(f_id)
                     for node_tmp in candidate.node_elems:
                         # 搜索范围内是否有点与新点重合
-                        if points_equal(node_tmp.coords, new_node.tolist(), 1e-3):
+                        if points_equal(node_tmp.coords, new_node.tolist(), 1e-6):
                             new_node_elem = node_tmp
                             existed = True
                             break
@@ -379,7 +390,7 @@ class Adlayers2:
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
                 q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
                 if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
-                    info(
+                    verbose(
                         f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
                     if self.debug_level >= 1:
@@ -459,26 +470,46 @@ class Adlayers2:
                 # interior可能会出现重复，需要检查是否已经存在
                 found1 = False
                 part_idx = -1
-                con_idx = -1
-                
                 for ipart, part in enumerate(self.part_params):
-                    for icon, conn in enumerate(part.connectors):
-                        for front in conn.front_list:
-                            if front.hash == chk_fro.hash:
-                                found1 = True
-                                part_idx = ipart
-                                con_idx = icon
-                                break
-                        if found1:
+                    for front in part.front_list:
+                        if front.hash == chk_fro.hash:
+                            found1 = True
+                            part_idx = ipart
                             break
                     if found1:
                         break
                 
                 if found1:
-                    # 移除part_idx中con_idx中重复的front
-                    conn = self.part_params[part_idx].connectors[con_idx]
-                    conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
-                    self.part_params[part_idx].init_part_front_list()
+                    # 移除part_idx中front_list中重复的front
+                    part = self.part_params[part_idx]
+                    part.front_list = [
+                        tmp_fro
+                        for tmp_fro in part.front_list
+                        if tmp_fro.hash != chk_fro.hash
+                    ]
+                        
+                # found1 = False
+                # part_idx = -1
+                # con_idx = -1
+                
+                # for ipart, part in enumerate(self.part_params):
+                #     for icon, conn in enumerate(part.connectors):
+                #         for front in conn.front_list:
+                #             if front.hash == chk_fro.hash:
+                #                 found1 = True
+                #                 part_idx = ipart
+                #                 con_idx = icon
+                #                 break
+                #         if found1:
+                #             break
+                #     if found1:
+                #         break
+                
+                # if found1:
+                #     # 移除part_idx中con_idx中重复的front
+                #     conn = self.part_params[part_idx].connectors[con_idx]
+                #     conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
+                #     self.part_params[part_idx].init_part_front_list()
                 
                 # 由于当前层生成的new_interior_list还没有加入到部件阵面中去，因此此处单独对其进行搜索
                 found2 = False
@@ -576,6 +607,8 @@ class Adlayers2:
         
         # 逐个阵面进行推进
         for front in self.current_part.front_list:
+            if front.node_ids == [7025, 7091]:
+                print("debug")
             if front.bc_type == "interior":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
