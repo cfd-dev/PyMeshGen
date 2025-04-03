@@ -97,31 +97,34 @@ class Adlayers2:
             for conn in part.connectors:
                 if conn.param.PRISM_SWITCH == "match":  
                     conn.rediscretize_conn_to_match_wall(matched_wall_part)
+                    # conn的阵面列表发生变化，重新初始化part的阵面列表
+                    part.init_part_front_list()
 
-    def reorder_node_index_and_front(self):
-        """初始化节点"""
-        node_count = 0
-        processed_nodes = set()
-        hash_idx_map = {}  # 节点hash值到节点索引的映射
+    def collect_all_boundary_fronts(self):
+        """收集所有边界阵面"""
         self.all_boundary_fronts = []
         for part in self.part_params:
             self.all_boundary_fronts.extend(part.front_list)
-
+            
+    def reorder_node_index_and_front(self):
+        """对所有节点进行重编号"""
+        node_count = 0
+        processed_nodes = set()
+        node_dict = {} # 节点hash值到节点的映射
+        for part in self.part_params:
             for front in part.front_list:
                 front.node_ids = []
                 for node_elem in front.node_elems:
-                    if node_elem.idx == 28 or node_elem.idx == 14:
-                        print("debug")
-
                     if node_elem.hash not in processed_nodes:
                         node_elem.idx = node_count
-                        hash_idx_map[node_elem.hash] = node_elem.idx
+                        node_dict[node_elem.hash] = node_elem
+                        
                         self.boundary_nodes.append(node_elem)
                         self.node_coords.append(node_elem.coords)
                         processed_nodes.add(node_elem.hash)
                         node_count += 1
                     else:
-                        node_elem.idx = hash_idx_map[node_elem.hash]
+                        node_elem = node_dict[node_elem.hash]
 
                     front.node_ids.append(node_elem.idx)
 
@@ -137,10 +140,10 @@ class Adlayers2:
 
             # 将部件参数设置为当前推进参数
             self.current_part = part
-            self.first_height = part.first_height
-            self.max_layers = part.max_layers
-            self.full_layers = part.full_layers
-            self.multi_direction = part.multi_direction
+            self.first_height = part.part_params.first_height
+            self.max_layers = part.part_params.max_layers
+            self.full_layers = part.part_params.full_layers
+            self.multi_direction = part.part_params.multi_direction
             self.num_prism_cap = len(part.front_list)
             self.ilayer = 0
 

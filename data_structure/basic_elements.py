@@ -650,6 +650,7 @@ class Part:
         
     def init_part_front_list(self):
         """初始化part的front_list"""
+        self.front_list = []
         for conn in self.connectors:
             self.front_list.extend(conn.front_list)
             
