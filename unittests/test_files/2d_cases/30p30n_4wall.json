@@ -1,0 +1,47 @@
+{
+    "debug_level": 0,
+    "input_file": "./unittests/test_files/2d_cases/30p30n-4walls.cas",
+    "output_file": "./unittests/test_files/2d_cases/test_outputs/test_30p30n_4walls.vtk",
+    "viz_enabled": false,
+    "parts": [
+        {
+            "part_name": "farfield",
+            "max_size": 2.0,
+            "PRISM_SWITCH": "wall",
+            "first_height": 0.01,
+            "growth_rate": 1.2,
+            "max_layers": 5,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "part_name": "wall1",
+            "max_size": 2.0,
+            "PRISM_SWITCH": "wall",
+            "first_height": 1e-4,
+            "growth_rate": 1.2,
+            "max_layers": 10,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "part_name": "wall2",
+            "max_size": 2.0,
+            "PRISM_SWITCH": "wall",
+            "first_height": 1e-5,
+            "growth_rate": 1.2,
+            "max_layers": 60,
+            "full_layers": 5,
+            "multi_direction": false
+        },
+        {
+            "part_name": "wall3",
+            "max_size": 2.0,
+            "PRISM_SWITCH": "wall",
+            "first_height": 1e-4,
+            "max_layers": 10,
+            "full_layers": 5,
+            "multi_direction": false
+        }
+    ]
+}

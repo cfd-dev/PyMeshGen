@@ -473,7 +473,7 @@ class Adfront2:
                 and front.bbox[3] >= min_y
             )
         )
-        
+
         seen_nodes = set()
         seen_fronts = set()
         radius2 = self.search_radius * self.search_radius

@@ -81,7 +81,7 @@ class Adlayers2:
         for part in self.part_params:
             part.match_fronts_with_connectors(self.initial_front_list)
             part.init_part_front_list()
-    
+
     def match_boundary_exists(self):
         """检查是否存在match边界"""
         for part in self.part_params:
@@ -89,12 +89,12 @@ class Adlayers2:
                 if conn.param.PRISM_SWITCH == "match":
                     return True
         return False
-    
+
     def initialize_match_boundary(self):
-        """初始化边界层match部件"""      
+        """初始化边界层match部件"""
         if not self.match_boundary_exists():
             return
-        
+
         num_wall_parts = 0
         matched_wall_part = []
         for part in self.part_params:
@@ -109,7 +109,7 @@ class Adlayers2:
 
         for part in self.part_params:
             for conn in part.connectors:
-                if conn.param.PRISM_SWITCH == "match":  
+                if conn.param.PRISM_SWITCH == "match":
                     conn.rediscretize_conn_to_match_wall(matched_wall_part)
                     # conn的阵面列表发生变化，重新初始化part的阵面列表
                     part.init_part_front_list()
@@ -119,13 +119,13 @@ class Adlayers2:
         self.all_boundary_fronts = []
         for part in self.part_params:
             self.all_boundary_fronts.extend(part.front_list)
-            
+
     def reorder_node_index_and_front(self):
         """对所有节点进行重编号"""
         node_count = 0
         front_count = 0
         processed_nodes = set()
-        node_dict = {} # 节点hash值到节点的映射
+        node_dict = {}  # 节点hash值到节点的映射
         for part in self.part_params:
             for front in part.front_list:
                 front.idx = front_count
@@ -135,7 +135,7 @@ class Adlayers2:
                     if node_elem.hash not in processed_nodes:
                         front.node_elems[i].idx = node_count
                         node_dict[node_elem.hash] = front.node_elems[i]
-                        
+
                         self.boundary_nodes.append(front.node_elems[i])
                         self.node_coords.append(node_elem.coords)
                         processed_nodes.add(node_elem.hash)
@@ -144,26 +144,26 @@ class Adlayers2:
                         front.node_elems[i] = node_dict[node_elem.hash]
 
                     front.node_ids.append(front.node_elems[i].idx)
-            
+
             part.init_part_front_list()
 
         self.num_nodes = len(self.node_coords)
-    
+
     def set_current_part(self, part):
         """设置当前推进参数"""
         self.current_part = part
         self.first_height = part.part_params.first_height
-        self.growth_method= part.part_params.growth_method
+        self.growth_method = part.part_params.growth_method
         self.growth_rate = part.part_params.growth_rate
         self.max_layers = part.part_params.max_layers
         self.full_layers = part.part_params.full_layers
         self.multi_direction = part.part_params.multi_direction
         self.num_prism_cap = len(part.front_list)
-        
+
     def generate_elements(self):
         """生成边界层网格"""
         timer = TimeSpan("开始生成边界层网格...")
-        num_parts = len(self.part_params)                           
+        num_parts = len(self.part_params)
         for i, part in enumerate(self.part_params):
             if part.part_params.PRISM_SWITCH != "wall":
                 continue
@@ -172,7 +172,7 @@ class Adlayers2:
             self.set_current_part(part)
 
             info(f"开始生成{part.part_name}的边界层网格...\n")
-            
+
             self.ilayer = 0
             while self.ilayer < self.max_layers and self.num_prism_cap > 0:
 
@@ -459,7 +459,7 @@ class Adlayers2:
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
         added = []
-        #需要在全部阵面中查找是否有重复的阵面，如有，则删除
+        # 需要在全部阵面中查找是否有重复的阵面，如有，则删除
         front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
             if chk_fro.bc_type == "prism-cap":
@@ -468,65 +468,38 @@ class Adlayers2:
                 added.append(chk_fro)
             elif chk_fro.bc_type == "interior":
                 # interior可能会出现重复，需要检查是否已经存在
+                # 首先检查其在各个part的front_list中是否存在，若存在，则将其删除
                 found1 = False
-                part_idx = -1
-                for ipart, part in enumerate(self.part_params):
-                    for front in part.front_list:
-                        if front.hash == chk_fro.hash:
-                            found1 = True
-                            part_idx = ipart
-                            break
-                    if found1:
-                        break
-                
-                if found1:
-                    # 移除part_idx中front_list中重复的front
-                    part = self.part_params[part_idx]
+                for part in self.part_params:
+                    original_len = len(part.front_list)
+                    # 使用列表推导式过滤当前part的front_list
                     part.front_list = [
                         tmp_fro
                         for tmp_fro in part.front_list
                         if tmp_fro.hash != chk_fro.hash
                     ]
-                        
-                # found1 = False
-                # part_idx = -1
-                # con_idx = -1
-                
-                # for ipart, part in enumerate(self.part_params):
-                #     for icon, conn in enumerate(part.connectors):
-                #         for front in conn.front_list:
-                #             if front.hash == chk_fro.hash:
-                #                 found1 = True
-                #                 part_idx = ipart
-                #                 con_idx = icon
-                #                 break
-                #         if found1:
-                #             break
-                #     if found1:
-                #         break
-                
-                # if found1:
-                #     # 移除part_idx中con_idx中重复的front
-                #     conn = self.part_params[part_idx].connectors[con_idx]
-                #     conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
-                #     self.part_params[part_idx].init_part_front_list()
-                
+                    # 如果当前part的front_list被修改过，说明在当前part找到了chk_fro，直接跳出循环
+                    if len(part.front_list) < original_len:
+                        found1 = True
+                        break
+
                 # 由于当前层生成的new_interior_list还没有加入到部件阵面中去，因此此处单独对其进行搜索
                 found2 = False
                 if chk_fro.hash in front_hashes:
                     found2 = True
-                    
+
                 if found2:
-                     new_interior_list = [
+                    # 原地修改new_interior_list，无需返回值
+                    new_interior_list[:] = [
                         tmp_fro
                         for tmp_fro in new_interior_list
                         if tmp_fro.hash != chk_fro.hash
-                    ]    
-                     
+                    ]
+
                 if not found1 and not found2:
                     new_interior_list.append(chk_fro)
-                    added.append(chk_fro)                   
-                   
+                    added.append(chk_fro)
+
         # R树索引更新
         add_elems_to_space_index_with_RTree(added, self.space_index, self.front_dict)
 
@@ -534,10 +507,9 @@ class Adlayers2:
             for fro in added:
                 fro.draw_front("g-", self.ax)
 
-        # 注意此处必须返回值，并且使用更新过的返回值
-        return new_interior_list, new_prism_cap_list
-    
-    def update_front_list_old2(self, check_fronts, new_interior_list, new_prism_cap_list):
+    def update_front_list_old2(
+        self, check_fronts, new_interior_list, new_prism_cap_list
+    ):
         added = []
         front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
@@ -604,11 +576,9 @@ class Adlayers2:
         new_interior_list = []  # 新增的边界层法向面，设置为interior
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
         num_old_prism_cap = 0  # 当前层early stop的prism-cap数量
-        
+
         # 逐个阵面进行推进
         for front in self.current_part.front_list:
-            if front.node_ids == [7025, 7091]:
-                print("debug")
             if front.bc_type == "interior":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 continue
@@ -654,9 +624,7 @@ class Adlayers2:
             self.num_cells += 1
 
             # 更新阵面列表
-            new_interior_list, new_prism_cap_list = self.update_front_list(
-                check_fronts, new_interior_list, new_prism_cap_list
-            )
+            self.update_front_list(check_fronts, new_interior_list, new_prism_cap_list)
 
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
@@ -668,7 +636,7 @@ class Adlayers2:
 
     def is_wall_front(self, front):
         return front.bc_type == "wall" or front.bc_type == "prism-cap"
-    
+
     def calculate_marching_distance(self):
         """计算节点推进距离"""
         verbose("计算节点推进步长...")
@@ -689,12 +657,12 @@ class Adlayers2:
                 # 如果只有一个相邻wall阵面，则不考虑推进方向倾斜的影响
                 if len(node.node2front) < 2:
                     continue
-                
+
                 front1, front2 = node.node2front[:2]
                 # 如果相邻阵面中只有一个wall阵面，则不考虑推进方向倾斜的影响
-                if not(self.is_wall_front(front1) and self.is_wall_front(front2)):
+                if not (self.is_wall_front(front1) and self.is_wall_front(front2)):
                     continue
-                
+
                 # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
                 proj1 = np.dot(node.marching_direction, front1.normal)
                 proj2 = np.dot(node.marching_direction, front2.normal)
@@ -747,22 +715,24 @@ class Adlayers2:
         for node_elem in self.front_node_list:
             if node_elem.matching_boundary:
                 node_elem.marching_direction = (
-                            node_elem.matching_boundary.marching_vector
-                )   
+                    node_elem.matching_boundary.marching_vector
+                )
                 continue
-            
+
             if len(node_elem.node2front) < 2:
-                verbose(f"节点{node_elem.idx}在当前part中只有1个相邻阵面，通常为match point，不计算推进方向！")
+                verbose(
+                    f"节点{node_elem.idx}在当前part中只有1个相邻阵面，通常为match point，不计算推进方向！"
+                )
                 continue
 
             # 对于凸角点，在此不计算，也不光滑
             if len(node_elem.marching_direction) > 1:
                 continue
-      
+
             front1, front2 = node_elem.node2front[:2]
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
-            
+
             # TODO: 应对节点只有一侧有流向阵面(prism-cap)，另一侧是法向阵面(interior)的情况
             if front1.bc_type == "interior":
                 # 处理方案1：将流向阵面法向作为推进方向
@@ -774,8 +744,8 @@ class Adlayers2:
                 # node_elem.marching_direction = tuple(front1.direction)
                 # continue
             elif front2.bc_type == "interior":
-                 # 处理方案1：将流向阵面法向作为推进方向
-                node_elem.marching_direction = tuple(normal1)                
+                # 处理方案1：将流向阵面法向作为推进方向
+                node_elem.marching_direction = tuple(normal1)
                 continue
                 # 处理方案2：将法向阵面的方向向量作为normal1
                 # normal2 = np.array(front1.direction)
@@ -839,17 +809,17 @@ class Adlayers2:
         for node_elem in self.front_node_list:
             if node_elem.matching_boundary:
                 node_elem.marching_direction = (
-                            node_elem.matching_boundary.marching_vector
-                )   
+                    node_elem.matching_boundary.marching_vector
+                )
                 continue
-            
+
             num_neighbors = len(node_elem.node2node)
             if num_neighbors < 2:
                 verbose(
-                    f"节点{node_elem.idx}在当前part中只有1个相邻节点，通常为match point，不进行拉普拉斯平滑！" 
+                    f"节点{node_elem.idx}在当前part中只有1个相邻节点，通常为match point，不进行拉普拉斯平滑！"
                 )
                 continue
-                
+
             iteration = 0
             while iteration < self.smooth_iterions:
                 summation = np.zeros_like(np.array(node_elem.marching_direction))
@@ -874,7 +844,6 @@ class Adlayers2:
         self.compute_point_normals()
 
         self.laplacian_smooth_normals()
-
 
     def reconstruct_node2front(self):
         self.front_node_list = []
@@ -939,7 +908,9 @@ class Adlayers2:
         verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量...")
         for node_elem in self.front_node_list:
             if len(node_elem.node2front) < 2:
-                verbose(f"节点{node_elem.idx}，坐标{node_elem.coords} 在当前part内的邻接阵面数量小于2，不计算凹凸角信息！")
+                verbose(
+                    f"节点{node_elem.idx}，坐标{node_elem.coords} 在当前part内的邻接阵面数量小于2，不计算凹凸角信息！"
+                )
                 continue
 
             front1, front2 = node_elem.node2front[:2]
@@ -1054,7 +1025,6 @@ class Adlayers2:
         self.compute_corner_attributes()
 
         verbose("计算物面几何信息..., Done.\n")
-
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""
