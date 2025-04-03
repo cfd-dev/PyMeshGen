@@ -542,7 +542,7 @@ class Connector:
         self.check_fronts_are_linear()
         
         start = self.start_point
-        end = self.end_point
+        end = self.end_point        
         
         # 真正的起点是与wall_part共点的点，找出该点
         found = False
@@ -604,11 +604,15 @@ class Connector:
         
         # 创建connector的新front_list
         bc_type = self.front_list[0].bc_type
+        old_direction = self.front_list[0].direction
         self.front_list = []
         for i in range(0, len(discretized_points) - 1):
             p1 = discretized_points[i].tolist()
             p2 = discretized_points[i + 1].tolist()  
             
+            if np.dot(old_direction,marching_vector) < 0:
+                p1, p2 = p2, p1
+                
             node1 = NodeElementALM(
                 coords=p1, idx=-1, bc_type=bc_type, match_bound=match_bound
             )
