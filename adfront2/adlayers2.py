@@ -250,6 +250,7 @@ class Adlayers2:
                 for f_id in candidates:
                     candidate = self.front_dict.get(f_id)
                     for node_tmp in candidate.node_elems:
+                        # 搜索范围内是否有点与新点重合
                         if points_equal(node_tmp.coords, new_node.tolist(), 1e-3):
                             new_node_elem = node_tmp
                             existed = True
@@ -452,6 +453,53 @@ class Adlayers2:
 
     def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
         added = []
+        #需要在全部阵面中查找是否有重复的阵面，如有，则删除
+        front_hashes = {f.hash for f in new_interior_list}
+        for chk_fro in check_fronts:
+            if chk_fro.bc_type == "prism-cap":
+                # prism-cap不会出现重复，必须加入到新阵面列表中
+                new_prism_cap_list.append(chk_fro)
+                added.append(chk_fro)
+            elif chk_fro.bc_type == "interior":
+                # interior可能会出现重复，需要检查是否已经存在
+                found = False
+                part_idx = -1
+                con_idx = -1
+                
+                for ipart, part in enumerate(self.part_params):
+                    for icon, conn in enumerate(part.connectors):
+                        for front in conn.front_list:
+                            if front.hash == chk_fro.hash:
+                                found = True
+                                part_idx = ipart
+                                con_idx = icon
+                                break
+                        if found:
+                            break
+                    if found:
+                        break
+                if not found:
+                    new_interior_list.append(chk_fro)
+                    added.append(chk_fro)                   
+                else:
+                    # 移除part_idx中con_idx中重复的front
+                    conn = self.part_params[part_idx].connectors[con_idx]
+                    conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
+                    self.part_params[part_idx].init_part_front_list()
+                    
+
+        # R树索引更新
+        add_elems_to_space_index_with_RTree(added, self.space_index, self.front_dict)
+
+        if added and self.ax and self.debug_level >= 1:
+            for fro in added:
+                fro.draw_front("g-", self.ax)
+
+        # 注意此处必须返回值，并且使用更新过的返回值
+        return new_interior_list, new_prism_cap_list
+    
+    def update_front_list_old2(self, check_fronts, new_interior_list, new_prism_cap_list):
+        added = []
         front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
             if chk_fro.bc_type == "prism-cap":
@@ -516,19 +564,13 @@ class Adlayers2:
 
         new_interior_list = []  # 新增的边界层法向面，设置为interior
         new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
-        # 逐个阵面进行推进
         num_old_prism_cap = 0  # 当前层early stop的prism-cap数量
-
+        
+        # 逐个阵面进行推进
         for front in self.current_part.front_list:
-            if front.bc_type != "wall" and front.bc_type != "prism-cap":
+            if front.bc_type == "interior":
                 new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
-
-        for front in self.current_part.front_list:
-            # if front.bc_type == "interior" or front.bc_type == "pressure-far-field":
-            # new_interior_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
-            # continue
-            if front.bc_type != "wall" and front.bc_type != "prism-cap":
-                continue
+            continue
 
             if front.early_stop_flag:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
