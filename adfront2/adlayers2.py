@@ -203,9 +203,7 @@ class Adlayers2:
         verbose("构建非结构网格数据..., Done.")
 
         # 汇总所有边界阵面
-        self.all_boundary_fronts = []
-        for part in self.part_params:
-            self.all_boundary_fronts.extend(part.front_list)
+        self.collect_all_boundary_fronts()
 
         heapq.heapify(self.all_boundary_fronts)
         verbose("构建全局边界阵面..., Done.\n")
@@ -295,9 +293,6 @@ class Adlayers2:
             "interior",
             self.current_part.part_name,
         )
-
-        # if front.node_ids == (7, 5) or front.node_ids == (5, 6):
-        #     print("debug")
 
         # 创建新单元
         new_cell = Quadrilateral(
@@ -484,7 +479,8 @@ class Adlayers2:
                     conn = self.part_params[part_idx].connectors[con_idx]
                     conn.front_list = [front for front in conn.front_list if front.hash != chk_fro.hash]
                     self.part_params[part_idx].init_part_front_list()
-                    
+                
+                # 由于当前层生成的new_interior_list还没有加入到部件阵面中去，因此此处单独对其进行搜索
                 found2 = False
                 if chk_fro.hash in front_hashes:
                     found2 = True
@@ -588,9 +584,6 @@ class Adlayers2:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 num_old_prism_cap += 1
                 continue
-
-            if front.node_ids == [50, 60]:
-                print("debug")
 
             (
                 new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
@@ -729,9 +722,6 @@ class Adlayers2:
                 verbose(f"节点{node_elem.idx}在当前part中只有1个相邻阵面，通常为match point，不计算推进方向！")
                 continue
 
-            if node_elem.idx == 0 or node_elem.idx == 38:
-                print("debug")
-
             # 对于凸角点，在此不计算，也不光滑
             if len(node_elem.marching_direction) > 1:
                 continue
@@ -826,9 +816,6 @@ class Adlayers2:
                     f"节点{node_elem.idx}在当前part中只有1个相邻节点，通常为match point，不进行拉普拉斯平滑！" 
                 )
                 continue
-
-            if node_elem.idx == 35 or node_elem.idx == 38:
-                print("debug")
                 
             iteration = 0
             while iteration < self.smooth_iterions:
@@ -986,6 +973,8 @@ class Adlayers2:
         #     self.current_part.front_list
         # )
 
+        # 以下采用全局所有阵面构建R树，而不是只采用当前部件的阵面来构建，因为在
+        # 多部件情况下，可能存在多个部件的阵面相交的情况，此时需要使用全局所有
         self.collect_all_boundary_fronts()
 
         self.front_dict, self.space_index = build_space_index_with_RTree(
