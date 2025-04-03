@@ -1083,15 +1083,21 @@ class Adlayers2:
 
     def match_parts_with_fronts(self):
         """匹配初始阵面到曲线对象connector中"""
-        # 所有阵面列表均按照part_name存储到connectors中
-        # TODO 后续几何引擎做好之后要改为按照几何curve与connector一一对应的方式
-        # 每一条curve对应一条connector
-        for front in self.initial_front_list:
-            for part in self.part_params:
-                for conn in part.connectors:
+
+        # TODO 后续几何引擎做好之后要改为按照几何curve与connector对应的方式
+        # 要将每个阵面归类到不同的connector中去，归类的依据是：
+        # 1. 优先按照curve_name匹配
+        # 2. 若没有匹配到curve_name，则放到对应part的最后一个默认connector中       
+        for part in self.part_params:
+            for conn in part.connectors:
+                for front in self.initial_front_list:
+                    # 如果curve_name不为"default"，则只匹配该名称的曲线
                     if conn.curve_name == front.part_name:
                         conn.front_list.append(front)
-                    break
+                        
+                    # 如果curve_name为"default"，则将阵面归类到与conn同一个part中去
+                    if conn.curve_name == "default" and front.part_name == conn.part_name:
+                        conn.front_list.append(front)
 
     def _segments_intersect(self, seg1, seg2):
         """精确线段相交检测（排除共端点情况）"""

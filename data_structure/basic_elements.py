@@ -481,7 +481,7 @@ class Connector:
 class Part:
     """部件对象，包含网格生成参数和所有曲线对象"""
 
-    def __init__(self, part_params, conns):
+    def __init__(self, part_params, connectors):
         self.part_params = part_params  # 部件级网格生成参数
-        self.conns = conns  # 部件所包含的曲线对象
+        self.connectors = connectors  # 部件所包含的曲线对象
         # 后续可扩展部件包含的曲面对象等等

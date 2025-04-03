@@ -146,7 +146,7 @@ class Parameters:
         connectors.append(
             Connector(
                 part_name=params["part_name"],
-                curve_name="other",
+                curve_name="default",
                 param=part_param,
             )
         )
