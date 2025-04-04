@@ -171,27 +171,31 @@ def process_initial_front(grid):
     return heap
 
 
-def reorder_node_index_and_front(front_list):
+def reorder_node_front_index_and(front_list):
     # 重新计算节点索引,对初始阵面的节点重新编号
     node_count = 0
-    node_hash_list = set()
-    hash_idx_map = {}  # 节点hash值到节点索引的映射
+    front_count = 0
+    processed_nodes = set()
+    node_dict = {}  # 节点hash值到节点的映射
     node_coords = []
     boundary_nodes = []
     for front in front_list:
+        front.idx = front_count
+        front_count += 1
         front.node_ids = []
-        for node_elem in front.node_elems:
-            if node_elem.hash not in node_hash_list:
-                node_elem.idx = node_count
-                hash_idx_map[node_elem.hash] = node_elem.idx
-                node_hash_list.add(node_elem.hash)
+        for i, node_elem in enumerate(front.node_elems):
+            if node_elem.hash not in processed_nodes:
+                front.node_elems[i].idx = node_count
+                node_dict[node_elem.hash] = front.node_elems[i]
                 node_coords.append(node_elem.coords)
-                boundary_nodes.append(node_elem)
+                boundary_nodes.append(front.node_elems[i])
+
+                processed_nodes.add(node_elem.hash)
                 node_count += 1
             else:
-                node_elem.idx = hash_idx_map[node_elem.hash]
+                front.node_elems[i] = node_dict[node_elem.hash]
 
-            front.node_ids.append(node_elem.idx)
+            front.node_ids.append(front.node_elems[i].idx)
 
     return front_list, node_coords, boundary_nodes
 
