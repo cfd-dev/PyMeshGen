@@ -161,7 +161,7 @@ class Adlayers2:
 
     def generate_elements(self):
         """生成边界层网格"""
-        timer = TimeSpan("开始生成边界层网格...")
+        timer = TimeSpan()
         num_parts = len(self.part_params)
         for i, part in enumerate(self.part_params):
             if part.part_params.PRISM_SWITCH != "wall":
