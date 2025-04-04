@@ -70,7 +70,6 @@ class Adlayers2:
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
-        self.matching_boundaries = []  # match边界的信息
 
         self.init_parts_and_connectors_fronts()
         self.initialize_match_boundary()
@@ -457,7 +456,11 @@ class Adlayers2:
         # 线段间距离检查
         return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
-    def update_front_list(self, check_fronts, new_interior_list, new_prism_cap_list):
+    def update_front_list_globally(
+        self, check_fronts, new_interior_list, new_prism_cap_list
+    ):
+        """更新全局所有part的front_list，通过间接更新new_interior_list和new_prism_cap_list，
+        以及直接更新其他part的front_list来实现"""
         added = []
         # 需要在全部阵面中查找是否有重复的阵面，如有，则删除
         front_hashes = {f.hash for f in new_interior_list}
@@ -507,9 +510,10 @@ class Adlayers2:
             for fro in added:
                 fro.draw_front("g-", self.ax)
 
-    def update_front_list_old2(
+    def update_front_list_locally(
         self, check_fronts, new_interior_list, new_prism_cap_list
     ):
+        """只更新当前part的front_list，通过间接更新new_interior_list和new_prism_cap_list来实现"""
         added = []
         front_hashes = {f.hash for f in new_interior_list}
         for chk_fro in check_fronts:
@@ -523,52 +527,21 @@ class Adlayers2:
                     new_interior_list.append(chk_fro)
                     added.append(chk_fro)
                 else:  # 移除相同位置的旧阵面，此处可能会重新生成new_interior_list
-                    new_interior_list = [
+                    new_interior_list[:] = [
                         tmp_fro
                         for tmp_fro in new_interior_list
                         if tmp_fro.hash != chk_fro.hash
                     ]
 
-        # R树索引更新
+        # R树索引更新，默认方式
         add_elems_to_space_index_with_RTree(added, self.space_index, self.front_dict)
 
-        if added and self.ax and self.debug_level >= 1:
-            for fro in added:
-                fro.draw_front("g-", self.ax)
-
-        # 注意此处必须返回值，并且使用更新过的返回值
-        return new_interior_list, new_prism_cap_list
-
-    def update_front_list_old(
-        self, check_fronts, new_interior_list, new_prism_cap_list
-    ):
-        added = []
-        front_hashes = {f.hash for f in new_interior_list}
-        for chk_fro in check_fronts:
-            if chk_fro.bc_type == "prism-cap":
-                # prism-cap不会出现重复，必须加入到新阵面列表中
-                new_prism_cap_list.append(chk_fro)
-                added.append(chk_fro)
-            elif chk_fro.bc_type == "interior":
-                # interior可能会出现重复，需要检查是否已经存在
-                if chk_fro.hash not in front_hashes:
-                    new_interior_list.append(chk_fro)
-                    added.append(chk_fro)
-                else:  # 移除相同位置的旧阵面，此处可能会重新生成new_interior_list
-                    new_interior_list = [
-                        tmp_fro
-                        for tmp_fro in new_interior_list
-                        if tmp_fro.hash != chk_fro.hash
-                    ]
-        # 将新阵面加入到空间查询网格中
-        add_elems_to_space_index_with_cartesian_grid(added, self.space_grid_size)
+        # cartesian空间索引更新
+        # add_elems_to_space_index_with_cartesian_grid(added, self.space_grid_size)
 
         if added and self.ax and self.debug_level >= 1:
             for fro in added:
                 fro.draw_front("g-", self.ax)
-
-        # 注意此处必须返回值，并且使用更新过的返回值
-        return new_interior_list, new_prism_cap_list
 
     def advancing_fronts(self):
         timer = TimeSpan("逐个阵面推进生成单元...")
@@ -624,7 +597,9 @@ class Adlayers2:
             self.num_cells += 1
 
             # 更新阵面列表
-            self.update_front_list(check_fronts, new_interior_list, new_prism_cap_list)
+            self.update_front_list_globally(
+                check_fronts, new_interior_list, new_prism_cap_list
+            )
 
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
