@@ -138,23 +138,20 @@ class Adfront2:
 
     def debug_draw(self):
         """绘制候选节点、候选阵面"""
-        if not __debug__:
-            return
-
         if self.base_front.node_ids == [650, 986]:
             self.debug_save()
             kkk = 0
 
-        if self.ax is None or self.debug_level < 1:
+        if not __debug__ or self.ax is None or self.debug_level < 1:
             return
 
         if self.debug_level >= 1:
             # 绘制基准阵面
             self.base_front.draw_front("r-", self.ax)
-            # 绘制Pbest
-            self.ax.plot(
-                self.pbest.coords[0], self.pbest.coords[1], "r.", markersize=10
-            )
+            # 绘制Pbest，适应多个pbest的情况
+            for point in (self.pbest if isinstance(self.pbest, list) else [self.pbest]):
+                self.ax.plot(point.coords[0], point.coords[1], "r.", markersize=10)
+
             # 绘制节点编号
             # for idx, (x, y) in enumerate(self.node_coords):
             #     self.ax.text(x, y, str(i), fontsize=8, ha="center", va="top")
@@ -462,8 +459,15 @@ class Adfront2:
         self.front_candidates = []
         self.cell_candidates = []
 
+        point = []
+        # 统一处理单个/多个pbest点
+        if isinstance(self.pbest, list) and len(self.pbest) > 1:
+            p1, p2 = (p.coords for p in self.pbest[:2])
+            point = [(p1[0] + p2[0])/2, (p1[1] + p2[1])/2]
+        else:
+            point = self.pbest.coords
+
         # 使用预计算的边界框信息进行快速筛选
-        point = self.pbest.coords
         min_x = point[0] - self.search_radius
         max_x = point[0] + self.search_radius
         min_y = point[1] - self.search_radius
