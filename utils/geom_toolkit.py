@@ -519,7 +519,7 @@ def quadrilateral_quality2(p1, p2, p3, p4):
     skewness = quadrilateral_skewness(p1, p2, p3, p4)
     aspect_ratio = quadrilateral_aspect_ratio(p1, p2, p3, p4)
 
-    as_quality = 0.0  if aspect_ratio == 0 else (1.0 / aspect_ratio)
+    as_quality = 0.0 if aspect_ratio == 0 else (1.0 / aspect_ratio)
     # return (quality + skewness + as_quality) / 3.0
     return (quality + 4.0 * skewness + as_quality) / 6.0
 

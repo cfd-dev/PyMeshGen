@@ -257,6 +257,7 @@ class TestPointToSegmentDistance(unittest.TestCase):
 
 class TestSegmentIntersection(unittest.TestCase):
     """测试线段相交判断函数"""
+
     def test_parallel_segments(self):
         """测试平行线段不相交"""
         a1, a2 = (0, 0), (2, 0)
