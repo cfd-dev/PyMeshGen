@@ -441,12 +441,13 @@ class Adfront2:
 
         cell_to_add = Triangle(node_elem, p0, p1)
 
-        for tri_cell in self.cell_candidates:
-            if len(tri_cell.node_ids) != 3:
-                raise ValueError(f"节点数量错误：{tri_cell.node_ids}")
-
-            if tri_cell.is_intersect(cell_to_add):
-                return True
+        for check_cell in self.cell_candidates: 
+            if isinstance(check_cell, Quadrilateral):
+                if check_cell.is_intersect_triangle(cell_to_add):
+                    return True
+            elif isinstance(check_cell, Triangle):
+                if check_cell.is_intersect(cell_to_add):
+                    return True
 
         return False
 
