@@ -6,7 +6,13 @@ from geom_toolkit import (
     calculate_distance2,
 )
 from front2d import Front
-from basic_elements import NodeElement, Triangle, Unstructured_Grid, LineSegment
+from basic_elements import (
+    NodeElement,
+    Triangle,
+    Quadrilateral,
+    Unstructured_Grid,
+    LineSegment,
+)
 from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from rtree_space import (
@@ -441,7 +447,7 @@ class Adfront2:
 
         cell_to_add = Triangle(node_elem, p0, p1)
 
-        for check_cell in self.cell_candidates: 
+        for check_cell in self.cell_candidates:
             if isinstance(check_cell, Quadrilateral):
                 if check_cell.is_intersect_triangle(cell_to_add):
                     return True
