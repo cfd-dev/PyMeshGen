@@ -119,7 +119,7 @@ def normal_vector2d(front):
 
 
 def calculate_angle(p1, p2, p3):
-    """计算空间中三个点的夹角（弧度制），自动适配2D/3D坐标"""
+    """计算空间中三个点的夹角（角度制），自动适配2D/3D坐标"""
     # 自动补充z坐标（二维点z=0）
     coord1 = [*p1, 0] if len(p1) == 2 else p1
     coord2 = [*p2, 0] if len(p2) == 2 else p2
@@ -144,6 +144,10 @@ def calculate_angle(p1, p2, p3):
 
     # 计算夹角（弧度制）
     theta = np.arccos(cos_theta)
+
+    cross_z = v1[0] * v2[1] - v1[1] * v2[0]
+    if cross_z < 0:
+        theta = 2 * np.pi - theta
 
     return np.degrees(theta)
 
@@ -223,14 +227,26 @@ def is_left2d(p1, p2, p3):
     return cross_product > 0
 
 
-# 判断四边形是否为凸
 def is_convex(a, b, c, d, node_coords):
-    ab = np.array(node_coords[b]) - np.array(node_coords[a])
-    ac = np.array(node_coords[c]) - np.array(node_coords[a])
-    ad = np.array(node_coords[d]) - np.array(node_coords[a])
-    cross_c = np.cross(ab, ac)
-    cross_d = np.cross(ab, ad)
-    return cross_c * cross_d < 0  # 符号不同则在两侧
+    # 确保顶点按顺序排列（如a→b→c→d→a）
+    points = [a, b, c, d]
+    cross_products = []
+
+    for i in range(4):
+        p1 = node_coords[points[i]]
+        p2 = node_coords[points[(i + 1) % 4]]
+        p3 = node_coords[points[(i + 2) % 4]]
+
+        v1 = np.array(p2) - np.array(p1)
+        v2 = np.array(p3) - np.array(p2)
+        cross = np.cross(v1, v2)
+        cross_products.append(cross)
+
+    # 检查所有叉积符号是否一致（全为正或全为负）
+    positive = all(cp > 0 for cp in cross_products)
+    negative = all(cp < 0 for cp in cross_products)
+
+    return positive or negative
 
 
 # 计算三角形最小角
@@ -330,10 +346,17 @@ def segments_intersect(a1, a2, b1, b2):
         return True
 
     # 阶段4：处理共线情况（所有叉积为0时）
-    if c1 == 0 and c2 == 0 and c3 == 0 and c4 == 0:
+    # if c1 == 0 and c2 == 0 and c3 == 0 and c4 == 0:
+    #     # 检查坐标轴投影是否有重叠（允许部分重叠但不完全重合）
+    #     x_overlap = max(a_min_x, b_min_x) <= min(a_max_x, b_max_x)
+    #     y_overlap = max(a_min_y, b_min_y) <= min(a_max_y, b_max_y)
+    #     return x_overlap and y_overlap
+    epsilon = 1e-8
+    if all(abs(val) < epsilon for val in [c1, c2, c3, c4]):
         # 检查坐标轴投影是否有重叠（允许部分重叠但不完全重合）
-        x_overlap = max(a_min_x, b_min_x) <= min(a_max_x, b_max_x)
-        y_overlap = max(a_min_y, b_min_y) <= min(a_max_y, b_max_y)
+        # 改用更精确的浮点数比较
+        x_overlap = (a_max_x >= b_min_x - epsilon) and (a_min_x <= b_max_x + epsilon)
+        y_overlap = (a_max_y >= b_min_y - epsilon) and (a_min_y <= b_max_y + epsilon)
         return x_overlap and y_overlap
 
     return False
@@ -425,6 +448,82 @@ def is_valid_quadrilateral(p1, p2, p3, p4):
     return area > 1e-10
 
 
+def triangle_skewness(p1, p2, p3):
+    """计算三角形的偏斜度"""
+    # 计算三角形的三个内角
+    angles = [
+        calculate_angle(p3, p2, p1),
+        calculate_angle(p1, p3, p2),
+        calculate_angle(p2, p1, p3),
+    ]
+
+    # 检查内角和是否为180度
+    if abs(np.sum(angles) - 180) > 1e-3:
+        skewness = 0.0
+        return skewness
+
+    # 计算最大和最小角度
+    max_angle = max(angles)
+    min_angle = min(angles)
+
+    skew1 = (max_angle - 60) / 60
+    skew2 = (60 - min_angle) / 60
+    skewness = 1.0 - max([skew1, skew2])
+
+    return skewness
+
+
+def quadrilateral_skewness(p1, p2, p3, p4):
+    """计算四边形的偏斜度"""
+    # 四边形的四个内角
+    angles = [
+        calculate_angle(p3, p2, p1),
+        calculate_angle(p4, p3, p2),
+        calculate_angle(p1, p4, p3),
+        calculate_angle(p2, p1, p4),
+    ]
+
+    # 检查内角和是否为360度
+    if abs(np.sum(angles) - 360) > 1e-3:
+        skewness = 0.0
+        return skewness
+
+    # 计算最大和最小角度
+    max_angle = max(angles)
+    min_angle = min(angles)
+
+    skew1 = (max_angle - 90) / 90
+    skew2 = (90 - min_angle) / 90
+    skewness = 1.0 - max([skew1, skew2])
+
+    return skewness
+
+
+def quadrilateral_aspect_ratio(p1, p2, p3, p4):
+    """计算四边形的长宽比"""
+    # 计算所有边长
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p4),
+        calculate_distance(p4, p1),
+    ]
+
+    max_edge = max(edges)
+    min_edge = min(edges)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
+
+
+def quadrilateral_quality2(p1, p2, p3, p4):
+    quality = quadrilateral_quality(p1, p2, p3, p4)
+    skewness = quadrilateral_skewness(p1, p2, p3, p4)
+    aspect_ratio = quadrilateral_aspect_ratio(p1, p2, p3, p4)
+
+    as_quality = 0.0  if aspect_ratio == 0 else (1.0 / aspect_ratio)
+    # return (quality + skewness + as_quality) / 3.0
+    return (quality + 4.0 * skewness + as_quality) / 6.0
+
+
 def quadrilateral_quality(p1, p2, p3, p4):
     """计算四边形质量（基于子三角形质量的最小组合）"""
     from basic_elements import LineSegment
@@ -481,3 +580,160 @@ def quadrilateral_quality(p1, p2, p3, p4):
         raise ValueError(f"四边形质量异常：{quality}，顶点：{p1}, {p2}, {p3}, {p4}")
 
     return quality
+
+
+def is_point_inside_quad(p, quad_points):
+    """
+    判断点p是否在四边形内部（不包括边界）
+    :param p: 待判断的点 (x, y)
+    :param quad_points: 四边形顶点列表 [p1, p2, p3, p4]，按顺时针或逆时针顺序排列
+    :return: True如果在内部，False否则
+    """
+    x, y = p
+    n = len(quad_points)
+    inside = False
+
+    for i in range(n):
+        a, b = quad_points[i], quad_points[(i + 1) % n]
+        # 检查点是否在顶点上
+        if abs(a[0] - x) < 1e-8 and abs(a[1] - y) < 1e-8:
+            return False
+
+        # 检查点是否在边上
+        if (min(a[0], b[0]) <= x <= max(a[0], b[0])) and (
+            min(a[1], b[1]) <= y <= max(a[1], b[1])
+        ):
+            # 计算点到边的距离
+            cross = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0])
+            if abs(cross) < 1e-8:
+                return False
+
+        # 射线法核心逻辑
+        if (a[1] > y) != (b[1] > y):
+            intersect_x = (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]
+            if x < intersect_x:
+                inside = not inside
+
+    return inside
+
+
+def quad_intersects_triangle(
+    quad_p1, quad_p2, quad_p3, quad_p4, tri_p1, tri_p2, tri_p3
+):
+    quad_edges = [
+        (quad_p1, quad_p2),
+        (quad_p2, quad_p3),
+        (quad_p3, quad_p4),
+        (quad_p4, quad_p1),
+    ]
+    tri_edges = [(tri_p1, tri_p2), (tri_p2, tri_p3), (tri_p3, tri_p1)]
+
+    # 检查边的相交
+    for edge_quad in quad_edges:
+        a1, a2 = edge_quad
+        for edge_tri in tri_edges:
+            b1, b2 = edge_tri
+            if segments_intersect(a1, a2, b1, b2):
+                return True  # 边相交，直接返回True
+
+    # 检查四边形顶点是否在三角形内部或边上
+    for p in [quad_p1, quad_p2, quad_p3, quad_p4]:
+        if is_point_inside_or_on(p, tri_p1, tri_p2, tri_p3):
+            return True
+
+    # 检查三角形顶点是否在四边形内部或边上
+    for p in [tri_p1, tri_p2, tri_p3]:
+        if is_point_inside_quad(p, [quad_p1, quad_p2, quad_p3, quad_p4]):
+            return True
+
+    # 检查四边形是否完全在三角形内部（冗余，但保留以防万一）
+    all_inside_tri = True
+    for p in [quad_p1, quad_p2, quad_p3, quad_p4]:
+        if not is_point_inside_or_on(p, tri_p1, tri_p2, tri_p3):
+            all_inside_tri = False
+            break
+    if all_inside_tri:
+        return True
+
+    # 检查三角形是否完全在四边形内部
+    all_inside_quad = True
+    for p in [tri_p1, tri_p2, tri_p3]:
+        if not is_point_inside_quad(p, [quad_p1, quad_p2, quad_p3, quad_p4]):
+            all_inside_quad = False
+            break
+    if all_inside_quad:
+        return True
+
+    return False
+
+
+def is_same_edge(e1, e2):
+    # 判断两条边是否是同一条边（共边）
+    a1, a2 = e1
+    b1, b2 = e2
+    return (points_equal(a1, b1) and points_equal(a2, b2)) or (
+        points_equal(a1, b2) and points_equal(a2, b1)
+    )
+
+
+def is_shared_vertex(p, other_quad):
+    # 判断顶点p是否是另一个四边形的顶点
+    return any(points_equal(p, v) for v in other_quad)
+
+
+def quad_inside_another(quad_inside, quad_outside):
+    # 判断quad_inside是否完全在quad_outside内部（排除共享顶点）
+    for p in quad_inside:
+        if any(points_equal(p, v) for v in quad_outside):
+            continue
+        if not is_point_inside_quad(p, quad_outside):
+            return False
+    return True
+
+
+def quad_intersects_quad(q1, q2):
+    # q1和q2是四边形顶点列表，顺序为[p1,p2,p3,p4]
+    q1_edges = [(q1[0], q1[1]), (q1[1], q1[2]), (q1[2], q1[3]), (q1[3], q1[0])]
+    q2_edges = [(q2[0], q2[1]), (q2[1], q2[2]), (q2[2], q2[3]), (q2[3], q2[0])]
+
+    # 检查边相交
+    for e1 in q1_edges:
+        a1, a2 = e1
+        for e2 in q2_edges:
+            b1, b2 = e2
+            if is_same_edge(e1, e2):
+                continue
+            if segments_intersect(a1, a2, b1, b2):
+                return True
+
+    # 检查q1的边与q2的对角线是否相交
+    q2_diags = [(q2[0], q2[2]), (q2[1], q2[3])]
+    for e1 in q1_edges:
+        a1, a2 = e1
+        for diag in q2_diags:
+            d1, d2 = diag
+            if segments_intersect(a1, a2, d1, d2):
+                return True
+
+    # 检查q2的边与q1的对角线是否相交
+    q1_diags = [(q1[0], q1[2]), (q1[1], q1[3])]
+    for e2 in q2_edges:
+        b1, b2 = e2
+        for diag in q1_diags:
+            d1, d2 = diag
+            if segments_intersect(d1, d2, b1, b2):
+                return True
+
+    # 检查顶点是否在对方内部或边上（排除共享顶点）
+    for p in q1:
+        if not is_shared_vertex(p, q2) and is_point_inside_quad(p, q2):
+            return True
+    for p in q2:
+        if not is_shared_vertex(p, q1) and is_point_inside_quad(p, q1):
+            return True
+
+    # 检查完全包含
+    if quad_inside_another(q1, q2) or quad_inside_another(q2, q1):
+        return True
+
+    return False

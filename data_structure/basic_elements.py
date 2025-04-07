@@ -11,16 +11,27 @@ from geom_toolkit import (
     quadrilateral_area,
     quadrilateral_quality,
     calculate_angle,
+    quad_intersects_triangle,
+    quad_intersects_quad,
+    quadrilateral_skewness,
+    quadrilateral_aspect_ratio,
 )
 from message import info, debug, warning, verbose
 
 
 class NodeElement:
     def __init__(self, coords, idx, part_name=None, bc_type=None):
-        self.coords = coords.tolist() if isinstance(coords, tuple) else coords
+        if isinstance(coords, (np.ndarray, list, tuple)):
+            self.coords = list(coords) 
+        else:
+            raise TypeError(f"坐标格式错误，期望可迭代类型，实际类型：{type(coords)}")
+            
         self.idx = idx
         self.part_name = part_name
         self.bc_type = bc_type
+        
+        self.node2front = []  # 节点关联的阵面列表
+        self.node2node = []  # 节点关联的节点列表
 
         # 使用处理后的坐标生成哈希
         # 此处注意！！！hash(-1.0)和hash(-2.0)的结果是一样的！！！因此必须使用字符串
@@ -55,8 +66,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         concav_flag=False,
     ):
         super().__init__(coords, idx, bc_type)  # 调用父类构造函数
-        self.node2front = []  # 节点关联的阵面列表
-        self.node2node = []  # 节点关联的节点列表
+        
         self.marching_direction = []  # 节点推进方向
         self.marching_distance = 0.0  # 节点处的推进距离
         self.angle = 0.0  # 节点的角度
@@ -168,6 +178,15 @@ class Triangle:
         p4 = triangle.p1
         p5 = triangle.p2
         p6 = triangle.p3
+        # 采用bbox快速判断
+        if (
+           self.bbox[0] > triangle.bbox[2]
+            or self.bbox[2] < triangle.bbox[0]
+            or self.bbox[1] > triangle.bbox[3]
+            or self.bbox[3] < triangle.bbox[1] 
+        ):
+            return False 
+
         return triangle_intersect_triangle(self.p1, self.p2, self.p3, p4, p5, p6)
 
 
@@ -250,17 +269,7 @@ class Quadrilateral:
 
     def get_aspect_ratio(self):
         """基于最大/最小边长的长宽比"""
-        # 计算所有边长
-        edges = [
-            calculate_distance(self.p1, self.p2),
-            calculate_distance(self.p2, self.p3),
-            calculate_distance(self.p3, self.p4),
-            calculate_distance(self.p4, self.p1),
-        ]
-
-        max_edge = max(edges)
-        min_edge = min(edges)
-        return max_edge / min_edge if min_edge > 1e-12 else 0.0
+        return quadrilateral_aspect_ratio(self.p1, self.p2, self.p3, self.p4)
 
     def get_aspect_ratio2(self):
         """基于底边/侧边的长宽比"""
@@ -275,28 +284,47 @@ class Quadrilateral:
         return (edges[0] + edges[2]) / (edges[1] + edges[3])
 
     def get_skewness(self):
-        # 四边形的四个内角
-        angles = [
-            calculate_angle(self.p1, self.p2, self.p3),
-            calculate_angle(self.p2, self.p3, self.p4),
-            calculate_angle(self.p3, self.p4, self.p1),
-            calculate_angle(self.p4, self.p1, self.p2),
-        ]
-        # 检查内角和是否为360度
-        if abs(np.sum(angles) - 360) > 1e-3:
-            skewness = 0.0
-            return skewness
+        return quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+    
+    def is_intersect_triangle(self, triangle):
+        if not isinstance(triangle, Triangle):
+            raise TypeError("只接受Triangle对象作为输入！")
 
-        # 计算最大和最小角度
-        max_angle = max(angles)
-        min_angle = min(angles)
+        p5 = triangle.p1
+        p6 = triangle.p2
+        p7 = triangle.p3
+        # 采用bbox快速判断
+        if (
+           self.bbox[0] > triangle.bbox[2]
+            or self.bbox[2] < triangle.bbox[0]
+            or self.bbox[1] > triangle.bbox[3]  
+            or self.bbox[3] < triangle.bbox[1]
+        ):
+            return False
 
-        skew1 = (max_angle - 90) / 90
-        skew2 = (90 - min_angle) / 90
-        skewness = 1.0 - max([skew1, skew2])
+        return quad_intersects_triangle(self.p1, self.p2, self.p3, self.p4, p5, p6, p7)
 
-        return skewness
+    def is_intersect_quad(self, quad):
+        if not isinstance(quad, Quadrilateral):
+            raise TypeError("只接受Quadrilateral对象作为输入！")
 
+        p5 = quad.p1
+        p6 = quad.p2
+        p7 = quad.p3
+        p8 = quad.p4
+        # 采用bbox快速判断
+        if (
+           self.bbox[0] > quad.bbox[2]
+            or self.bbox[2] < quad.bbox[0]
+            or self.bbox[1] > quad.bbox[3]
+            or self.bbox[3] < quad.bbox[1] 
+        ):
+            return False
+
+        quad1 = [self.p1, self.p2, self.p3, self.p4]
+        quad2 = [p5, p6, p7, p8]
+
+        return quad_intersects_quad(quad1, quad2)
 
 class Unstructured_Grid:
     def __init__(self, cell_container, node_coords, boundary_nodes):

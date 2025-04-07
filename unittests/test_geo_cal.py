@@ -9,7 +9,7 @@ import numpy as np
 sys.path.append(str(Path(__file__).parent.parent / "utils"))
 sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
 import geom_toolkit as geom_tool
-from basic_elements import Triangle
+from basic_elements import Triangle, Quadrilateral
 
 
 class TestTriangle(unittest.TestCase):
@@ -257,7 +257,6 @@ class TestPointToSegmentDistance(unittest.TestCase):
 
 class TestSegmentIntersection(unittest.TestCase):
     """测试线段相交判断函数"""
-
     def test_parallel_segments(self):
         """测试平行线段不相交"""
         a1, a2 = (0, 0), (2, 0)
@@ -373,5 +372,322 @@ class TestQuadrilateral(unittest.TestCase):
         self.assertAlmostEqual(abs(area1), abs(area2), delta=1e-10)
 
 
+class TestConvexCheck(unittest.TestCase):
+    """测试四边形凸性判断函数 is_convex"""
+
+    def test_convex_quadrilateral(self):
+        """测试标准凸四边形"""
+        node_coords = [[0, 0], [1, 0], [1, 1], [0, 1]]  # a  # b  # c  # d
+        self.assertTrue(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_concave_quadrilateral(self):
+        """测试凹四边形（有一个内角>180度）"""
+        node_coords = [[0, 0], [2, 0], [1, 1], [1, 0.5]]  # a  # b  # c  # d (凹点)
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_collinear_points(self):
+        """测试包含共线点的四边形"""
+        node_coords = [[0, 0], [1, 0], [2, 0], [0, 1]]  # a  # b  # c (与a-b共线)  # d
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_convex_with_mixed_signs(self):
+        """测试严格凸但叉积符号混合的情况（验证顶点顺序处理）"""
+        node_coords = [[0, 0], [1, 1], [0, 2], [-1, 1]]  # a  # b  # c  # d
+        self.assertTrue(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_invalid_quadrilateral(self):
+        """测试无法构成四边形的点（三点重合）"""
+        node_coords = [[0, 0], [0, 0], [1, 1], [0, 1]]  # a  # b (与a重合)  # c  # d
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_reversed_order(self):
+        """测试顶点逆时针顺序"""
+        node_coords = [[0, 0], [0, 1], [1, 1], [1, 0]]  # a  # b  # c  # d
+        self.assertTrue(geom_tool.is_convex(0, 3, 2, 1, node_coords))
+
+    def test_all_collinear(self):
+        """所有点共线的情况"""
+        node_coords = [[0, 0], [1, 0], [2, 0], [3, 0]]
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_concave_with_three_collinear(self):
+        """三点共线且形成凹四边形"""
+        node_coords = [[0, 0], [2, 0], [4, 0], [1, 1]]
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_concave_different_shape(self):
+        """另一种凹四边形形状（凹点在不同位置）"""
+        node_coords = [[0, 0], [2, 2], [0, 2], [1, 1]]
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_almost_straight_line(self):
+        """接近共线但微小扰动的凸四边形"""
+        node_coords = [
+            [0, 0],  # 点0
+            [1, 0],  # 点1
+            [2, 0.0001],  # 点2（微小偏移）
+            [3, 0.0003],  # 点3（确保所有叉积符号一致）
+        ]
+        self.assertTrue(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_inverted_order(self):
+        """顶点顺序颠倒但符合凸性条件"""
+        node_coords = [[0, 0], [1, 0], [1, 1], [0, 1]]
+        self.assertTrue(geom_tool.is_convex(3, 2, 1, 0, node_coords))  # 逆序传递参数
+
+    def test_concave_with_zero_cross(self):
+        """某条边的叉积为零导致凹性"""
+        node_coords = [[0, 0], [2, 0], [3, 0], [1, 1]]
+        self.assertFalse(geom_tool.is_convex(0, 1, 2, 3, node_coords))
+
+    def test_invalid_order(self):
+        """顶点顺序错误导致错误判断（非连续顺序）"""
+        node_coords = [[0, 0], [1, 1], [2, 0], [1, 0]]
+        # 错误顺序：0→2→1→3
+        self.assertFalse(geom_tool.is_convex(0, 2, 1, 3, node_coords))
+
+
+class TestQuadrilateralIntersectTriangle(unittest.TestCase):
+    """测试四边形与三角形相交判断函数"""
+
+    def test_fully_intersect(self):
+        """测试四边形与三角形完全相交"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([1, 1], [3, 1], [1, 3])
+        self.assertTrue(quad.is_intersect_triangle(tri))
+
+    def test_edge_intersect(self):
+        """测试边相交情况"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([2, 1], [3, 1], [2, 3])
+        self.assertTrue(quad.is_intersect_triangle(tri))
+
+    def test_vertex_touch(self):
+        """测试顶点接触但不相交"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([2, 2], [3, 2], [2, 3])
+        self.assertFalse(quad.is_intersect_triangle(tri))
+
+    def test_vertex_touch2(self):
+        """测试顶点接触但不相交2"""
+        quad = Quadrilateral(
+            [10.0, -1.111111111111111],
+            [10.0, 1.111111111111111],
+            [7.821164001232763, 1.1111111111111112],
+            [7.821027627553216, -1.1111111111111107],
+            node_ids=[0, 1, 2, 3],
+        )
+        tri = Triangle(
+            [7.821027627553216, -1.1111111111111107],
+            [6.286015116070248, -2.0121039469226242e-16],
+            [6.286010043832486, -1.504200334532052],
+        )
+        self.assertFalse(quad.is_intersect_triangle(tri))
+
+    def test_containment(self):
+        """测试包含关系（三角形在四边形内）"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([0.5, 0.5], [1.5, 0.5], [1, 1.5])
+        self.assertTrue(quad.is_intersect_triangle(tri))
+
+    def test_no_intersect(self):
+        """测试不相交情况"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([3, 3], [4, 3], [3, 4])
+        self.assertFalse(quad.is_intersect_triangle(tri))
+
+
+class TestQuadrilateralIntersectQuad(unittest.TestCase):
+    """测试四边形与四边形相交判断函数"""
+
+    def test_shared_diagonal(self):
+        """测试四边形边与另一四边形对角线重合的情况"""
+        quad1 = Quadrilateral(
+            [0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3]  # 标准正方形
+        )
+        # 第二个四边形的边(0,0)-(2,2)是quad1的对角线
+        quad2 = Quadrilateral(
+            [0, 0], [2, 2], [3, 1], [1, -1], node_ids=[4, 5, 6, 7]  # 共享对角线作为边
+        )
+        self.assertTrue(quad1.is_intersect_quad(quad2))
+
+    def test_concave_intersect(self):
+        """凹四边形相交测试"""
+        quad1 = Quadrilateral(
+            [0, 0], [2, 0], [1, 1], [0, 2], node_ids=[0, 1, 2, 3]  # 凹四边形
+        )
+        quad2 = Quadrilateral(
+            [1, 0.5], [3, 0.5], [3, 1.5], [1, 1.5], node_ids=[4, 5, 6, 7]
+        )
+        self.assertTrue(quad1.is_intersect_quad(quad2))
+
+    def test_fully_intersect(self):
+        """测试四边形完全相交"""
+        quad1 = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral([1, 1], [3, 1], [3, 3], [1, 3], node_ids=[4, 5, 6, 7])
+        self.assertTrue(quad1.is_intersect_quad(quad2))
+
+    def test_edge_intersect(self):
+        """测试边相交情况"""
+        quad1 = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral([2, 1], [3, 1], [3, 3], [2, 3], node_ids=[4, 5, 6, 7])
+        self.assertTrue(quad1.is_intersect_quad(quad2))
+
+    def test_vertex_touch(self):
+        """测试顶点接触但不相交"""
+        quad1 = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral([2, 2], [4, 2], [4, 4], [2, 4], node_ids=[4, 5, 6, 7])
+        self.assertFalse(quad1.is_intersect_quad(quad2))
+
+    def test_containment(self):
+        """测试包含关系"""
+        quad1 = Quadrilateral([0, 0], [3, 0], [3, 3], [0, 3], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral([1, 1], [2, 1], [2, 2], [1, 2], node_ids=[4, 5, 6, 7])
+        self.assertTrue(quad1.is_intersect_quad(quad2))
+
+    def test_no_intersect(self):
+        """测试不相交情况"""
+        quad1 = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral([3, 3], [5, 3], [5, 5], [3, 5], node_ids=[4, 5, 6, 7])
+        self.assertFalse(quad1.is_intersect_quad(quad2))
+
+    def test_bbox_intersect_but_not_actual(self):
+        """测试包围盒相交但实际不相交"""
+        quad1 = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        quad2 = Quadrilateral(
+            [1.5, 2.1],
+            [2.1, 2.1],
+            [2.1, 2.5],
+            [1.5, 2.5],  # 完全在quad1的右上方
+            node_ids=[4, 5, 6, 7],
+        )
+        self.assertFalse(quad1.is_intersect_quad(quad2))
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPointInsideOrOnTriangle(unittest.TestCase):
+    """测试点在三角形内部或边上的判断函数"""
+
+    def test_inside_triangle(self):
+        """测试点在三角形内部"""
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        self.assertTrue(geom_tool.is_point_inside_or_on((1, 1), *triangle))
+        self.assertTrue(geom_tool.is_point_inside_or_on((0.5, 0.5), *triangle))
+
+    def test_on_edge(self):
+        """测试点在三角形边上"""
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        # 边中点
+        self.assertTrue(geom_tool.is_point_inside_or_on((1, 0), *triangle))  # 底边中点
+        self.assertTrue(
+            geom_tool.is_point_inside_or_on((1.5, 1), *triangle)
+        )  # 右侧边中点
+        # 边上的非顶点位置
+        self.assertTrue(geom_tool.is_point_inside_or_on((0.5, 0), *triangle))
+
+    def test_on_vertex(self):
+        """测试点在三角形顶点"""
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        for vertex in triangle:
+            self.assertFalse(geom_tool.is_point_inside_or_on(vertex, *triangle))
+
+    def test_on_vertex2(self):
+        """测试点在三角形顶点上"""
+        vertex = (7.821027627553216, -1.1111111111111107)
+        tri = [
+            (7.821027627553216, -1.1111111111111107),
+            (6.286015116070248, -2.0121039469226242e-16),
+            (6.286010043832486, -1.504200334532052),
+        ]
+
+        self.assertFalse(geom_tool.is_point_inside_or_on(vertex, *tri))
+
+    def test_outside_triangle(self):
+        """测试点在三角形外部"""
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        self.assertFalse(geom_tool.is_point_inside_or_on((3, 1), *triangle))  # 右侧外部
+        self.assertFalse(
+            geom_tool.is_point_inside_or_on((1, -1), *triangle)
+        )  # 下方外部
+        self.assertFalse(
+            geom_tool.is_point_inside_or_on((1, 2.1), *triangle)
+        )  # 上方外部
+
+    def test_edge_cases(self):
+        """测试边缘情况"""
+        # 接近边界的点
+        triangle = [(0, 0), (2, 0), (1, 2)]
+        self.assertFalse(
+            geom_tool.is_point_inside_or_on((1e-8, 1e-8), *triangle)
+        )  # 接近原点
+        self.assertFalse(
+            geom_tool.is_point_inside_or_on((1, 2 - 1e-8), *triangle)
+        )  # 接近顶点
+
+    def test_floating_point_precision(self):
+        """测试浮点精度处理"""
+        triangle = [(0.1, 0.2), (2.3, 4.5), (5.6, 7.8)]
+        # 在边上的点（使用向量计算确定位置）
+        edge_point = (
+            triangle[0][0] * 0.3 + triangle[1][0] * 0.7,
+            triangle[0][1] * 0.3 + triangle[1][1] * 0.7,
+        )
+        self.assertTrue(geom_tool.is_point_inside_or_on(edge_point, *triangle))
+
+
+class TestPointInsideQuad(unittest.TestCase):
+    """测试点在四边形内部的判断函数"""
+
+    def setUp(self):
+        # 定义一个标准矩形四边形
+        self.quad = [[0, 0], [2, 0], [2, 2], [0, 2]]
+
+    def test_point_inside(self):
+        """测试点在四边形内部"""
+        self.assertTrue(geom_tool.is_point_inside_quad([1, 1], self.quad))
+        self.assertTrue(geom_tool.is_point_inside_quad([0.5, 0.5], self.quad))
+        self.assertTrue(geom_tool.is_point_inside_quad([1.9, 1.9], self.quad))
+
+    def test_point_outside(self):
+        """测试点在四边形外部"""
+        self.assertFalse(geom_tool.is_point_inside_quad([3, 1], self.quad))
+        self.assertFalse(geom_tool.is_point_inside_quad([1, -1], self.quad))
+        self.assertFalse(geom_tool.is_point_inside_quad([1, 2.1], self.quad))
+
+    def test_point_on_vertex(self):
+        """测试点在四边形顶点上"""
+        for vertex in self.quad:
+            self.assertFalse(geom_tool.is_point_inside_quad(vertex, self.quad))
+
+    def test_point_on_edge(self):
+        """测试点在四边形边上"""
+        self.assertFalse(geom_tool.is_point_inside_quad([1, 0], self.quad))  # 底边
+        self.assertFalse(geom_tool.is_point_inside_quad([2, 1], self.quad))  # 右边
+        self.assertFalse(geom_tool.is_point_inside_quad([1, 2], self.quad))  # 顶边
+        self.assertFalse(geom_tool.is_point_inside_quad([0, 1], self.quad))  # 左边
+
+    def test_concave_quad(self):
+        """测试凹四边形情况"""
+        concave_quad = [[0, 0], [2, 0], [1, 1], [0, 2]]  # 凹四边形
+        # 凹点附近的内部点
+        self.assertTrue(geom_tool.is_point_inside_quad([0.5, 1], concave_quad))
+        # 凹点附近的凹区域外部点
+        self.assertFalse(geom_tool.is_point_inside_quad([1.5, 0.5], concave_quad))
+
+    # def test_floating_point_precision(self):
+    #     """测试浮点数精度边界情况"""
+    #     # 非常接近边界的内部点
+    #     self.assertTrue(geom_tool.is_point_inside_quad([1e-8, 1e-8], self.quad))
+    #     # 非常接近边界的边界点
+    #     self.assertFalse(geom_tool.is_point_inside_quad([2-1e-8, 1], self.quad))
+
+    def test_irregular_quad(self):
+        """测试不规则四边形"""
+        irregular_quad = [[0, 0], [3, 1], [2, 3], [-1, 2]]
+        # 内部点
+        self.assertTrue(geom_tool.is_point_inside_quad([1, 1.5], irregular_quad))
+        # 外部点
+        self.assertFalse(geom_tool.is_point_inside_quad([3, 0], irregular_quad))
