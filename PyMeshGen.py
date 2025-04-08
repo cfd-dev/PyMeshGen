@@ -51,7 +51,7 @@ def PyMeshGen(parameters=None):
 
     unstr_grid_list = []
     # 推进生成边界层网格
-    adlayers = Adlayers2Hybrid(
+    adlayers = Adlayers2(
         boundary_front=front_heap,
         sizing_system=sizing_system,
         param_obj=parameters,
@@ -61,7 +61,7 @@ def PyMeshGen(parameters=None):
     unstr_grid_list.append(boundary_grid)
 
     # 推进生成网格
-    adfront2 = Adfront2(
+    adfront2 = Adfront2Hybrid(
         boundary_front=front_heap,
         sizing_system=sizing_system,
         node_coords=boundary_grid.node_coords,
@@ -69,11 +69,11 @@ def PyMeshGen(parameters=None):
         visual_obj=visual_obj,
     )
     triangular_grid = adfront2.generate_elements()
-
+    triangular_grid.visualize_unstr_grid_2d(visual_obj)
     # 网格质量优化
-    # triangular_grid = edge_swap(triangular_grid)
+    triangular_grid = edge_swap(triangular_grid)
     # triangular_grid = laplacian_smooth(triangular_grid, 3)
-    # triangular_grid.visualize_unstr_grid_2d()
+    triangular_grid.visualize_unstr_grid_2d(visual_obj)
     unstr_grid_list.append(triangular_grid)
 
     # 合并各向同性网格和边界层网格

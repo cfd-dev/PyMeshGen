@@ -50,7 +50,7 @@ def edge_swap(unstr_grid):
             c, d = other_points
 
             # 凸性检查
-            if not geom_tool.is_convex(a, b, c, d, node_coords):
+            if not geom_tool.is_convex(a, c, b, d, node_coords):
                 continue
 
             # 计算交换前的最小角
@@ -83,8 +83,8 @@ def edge_swap(unstr_grid):
             )
 
             # 凸性检查
-            if not geom_tool.is_convex(c, d, a, b, node_coords):
-                continue
+            # if not geom_tool.is_convex(a, c, b, d, node_coords):
+            #     continue
 
             # 交换条件：最小角优化且不创建新边界边
             if swapped_min > current_min and not (
