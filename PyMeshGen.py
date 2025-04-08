@@ -75,7 +75,7 @@ def PyMeshGen(parameters=None):
     triangular_grid = edge_swap(triangular_grid)
     hybrid_grid = merge_elements(triangular_grid)
     # triangular_grid = laplacian_smooth(triangular_grid, 3)
-    hybrid_grid = hybrid_smooth(hybrid_grid)
+    hybrid_grid = hybrid_smooth(hybrid_grid,3)
 
     hybrid_grid.visualize_unstr_grid_2d(visual_obj)
     unstr_grid_list.append(hybrid_grid)
