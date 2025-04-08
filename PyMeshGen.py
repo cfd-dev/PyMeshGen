@@ -14,7 +14,7 @@ from front2d import construct_initial_front
 from meshsize import QuadtreeSizing
 from adfront2 import Adfront2
 from adfront2_hybrid import Adfront2Hybrid
-from optimize import edge_swap, laplacian_smooth
+from optimize import edge_swap, laplacian_smooth,merge_elements,hybrid_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters
@@ -69,12 +69,16 @@ def PyMeshGen(parameters=None):
         visual_obj=visual_obj,
     )
     triangular_grid = adfront2.generate_elements()
-    triangular_grid.visualize_unstr_grid_2d(visual_obj)
+    # triangular_grid.visualize_unstr_grid_2d(visual_obj)
     # 网格质量优化
+
     triangular_grid = edge_swap(triangular_grid)
+    hybrid_grid = merge_elements(triangular_grid)
     # triangular_grid = laplacian_smooth(triangular_grid, 3)
-    triangular_grid.visualize_unstr_grid_2d(visual_obj)
-    unstr_grid_list.append(triangular_grid)
+    hybrid_grid = hybrid_smooth(hybrid_grid)
+
+    hybrid_grid.visualize_unstr_grid_2d(visual_obj)
+    unstr_grid_list.append(hybrid_grid)
 
     # 合并各向同性网格和边界层网格
     global_unstr_grid = unstr_grid_list[0]

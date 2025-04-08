@@ -1,5 +1,5 @@
 {
-    "debug_level": 1,
+    "debug_level": 0,
     "input_file": "./config/input/pentagon.cas",
     "output_file": "./out/pentagon.vtk",
     "viz_enabled": true,

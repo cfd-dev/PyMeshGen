@@ -414,6 +414,8 @@ class Unstructured_Grid:
 
         # 计算所有单元的质量
         for c in self.cell_container:
+            if c.node_ids==[81, 80, 90, 88]:
+                print("debug")
             c.init_metrics()
 
         quality_values = [

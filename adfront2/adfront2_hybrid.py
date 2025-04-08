@@ -13,6 +13,7 @@ from geom_toolkit import (
     quadrilateral_quality2,
     quadrilateral_area,
     _fast_distance_check,
+    point_to_segment_distance,
 )
 
 
@@ -47,7 +48,7 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [54, 55]:
+            if self.base_front.node_ids == [38, 39]:
                 # self.debug_save()
                 kkk = 0
 
@@ -58,6 +59,8 @@ class Adfront2Hybrid(Adfront2):
             self.debug_draw()
 
             self.select_point_for_quad(spacing)
+
+            self.add_new_point_for_tri(spacing)
 
             self.select_point_for_tri()
 
@@ -72,6 +75,42 @@ class Adfront2Hybrid(Adfront2):
         timer.show_to_console("完成三角形网格生成.")
 
         return self.unstr_grid
+
+    def add_new_point_for_tri(self, spacing):
+        if self.pselected is not None:
+            return
+
+        self.mesh_type = 1
+        normal_vec = self.base_front.normal
+
+        # 分量式计算向量相加
+        fc = self.base_front.center
+        if self.mesh_type == 1:
+            pbest = [
+                fc[0] + normal_vec[0] * spacing,
+                fc[1] + normal_vec[1] * spacing,
+            ]
+        elif self.mesh_type == 2:
+            node_coord = self.base_front.nodes_coords[0]
+            pbest = [
+                node_coord[0] + normal_vec[0] * spacing,
+                node_coord[1] + normal_vec[1] * spacing,
+            ]
+        elif self.mesh_type == 3:
+            pass
+        else:
+            pbest = [
+                fc[0] + normal_vec[0] * spacing,
+                fc[1] + normal_vec[1] * spacing,
+            ]
+
+        self.pbest = NodeElement(
+            pbest,
+            self.num_nodes,
+            "interior",
+        )
+
+        return self.pbest
 
     def select_point_for_tri(self):
         if self.pselected is not None:
@@ -90,15 +129,21 @@ class Adfront2Hybrid(Adfront2):
                 scored_candidates.append((quality, node_elem))
 
         # 添加Pbest节点的质量（带折扣系数）
-        for node_elem in self.pbest:
-            pbest_quality = (
-                triangle_quality(p0, p1, node_elem.coords) * self.discount
-                if node_elem
-                else 0
-            )
-
-            if pbest_quality > 0:
-                scored_candidates.append((pbest_quality, node_elem))
+        # for node_elem in self.pbest:
+        #     pbest_quality = (
+        #         triangle_quality(p0, p1, node_elem.coords) * self.discount
+        #         if node_elem
+        #         else 0
+        #     )
+        # if pbest_quality > 0:
+            # scored_candidates.append((pbest_quality, node_elem))
+        pbest_quality = (
+            triangle_quality(p0, p1, self.pbest.coords) * self.discount
+            if self.pbest
+            else 0
+        )
+        if pbest_quality > 0:
+            scored_candidates.append((pbest_quality, self.pbest))
 
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
@@ -116,7 +161,7 @@ class Adfront2Hybrid(Adfront2):
             break
 
         # self.best_flag = self.pselected == self.pbest
-        if self.pselected.idx > self.num_nodes:
+        if self.pselected is not None and self.pselected.idx > self.num_nodes:
             self.pselected.idx = self.num_nodes
 
         if self.pselected == None:
@@ -282,6 +327,7 @@ class Adfront2Hybrid(Adfront2):
             self.base_front.node_elems[1],
             self.pselected[1],
             self.pselected[0],
+            "interior",
             self.num_cells,
         )
 
@@ -309,8 +355,12 @@ class Adfront2Hybrid(Adfront2):
         scored_candidates = []
 
         # 生成所有候选节点对（排除相同节点）
-        node_pairs = [(n1, n2) for n1 in self.node_candidates 
-                     for n2 in self.node_candidates if n1 != n2]
+        node_pairs = [
+            (n1, n2)
+            for n1 in self.node_candidates
+            for n2 in self.node_candidates
+            if n1 != n2
+        ]
 
         # 统一处理四种候选情况
         candidate_sources = [
@@ -318,10 +368,10 @@ class Adfront2Hybrid(Adfront2):
             (node_pairs, 1.0),
             # pbest[1] 组合
             ([(n, self.pbest[1]) for n in self.node_candidates], discount),
-            # pbest[0] 组合 
+            # pbest[0] 组合
             ([(self.pbest[0], n) for n in self.node_candidates], discount),
             # pbest对
-            ([(self.pbest[0], self.pbest[1])], discount**2)
+            ([(self.pbest[0], self.pbest[1])], discount**2),
         ]
 
         # 统一处理质量计算
@@ -361,9 +411,9 @@ class Adfront2Hybrid(Adfront2):
             ):
                 continue
 
-            if self.proximity_check(node_elem1, node_elem2, 0.3*spacing):
+            if self.proximity_check(node_elem1, node_elem2, 0.3 * spacing):
                 continue
-                    
+
             # if (
             #     sqrt(quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords))
             #     > 1.5 * spacing
@@ -380,27 +430,31 @@ class Adfront2Hybrid(Adfront2):
         return self.pselected
 
     def proximity_check(self, node_elem1, node_elem2, distance):
-       
+
         # 若candidate是在front推进方向的反方向，则跳过
-        A = self.base_front.node_elems[0].coords
-        B = self.base_front.node_elems[1].coords
-        p0 = node_elem1.coords
-        p1 = node_elem2.coords
+        edges = [
+            (node_elem1, node_elem2),
+            (self.base_front.node_elems[0], node_elem1),
+            (self.base_front.node_elems[1], node_elem2),
+        ]
 
-        if not is_left2d(A, B, p0) and not is_left2d(A, B, p1):
-            return False
+        for edge in edges:
+            p0 = edge[0]
+            p1 = edge[1]
+            # for front in self.front_candidates:
+            #     q0 = front.node_elems[0].coords
+            #     q1 = front.node_elems[1].coords
+            #     if any(id in front.node_ids for id in [p0.idx, p1.idx]):
+            #         continue
 
-        p0 = node_elem1.coords
-        p1 = node_elem2.coords
-        for front in self.front_candidates:   
-            q0 = front.node_elems[0].coords
-            q1 = front.node_elems[1].coords
-            if any(id in front.node_ids for id in [node_elem1.idx, node_elem2.idx]):
-                continue
-
-            if _fast_distance_check(p0, p1, q0, q1, distance):
-                return True
-
+            #     if _fast_distance_check(p0.coords, p1.coords, q0, q1, distance):
+            #         return True
+            for node in self.node_candidates:
+                if node.idx in [p0.idx, p1.idx]:
+                    continue
+                dis = point_to_segment_distance(node.coords, p0.coords, p1.coords)
+                if dis < distance:
+                    return True
 
     def is_cross_quad(self, node_elem0, node_elem1):
         p0 = self.base_front.node_elems[0]
