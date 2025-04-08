@@ -7,6 +7,7 @@ from geom_toolkit import (
     segments_intersect,
     is_left2d,
     points_equal,
+    _fast_distance_check,
 )
 from basic_elements import (
     NodeElement,
@@ -433,7 +434,7 @@ class Adlayers2:
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
                 q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
-                if self._fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+                if _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
                     info(
                         f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
@@ -443,18 +444,6 @@ class Adlayers2:
 
         return False
 
-    def _fast_distance_check(self, p0, p1, q0, q1, safe_distance_sq):
-        """快速距离检查"""
-        # 线段端点距离检查
-        for p in [p0, p1]:
-            for q in [q0, q1]:
-                dx = p[0] - q[0]
-                dy = p[1] - q[1]
-                if dx * dx + dy * dy < safe_distance_sq:
-                    return True
-
-        # 线段间距离检查
-        return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
     def update_front_list_globally(
         self, check_fronts, new_interior_list, new_prism_cap_list
