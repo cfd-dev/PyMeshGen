@@ -48,7 +48,7 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [38, 39]:
+            if self.base_front.node_ids == [237, 238]:
                 # self.debug_save()
                 kkk = 0
 
@@ -136,7 +136,7 @@ class Adfront2Hybrid(Adfront2):
         #         else 0
         #     )
         # if pbest_quality > 0:
-            # scored_candidates.append((pbest_quality, node_elem))
+        # scored_candidates.append((pbest_quality, node_elem))
         pbest_quality = (
             triangle_quality(p0, p1, self.pbest.coords) * self.discount
             if self.pbest
@@ -161,8 +161,8 @@ class Adfront2Hybrid(Adfront2):
             break
 
         # self.best_flag = self.pselected == self.pbest
-        if self.pselected is not None and self.pselected.idx > self.num_nodes:
-            self.pselected.idx = self.num_nodes
+        # if self.pselected is not None and self.pselected.idx > self.num_nodes:
+        #     self.pselected.idx = self.num_nodes
 
         if self.pselected == None:
             warning(
@@ -187,6 +187,7 @@ class Adfront2Hybrid(Adfront2):
             if node_hash not in self.node_hash_list:
                 self.node_hash_list.add(node_hash)
                 self.node_coords.append(self.pselected.coords)
+                self.pselected.idx = self.num_nodes
                 self.add_elems_to_space_index(
                     [self.pselected], self.space_index_node, self.node_dict
                 )
@@ -269,6 +270,7 @@ class Adfront2Hybrid(Adfront2):
                 if node_hash not in self.node_hash_list:
                     self.node_hash_list.add(node_hash)
                     self.node_coords.append(node.coords)
+                    self.pselected[i].idx = self.num_nodes
                     self.add_elems_to_space_index(
                         [node], self.space_index_node, self.node_dict
                     )
@@ -423,9 +425,9 @@ class Adfront2Hybrid(Adfront2):
             self.pselected = [node_elem1, node_elem2]
             break
 
-        if self.pselected is not None:
-            for i in range(2):
-                self.best_flag[i] = self.pselected[i] == self.pbest[i]
+        # if self.pselected is not None:
+        #     for i in range(2):
+        #         self.best_flag[i] = self.pselected[i].idx == self.pbest[i].idx
 
         return self.pselected
 
