@@ -248,6 +248,19 @@ def is_convex(a, b, c, d, node_coords):
 
     return positive or negative
 
+def _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+        """快速距离检查"""
+        # 线段端点距离检查
+        for p in [p0, p1]:
+            for q in [q0, q1]:
+                dx = p[0] - q[0]
+                dy = p[1] - q[1]
+                if dx * dx + dy * dy < safe_distance_sq:
+                    return True
+
+        # 线段间距离检查
+        return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
+
 
 # 计算三角形最小角
 def calculate_min_angle(cell, node_coords):

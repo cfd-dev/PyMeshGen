@@ -12,6 +12,7 @@ from geom_toolkit import (
     is_left2d,
     quadrilateral_quality2,
     quadrilateral_area,
+    _fast_distance_check,
 )
 
 
@@ -46,7 +47,7 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [70, 71]:
+            if self.base_front.node_ids == [54, 55]:
                 # self.debug_save()
                 kkk = 0
 
@@ -115,6 +116,8 @@ class Adfront2Hybrid(Adfront2):
             break
 
         # self.best_flag = self.pselected == self.pbest
+        if self.pselected.idx > self.num_nodes:
+            self.pselected.idx = self.num_nodes
 
         if self.pselected == None:
             warning(
@@ -352,12 +355,15 @@ class Adfront2Hybrid(Adfront2):
             line2 = LineSegment(node_elem1.coords, p0)
             line3 = LineSegment(node_elem2.coords, p1)
             if (
-                (line1.length > 2 * spacing)
-                or (line2.length > 2 * spacing)
-                or (line3.length > 2 * spacing)
+                (line1.length > 2.0 * spacing)
+                or (line2.length > 2.0 * spacing)
+                or (line3.length > 2.0 * spacing)
             ):
                 continue
 
+            if self.proximity_check(node_elem1, node_elem2, 0.3*spacing):
+                continue
+                    
             # if (
             #     sqrt(quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords))
             #     > 1.5 * spacing
@@ -372,6 +378,29 @@ class Adfront2Hybrid(Adfront2):
                 self.best_flag[i] = self.pselected[i] == self.pbest[i]
 
         return self.pselected
+
+    def proximity_check(self, node_elem1, node_elem2, distance):
+       
+        # 若candidate是在front推进方向的反方向，则跳过
+        A = self.base_front.node_elems[0].coords
+        B = self.base_front.node_elems[1].coords
+        p0 = node_elem1.coords
+        p1 = node_elem2.coords
+
+        if not is_left2d(A, B, p0) and not is_left2d(A, B, p1):
+            return False
+
+        p0 = node_elem1.coords
+        p1 = node_elem2.coords
+        for front in self.front_candidates:   
+            q0 = front.node_elems[0].coords
+            q1 = front.node_elems[1].coords
+            if any(id in front.node_ids for id in [node_elem1.idx, node_elem2.idx]):
+                continue
+
+            if _fast_distance_check(p0, p1, q0, q1, distance):
+                return True
+
 
     def is_cross_quad(self, node_elem0, node_elem1):
         p0 = self.base_front.node_elems[0]
