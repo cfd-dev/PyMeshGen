@@ -40,12 +40,8 @@ class Adfront2Hybrid(Adfront2):
         timer = TimeSpan("开始推进生成三角形...")
         while self.front_list:
 
-            if self.mesh_type == 3:
-                self.reconstruct_node2front()
+            self.reconstruct_node2front()
 
-            # self.base_front = heapq.heappop(self.front_list)
-            # import random
-            # idx = random.randrange(len(self.front_list))
             self.base_front = self.front_list.pop(0)
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
@@ -54,11 +50,7 @@ class Adfront2Hybrid(Adfront2):
                 # self.debug_save()
                 kkk = 0
 
-            if self.mesh_type == 3:
-                self.reconstruct_node2front()
-                self.add_new_points_for_quad(spacing)
-            else:
-                self.add_new_point(spacing)
+            self.add_new_points_for_quad(spacing)
 
             self.search_candidates(self.base_front.al * spacing)
 
@@ -122,7 +114,7 @@ class Adfront2Hybrid(Adfront2):
             self.pselected = node_elem
             break
 
-        self.best_flag = self.pselected == self.pbest
+        # self.best_flag = self.pselected == self.pbest
 
         if self.pselected == None:
             warning(
@@ -142,7 +134,7 @@ class Adfront2Hybrid(Adfront2):
 
         # 更新节点，如果选择了最佳点，best_flag为True，且pselected为Pbest
         # 此时将pselected添加到node_coords中，同时更新num_nodes，若选择的不是Pbest，则无需更新节点
-        if self.best_flag and self.pselected is not None:
+        if self.pselected is not None:
             node_hash = self.pselected.hash
             if node_hash not in self.node_hash_list:
                 self.node_hash_list.add(node_hash)
@@ -223,10 +215,10 @@ class Adfront2Hybrid(Adfront2):
 
         # 更新节点，如果选择了最佳点，best_flag为True，且pselected为Pbest
         # 此时将pselected添加到node_coords中，同时更新num_nodes，若选择的不是Pbest，则无需更新节点
-        if self.best_flag and self.pselected is not None:
+        if self.pselected is not None:
             for i, node in enumerate(self.pselected):
                 node_hash = node.hash
-                if node_hash not in self.node_hash_list and self.best_flag[i]:
+                if node_hash not in self.node_hash_list:
                     self.node_hash_list.add(node_hash)
                     self.node_coords.append(node.coords)
                     self.add_elems_to_space_index(
@@ -308,57 +300,40 @@ class Adfront2Hybrid(Adfront2):
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
 
-        # 存储带质量的候选节点元组 (质量, 节点)
-        scored_candidates = []
-        # 遍历所有候选节点计算质量
-        for node_elem1 in self.node_candidates:
-            for node_elem2 in self.node_candidates:
-                if node_elem1 == node_elem2:
-                    continue
-                if node_elem1.idx == 55 and node_elem2.idx == 69:
-                    kkk = 0
-                quality = quadrilateral_quality2(
-                    p0, p1, node_elem2.coords, node_elem1.coords
-                )
-                if quality > 0:
-                    scored_candidates.append((quality, node_elem1, node_elem2))
-
-        # 选择了pbest[1]，添加Pbest节点的质量（带折扣系数）
+        # 候选节点质量评估参数
+        quality_criterion = 0.5
         discount = self.discount
-        # discount = 1.0
-        for node_elem in self.node_candidates:
-            pbest_quality = (
-                quadrilateral_quality2(p0, p1, self.pbest[1].coords, node_elem.coords)
-                * discount
-            )
+        scored_candidates = []
 
-            if pbest_quality > 0:
-                scored_candidates.append((pbest_quality, node_elem, self.pbest[1]))
+        # 生成所有候选节点对（排除相同节点）
+        node_pairs = [(n1, n2) for n1 in self.node_candidates 
+                     for n2 in self.node_candidates if n1 != n2]
 
-        # 选择了pbest[0]，添加Pbest节点的质量（带折扣系数）
-        for node_elem in self.node_candidates:
-            pbest_quality = (
-                quadrilateral_quality2(p0, p1, node_elem.coords, self.pbest[0].coords)
-                * discount
-            )
+        # 统一处理四种候选情况
+        candidate_sources = [
+            # 常规候选对
+            (node_pairs, 1.0),
+            # pbest[1] 组合
+            ([(n, self.pbest[1]) for n in self.node_candidates], discount),
+            # pbest[0] 组合 
+            ([(self.pbest[0], n) for n in self.node_candidates], discount),
+            # pbest对
+            ([(self.pbest[0], self.pbest[1])], discount**2)
+        ]
 
-            if pbest_quality > 0:
-                scored_candidates.append((pbest_quality, self.pbest[0], node_elem))
-
-        # 选择了pbest[0]和pbest[1]，添加Pbest节点的质量（带折扣系数）
-        pbest_quality = (
-            quadrilateral_quality2(p0, p1, self.pbest[1].coords, self.pbest[0].coords)
-            * discount
-            * discount
-        )
-        if pbest_quality > 0:
-            scored_candidates.append((pbest_quality, self.pbest[0], self.pbest[1]))
+        # 统一处理质量计算
+        for candidates, weight in candidate_sources:
+            for elem1, elem2 in candidates:
+                quality = quadrilateral_quality2(p0, p1, elem2.coords, elem1.coords)
+                weighted_quality = quality * weight
+                if weighted_quality > quality_criterion:
+                    scored_candidates.append((weighted_quality, elem1, elem2))
 
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
         self.pselected = None
-        self.best_flag = False
+        self.best_flag = [False] * 2
         for quality, node_elem1, node_elem2 in scored_candidates:
             if not (
                 is_left2d(p0, p1, node_elem1.coords)
@@ -369,8 +344,8 @@ class Adfront2Hybrid(Adfront2):
             if self.is_cross_quad(node_elem1, node_elem2):
                 continue
 
-            if quality < 0.5:
-                continue
+            # if quality < 0.5:
+            #     continue
 
             # 计算新增边长
             line1 = LineSegment(node_elem1.coords, node_elem2.coords)
@@ -392,10 +367,7 @@ class Adfront2Hybrid(Adfront2):
             self.pselected = [node_elem1, node_elem2]
             break
 
-        if self.pselected == None:
-            return self.pselected
-        else:
-            self.best_flag = [False] * 2
+        if self.pselected is not None:
             for i in range(2):
                 self.best_flag[i] = self.pselected[i] == self.pbest[i]
 
@@ -481,11 +453,7 @@ class Adfront2Hybrid(Adfront2):
                     [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]]
                 )
                 # 角平分线方向向量
-                # if base_p.hash == self.base_front.node_elems[0].hash:
-                #     rotated_vector = np.dot(rotation_matrix, neighbor1.direction)
-                # elif base_p.hash == self.base_front.node_elems[1].hash:
                 rotated_vector = np.dot(rotation_matrix, neighbor2.direction)
-
                 pnew = np.array(base_p.coords) + rotated_vector * d
 
                 pnew_elem = NodeElement(

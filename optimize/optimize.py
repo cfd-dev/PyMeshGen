@@ -34,6 +34,8 @@ def edge_swap(unstr_grid):
             cell1_idx, cell2_idx = cells
             cell1 = unstr_grid.cell_container[cell1_idx]
             cell2 = unstr_grid.cell_container[cell2_idx]
+            if not (isinstance(cell1, Triangle) and isinstance(cell2, Triangle)):
+                continue  # 非三角形单元跳过
 
             # 确认公共边
             common_edge = set(cell1.node_ids) & set(cell2.node_ids)
