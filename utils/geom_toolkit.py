@@ -466,7 +466,7 @@ def triangle_skewness(p1, p2, p3):
     max_angle = max(angles)
     min_angle = min(angles)
 
-    skew1 = (max_angle - 60) / 60
+    skew1 = (max_angle - 60) / 120
     skew2 = (60 - min_angle) / 60
     skewness = 1.0 - max([skew1, skew2])
 

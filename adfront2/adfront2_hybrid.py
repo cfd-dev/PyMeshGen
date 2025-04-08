@@ -50,7 +50,7 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [78, 79]:
+            if self.base_front.node_ids == [70, 71]:
                 # self.debug_save()
                 kkk = 0
 
@@ -84,8 +84,6 @@ class Adfront2Hybrid(Adfront2):
         if self.pselected is not None:
             return
 
-        self.pbest = self.pbest[0]
-
         # 预计算基准点坐标
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
@@ -99,14 +97,15 @@ class Adfront2Hybrid(Adfront2):
                 scored_candidates.append((quality, node_elem))
 
         # 添加Pbest节点的质量（带折扣系数）
-        pbest_quality = (
-            triangle_quality(p0, p1, self.pbest.coords) * self.discount
-            if self.pbest
-            else 0
-        )
+        for node_elem in self.pbest:
+            pbest_quality = (
+                triangle_quality(p0, p1, node_elem.coords) * self.discount
+                if node_elem
+                else 0
+            )
 
-        if pbest_quality > 0:
-            scored_candidates.append((pbest_quality, self.pbest))
+            if pbest_quality > 0:
+                scored_candidates.append((pbest_quality, node_elem))
 
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
@@ -316,6 +315,8 @@ class Adfront2Hybrid(Adfront2):
             for node_elem2 in self.node_candidates:
                 if node_elem1 == node_elem2:
                     continue
+                if node_elem1.idx == 55 and node_elem2.idx == 69:
+                    kkk = 0
                 quality = quadrilateral_quality2(
                     p0, p1, node_elem2.coords, node_elem1.coords
                 )
@@ -367,12 +368,26 @@ class Adfront2Hybrid(Adfront2):
 
             if self.is_cross_quad(node_elem1, node_elem2):
                 continue
-            
-            if quality < 0.3:
+
+            if quality < 0.5:
                 continue
-            
-            if sqrt(quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords)) > 1.2 * spacing:
+
+            # 计算新增边长
+            line1 = LineSegment(node_elem1.coords, node_elem2.coords)
+            line2 = LineSegment(node_elem1.coords, p0)
+            line3 = LineSegment(node_elem2.coords, p1)
+            if (
+                (line1.length > 2 * spacing)
+                or (line2.length > 2 * spacing)
+                or (line3.length > 2 * spacing)
+            ):
                 continue
+
+            # if (
+            #     sqrt(quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords))
+            #     > 1.5 * spacing
+            # ):
+            #     continue
 
             self.pselected = [node_elem1, node_elem2]
             break
@@ -470,7 +485,7 @@ class Adfront2Hybrid(Adfront2):
                 #     rotated_vector = np.dot(rotation_matrix, neighbor1.direction)
                 # elif base_p.hash == self.base_front.node_elems[1].hash:
                 rotated_vector = np.dot(rotation_matrix, neighbor2.direction)
-                
+
                 pnew = np.array(base_p.coords) + rotated_vector * d
 
                 pnew_elem = NodeElement(
