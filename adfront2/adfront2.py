@@ -419,7 +419,7 @@ class Adfront2:
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
             self.base_front.al *= 1.2
-            self.debug_save()
+            self.debug_level = 1
 
         return self.pselected
 
