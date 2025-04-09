@@ -149,7 +149,7 @@ class Adfront2:
             # 绘制基准阵面
             self.base_front.draw_front("r-", self.ax)
             # 绘制Pbest，适应多个pbest的情况
-            for point in (self.pbest if isinstance(self.pbest, list) else [self.pbest]):
+            for point in self.pbest if isinstance(self.pbest, list) else [self.pbest]:
                 self.ax.plot(point.coords[0], point.coords[1], "r.", markersize=10)
 
             # 绘制节点编号
@@ -192,7 +192,7 @@ class Adfront2:
 
             self.select_point()
 
-            self.update_cells()
+            self.update_data()
 
             self.show_progress()
 
@@ -297,7 +297,7 @@ class Adfront2:
         elif self.search_method == "rtree":
             add_elems_to_space_index_with_RTree(elems, space_index, elem_dict)
 
-    def update_cells(self):
+    def update_data(self):
         if self.pselected is None:
             return
 
@@ -463,7 +463,7 @@ class Adfront2:
         # 统一处理单个/多个pbest点
         if isinstance(self.pbest, list) and len(self.pbest) > 1:
             p1, p2 = (p.coords for p in self.pbest[:2])
-            point = [(p1[0] + p2[0])/2, (p1[1] + p2[1])/2]
+            point = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2]
         else:
             point = self.pbest.coords
 
@@ -545,3 +545,62 @@ class Adfront2:
         )
 
         return self.pbest
+
+    def update_nodes(self):
+        """更新节点"""
+        # 应对pselected可能为NodeElement，也可能为多个NodeElement的情况，统一转换为list
+        # 注意不能直接将self.pselected转换为list，应该后面update_fronts时还需要使用self.pselected
+        pselected = (
+            [self.pselected]
+            if isinstance(self.pselected, NodeElement)
+            else self.pselected
+        )
+
+        for i, node in enumerate(pselected):
+            node_hash = node.hash
+            if node_hash not in self.node_hash_list:
+                self.node_hash_list.add(node_hash)
+                self.node_coords.append(node.coords)
+                pselected[i].idx = self.num_nodes
+                self.add_elems_to_space_index(
+                    [node], self.space_index_node, self.node_dict
+                )
+
+                self.num_nodes += 1
+
+    def update_fronts(self, new_fronts):
+        """更新阵面"""
+        # 判断front_list中是否存在new_front，若不存在，
+        # 则将其压入front_list，若已存在，则将其从front_list中删除
+        front_hashes = {f.hash for f in self.front_list}
+        for chk_fro in new_fronts:
+            if chk_fro.hash not in front_hashes:
+                self.front_list.append(chk_fro)
+
+                self.add_elems_to_space_index(
+                    [chk_fro], self.space_index_front, self.front_dict
+                )
+
+                if self.ax and self.debug_level >= 1:
+                    chk_fro.draw_front("g-", self.ax)
+            else:  # 移除相同位置的旧阵面
+                self.front_list = [
+                    tmp_fro
+                    for tmp_fro in self.front_list
+                    if tmp_fro.hash != chk_fro.hash
+                ]
+
+    def update_cells(self, new_cell):
+        """更新单元"""
+        if new_cell.hash not in self.cell_hash_list:
+            self.cell_hash_list.add(new_cell.hash)
+            self.cell_container.append(new_cell)
+
+            self.add_elems_to_space_index(
+                [new_cell], self.space_index_cell, self.cell_dict
+            )
+
+            self.num_cells += 1
+        else:
+            warning(f"发现重复单元：{new_cell.node_ids}")
+            self.debug_level = 1
