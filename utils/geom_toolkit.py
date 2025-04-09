@@ -228,14 +228,19 @@ def is_left2d(p1, p2, p3):
 
 
 def is_convex(a, b, c, d, node_coords):
-    # 确保顶点按顺序排列（如a→b→c→d→a）
-    points = [a, b, c, d]
-    cross_products = []
+    """改进的凸性检查，支持节点索引或坐标"""
 
+    # 确保顶点按顺序排列（如a→b→c→d→a）
+    def get_coord(x):
+        return node_coords[x] if isinstance(x, int) else x
+
+    points = [get_coord(a), get_coord(b), get_coord(c), get_coord(d)]
+
+    cross_products = []
     for i in range(4):
-        p1 = node_coords[points[i]]
-        p2 = node_coords[points[(i + 1) % 4]]
-        p3 = node_coords[points[(i + 2) % 4]]
+        p1 = points[i]
+        p2 = points[(i + 1) % 4]
+        p3 = points[(i + 2) % 4]
 
         v1 = np.array(p2) - np.array(p1)
         v2 = np.array(p3) - np.array(p2)
@@ -248,18 +253,19 @@ def is_convex(a, b, c, d, node_coords):
 
     return positive or negative
 
-def _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
-        """快速距离检查"""
-        # 线段端点距离检查
-        for p in [p0, p1]:
-            for q in [q0, q1]:
-                dx = p[0] - q[0]
-                dy = p[1] - q[1]
-                if dx * dx + dy * dy < safe_distance_sq:
-                    return True
 
-        # 线段间距离检查
-        return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
+def _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+    """快速距离检查"""
+    # 线段端点距离检查
+    for p in [p0, p1]:
+        for q in [q0, q1]:
+            dx = p[0] - q[0]
+            dy = p[1] - q[1]
+            if dx * dx + dy * dy < safe_distance_sq:
+                return True
+
+    # 线段间距离检查
+    return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
 
 # 计算三角形最小角

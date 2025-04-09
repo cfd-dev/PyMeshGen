@@ -111,29 +111,48 @@ def hybrid_smooth(unstr_grid, max_iter=3):
     original_coords = node_coords.copy()
     boundary_nodes = set(unstr_grid.boundary_nodes_list)
 
+    # 新增凸性检查辅助函数
+    def is_quad_convex(nodes):
+        return geom_tool.is_convex(
+            nodes[0], nodes[1], nodes[2], nodes[3], node_coords.tolist()
+        )
+
     for _ in range(max_iter):
         # 存储每个节点的移动向量和权重
         displacements = np.zeros_like(node_coords)
         weights = np.zeros(len(node_coords))
+
+        # 存储四边形原始节点用于回滚检查
+        quad_originals = {}
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Quadrilateral):
+                quad_originals[id(cell)] = np.array(
+                    [node_coords[i] for i in cell.node_ids]
+                )
 
         # 遍历所有单元进行贡献计算
         for cell in unstr_grid.cell_container:
             if isinstance(cell, Quadrilateral):
                 # 四边形优化目标：接近矩形（角度优化+边长比优化）
                 quad_nodes = cell.node_ids
+                original_nodes = quad_originals[id(cell)]
+
                 for i in range(4):
                     prev = quad_nodes[i - 1]
                     curr = quad_nodes[i]
                     next1 = quad_nodes[(i + 1) % 4]
                     next2 = quad_nodes[(i + 2) % 4]
 
-                    # 计算理想直角位置
+                    # 计算带约束的理想位置
                     ideal_point = compute_rectangular_position(
-                        node_coords[prev], node_coords[curr], node_coords[next1]
+                        original_nodes[(i - 1) % 4],  # 使用原始坐标计算
+                        original_nodes[i],
+                        original_nodes[(i + 1) % 4],
                     )
 
-                    # 计算移动向量（向理想位置靠拢）
-                    displacement = 0.5 * (ideal_point - node_coords[next1])
+                    displacement = 0.3 * (
+                        ideal_point - node_coords[next1]
+                    )  # 减小位移系数
                     if next1 not in boundary_nodes:
                         displacements[next1] += displacement
                         weights[next1] += 1.0
@@ -154,9 +173,25 @@ def hybrid_smooth(unstr_grid, max_iter=3):
                     weights[curr] += 1.0
 
         # 应用平滑并更新坐标
+        new_coords = node_coords.copy()
         for i in range(len(node_coords)):
             if weights[i] > 0 and i not in boundary_nodes:
-                node_coords[i] += displacements[i] / weights[i]
+                new_coords[i] += displacements[i] / weights[i]
+
+        # 凸性检查和修正
+        need_rollback = False
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Quadrilateral) and len(cell.node_ids) == 4:
+                new_nodes = [new_coords[i] for i in cell.node_ids]
+                if not is_quad_convex(new_nodes):
+                    need_rollback = True
+                    break
+
+        # 只有当所有四边形保持凸性时才接受更新
+        if not need_rollback:
+            node_coords = new_coords
+        else:
+            warning("检测到凹四边形，跳过本轮平滑")
 
         # 限制最大位移防止震荡
         max_disp = np.linalg.norm(node_coords - original_coords, axis=1).max()
