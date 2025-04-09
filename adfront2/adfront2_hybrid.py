@@ -37,9 +37,9 @@ class Adfront2Hybrid(Adfront2):
         self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
         self.discount = 0.8  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
-        self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃
+        self.quality_criterion = 0.01  # 四边形质量阈值，低于这个质量的四边形将被舍弃
         self.proximity_tol = (
-            0.3  # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
+            0.5  # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
         )
 
     def generate_elements(self):
@@ -52,10 +52,11 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [96, 68] or self.base_front.node_ids == [
-                68,
-                100,
-            ]:
+            if (
+                self.base_front.node_ids == [212, 234]
+                or self.base_front.node_ids == [239,214]
+                or self.base_front.node_ids == [183, 184]
+            ):
                 # self.debug_save()
                 kkk = 0
 
@@ -232,6 +233,8 @@ class Adfront2Hybrid(Adfront2):
         self.pselected = None
         self.best_flag = [False] * 2
         for quality, node_elem1, node_elem2 in scored_candidates:
+            if node_elem1.idx == 265 and node_elem2.idx == 187:
+                kkk = 0
             if not (
                 is_left2d(p0, p1, node_elem1.coords)
                 and is_left2d(p0, p1, node_elem2.coords)
@@ -334,7 +337,6 @@ class Adfront2Hybrid(Adfront2):
         line2 = LineSegment(node_elem1, p1)
         line3 = LineSegment(node_elem0, node_elem1)
 
-        flag = False
         for front in self.front_candidates:
             front_line = LineSegment(front.node_elems[0], front.node_elems[1])
             if (
@@ -356,7 +358,7 @@ class Adfront2Hybrid(Adfront2):
             ):
                 return True
 
-        return flag
+        return False
 
     def add_new_points_for_quad(self, spacing):
         """计算四边形的2个新顶点"""
