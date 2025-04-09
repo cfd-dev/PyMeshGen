@@ -35,7 +35,7 @@ class Adfront2Hybrid(Adfront2):
         )
 
         self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
-        self.discount = 0.9  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
+        self.discount = 0.8  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
         self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃
         self.proximity_tol = (
@@ -52,7 +52,10 @@ class Adfront2Hybrid(Adfront2):
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            if self.base_front.node_ids == [237, 238]:
+            if self.base_front.node_ids == [96, 68] or self.base_front.node_ids == [
+                68,
+                100,
+            ]:
                 # self.debug_save()
                 kkk = 0
 
@@ -276,7 +279,7 @@ class Adfront2Hybrid(Adfront2):
 
     def proximity_check(self, node_elem1, node_elem2, distance):
         """检查当前新增的阵面是否过于靠近已有节点"""
-        # 待新增阵面
+        # 其他点到待新增阵面的距离不能太近
         edges = [
             (node_elem1, node_elem2),
             (self.base_front.node_elems[0], node_elem1),
@@ -294,6 +297,34 @@ class Adfront2Hybrid(Adfront2):
                 dis = point_to_segment_distance(node.coords, p0.coords, p1.coords)
                 if dis < distance:
                     return True
+
+        # 待新增点到其他阵面的距离不能太近
+        nodes = [node_elem1, node_elem2]
+        new_fronts = {
+            (node_elem1.idx, self.base_front.node_elems[0].idx),
+            (self.base_front.node_elems[1].idx, node_elem2.idx),
+            (node_elem2.idx, node_elem1.idx),
+        }
+        for node in nodes:
+            for front in self.front_candidates:
+                # 如果当前阵面是待新增阵面，则不参与判断
+                if tuple(front.node_ids) in new_fronts:
+                    continue
+
+                # 如果阵面中含有待新增点，则不参与判断
+                if node.idx in front.node_ids:
+                    continue
+
+                # node到front的距离
+                dis = point_to_segment_distance(
+                    node.coords,
+                    front.node_elems[0].coords,
+                    front.node_elems[1].coords,
+                )
+                if dis < distance:
+                    return True
+
+        return False
 
     def is_cross_quad(self, node_elem0, node_elem1):
         p0 = self.base_front.node_elems[0]
