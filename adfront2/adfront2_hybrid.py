@@ -34,9 +34,13 @@ class Adfront2Hybrid(Adfront2):
             visual_obj,
         )
 
-        self.al = 0.8  # 在几倍范围内搜索
-        self.discount = 0.9  # Pbest质量系数，discount越小，选择Pbest的概率越小
-        self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合
+        self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
+        self.discount = 0.9  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
+        self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
+        self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃
+        self.proximity_tol = (
+            0.3  # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
+        )
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形/四边形混合网格...")
@@ -64,9 +68,9 @@ class Adfront2Hybrid(Adfront2):
 
             self.select_point_for_tri()
 
-            self.update_cells_quad()
+            self.update_data_quad()
 
-            self.update_cells_tri()
+            self.update_data_tri()
 
             self.show_progress()
 
@@ -90,69 +94,18 @@ class Adfront2Hybrid(Adfront2):
         if self.pselected is not None:
             return
 
-        # 预计算基准点坐标
-        p0 = self.base_front.node_elems[0].coords
-        p1 = self.base_front.node_elems[1].coords
+        self.select_point()
 
-        # 存储带质量的候选节点元组 (质量, 节点)
-        scored_candidates = []
-        # 遍历所有候选节点计算质量
-        for node_elem in self.node_candidates:
-            quality = triangle_quality(p0, p1, node_elem.coords)
-            if quality > 0:
-                scored_candidates.append((quality, node_elem))
-
-        pbest_quality = (
-            triangle_quality(p0, p1, self.pbest.coords) * self.discount
-            if self.pbest
-            else 0
-        )
-        if pbest_quality > 0:
-            scored_candidates.append((pbest_quality, self.pbest))
-
-        # 按质量降序排序（质量高的在前）
-        scored_candidates.sort(key=lambda x: x[0], reverse=True)
-
-        self.pselected = None
-        self.best_flag = False
-        for quality, node_elem in scored_candidates:
-            if not is_left2d(p0, p1, node_elem.coords):
-                continue
-
-            if self.is_cross(node_elem):
-                continue
-
-            self.pselected = node_elem
-            break
-
-        if self.pselected == None:
-            warning(
-                f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
-            )
-            self.base_front.al *= 1.2
-            self.debug_save()
-
-        return self.pselected
-
-    def update_cells_tri(self):
+    def update_data_tri(self):
         if self.pselected is None:
             return
 
+        # 如果pselected是一个列表，且长度为2，则直接返回
         if isinstance(self.pselected, list) and len(self.pselected) == 2:
             return
 
         # 更新节点
-        if self.pselected is not None:
-            node_hash = self.pselected.hash
-            if node_hash not in self.node_hash_list:
-                self.node_hash_list.add(node_hash)
-                self.node_coords.append(self.pselected.coords)
-                self.pselected.idx = self.num_nodes
-                self.add_elems_to_space_index(
-                    [self.pselected], self.space_index_node, self.node_dict
-                )
-
-                self.num_nodes += 1
+        self.update_nodes()
 
         # 更新阵面
         new_front1 = Front(
@@ -170,29 +123,8 @@ class Adfront2Hybrid(Adfront2):
             "internal",
         )
 
-        # 判断front_list中是否存在new_front，若不存在，
-        # 则将其压入front_list，若已存在，则将其从front_list中删除
-        new_fronts = [new_front1, new_front2]
-        front_hashes = {f.hash for f in self.front_list}
-        for chk_fro in new_fronts:
-            if chk_fro.hash not in front_hashes:
-                # heapq.heappush(self.front_list, chk_fro)
-                self.front_list.append(chk_fro)
-
-                self.add_elems_to_space_index(
-                    [chk_fro], self.space_index_front, self.front_dict
-                )
-
-                if self.ax and self.debug_level >= 1:
-                    chk_fro.draw_front("g-", self.ax)
-            else:  # 移除相同位置的旧阵面
-                self.front_list = [
-                    tmp_fro
-                    for tmp_fro in self.front_list
-                    if tmp_fro.hash != chk_fro.hash
-                ]
-
-        # heapq.heapify(self.front_list)  # 重新堆化
+        # 更新阵面
+        self.update_fronts([new_front1, new_front2])
 
         # 更新单元
         new_cell = Triangle(
@@ -203,39 +135,18 @@ class Adfront2Hybrid(Adfront2):
             idx=self.num_cells,
         )
 
-        if new_cell.hash not in self.cell_hash_list:
-            self.cell_hash_list.add(new_cell.hash)
-            self.cell_container.append(new_cell)
+        self.update_cells(new_cell)
 
-            self.add_elems_to_space_index(
-                [new_cell], self.space_index_cell, self.cell_dict
-            )
-
-            self.num_cells += 1
-        else:
-            warning(f"发现重复单元：{new_cell.node_ids}")
-            self.debug_level = 1
-
-    def update_cells_quad(self):
+    def update_data_quad(self):
         if (
-            self.pselected is None
-            or (not isinstance(self.pselected, list))
-            or len(self.pselected) != 2
+            self.pselected is None  # 如果pselected是None
+            or (not isinstance(self.pselected, list))  # 或者pselected不是一个列表
+            or len(self.pselected) != 2  # 或者长度不为2
         ):
             return
 
-        # 更新节点，如果pselected是一个列表，且长度为2，此时将pselected添加到node_coords中，同时更新num_nodes
-        for i, node in enumerate(self.pselected):
-            node_hash = node.hash
-            if node_hash not in self.node_hash_list:
-                self.node_hash_list.add(node_hash)
-                self.node_coords.append(node.coords)
-                self.pselected[i].idx = self.num_nodes
-                self.add_elems_to_space_index(
-                    [node], self.space_index_node, self.node_dict
-                )
-
-                self.num_nodes += 1
+        # 更新节点
+        self.update_nodes()
 
         # 更新阵面
         new_front1 = Front(
@@ -259,26 +170,8 @@ class Adfront2Hybrid(Adfront2):
             "interior",
             "internal",
         )
-        # 判断front_list中是否存在new_front，若不存在，
-        # 则将其压入front_list，若已存在，则将其从front_list中删除
-        new_fronts = [new_front1, new_front2, new_front3]
-        front_hashes = {f.hash for f in self.front_list}
-        for chk_fro in new_fronts:
-            if chk_fro.hash not in front_hashes:
-                self.front_list.append(chk_fro)
 
-                self.add_elems_to_space_index(
-                    [chk_fro], self.space_index_front, self.front_dict
-                )
-
-                if self.ax and self.debug_level >= 1:
-                    chk_fro.draw_front("g-", self.ax)
-            else:  # 移除相同位置的旧阵面
-                self.front_list = [
-                    tmp_fro
-                    for tmp_fro in self.front_list
-                    if tmp_fro.hash != chk_fro.hash
-                ]
+        self.update_fronts([new_front1, new_front2, new_front3])
 
         # 更新单元
         new_cell = Quadrilateral(
@@ -290,18 +183,7 @@ class Adfront2Hybrid(Adfront2):
             idx=self.num_cells,
         )
 
-        if new_cell.hash not in self.cell_hash_list:
-            self.cell_hash_list.add(new_cell.hash)
-            self.cell_container.append(new_cell)
-
-            self.add_elems_to_space_index(
-                [new_cell], self.space_index_cell, self.cell_dict
-            )
-
-            self.num_cells += 1
-        else:
-            warning(f"发现重复单元：{new_cell.node_ids}")
-            self.debug_level = 1
+        self.update_cells(new_cell)
 
     def select_point_for_quad(self, spacing):
         # 预计算基准点坐标
@@ -309,9 +191,8 @@ class Adfront2Hybrid(Adfront2):
         p1 = self.base_front.node_elems[1].coords
 
         # 候选节点质量评估参数
-        quality_criterion = 0.5
+        quality_criterion = self.quality_criterion
         discount = self.discount
-        scored_candidates = []
 
         # 生成所有候选节点对（排除相同节点）
         node_pairs = [
@@ -334,12 +215,13 @@ class Adfront2Hybrid(Adfront2):
         ]
 
         # 统一处理质量计算
-        for candidates, weight in candidate_sources:
+        scored_candidates = []
+        for candidates, discount in candidate_sources:
             for elem1, elem2 in candidates:
                 quality = quadrilateral_quality2(p0, p1, elem2.coords, elem1.coords)
-                weighted_quality = quality * weight
-                if weighted_quality > quality_criterion:
-                    scored_candidates.append((weighted_quality, elem1, elem2))
+                discounted_quality = quality * discount
+                if discounted_quality > quality_criterion:
+                    scored_candidates.append((discounted_quality, elem1, elem2))
 
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
@@ -356,28 +238,41 @@ class Adfront2Hybrid(Adfront2):
             if self.is_cross_quad(node_elem1, node_elem2):
                 continue
 
-            # 计算新增边长
-            line1 = LineSegment(node_elem1.coords, node_elem2.coords)
-            line2 = LineSegment(node_elem1.coords, p0)
-            line3 = LineSegment(node_elem2.coords, p1)
-            if (
-                (line1.length > 2.0 * spacing)
-                or (line2.length > 2.0 * spacing)
-                or (line3.length > 2.0 * spacing)
+            if self.proximity_check(
+                node_elem1, node_elem2, self.proximity_tol * spacing
             ):
                 continue
 
-            if self.proximity_check(node_elem1, node_elem2, 0.3 * spacing):
-                continue
-
-            if (
-                sqrt(quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords))
-                > 2.0 * spacing
-            ):
+            if self.size_too_big(node_elem1, node_elem2, spacing):
                 continue
 
             self.pselected = [node_elem1, node_elem2]
             break
+
+    def size_too_big(self, node_elem1, node_elem2, spacing):
+        """检查当前新增的阵面是否满足长度要求，或者待新增的单元是否满足面积要求"""
+        p0 = self.base_front.node_elems[0].coords
+        p1 = self.base_front.node_elems[1].coords
+
+        ratio = 2.0
+        line1 = LineSegment(node_elem1.coords, node_elem2.coords)
+        line2 = LineSegment(node_elem1.coords, p0)
+        line3 = LineSegment(node_elem2.coords, p1)
+        if (
+            (line1.length > ratio * spacing)
+            or (line2.length > ratio * spacing)
+            or (line3.length > ratio * spacing)
+        ):
+            return True
+
+        # 计算新增面积
+        # if (
+        #     quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords)
+        #     > 2.0 * spacing * spacing
+        # ):
+        #     return True
+
+        return False
 
     def proximity_check(self, node_elem1, node_elem2, distance):
         """检查当前新增的阵面是否过于靠近已有节点"""
