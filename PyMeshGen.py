@@ -13,8 +13,7 @@ from read_cas import parse_fluent_msh
 from front2d import construct_initial_front
 from meshsize import QuadtreeSizing
 from adfront2 import Adfront2
-from adfront2_hybrid import Adfront2Hybrid
-from optimize import edge_swap, laplacian_smooth, merge_elements, hybrid_smooth
+from optimize import edge_swap, laplacian_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters
