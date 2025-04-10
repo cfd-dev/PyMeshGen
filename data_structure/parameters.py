@@ -19,6 +19,7 @@ class Parameters:
         self.part_params = []  # 网格生成部件参数
         self.input_file = []
         self.output_file = []
+        self.mesh_type = 1 # 1-三角形triangular，2-直角三角形right_trianglar，3-三角形/四边形混合2d_mixed
         self.viz_enabled = False
 
         self.load_cofig()
@@ -29,6 +30,7 @@ class Parameters:
             "debug_level",
             "input_file",
             "output_file",
+            #"mesh_type",
             "parts",
             "viz_enabled",
         ]
@@ -81,6 +83,7 @@ class Parameters:
         self.debug_level = config["debug_level"]
         self.input_file = config["input_file"]
         self.output_file = config["output_file"]
+        self.mesh_type = config.get("mesh_type", 1)
         self.viz_enabled = config["viz_enabled"]
 
         self.part_params = []

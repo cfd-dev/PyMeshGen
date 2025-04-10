@@ -451,6 +451,12 @@ class TestConvexCheck(unittest.TestCase):
 class TestQuadrilateralIntersectTriangle(unittest.TestCase):
     """测试四边形与三角形相交判断函数"""
 
+    def test_share_3points(self):
+        """测试四边形与三角形共用3个顶点"""
+        quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
+        tri = Triangle([0, 0], [2, 0], [2, 2])
+        self.assertTrue(quad.is_intersect_triangle(tri))
+
     def test_fully_intersect(self):
         """测试四边形与三角形完全相交"""
         quad = Quadrilateral([0, 0], [2, 0], [2, 2], [0, 2], node_ids=[0, 1, 2, 3])
