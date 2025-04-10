@@ -6,6 +6,7 @@ sys.path.append(str(Path(__file__).parent / "data_structure"))
 import unittest
 import time
 from PyMeshGen import PyMeshGen
+from PyMeshGen_mixed import PyMeshGen_mixed
 from vtk_io import parse_vtk_msh
 from parameters import Parameters
 
@@ -55,7 +56,7 @@ class TestMeshGeneration(unittest.TestCase):
 
         # 验证单元数、节点数
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 2911, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_cells, 2930, delta=10)  # 预期单元数
         self.assertAlmostEqual(grid.num_nodes, 2200, delta=10)  # 预期节点数
         # 耗时比较
         self.assertLess(cost, 40)  # 预期耗时
@@ -161,6 +162,45 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertAlmostEqual(grid.num_nodes, 8992, delta=10)  # 预期节点数
         # 耗时比较
         self.assertLess(cost, 90)  # 预期耗时
+
+
+    def test_30p30n_mixed_generation(self):
+        """测试30p30n_mixed网格生成"""
+        # 参数配置
+        case_file = self.test_dir / "30p30n_mixed.json"
+        output_file = self.output_dir / "test-30p30n-mixed.vtk"
+
+        # 执行主函数
+        start = time.time()
+        PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
+
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertAlmostEqual(grid.num_cells, 4189, delta=30)  # 预期单元数
+        self.assertAlmostEqual(grid.num_nodes, 4035, delta=30)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 140)  # 预期耗时
+
+    def test_anw_mixed_generation(self):
+        """测试anw_mixed网格生成"""
+        # 参数配置
+        case_file = self.test_dir / "anw_mixed.json"
+        output_file = self.output_dir / "test_anw_mixed.vtk"
+
+        # 执行主函数
+        start = time.time()
+        PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
+
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+        self.assertAlmostEqual(grid.num_cells, 1131, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_nodes, 1088, delta=10)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 14)  # 预期耗时
 
 if __name__ == "__main__":
     unittest.main()

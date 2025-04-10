@@ -46,24 +46,79 @@ class Adfront2Hybrid(Adfront2):
 
         # TODO discount取多少合适？quality_criterion取多少合适？proximity_tol取多少合适？
         self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
-        self.discount = 0.9  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
+        self.discount = 0.8  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小，已测试该值为0.8时，效果较好
         self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
-        self.quality_criterion = 0.01  # 四边形质量阈值，低于这个质量的四边形将被舍弃
+        self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃，已测试该值为0.5时，效果较好
         # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
-        self.proximity_tol = 0.5
+        self.proximity_tol = 0.5 # 已测试该值为0.5时，效果较好
+        self.progress_interval = 50
+        self.sort_front = False  # 是否对阵面进行排序，四边形网格生成时默认不排序
+        self.bbox = None
+
+        self.initialize_data()
+
+    def initialize_data(self):
+        """初始化数据"""
+        for front in self.front_list:
+            front.al = self.al
+
+        # 根据初始front_list计算边界框
+        min_x = min(front.node_elems[0].coords[0] for front in self.front_list)
+        max_x = max(front.node_elems[1].coords[0] for front in self.front_list)
+        min_y = min(front.node_elems[0].coords[1] for front in self.front_list)
+        max_y = max(front.node_elems[1].coords[1] for front in self.front_list)
+        self.bbox = (min_x, min_y, max_x, max_y)
+
+    def calculate_gap_criterion(self):
+        """计算不同部件阵面之间的最小距离"""
+        # 判断是否要排序推进，如果已经开启排序推进，则不再判断
+        if self.sort_front:
+            return
+
+        # 每间隔一定单元数判断一次是否要开启排序推进
+        if self.num_cells % self.progress_interval != 0:
+            return
+
+        width = self.bbox[2] - self.bbox[0]
+        height = self.bbox[3] - self.bbox[1]
+
+        # 当距离小于0.15倍计算域大小时，开启阵面排序
+        safe_distance_sq = 0.15 * (width + height) / 2
+        safe_distance_sq *= safe_distance_sq
+
+        for front1 in self.front_list:
+            for front2 in self.front_list:
+                if front1.part_name != front2.part_name:
+                    p0 = front1.node_elems[0].coords
+                    p1 = front1.node_elems[1].coords
+                    q0 = front2.node_elems[0].coords
+                    q1 = front2.node_elems[1].coords
+                    if fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+                        info("部件之间阵面最小距离较小，按阵面长短顺序推进生成...")
+                        self.sort_front = True
+                        return
+
+    def get_base_front(self):
+        if self.sort_front:
+            heapq.heapify(self.front_list)
+            self.base_front = heapq.heappop(self.front_list)
+        else:
+            self.base_front = self.front_list.pop(0)
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形/四边形混合网格...")
         while self.front_list:
             # 对当前阵面构建node2front，要在弹出base_front前完成
             self.reconstruct_node2front()
-            # 依次弹出阵面
-            self.base_front = self.front_list.pop(0)
+
+            self.calculate_gap_criterion()
+
+            self.get_base_front()
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
             if (
-                self.base_front.node_ids == [535, 473]
+                self.base_front.node_ids == [131, 132]
                 or self.base_front.node_ids == [239, 214]
                 or self.base_front.node_ids == [183, 184]
             ):
@@ -110,6 +165,11 @@ class Adfront2Hybrid(Adfront2):
 
         self.select_point()
 
+        # if self.pselected is None:
+        #     info("找不到合适的候选点，按阵面长短顺序推进生成...")
+        #     heapq.heapify(self.front_list)
+        #     self.sort_front = True
+
     def update_data_tri(self):
         if self.pselected is None:
             return
@@ -123,18 +183,20 @@ class Adfront2Hybrid(Adfront2):
 
         # 更新阵面
         new_front1 = Front(
-            self.base_front.node_elems[0],
-            self.pselected,
-            -1,
-            "interior",
-            "internal",
+            node_elem1=self.base_front.node_elems[0],
+            node_elem2=self.pselected,
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
         )
         new_front2 = Front(
-            self.pselected,
-            self.base_front.node_elems[1],
-            -1,
-            "interior",
-            "internal",
+            node_elem1=self.pselected,
+            node_elem2=self.base_front.node_elems[1],
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
         )
 
         # 更新阵面
@@ -164,25 +226,28 @@ class Adfront2Hybrid(Adfront2):
 
         # 更新阵面
         new_front1 = Front(
-            self.base_front.node_elems[0],
-            self.pselected[0],
-            -1,
-            "interior",
-            "internal",
+            node_elem1=self.base_front.node_elems[0],
+            node_elem2=self.pselected[0],
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
         )
         new_front2 = Front(
-            self.pselected[1],
-            self.base_front.node_elems[1],
-            -1,
-            "interior",
-            "internal",
+            node_elem1=self.pselected[1],
+            node_elem2=self.base_front.node_elems[1],
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
         )
         new_front3 = Front(
-            self.pselected[0],
-            self.pselected[1],
-            -1,
-            "interior",
-            "internal",
+            node_elem1=self.pselected[0],
+            node_elem2=self.pselected[1],
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
         )
 
         self.update_fronts([new_front1, new_front2, new_front3])
@@ -378,8 +443,8 @@ class Adfront2Hybrid(Adfront2):
         l = self.base_front.length
         d0 = spacing
         # TODO 步长如何计算合适？
-        d = min(1.25 * l, max(0.8 * l, d0))
-        # d = d0
+        # d = min(1.25 * l, max(0.8 * l, d0))  # 文献方法
+        d = d0  # 直接取为当地步长
 
         # 计算新顶点的坐标
         self.pbest = []
