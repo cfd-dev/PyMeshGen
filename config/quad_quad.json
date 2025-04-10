@@ -16,7 +16,7 @@
         {
             "part_name": "wall",
             "max_size": 2.0,
-            "PRISM_SWITCH": "off",
+            "PRISM_SWITCH": "wall",
             "first_height": 0.5,
             "max_layers": 5,
             "full_layers": 5,
