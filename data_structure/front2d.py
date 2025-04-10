@@ -24,7 +24,7 @@ class Front:
         "early_stop_flag",
     ]
 
-    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None):
+    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0):
         if not isinstance(node_elem1, NodeElement) or not isinstance(
             node_elem1, NodeElement
         ):
@@ -37,7 +37,7 @@ class Front:
 
         self.priority = False  # 优先推进标记
         self.early_stop_flag = False  # 提前停止标志
-        self.al = 3.0  # 候选点搜索范围系数
+        self.al = al  # 候选点搜索范围系数
         self.center = None  # 阵面中心坐标
         self.length = None  # 阵面长度
         self.direction = None  # 单位方向向量

@@ -70,7 +70,7 @@ def write_vtk(
 
         # 写入边界节点标记
         file.write(f"POINT_DATA {num_nodes}\n")
-        file.write("SCALARS node_id int 1\n")
+        file.write("SCALARS fixed int 1\n")
         file.write("LOOKUP_TABLE default\n")
         for i in range(num_nodes):
             file.write(f"{1 if i in boundary_nodes_idx else 0}\n")  # 标记边界节点
