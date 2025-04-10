@@ -140,6 +140,17 @@ class TestVTKParser(unittest.TestCase):
 
         cls.unstr_grid = parse_vtk_msh(str(cls.sample_file))
 
+    def test_ring_nodes(self):
+        """验证环节点构建"""
+        self.unstr_grid.cyclic_node2node()
+        self.assertEqual(
+            self.unstr_grid.node2node[2198]
+            == [2167, 2187, 1587, 1593, 1599, 2197, 2208, 2157]
+        )
+        self.assertEqual(
+            self.unstr_grid.node2node[2206] == [1597, 1592, 2205, 2182, 2161, 2183]
+        )
+
     def test_node_parsing(self):
         """验证节点坐标解析"""
         node_coords = self.unstr_grid.node_coords

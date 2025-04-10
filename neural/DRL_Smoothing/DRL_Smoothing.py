@@ -9,26 +9,25 @@ from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 
 
-class DRLEnv(gym.Env):
+class DRLSmoothingEnv(gym.Env):
     def __init__(
-        self, max_ring_nodes, boundary_file="", perturb_coeff=-1, grid_type=-1
+        self, max_ring_nodes=8,initial_grid = None
     ):
         super(DRLEnv, self).__init__()
-        self.perturb_coeff = 0.0
-        self.reward_coeff = 1.0
-        self.lamda = 0.0
-        self.boundaryFile = "./grid/training_mesh.stl"
-        self.gridType = 0
-        self.flag_second_neighbor = False
-        self.max_ringNodes = max_ring_nodes
-        self.nNodes = None  # 需根据实际网格初始化
+        self.reward_coeff = 1.0 # minQuality在reward中的权重
+        self.lamda = 0.0 # shape quality所占权重，skewness权重为1-lamda
+        self.max_ring_nodes = max_ring_nodes # 最大环节点数量
 
+        self.initial_grid = initial_grid # 初始网格
+
+        self.initial_grid.init_ring_nodes()
+        
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(max_ring_nodes, 2), dtype=np.float32
         )
         self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(max_ring_nodes, 2), dtype=np.float32
+            low=-1.0, high=1.0, shape=(2, 1), dtype=np.float32
         )
 
     def step(self, action):

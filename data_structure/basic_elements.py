@@ -342,6 +342,7 @@ class Unstructured_Grid:
         self.num_edges = 0
         self.num_faces = 0
         self.edges = []
+        self.node2node = None
 
         self.dim = len(node_coords[0])
 
@@ -502,6 +503,82 @@ class Unstructured_Grid:
             self.boundary_nodes_list,
             cell_type_container,
         )
+
+    def init_node2node(self):
+        """初始化节点关联的节点列表"""
+        self.calculate_edges()
+
+        self.node2node = {}
+        # 按照边连接关系构建
+        for edge in self.edges:
+            for node_idx in edge:
+                if node_idx not in self.node2node:
+                    self.node2node[node_idx] = []
+                for other_node_idx in edge:
+                    if other_node_idx != node_idx:
+                        self.node2node[node_idx].append(other_node_idx)
+
+        # 去除重复
+        for node_idx in self.node2node:
+            self.node2node[node_idx] = list(set(self.node2node[node_idx]))
+    
+    def init_node2node_by_cell(self):
+        """初始化节点关联的节点列表"""
+        self.calculate_edges()
+        
+        self.node2node = {}
+        # 按照点相连的单元构建
+        for cell in self.cell_container:
+            for node_idx in cell.node_ids:
+                if node_idx not in self.node2node:
+                    self.node2node[node_idx] = []
+                for other_node_idx in cell.node_ids:
+                    if other_node_idx != node_idx:
+                        self.node2node[node_idx].append(other_node_idx)
+                        
+        # 去除重复
+        for node_idx in self.node2node:
+            self.node2node[node_idx] = list(set(self.node2node[node_idx]))
+    
+    def cyclic_node2node(self):
+        """根据edge的连接关系将node2node构建为首尾相连成环的方式"""
+        if not self.node2node:
+            # self.init_node2node()
+            self.init_node2node_by_cell()
+
+        # 创建节点坐标字典加速查询
+        coord_dict = {
+            idx: np.array(coords) for idx, coords in enumerate(self.node_coords)
+        }
+
+        for node_idx in self.node2node:
+            neighbors = self.node2node[node_idx]
+            if len(neighbors) < 2:
+                continue
+
+            # 获取当前节点坐标
+            current_coord = coord_dict[node_idx]
+
+            # 计算相邻节点相对当前节点的极角并排序
+            sorted_neighbors = sorted(
+                neighbors,
+                key=lambda n: np.arctan2(
+                    coord_dict[n][1] - current_coord[1],
+                    coord_dict[n][0] - current_coord[0],
+                ),
+            )
+
+            # 验证环形连接完整性
+            prev_node = sorted_neighbors[-1]
+            for curr_node in sorted_neighbors:
+                edge = tuple(sorted([prev_node, curr_node]))
+                if edge not in self.edges:
+                    warning(
+                        f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
+                    )
+                prev_node = curr_node
+
+            self.node2node[node_idx] = sorted_neighbors
 
 
 class Connector:
