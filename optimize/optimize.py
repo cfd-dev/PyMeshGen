@@ -1,9 +1,217 @@
 import numpy as np
+import heapq
 from itertools import combinations
 import geom_toolkit as geom_tool
 from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
-from basic_elements import Triangle
+from basic_elements import Triangle, Quadrilateral
+
+
+def merge_elements(unstr_grid):
+    """
+    合并相邻的三角形单元，形成四边形单元。
+    合并条件：
+    1. 两个三角形必须共享一条边
+    2. 合并后的四边形是凸多边形
+    3. 四边形质量高于合并前三角形质量中位数
+    """
+    timer = TimeSpan("开始合并三角形为四边形...")
+    node_coords = unstr_grid.node_coords
+    edge_map = {}
+    merge_candidates = []
+
+    # 构建边到单元的映射
+    for cell_idx, cell in enumerate(unstr_grid.cell_container):
+        if not isinstance(cell, Triangle):
+            continue
+        for i, j in combinations(sorted(cell.node_ids), 2):
+            edge = (i, j)
+            if edge not in edge_map:
+                edge_map[edge] = []
+            edge_map[edge].append(cell_idx)
+
+    # 寻找可合并的三角形对
+    for edge, cells in edge_map.items():
+        if len(cells) != 2:
+            continue
+
+        cell1, cell2 = cells
+        tri1 = unstr_grid.cell_container[cell1]
+        tri2 = unstr_grid.cell_container[cell2]
+
+        # 获取四个顶点
+        common = set(tri1.node_ids) & set(tri2.node_ids)
+        if len(common) != 2:
+            continue
+
+        a, b = sorted(common)
+        c = list(set(tri1.node_ids) - common)[0]
+        d = list(set(tri2.node_ids) - common)[0]
+
+        # 凸性检查
+        if not geom_tool.is_convex(a, c, b, d, node_coords):
+            continue
+
+        # 计算质量增益
+        tri1.init_metrics()
+        tri2.init_metrics()
+        tri_quality = (tri1.quality + tri2.quality) / 2
+        quad_quality = geom_tool.quadrilateral_quality2(
+            node_coords[a], node_coords[c], node_coords[b], node_coords[d]
+        )
+
+        # 质量提升判断（使用最小堆保存优质候选）
+        # if quad_quality > tri_quality and quad_quality > 0.3:
+        heapq.heappush(merge_candidates, (-quad_quality, (cell1, cell2, a, b, c, d)))
+
+    # 按质量从高到低处理合并
+    merged = set()
+    num_merged = 0
+    while merge_candidates:
+        _, (cell1_idx, cell2_idx, a, b, c, d) = heapq.heappop(merge_candidates)
+
+        # 跳过已处理单元
+        if cell1_idx in merged or cell2_idx in merged:
+            continue
+
+        # 确保新创建的四边形法向指向z轴正方向
+        if not geom_tool.is_left2d(node_coords[a], node_coords[b], node_coords[d]):
+            a, c, b, d = a, d, b, c
+
+        # 创建新四边形
+        new_quad = Quadrilateral(
+            node_coords[a],
+            node_coords[c],
+            node_coords[b],
+            node_coords[d],
+            "interior",
+            len(unstr_grid.cell_container),
+            [a, c, b, d],
+        )
+
+        # 替换原单元
+        unstr_grid.cell_container[cell1_idx] = new_quad
+        unstr_grid.cell_container[cell2_idx] = None  # 标记删除
+
+        merged.update([cell1_idx, cell2_idx])
+        num_merged += 1
+
+    # 清理被删除的单元
+    unstr_grid.cell_container = [c for c in unstr_grid.cell_container if c is not None]
+
+    info(f"成功合并{num_merged}对三角形为四边形")
+    timer.show_to_console("四边形合并完成.")
+    return unstr_grid
+
+
+def hybrid_smooth(unstr_grid, max_iter=3):
+    """混合平滑算法（结合角度优化和形态优化）"""
+    timer = TimeSpan("开始混合平滑优化...")
+    node_coords = np.array(unstr_grid.node_coords)
+    original_coords = node_coords.copy()
+    boundary_nodes = set(unstr_grid.boundary_nodes_list)
+
+    # 新增凸性检查辅助函数
+    def is_quad_convex(nodes):
+        return geom_tool.is_convex(
+            nodes[0], nodes[1], nodes[2], nodes[3], node_coords.tolist()
+        )
+
+    for _ in range(max_iter):
+        # 存储每个节点的移动向量和权重
+        displacements = np.zeros_like(node_coords)
+        weights = np.zeros(len(node_coords))
+
+        # 存储四边形原始节点用于回滚检查
+        quad_originals = {}
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Quadrilateral):
+                quad_originals[id(cell)] = np.array(
+                    [node_coords[i] for i in cell.node_ids]
+                )
+
+        # 遍历所有单元进行贡献计算
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Quadrilateral):
+                # 四边形优化目标：接近矩形（角度优化+边长比优化）
+                quad_nodes = cell.node_ids
+                original_nodes = quad_originals[id(cell)]
+
+                for i in range(4):
+                    prev = quad_nodes[i - 1]
+                    curr = quad_nodes[i]
+                    next1 = quad_nodes[(i + 1) % 4]
+                    next2 = quad_nodes[(i + 2) % 4]
+
+                    # 计算带约束的理想位置
+                    ideal_point = compute_rectangular_position(
+                        original_nodes[(i - 1) % 4],  # 使用原始坐标计算
+                        original_nodes[i],
+                        original_nodes[(i + 1) % 4],
+                    )
+
+                    displacement = 0.3 * (
+                        ideal_point - node_coords[next1]
+                    )  # 减小位移系数
+                    if next1 not in boundary_nodes:
+                        displacements[next1] += displacement
+                        weights[next1] += 1.0
+
+            elif isinstance(cell, Triangle):
+                # 三角形优化目标：接近等边三角形（角度优化）
+                tri_nodes = cell.node_ids
+                centroid = np.mean(node_coords[tri_nodes], axis=0)
+
+                for i in range(3):
+                    curr = tri_nodes[i]
+                    if curr in boundary_nodes:
+                        continue
+
+                    # 向质心方向移动（促进等边化）
+                    displacement = 0.2 * (centroid - node_coords[curr])
+                    displacements[curr] += displacement
+                    weights[curr] += 1.0
+
+        # 应用平滑并更新坐标
+        new_coords = node_coords.copy()
+        for i in range(len(node_coords)):
+            if weights[i] > 0 and i not in boundary_nodes:
+                new_coords[i] += displacements[i] / weights[i]
+
+        # 凸性检查和修正
+        need_rollback = False
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Quadrilateral) and len(cell.node_ids) == 4:
+                new_nodes = [new_coords[i] for i in cell.node_ids]
+                if not is_quad_convex(new_nodes):
+                    need_rollback = True
+                    break
+
+        # 只有当所有四边形保持凸性时才接受更新
+        if not need_rollback:
+            node_coords = new_coords
+        else:
+            warning("检测到凹四边形，跳过本轮平滑")
+
+        # 限制最大位移防止震荡
+        max_disp = np.linalg.norm(node_coords - original_coords, axis=1).max()
+        if max_disp < 1e-6:
+            break
+
+    # 更新回网格结构
+    unstr_grid.node_coords = node_coords.tolist()
+    timer.show_to_console("混合平滑完成.")
+    return unstr_grid
+
+
+def compute_rectangular_position(prev, curr, next):
+    """计算理想矩形位置（基于相邻三点）"""
+    vec1 = curr - prev
+    vec2 = next - curr
+
+    # 计算正交修正
+    ideal_vec = vec1 - 2 * np.dot(vec1, vec2) / np.dot(vec2, vec2) * vec2
+    return curr + ideal_vec
 
 
 def edge_swap(unstr_grid):
@@ -34,6 +242,8 @@ def edge_swap(unstr_grid):
             cell1_idx, cell2_idx = cells
             cell1 = unstr_grid.cell_container[cell1_idx]
             cell2 = unstr_grid.cell_container[cell2_idx]
+            if not (isinstance(cell1, Triangle) and isinstance(cell2, Triangle)):
+                continue  # 非三角形单元跳过
 
             # 确认公共边
             common_edge = set(cell1.node_ids) & set(cell2.node_ids)
@@ -50,7 +260,7 @@ def edge_swap(unstr_grid):
             c, d = other_points
 
             # 凸性检查
-            if not geom_tool.is_convex(a, b, c, d, node_coords):
+            if not geom_tool.is_convex(a, c, b, d, node_coords):
                 continue
 
             # 计算交换前的最小角
@@ -83,8 +293,8 @@ def edge_swap(unstr_grid):
             )
 
             # 凸性检查
-            if not geom_tool.is_convex(c, d, a, b, node_coords):
-                continue
+            # if not geom_tool.is_convex(a, c, b, d, node_coords):
+            #     continue
 
             # 交换条件：最小角优化且不创建新边界边
             if swapped_min > current_min and not (

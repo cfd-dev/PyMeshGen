@@ -243,14 +243,14 @@ class Quadrilateral:
         if self.area is None:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
             if self.area == 0.0:
-                raise ValueError(
+                warning(
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
         if self.quality is None:
             # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
             self.quality = self.get_skewness()
             if self.quality == 0.0:
-                raise ValueError(
+                warning(
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
 
@@ -414,6 +414,8 @@ class Unstructured_Grid:
 
         # 计算所有单元的质量
         for c in self.cell_container:
+            if c.node_ids==[81, 80, 90, 88]:
+                print("debug")
             c.init_metrics()
 
         quality_values = [

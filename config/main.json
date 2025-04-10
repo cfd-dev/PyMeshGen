@@ -1,8 +1,9 @@
 {
-    "case_file": "config/naca0012.json",
+    "case_file": "config/cylinder_mixed.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",
+        "config/pentagon.json",
         "config/quad_quad.json",
         "config/naca0012.json",
         "config/rae2822.json",
@@ -15,6 +16,9 @@
         "config/convex_match90.json",
 		"config/concav_match90.json",
 		"config/convex_match120.json",
-		"config/concav_match120.json"
+		"config/concav_match120.json",
+        "config/pentagon_mixed.json",
+        "config/quad_quad_mixed.json",
+        "config/cylinder_mixed.json"
     ]
 }

@@ -228,14 +228,19 @@ def is_left2d(p1, p2, p3):
 
 
 def is_convex(a, b, c, d, node_coords):
-    # 确保顶点按顺序排列（如a→b→c→d→a）
-    points = [a, b, c, d]
-    cross_products = []
+    """改进的凸性检查，支持节点索引或坐标"""
 
+    # 确保顶点按顺序排列（如a→b→c→d→a）
+    def get_coord(x):
+        return node_coords[x] if isinstance(x, int) else x
+
+    points = [get_coord(a), get_coord(b), get_coord(c), get_coord(d)]
+
+    cross_products = []
     for i in range(4):
-        p1 = node_coords[points[i]]
-        p2 = node_coords[points[(i + 1) % 4]]
-        p3 = node_coords[points[(i + 2) % 4]]
+        p1 = points[i]
+        p2 = points[(i + 1) % 4]
+        p3 = points[(i + 2) % 4]
 
         v1 = np.array(p2) - np.array(p1)
         v2 = np.array(p3) - np.array(p2)
@@ -247,6 +252,20 @@ def is_convex(a, b, c, d, node_coords):
     negative = all(cp < 0 for cp in cross_products)
 
     return positive or negative
+
+
+def _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+    """快速距离检查"""
+    # 线段端点距离检查
+    for p in [p0, p1]:
+        for q in [q0, q1]:
+            dx = p[0] - q[0]
+            dy = p[1] - q[1]
+            if dx * dx + dy * dy < safe_distance_sq:
+                return True
+
+    # 线段间距离检查
+    return min_distance_between_segments(p0, p1, q0, q1) < sqrt(safe_distance_sq)
 
 
 # 计算三角形最小角
@@ -466,7 +485,7 @@ def triangle_skewness(p1, p2, p3):
     max_angle = max(angles)
     min_angle = min(angles)
 
-    skew1 = (max_angle - 60) / 60
+    skew1 = (max_angle - 60) / 120
     skew2 = (60 - min_angle) / 60
     skewness = 1.0 - max([skew1, skew2])
 
@@ -518,6 +537,10 @@ def quadrilateral_quality2(p1, p2, p3, p4):
     quality = quadrilateral_quality(p1, p2, p3, p4)
     skewness = quadrilateral_skewness(p1, p2, p3, p4)
     aspect_ratio = quadrilateral_aspect_ratio(p1, p2, p3, p4)
+    
+    # 只要有一个质量为0，则返回0
+    if quality * skewness * aspect_ratio < 1e-10:
+        return 0.0
 
     as_quality = 0.0 if aspect_ratio == 0 else (1.0 / aspect_ratio)
     # return (quality + skewness + as_quality) / 3.0
@@ -620,6 +643,18 @@ def is_point_inside_quad(p, quad_points):
 def quad_intersects_triangle(
     quad_p1, quad_p2, quad_p3, quad_p4, tri_p1, tri_p2, tri_p3
 ):
+    # 新增三点重合检查
+    quad_points = [quad_p1, quad_p2, quad_p3, quad_p4]
+    tri_points = [tri_p1, tri_p2, tri_p3]
+    
+    # 统计四边形顶点在三角形顶点中的重复数量
+    overlap_count = sum(
+        any(points_equal(qp, tp) for tp in tri_points)
+        for qp in quad_points
+    )
+    if overlap_count >= 3:
+        return True
+
     quad_edges = [
         (quad_p1, quad_p2),
         (quad_p2, quad_p3),
