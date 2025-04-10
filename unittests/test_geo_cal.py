@@ -1,13 +1,20 @@
-import sys
-from pathlib import Path
 import unittest
 from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 from math import sqrt
 import numpy as np
 
-sys.path.append(str(Path(__file__).parent.parent / "utils"))
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent / "fileIO"))
 sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
+sys.path.append(str(Path(__file__).parent.parent / "meshsize"))
+sys.path.append(str(Path(__file__).parent.parent / "visualization"))
+sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
+sys.path.append(str(Path(__file__).parent.parent / "optimize"))
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
+
 import geom_toolkit as geom_tool
 from basic_elements import Triangle, Quadrilateral
 

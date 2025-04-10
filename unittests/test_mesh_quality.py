@@ -1,59 +1,61 @@
 import unittest
-from unittest.mock import Mock, patch
-import math
-import matplotlib.pyplot as plt
+import numpy as np
+from mesh_quality import (
+    triangle_quality,
+    triangle_skewness,
+    quadrilateral_skewness,
+    quadrilateral_aspect_ratio,
+    quadrilateral_quality
+)
 
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).parent.parent / "optimize"))
-from optimize import calculate_triangle_twist, check_mesh_quality
-
-
-class TestCalculateTriangleTwist(unittest.TestCase):
+class TestMeshQuality(unittest.TestCase):
     def setUp(self):
-        # 创建模拟三角形对象
-        self.triangle = Mock()
-        self.triangle.p1 = (0, 0)
-        self.triangle.p2 = (1, 0)
-        self.triangle.p3 = (0.5, math.sqrt(3) / 2)
+        # 公共测试数据
+        self.perfect_triangle = [(0,0), (1,0), (0.5, np.sqrt(3)/2)]  # 理想等边三角形
+        self.degenerate_triangle = [(0,0), (1,0), (2,0)]  # 退化三角形
+        
+        self.square = [(0,0), (1,0), (1,1), (0,1)]  # 完美正方形
+        self.non_convex_quad = [(0,0), (2,0), (1,1), (0,2)]  # 非凸四边形
 
-        # 模拟geo_info的calculate_distance方法
-        self.patcher = patch("geom_tool.calculate_distance")
-        self.mock_calculate = self.patcher.start()
-        self.mock_calculate.side_effect = lambda p1, p2: math.dist(p1, p2)
+    def test_triangle_quality_valid(self):
+        # 测试理想三角形质量
+        quality = triangle_quality(*self.perfect_triangle)
+        self.assertAlmostEqual(quality, 1.0, delta=0.01)
+        
+        # 测试退化三角形
+        self.assertEqual(triangle_quality(*self.degenerate_triangle), 0.0)
 
-    def test_equilateral_triangle(self):
-        """测试等边三角形扭曲度计算"""
-        twist = calculate_triangle_twist(self.triangle)
-        self.assertAlmostEqual(twist, 1.0, delta=0.01)
-
-    def test_degenerate_triangle(self):
-        """测试退化三角形扭曲度接近0"""
-        self.triangle.p3 = (1, 0)  # 使三角形退化
-        twist = calculate_triangle_twist(self.triangle)
-        self.assertAlmostEqual(twist, 0.0, delta=1e-6)
-
-    def tearDown(self):
-        self.patcher.stop()
+    def test_triangle_skewness(self):
+        # 等边三角形偏斜度应为1
+        skew = triangle_skewness(*self.perfect_triangle)
+        self.assertAlmostEqual(skew, 1.0, delta=0.01)
+        
 
 
-class TestCheckMeshQuality(unittest.TestCase):
-    @patch("matplotlib.pyplot.hist")
-    @patch("matplotlib.pyplot.show")
-    def test_quality_check_flow(self, mock_show, mock_hist):
-        """测试质量检查流程是否完整执行"""
-        # 创建模拟网格对象
-        mock_grid = Mock()
-        mock_grid.cell_container = [Mock() for _ in range(5)]  # 5个单元
+    def test_quadrilateral_skewness(self):
+        # 完美正方形的偏斜度
+        skew = quadrilateral_skewness(*self.square)
+        self.assertAlmostEqual(skew, 1.0, delta=0.01)
+        
+        # 非四边形情况
+        self.assertEqual(quadrilateral_skewness(*self.square[:3], (0,0)), 0.0)
 
-        # 执行质量检查
-        check_mesh_quality(mock_grid)
+    def test_quadrilateral_aspect_ratio(self):
+        # 正方形长宽比应为1
+        ratio = quadrilateral_aspect_ratio(*self.square)
+        self.assertAlmostEqual(ratio, 1.0, delta=0.01)
+        
+        # 极端长宽比情况
+        rect = [(0,0), (10,0), (10,1), (0,1)]
+        self.assertAlmostEqual(quadrilateral_aspect_ratio(*rect), 10.0)
 
-        # 验证执行流程
-        self.assertEqual(len(mock_hist.call_args_list), 1)
-        mock_show.assert_called_once()
+    def test_quadrilateral_quality(self):
+        # 完美四边形质量
+        quality = quadrilateral_quality(*self.square)
+        self.assertGreater(quality, 0.9)
+        
+        # 非凸四边形质量应为0
+        self.assertEqual(quadrilateral_quality(*self.non_convex_quad), 0.0)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

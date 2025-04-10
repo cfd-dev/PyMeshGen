@@ -7,7 +7,7 @@ from geom_toolkit import (
     segments_intersect,
     is_left2d,
     points_equal,
-    _fast_distance_check,
+    fast_distance_check,
 )
 from basic_elements import (
     NodeElement,
@@ -389,7 +389,7 @@ class Adlayers2:
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
                 q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
-                if _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+                if fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
                     verbose(
                         f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
@@ -434,7 +434,7 @@ class Adlayers2:
 
                 # 邻近阵面检查，new_front与candidate的距离小于safe_distance，则对当前front进行早停
                 q0, q1 = candidate.node_elems[0].coords, candidate.node_elems[1].coords
-                if _fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
+                if fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
                     info(
                         f"阵面{front.node_ids}邻近告警：与{candidate.node_ids}距离<{safe_distance:.6f}"
                     )
