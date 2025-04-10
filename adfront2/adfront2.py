@@ -35,14 +35,15 @@ class Adfront2:
         visual_obj=None,
     ):
         self.ax = visual_obj.ax
-        self.debug_level = (
-            param_obj.debug_level
-        )  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+        # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
+        self.debug_level = param_obj.debug_level
 
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
-        self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
+        # 1-三角形，2-直角三角形，3-三角形/四边形混合
+        self.mesh_type = param_obj.mesh_type
+        self.progress_interval = 500  # 进度输出间隔
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象
@@ -56,9 +57,8 @@ class Adfront2:
         self.front_candidates = None  # 候选阵面列表
         self.cell_candidates = None  # 候选单元列表
 
-        self.search_method = (
-            "bbox"  # 搜索方法，"bbox"或"rtree"或"cartesian"，默认为"bbox"
-        )
+        # 搜索方法，"bbox"或"rtree"或"cartesian"，默认为"bbox"
+        self.search_method = "bbox"
         self.space_grid_size = 1.0  # 背景网格大小，默认为1.0
         self.space_index_node = None  # 节点空间索引
         self.node_dict = {}  # 节点id字典，用于快速查找
@@ -84,6 +84,10 @@ class Adfront2:
 
     def initialize(self):
         """初始化hash列表、坐标、边界点和优先级"""
+        # 初始化搜索半径系数
+        for front in self.front_list:
+            front.al = self.al
+
         self.boundary_nodes = set()
         self.node_hash_list = set()
         self.cell_hash_list = set()
@@ -281,7 +285,7 @@ class Adfront2:
         )
 
     def show_progress(self):
-        if self.num_cells % 500 == 0 or len(self.front_list) == 0:
+        if self.num_cells % self.progress_interval == 0 or len(self.front_list) == 0:
             info(f"当前阵面数量：{len(self.front_list)}")
             info(f"当前节点数量：{self.num_nodes}")
             info(f"当前单元数量：{self.num_cells}\n")
@@ -301,18 +305,8 @@ class Adfront2:
         if self.pselected is None:
             return
 
-        # 更新节点，如果选择了最佳点，best_flag为True，且pselected为Pbest
-        # 此时将pselected添加到node_coords中，同时更新num_nodes，若选择的不是Pbest，则无需更新节点
-        if self.best_flag and self.pselected is not None:
-            node_hash = self.pselected.hash
-            if node_hash not in self.node_hash_list:
-                self.node_hash_list.add(node_hash)
-                self.node_coords.append(self.pselected.coords)
-                self.add_elems_to_space_index(
-                    [self.pselected], self.space_index_node, self.node_dict
-                )
-
-                self.num_nodes += 1
+        # 更新节点
+        self.update_nodes()
 
         # 更新阵面
         new_front1 = Front(
@@ -330,27 +324,7 @@ class Adfront2:
             "internal",
         )
 
-        # 判断front_list中是否存在new_front，若不存在，
-        # 则将其压入front_list，若已存在，则将其从front_list中删除
-        new_fronts = [new_front1, new_front2]
-        front_hashes = {f.hash for f in self.front_list}
-        for chk_fro in new_fronts:
-            if chk_fro.hash not in front_hashes:
-                heapq.heappush(self.front_list, chk_fro)
-
-                self.add_elems_to_space_index(
-                    [chk_fro], self.space_index_front, self.front_dict
-                )
-
-                if self.ax and self.debug_level >= 1:
-                    chk_fro.draw_front("g-", self.ax)
-            else:  # 移除相同位置的旧阵面
-                self.front_list = [
-                    tmp_fro
-                    for tmp_fro in self.front_list
-                    if tmp_fro.hash != chk_fro.hash
-                ]
-
+        self.update_fronts([new_front1, new_front2])
         heapq.heapify(self.front_list)  # 重新堆化
 
         # 更新单元
@@ -361,18 +335,7 @@ class Adfront2:
             self.num_cells,
         )
 
-        if new_cell.hash not in self.cell_hash_list:
-            self.cell_hash_list.add(new_cell.hash)
-            self.cell_container.append(new_cell)
-
-            self.add_elems_to_space_index(
-                [new_cell], self.space_index_cell, self.cell_dict
-            )
-
-            self.num_cells += 1
-        else:
-            warning(f"发现重复单元：{new_cell.node_ids}")
-            self.debug_level = 1
+        self.update_cells(new_cell)
 
     def select_point(self):
         # 预计算基准点坐标
@@ -419,7 +382,8 @@ class Adfront2:
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
             self.base_front.al *= 1.2
-            self.debug_level = 1
+            heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
+            # self.debug_level = 1
 
         return self.pselected
 
@@ -525,7 +489,7 @@ class Adfront2:
                 fc[1] + normal_vec[1] * spacing,
             ]
         elif self.mesh_type == 2:
-            node_coord = self.base_front.nodes_coords[0]
+            node_coord = self.base_front.node_elems[0].coords
             pbest = [
                 node_coord[0] + normal_vec[0] * spacing,
                 node_coord[1] + normal_vec[1] * spacing,
@@ -576,7 +540,7 @@ class Adfront2:
         for chk_fro in new_fronts:
             if chk_fro.hash not in front_hashes:
                 self.front_list.append(chk_fro)
-
+                # heapq.heappush(self.front_list, chk_fro)
                 self.add_elems_to_space_index(
                     [chk_fro], self.space_index_front, self.front_dict
                 )

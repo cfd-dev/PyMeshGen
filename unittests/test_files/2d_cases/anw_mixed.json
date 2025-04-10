@@ -1,9 +1,9 @@
 {
     "debug_level": 0,
-    "input_file": "./config/input/inv_cylinder-8.cas",
-    "output_file": "./out/cylinder.vtk",
+    "input_file": "./unittests/test_files/2d_cases/anw.cas",
+    "output_file": "./unittests/test_files/2d_cases/test_outputs/test_anw_mixed.vtk",
     "mesh_type": 3,
-    "viz_enabled": true,
+	"viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield"

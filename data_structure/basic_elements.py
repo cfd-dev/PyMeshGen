@@ -1,7 +1,7 @@
 import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
-from vtk_io import write_vtk, VTK_ELEMENT_TYPE
+from vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
 from geom_toolkit import (
     calculate_distance,
     segments_intersect,
@@ -477,6 +477,11 @@ class Unstructured_Grid:
         ax.axis("equal")
 
         plt.show(block=False)
+
+    def load_from_vtkfile(self, file_path):
+        """从VTK文件加载网格"""
+        cls = parse_vtk_msh(file_path)
+        return cls
 
     def save_to_vtkfile(self, file_path):
         """将网格保存到VTK文件"""
