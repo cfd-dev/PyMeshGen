@@ -46,11 +46,11 @@ class Adfront2Hybrid(Adfront2):
 
         # TODO discount取多少合适？quality_criterion取多少合适？proximity_tol取多少合适？
         self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
-        self.discount = 0.85  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
+        self.discount = 0.9  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
-        self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃
+        self.quality_criterion = 0.01  # 四边形质量阈值，低于这个质量的四边形将被舍弃
         # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
-        self.proximity_tol = 0.3
+        self.proximity_tol = 0.5
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形/四边形混合网格...")

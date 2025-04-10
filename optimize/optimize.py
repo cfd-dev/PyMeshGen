@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import heapq
 from itertools import combinations
@@ -5,7 +6,29 @@ import geom_toolkit as geom_tool
 from utils.timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from basic_elements import Triangle, Quadrilateral
+from mesh_quality import quadrilateral_quality2
 
+def optimize_hybrid_grid(hybrid_grid):
+    """调用外部混合网格优化软件进行优化"""  
+    import subprocess
+    tmp_file = "./out/tmp_mesh.vtk"
+    hybrid_grid.save_to_vtkfile(tmp_file)
+
+    max_iter = 10
+    movement_factor = 0.3
+    opt_exe = './optimize/laplacian_opt.exe'
+    cmd = [opt_exe, tmp_file, str(max_iter), str(movement_factor)]
+    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    debug(f'Optimized VTK mesh written to: {tmp_file.replace(".vtk", "_opt.vtk")}')
+    
+    optimized_grid = hybrid_grid.load_from_vtkfile(tmp_file.replace(".vtk", "_opt.vtk"))
+    
+    # 如果需要，删除临时文件
+    if not __debug__:
+        os.remove(tmp_file)
+        os.remove(tmp_file.replace(".vtk", "_opt.vtk"))
+
+    return optimized_grid
 
 def merge_elements(unstr_grid):
     """
@@ -56,7 +79,7 @@ def merge_elements(unstr_grid):
         tri1.init_metrics()
         tri2.init_metrics()
         tri_quality = (tri1.quality + tri2.quality) / 2
-        quad_quality = geom_tool.quadrilateral_quality2(
+        quad_quality = quadrilateral_quality2(
             node_coords[a], node_coords[c], node_coords[b], node_coords[d]
         )
 

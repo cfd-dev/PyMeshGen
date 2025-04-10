@@ -38,11 +38,11 @@ class Adfront2:
         self.debug_level = (
             param_obj.debug_level
         )  # 调试级别，0-不输出，1-输出基本信息，2-输出详细信息
-
+        
         # 阵面推进参数
         self.al = 3.0  # 在几倍范围内搜索
         self.discount = 0.8  # Pbest质量系数，discount越小，选择Pbest的概率越小
-        self.mesh_type = 1  # 1-三角形，2-直角三角形，3-三角形/四边形混合
+        self.mesh_type = param_obj.mesh_type  # 1-三角形，2-直角三角形，3-三角形/四边形混合
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象
@@ -525,7 +525,7 @@ class Adfront2:
                 fc[1] + normal_vec[1] * spacing,
             ]
         elif self.mesh_type == 2:
-            node_coord = self.base_front.nodes_coords[0]
+            node_coord = self.base_front.node_elems[0].coords
             pbest = [
                 node_coord[0] + normal_vec[0] * spacing,
                 node_coord[1] + normal_vec[1] * spacing,
