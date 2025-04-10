@@ -1,5 +1,5 @@
 {
-    "case_file": "config/anw.json",
+    "case_file": "config/30p30n_mixed.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",
@@ -19,6 +19,7 @@
 		"config/concav_match120.json",
         "config/pentagon_mixed.json",
         "config/quad_quad_mixed.json",
-        "config/cylinder_mixed.json"
+        "config/cylinder_mixed.json",
+        "config/30p30n_mixed.json"
     ]
 }
