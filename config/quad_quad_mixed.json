@@ -1,0 +1,15 @@
+{
+    "debug_level": 0,
+    "input_file": "./config/input/quad_quad.cas",
+    "output_file": "./out/quad_quad.vtk",
+    "mesh_type": 3,
+    "viz_enabled": true,
+    "parts": [
+        {
+            "part_name": "farfield"
+        },
+        {
+            "part_name": "wall"
+        }
+    ]
+}

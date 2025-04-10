@@ -18,6 +18,16 @@ from geom_toolkit import (
 
 
 class Adfront2Hybrid(Adfront2):
+    """基于阵面推进法生成四边形网格(DEMO)，还有多处TODO，要进一步调试以达到最佳效果
+    主要步骤：
+    1. 生成2个新点，并在候选点列表中尝试选择2个点，构成一个质量最高，且满足要求的四边形
+    2. 若无法构成合适的四边形，则退回生成三角形的逻辑，生成一个三角形
+    3. 更新四边形单元数据结构
+    4. 更新三角形单元数据结构
+    5. 重复1-4，直到所有阵面被处理完毕
+    参考文献：
+    [1]陈建军,郑建靖,季廷炜,等.前沿推进曲面四边形网格生成算法[J].计算力学学报,2011,28(05):779-784.
+    """
     def __init__(
         self,
         boundary_front,
@@ -34,13 +44,13 @@ class Adfront2Hybrid(Adfront2):
             visual_obj,
         )
 
+        # TODO discount取多少合适？quality_criterion取多少合适？proximity_tol取多少合适？
         self.al = 0.8  # 在几倍范围内搜索，对于四边形网格生成，al=0.8，对于三角形网格生成，al=3.0
-        self.discount = 0.8  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
+        self.discount = 0.85  # Pbest质量折扣系数，discount越小，选择Pbest的概率越小
         self.mesh_type = 3  # 1-三角形，2-直角三角形，3-三角形/四边形混合（在生成混合网格的对象中，默认为3）
-        self.quality_criterion = 0.01  # 四边形质量阈值，低于这个质量的四边形将被舍弃
-        self.proximity_tol = (
-            0.5  # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
-        )
+        self.quality_criterion = 0.5  # 四边形质量阈值，低于这个质量的四边形将被舍弃
+        # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
+        self.proximity_tol = 0.3
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形/四边形混合网格...")
@@ -53,7 +63,7 @@ class Adfront2Hybrid(Adfront2):
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
             if (
-                self.base_front.node_ids == [212, 234]
+                self.base_front.node_ids == [535, 473]
                 or self.base_front.node_ids == [239,214]
                 or self.base_front.node_ids == [183, 184]
             ):
@@ -233,8 +243,6 @@ class Adfront2Hybrid(Adfront2):
         self.pselected = None
         self.best_flag = [False] * 2
         for quality, node_elem1, node_elem2 in scored_candidates:
-            if node_elem1.idx == 265 and node_elem2.idx == 187:
-                kkk = 0
             if not (
                 is_left2d(p0, p1, node_elem1.coords)
                 and is_left2d(p0, p1, node_elem2.coords)
@@ -257,26 +265,28 @@ class Adfront2Hybrid(Adfront2):
 
     def size_too_big(self, node_elem1, node_elem2, spacing):
         """检查当前新增的阵面是否满足长度要求，或者待新增的单元是否满足面积要求"""
+        # TODO 是否要判断新增单元尺寸？如何考虑？待完善
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
 
         ratio = 2.0
-        line1 = LineSegment(node_elem1.coords, node_elem2.coords)
-        line2 = LineSegment(node_elem1.coords, p0)
-        line3 = LineSegment(node_elem2.coords, p1)
-        if (
-            (line1.length > ratio * spacing)
-            or (line2.length > ratio * spacing)
-            or (line3.length > ratio * spacing)
-        ):
-            return True
-
-        # 计算新增面积
+        # line1 = LineSegment(node_elem1.coords, node_elem2.coords)
+        # line2 = LineSegment(node_elem1.coords, p0)
+        # line3 = LineSegment(node_elem2.coords, p1)
         # if (
-        #     quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords)
-        #     > 2.0 * spacing * spacing
+        #     (line1.length > ratio * spacing)
+        #     or (line2.length > ratio * spacing)
+        #     or (line3.length > ratio * spacing)
         # ):
         #     return True
+
+        # 计算新增面积
+        ratio = 1.3 * 1.3
+        if (
+            quadrilateral_area(p0, p1, node_elem2.coords, node_elem1.coords)
+            > ratio * spacing * spacing
+        ):
+            return True
 
         return False
 
@@ -367,7 +377,9 @@ class Adfront2Hybrid(Adfront2):
 
         l = self.base_front.length
         d0 = spacing
+        # TODO 步长如何计算合适？
         d = min(1.25 * l, max(0.8 * l, d0))
+        # d = d0
 
         # 计算新顶点的坐标
         self.pbest = []

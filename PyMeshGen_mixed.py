@@ -21,7 +21,7 @@ from parameters import Parameters
 from utils.timer import TimeSpan
 
 
-def PyMeshGen(parameters=None):
+def PyMeshGen_mixed(parameters=None):
     # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
@@ -61,19 +61,34 @@ def PyMeshGen(parameters=None):
     unstr_grid_list.append(boundary_grid)
 
     # 推进生成网格
-    adfront2 = Adfront2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        node_coords=boundary_grid.node_coords,
-        param_obj=parameters,
-        visual_obj=visual_obj,
-    )
+    if parameters.mesh_type <= 2:
+        adfront2 = Adfront2(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+    elif parameters.mesh_type == 3:
+        adfront2 = Adfront2Hybrid(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+
     triangular_grid = adfront2.generate_elements()
 
     # 网格质量优化
     triangular_grid = edge_swap(triangular_grid)
-    triangular_grid = laplacian_smooth(triangular_grid, 3)
-    unstr_grid_list.append(triangular_grid)
+    if parameters.mesh_type <= 2:
+        triangular_grid = laplacian_smooth(triangular_grid, 3)
+        unstr_grid_list.append(triangular_grid)
+    elif parameters.mesh_type == 3:
+        hybrid_grid = merge_elements(triangular_grid)
+        hybrid_grid = hybrid_smooth(hybrid_grid, 3)
+        unstr_grid_list.append(hybrid_grid)
 
     # 合并各向同性网格和边界层网格
     global_unstr_grid = unstr_grid_list[0]
@@ -113,6 +128,6 @@ if __name__ == "__main__":
         else Parameters("FROM_MAIN_JSON")
     )
 
-    PyMeshGen(params)
+    PyMeshGen_mixed(params)
 
     input("Press Enter to continue...")
