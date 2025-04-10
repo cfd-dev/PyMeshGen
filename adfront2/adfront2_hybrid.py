@@ -7,14 +7,13 @@ from message import info, debug, verbose, warning, error
 from basic_elements import NodeElement, LineSegment, Triangle, Quadrilateral
 from utils.timer import TimeSpan
 from geom_toolkit import (
-    triangle_quality,
     calculate_angle,
     is_left2d,
-    quadrilateral_quality2,
     quadrilateral_area,
-    _fast_distance_check,
+    fast_distance_check,
     point_to_segment_distance,
 )
+from mesh_quality import triangle_quality, quadrilateral_quality2
 
 
 class Adfront2Hybrid(Adfront2):
@@ -28,6 +27,7 @@ class Adfront2Hybrid(Adfront2):
     参考文献：
     [1]陈建军,郑建靖,季廷炜,等.前沿推进曲面四边形网格生成算法[J].计算力学学报,2011,28(05):779-784.
     """
+
     def __init__(
         self,
         boundary_front,
@@ -64,7 +64,7 @@ class Adfront2Hybrid(Adfront2):
 
             if (
                 self.base_front.node_ids == [535, 473]
-                or self.base_front.node_ids == [239,214]
+                or self.base_front.node_ids == [239, 214]
                 or self.base_front.node_ids == [183, 184]
             ):
                 # self.debug_save()

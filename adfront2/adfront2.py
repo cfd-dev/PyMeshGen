@@ -1,10 +1,10 @@
 import heapq
 import matplotlib.pyplot as plt
 from geom_toolkit import (
-    triangle_quality,
     is_left2d,
     calculate_distance2,
 )
+from mesh_quality import triangle_quality
 from front2d import Front
 from basic_elements import (
     NodeElement,

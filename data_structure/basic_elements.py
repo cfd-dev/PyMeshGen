@@ -6,13 +6,15 @@ from geom_toolkit import (
     calculate_distance,
     segments_intersect,
     triangle_area,
-    triangle_quality,
     triangle_intersect_triangle,
     quadrilateral_area,
-    quadrilateral_quality,
     calculate_angle,
     quad_intersects_triangle,
     quad_intersects_quad,
+)
+from mesh_quality import (
+    triangle_quality,
+    quadrilateral_quality,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
 )
@@ -22,14 +24,14 @@ from message import info, debug, warning, verbose
 class NodeElement:
     def __init__(self, coords, idx, part_name=None, bc_type=None):
         if isinstance(coords, (np.ndarray, list, tuple)):
-            self.coords = list(coords) 
+            self.coords = list(coords)
         else:
             raise TypeError(f"坐标格式错误，期望可迭代类型，实际类型：{type(coords)}")
-            
+
         self.idx = idx
         self.part_name = part_name
         self.bc_type = bc_type
-        
+
         self.node2front = []  # 节点关联的阵面列表
         self.node2node = []  # 节点关联的节点列表
 
@@ -66,7 +68,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         concav_flag=False,
     ):
         super().__init__(coords, idx, bc_type)  # 调用父类构造函数
-        
+
         self.marching_direction = []  # 节点推进方向
         self.marching_distance = 0.0  # 节点处的推进距离
         self.angle = 0.0  # 节点的角度
@@ -180,12 +182,12 @@ class Triangle:
         p6 = triangle.p3
         # 采用bbox快速判断
         if (
-           self.bbox[0] > triangle.bbox[2]
+            self.bbox[0] > triangle.bbox[2]
             or self.bbox[2] < triangle.bbox[0]
             or self.bbox[1] > triangle.bbox[3]
-            or self.bbox[3] < triangle.bbox[1] 
+            or self.bbox[3] < triangle.bbox[1]
         ):
-            return False 
+            return False
 
         return triangle_intersect_triangle(self.p1, self.p2, self.p3, p4, p5, p6)
 
@@ -285,7 +287,7 @@ class Quadrilateral:
 
     def get_skewness(self):
         return quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
-    
+
     def is_intersect_triangle(self, triangle):
         if not isinstance(triangle, Triangle):
             raise TypeError("只接受Triangle对象作为输入！")
@@ -295,9 +297,9 @@ class Quadrilateral:
         p7 = triangle.p3
         # 采用bbox快速判断
         if (
-           self.bbox[0] > triangle.bbox[2]
+            self.bbox[0] > triangle.bbox[2]
             or self.bbox[2] < triangle.bbox[0]
-            or self.bbox[1] > triangle.bbox[3]  
+            or self.bbox[1] > triangle.bbox[3]
             or self.bbox[3] < triangle.bbox[1]
         ):
             return False
@@ -314,10 +316,10 @@ class Quadrilateral:
         p8 = quad.p4
         # 采用bbox快速判断
         if (
-           self.bbox[0] > quad.bbox[2]
+            self.bbox[0] > quad.bbox[2]
             or self.bbox[2] < quad.bbox[0]
             or self.bbox[1] > quad.bbox[3]
-            or self.bbox[3] < quad.bbox[1] 
+            or self.bbox[3] < quad.bbox[1]
         ):
             return False
 
@@ -325,6 +327,7 @@ class Quadrilateral:
         quad2 = [p5, p6, p7, p8]
 
         return quad_intersects_quad(quad1, quad2)
+
 
 class Unstructured_Grid:
     def __init__(self, cell_container, node_coords, boundary_nodes):

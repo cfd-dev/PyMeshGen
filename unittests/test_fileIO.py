@@ -2,11 +2,19 @@ import unittest
 import sys
 from pathlib import Path
 
+root_dir = Path(__file__).parent.parent
+sys.path.append(str(root_dir))
 sys.path.append(str(Path(__file__).parent.parent / "fileIO"))
-sys.path.append(str(Path(__file__).parent / "utils"))
+sys.path.append(str(Path(__file__).parent.parent / "data_structure"))
+sys.path.append(str(Path(__file__).parent.parent / "meshsize"))
+sys.path.append(str(Path(__file__).parent.parent / "visualization"))
+sys.path.append(str(Path(__file__).parent.parent / "adfront2"))
+sys.path.append(str(Path(__file__).parent.parent / "optimize"))
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
+
 from read_cas import parse_fluent_msh
 from vtk_io import parse_vtk_msh
-from geom_toolkit import Unstructured_Grid, Triangle, Quadrilateral
+from basic_elements import Unstructured_Grid, Triangle, Quadrilateral
 
 
 class TestCASParser(unittest.TestCase):
