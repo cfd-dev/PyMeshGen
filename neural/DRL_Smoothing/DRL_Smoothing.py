@@ -13,7 +13,7 @@ class DRLSmoothingEnv(gym.Env):
     def __init__(
         self, max_ring_nodes=8,initial_grid = None
     ):
-        super(DRLEnv, self).__init__()
+        super(DRLSmoothingEnv, self).__init__()
         self.reward_coeff = 1.0 # minQuality在reward中的权重
         self.lamda = 0.0 # shape quality所占权重，skewness权重为1-lamda
         self.max_ring_nodes = max_ring_nodes # 最大允许的环节点数量
