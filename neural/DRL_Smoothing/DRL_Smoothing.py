@@ -7,7 +7,7 @@ from collections import deque
 import random
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
-
+from optimize import node_perturbation
 
 class DRLSmoothingEnv(gym.Env):
     def __init__(
@@ -16,12 +16,15 @@ class DRLSmoothingEnv(gym.Env):
         super(DRLEnv, self).__init__()
         self.reward_coeff = 1.0 # minQuality在reward中的权重
         self.lamda = 0.0 # shape quality所占权重，skewness权重为1-lamda
-        self.max_ring_nodes = max_ring_nodes # 最大环节点数量
-
+        self.max_ring_nodes = max_ring_nodes # 最大允许的环节点数量
         self.initial_grid = initial_grid # 初始网格
 
-        self.initial_grid.init_ring_nodes()
+        # 初始化节点邻居环节点
+        self.initial_grid.init_node2node_by_cell()
         
+        # 初始化网格节点扰动
+        self.initial_grid = node_perturbation(self.initial_grid)
+
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(max_ring_nodes, 2), dtype=np.float32

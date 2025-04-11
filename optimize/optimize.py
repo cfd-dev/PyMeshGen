@@ -400,3 +400,42 @@ def laplacian_smooth(unstr_grid, num_iter=10):
     timer.show_to_console("laplacian优化完成.")
 
     return unstr_grid
+
+def node_perturbation(unstr_grid, ratio=0.8):
+    """对网格节点进行随机扰动
+    Args:
+        ratio: 扰动比例（相对于单元特征尺寸）
+    """
+    np.random.seed(42)  # 固定随机种子保证可重复性
+    
+    # 获取节点坐标和边界信息
+    node_coords = np.array(unstr_grid.node_coords)
+    boundary_nodes = set(unstr_grid.boundary_nodes_list)
+    
+    # 计算每个节点的扰动幅度（基于关联单元尺寸）
+    node_scale = np.zeros(len(node_coords))
+    for cell in unstr_grid.cell_container:
+        cell_size = cell.get_element_size()
+        for node_id in cell.node_ids:
+            node_scale[node_id] = max(node_scale[node_id], cell_size)
+    
+    # 仅扰动内部节点
+    for i in range(len(node_coords)):
+        if i in boundary_nodes:
+            continue
+        
+        # 生成随机方向向量
+        direction = np.random.normal(size=node_coords.shape[1])
+        direction /= np.linalg.norm(direction)  # 单位向量
+        
+        # 计算扰动幅度
+        max_shift = node_scale[i] * ratio
+        shift = direction * np.random.uniform(0, max_shift)
+        
+        # 应用扰动
+        node_coords[i] += shift
+        
+    # 更新回网格结构
+    unstr_grid.node_coords = node_coords.tolist()
+    info(f"节点扰动完成，最大位移: {np.max(node_scale * ratio):.4f}")
+    return unstr_grid
