@@ -8,6 +8,8 @@ import random
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 from optimize import node_perturbation
+from geom_toolkit import point_in_polygon
+
 
 class DRLSmoothingEnv(gym.Env):
     def __init__(
@@ -20,9 +22,12 @@ class DRLSmoothingEnv(gym.Env):
         self.initial_grid = initial_grid # 初始网格
         
         self.current_node_id = 0 # 当前节点ID
+        self.ring_coords = [] # 当前环节点坐标
         self.state = [] # 当前状态
         self.done = False # 是否完成
         self.local_range =[] # 当前状态的局部范围，用于归一化和反归一化
+        self.action_storage = [] # 动作存储
+
         self.init_env()
 
     def init_env(self):
@@ -44,6 +49,7 @@ class DRLSmoothingEnv(gym.Env):
         # 获取当前节点的环状邻居坐标
         node_ids = self.initial_grid.node2node[self.current_node_id]
         ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
+        self.ring_coords = ring_coords
         
         # 计算坐标范围
         x_min, x_max = np.min(ring_coords[:,0]), np.max(ring_coords[:,0])
@@ -65,12 +71,37 @@ class DRLSmoothingEnv(gym.Env):
     def reset(self):
         self.done = False
         self.current_node_id = 0
+        self.action_storage = np.zeros((self.initial_grid.num_nodes, 2))  # 初始化动作存储矩阵
+        
+        # 初始化状态
         self.init_state()
+        
+        return self.get_obs()
 
-        return self._get_obs()
+    def get_obs(self):
+        # 返回当前观测值
+        return self.state.copy()
+
+    def anti_normalize(self, action):
+        # 反归一化
+        x_min, x_max, y_min, y_max = self.local_range
+        ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
+        new_point = action * ref_d + np.array([[x_min, y_min]])
+
+        return new_point
 
     def step(self, action):
         # 实现环境交互逻辑
+        observation = this.get_obs()
+        reward = 0
+        self.done = False
+
+        new_point = self.anti_normalize(action)  # 反归一化
+
+        self.compute_reward(new_point)  # 计算奖励
+
+        self.current_node_id += 1  # 更新节点ID
+
         self.actionStorage = action
         self.IsDone = True  # 简化示例
         reward = self._calculate_reward()
@@ -78,12 +109,13 @@ class DRLSmoothingEnv(gym.Env):
 
 
 
-    def _get_obs(self):
-        # 返回当前观测值（示例数据）
-        return np.random.randn(self.max_ringNodes, 2).astype(np.float32)
 
-    def _calculate_reward(self):
-        # 计算奖励逻辑（示例）
+
+    def compute_reward(self, new_point):
+        # 判断new_point是否在当前环内
+        if not point_in_polygon(new_point, self.ring_coords):
+            self.done = True
+            return -100  # 惩罚
         return 1.0
 
 

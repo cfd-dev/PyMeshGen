@@ -705,3 +705,76 @@ class TestPointInsideQuad(unittest.TestCase):
         self.assertTrue(geom_tool.is_point_inside_quad([1, 1.5], irregular_quad))
         # 外部点
         self.assertFalse(geom_tool.is_point_inside_quad([3, 0], irregular_quad))
+
+class TestPointInPolygon(unittest.TestCase):
+    """测试点与多边形位置关系判断函数"""
+
+    def test_inside_convex(self):
+        """测试点在凸多边形内部"""
+        polygon = [[0,0], [5,0], [5,5], [0,5]]
+        self.assertTrue(geom_tool.point_in_polygon([2,2], polygon))
+        self.assertTrue(geom_tool.point_in_polygon([4.9,4.9], polygon))
+
+    def test_outside_convex(self):
+        """测试点在凸多边形外部"""
+        polygon = [[0,0], [5,0], [5,5], [0,5]]
+        self.assertFalse(geom_tool.point_in_polygon([6,3], polygon))
+        self.assertFalse(geom_tool.point_in_polygon([-1,2], polygon))
+
+    def test_inside_concave(self):
+        """测试点在凹多边形内部"""
+        concave = [[0,0], [5,0], [5,5], [3,5], [3,3], [0,3]]
+        self.assertTrue(geom_tool.point_in_polygon([1,1], concave))
+        self.assertTrue(geom_tool.point_in_polygon([4,4], concave))
+
+    def test_in_concave_recess(self):
+        """测试点在凹多边形的凹陷区域外部"""
+        concave = [[0,0], [5,0], [5,5], [3,5], [3,3], [0,3]]
+        self.assertFalse(geom_tool.point_in_polygon([1,4], concave))
+
+    def test_on_vertex(self):
+        """测试点在多边形顶点上"""
+        polygon = [[0,0], [5,0], [5,5]]
+        self.assertFalse(geom_tool.point_in_polygon([5,0], polygon))
+
+    def test_on_edge(self):
+        """测试点在多边形边上"""
+        polygon = [[0,0], [5,0], [5,5]]
+        self.assertFalse(geom_tool.point_in_polygon([2.5,0], polygon))  # 底边
+        self.assertFalse(geom_tool.point_in_polygon([5,2.5], polygon))  # 右边
+
+    def test_horizontal_edges(self):
+        """测试含水平边的多边形"""
+        polygon = [[0,0], [5,0], [5,3], [3,3], [3,5], [0,5]]
+        # 在水平边上方
+        self.assertFalse(geom_tool.point_in_polygon([4,4], polygon))
+        # 在水平边下方
+        self.assertTrue(geom_tool.point_in_polygon([4,2], polygon))
+
+    def test_complex_shape(self):
+        """测试复杂星形多边形"""
+        star = [[2,0],[4,3],[7,3],[5,6],[6,9],[2,7],[-2,9],[-1,6],[-3,3],[0,3]]
+        star.append(star[0])  # 添加闭合点
+        # 绘制star
+        # plt.figure(figsize=(6, 6))
+        # x, y = zip(*star)
+        # plt.plot(x, y, 'o-')
+        # plt.xlim(-4, 8)
+        # plt.ylim(-4, 10)
+        # plt.grid(True)
+        # plt.show()
+
+        # 星形内部
+        self.assertTrue(geom_tool.point_in_polygon([3,4], star))
+        # 星形中心点
+        self.assertTrue(geom_tool.point_in_polygon([2,4.5], star))
+        # 星芒之间
+        self.assertFalse(geom_tool.point_in_polygon([6,6], star))
+
+    def test_floating_point_precision(self):
+        """测试浮点精度边界情况"""
+        polygon = [[0.1,0.1], [0.1,0.5], [0.5,0.5], [0.5,0.1]]
+        # 接近边界的内部点
+        self.assertFalse(geom_tool.point_in_polygon([0.1+1e-9, 0.3], polygon))
+        # 非常接近边界的边界点
+        self.assertFalse(geom_tool.point_in_polygon([0.5-1e-9, 0.5-1e-9], polygon))
