@@ -175,6 +175,16 @@ class Triangle:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
+    
+    def get_area(self):
+        if self.area is None:
+            self.area = triangle_area(self.p1, self.p2, self.p3)
+        return self.area
+
+    def get_element_size(self):
+        if self.area is None:
+            self.get_area()
+        return sqrt(self.area)
 
     def is_intersect(self, triangle):
         p4 = triangle.p1
@@ -241,6 +251,11 @@ class Quadrilateral:
     def __hash__(self):
         return self.hash
 
+    def __eq__(self, other):
+        if isinstance(other, Triangle):
+            return self.hash == other.hash
+        return False
+
     def init_metrics(self):
         if self.area is None:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
@@ -255,13 +270,15 @@ class Quadrilateral:
                 warning(
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-
+        
     def get_area(self):
-        self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+        if self.area is None:
+            self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
         return self.area
 
     def get_quality(self):
-        self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+        if self.quality is None:
+            self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
         return self.quality
 
     def get_element_size(self):
