@@ -18,13 +18,20 @@ class DRLSmoothingEnv(gym.Env):
         self.lamda = 0.0 # shape quality所占权重，skewness权重为1-lamda
         self.max_ring_nodes = max_ring_nodes # 最大允许的环节点数量
         self.initial_grid = initial_grid # 初始网格
+        
+        self.current_node_id = 0 # 当前节点ID
+        self.state = [] # 当前状态
+        self.done = False # 是否完成
+        self.local_range =[] # 当前状态的局部范围，用于归一化和反归一化
+        self.init_env()
 
+    def init_env(self):
         # 初始化节点邻居环节点
         self.initial_grid.init_node2node_by_cell()
         
         # 初始化网格节点扰动
         self.initial_grid = node_perturbation(self.initial_grid)
-
+        
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(max_ring_nodes, 2), dtype=np.float32
@@ -33,6 +40,35 @@ class DRLSmoothingEnv(gym.Env):
             low=-1.0, high=1.0, shape=(2, 1), dtype=np.float32
         )
 
+    def init_state(self):
+        # 获取当前节点的环状邻居坐标
+        node_ids = self.initial_grid.node2node[self.current_node_id]
+        ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
+        
+        # 计算坐标范围
+        x_min, x_max = np.min(ring_coords[:,0]), np.max(ring_coords[:,0])
+        y_min, y_max = np.min(ring_coords[:,1]), np.max(ring_coords[:,1])
+        ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
+        
+        # 归一化处理
+        normalized_coords = ring_coords - np.array([[x_min, y_min]])
+        normalized_coords /= ref_d
+        
+        # 填充至固定长度
+        if len(normalized_coords) < self.max_ring_nodes:
+            pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
+            normalized_coords = np.vstack([normalized_coords, pad])
+        
+        self.state = normalized_coords[:self.max_ring_nodes]  # 截断超长部分
+        self.local_range = (x_min, x_max, y_min, y_max)  # 保存范围用于逆变换
+
+    def reset(self):
+        self.done = False
+        self.current_node_id = 0
+        self.init_state()
+
+        return self._get_obs()
+
     def step(self, action):
         # 实现环境交互逻辑
         self.actionStorage = action
@@ -40,10 +76,7 @@ class DRLSmoothingEnv(gym.Env):
         reward = self._calculate_reward()
         return self._get_obs(), reward, self.IsDone, {}
 
-    def reset(self):
-        # 初始化/重置网格状态
-        self.IsDone = False
-        return self._get_obs()
+
 
     def _get_obs(self):
         # 返回当前观测值（示例数据）
