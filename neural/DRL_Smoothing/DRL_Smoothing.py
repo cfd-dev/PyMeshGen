@@ -9,11 +9,12 @@ from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 from optimize import node_perturbation
 from geom_toolkit import point_in_polygon
-
+from stl_io import parse_stl_msh
+import matplotlib.pyplot as plt
 
 class DRLSmoothingEnv(gym.Env):
     def __init__(
-        self, max_ring_nodes=8,initial_grid = None
+        self, max_ring_nodes=8,initial_grid = None, visual_obj=None,
     ):
         super(DRLSmoothingEnv, self).__init__()
         self.min_coeff = 1.0 # minQuality在reward中的权重
@@ -21,7 +22,9 @@ class DRLSmoothingEnv(gym.Env):
 
         self.max_ring_nodes = max_ring_nodes # 最大允许的环节点数量
         self.initial_grid = initial_grid # 初始网格
+        self.original_node_coords = np.copy(initial_grid.node_coords)  # 新增备份坐标
         
+        self.ax = visual_obj.ax # 绘图对象
         self.current_node_id = 0 # 当前节点ID
         self.ring_coords = [] # 当前环节点坐标
         self.state = [] # 当前状态
@@ -74,7 +77,9 @@ class DRLSmoothingEnv(gym.Env):
         self.done = False
         self.current_node_id = 0
         self.action_storage = np.zeros((self.initial_grid.num_nodes, 2))  # 初始化动作存储矩阵
-        
+          
+        # 恢复网格坐标到初始状态
+        self.initial_grid.node_coords = np.copy(self.original_node_coords)
         # 初始化状态
         self.init_state()
         
@@ -98,8 +103,19 @@ class DRLSmoothingEnv(gym.Env):
         y = np.mean(points[:, 1])
         return np.array([x, y])
 
+    def plot_ring_and_action(self):
+        # 绘制当前环节点和动作  
+        self.ax.scatter(self.ring_coords[:, 0], self.ring_coords[:, 1], label='Ring Nodes')
+        self.ax.scatter(self.action_storage[self.current_node_id, 0], self.action_storage[self.current_node_id, 1], color='red', label='Action')
+        self.ax.legend()
+        self.ax.set_xlim(self.initial_grid.bbox[0], self.initial_grid.bbox[2])  # 限制x轴范围
+        self.ax.set_ylim(self.initial_grid.bbox[1], self.initial_grid.bbox[3])  # 限制y轴范围
+        self.ax.set_aspect('equal', 'box')  # 保持x和y轴比例相等
+        plt.pause(0.001)  # 暂停以更新图形
+        self.ax.clear()  # 清除上一帧的内容
+
     def step(self, action):
-        observation = this.get_obs()
+        observation = self.get_obs()
         reward = 0
         self.done = False
 
@@ -108,8 +124,13 @@ class DRLSmoothingEnv(gym.Env):
             action = self.centroid(self.ring_coords)  # 计算多边形的形心
 
         new_point = self.anti_normalize(action)  # 反归一化
+
+        # 绘图
+        self.plot_ring_and_action()
         
         self.compute_reward(new_point)  # 计算奖励
+
+        self.initial_grid.node_coords[self.current_node_id] = new_point
 
         # 计算下一个状态
         self.current_node_id += 1
@@ -119,7 +140,7 @@ class DRLSmoothingEnv(gym.Env):
             self.init_state()  # 初始化下一个状态
 
 
-        return self.get_obs(), reward, self.IsDone, {}
+        return self.get_obs(), reward, self.done, {}
 
     def compute_reward(self, new_point):
         # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
@@ -139,14 +160,14 @@ class DRLSmoothingEnv(gym.Env):
 
         self.reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
 
+        return self.reward
+
     def neighbor_cells_quality(self, cells):
         sum_quality = 0
         min_quality = np.inf
         max_quality = -np.inf
         for cell in cells:
-            if cell.quality is None:
-                cell.get_quality()
-            sum_quality += cell.quality
+            sum_quality += cell.get_quality()
             min_quality = min(min_quality, cell.quality)
             max_quality = max(max_quality, cell.quality)
 
@@ -157,9 +178,7 @@ class DRLSmoothingEnv(gym.Env):
         min_quality = np.inf
         max_quality = -np.inf
         for cell in cells:
-            if cell.quality is None:
-                cell.get_skewness()
-            sum_quality += cell.quality
+            sum_quality += cell.get_skewness()
             min_quality = min(min_quality, cell.quality)
             max_quality = max(max_quality, cell.quality)
 
@@ -238,7 +257,7 @@ class DDPGAgent:
         self.gamma = 0.99
         self.tau = 1e-3
 
-# 新增目标网络初始化
+        # 新增目标网络初始化
         self.target_actor.load_state_dict(self.actor.state_dict())
         self.target_critic.load_state_dict(self.critic.state_dict())
         
@@ -324,12 +343,12 @@ class MeshReplayBuffer(ReplayBuffer):
             done=done,
         )
 
-def train_drl():
-    env = DRLEnv(max_ring_nodes=8)
+def train_drl(train_grid, visual_obj):
+    env = DRLSmoothingEnv(max_ring_nodes=8, initial_grid=train_grid, visual_obj=visual_obj)
     agent = DDPGAgent(env)
     
     max_episodes = 50000
-    max_steps = env.nNodes or 1000
+    max_steps = env.initial_grid.num_nodes or 1000
     save_interval = 10000
     
     for ep in range(max_episodes):
@@ -354,3 +373,14 @@ def train_drl():
             torch.save(agent.critic.state_dict(), f"./agent/critic_{ep+1}.pth")
             
         print(f"Episode {ep+1}, Reward: {episode_reward:.2f}")
+
+if __name__ == "__main__":
+
+    visual_obj = Visualization(True)
+
+    train_grid = parse_stl_msh("./training_mesh/training_mesh.stl")
+
+    train_grid.visualize_unstr_grid_2d(visual_obj)
+
+    train_drl(train_grid, visual_obj)
+

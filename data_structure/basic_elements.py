@@ -372,6 +372,13 @@ class Unstructured_Grid:
         self.node2cell = None
 
         self.dim = len(node_coords[0])
+        self.bbox = [
+            min(coord[0] for coord in node_coords),
+            min(coord[1] for coord in node_coords),
+            max(coord[0] for coord in node_coords),
+            max(coord[1] for coord in node_coords),
+        ]
+        
 
     def calculate_edges(self):
         """计算网格的边"""
