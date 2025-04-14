@@ -9,7 +9,7 @@ from geom_toolkit import (
 )
 
 
-def triangle_quality(p1, p2, p3):
+def triangle_shape_quality(p1, p2, p3):
     """计算三角形网格质量（两种方法）"""
     a = calculate_distance(p1, p2)
     b = calculate_distance(p2, p3)
@@ -112,7 +112,7 @@ def quadrilateral_aspect_ratio(p1, p2, p3, p4):
 
 
 def quadrilateral_quality2(p1, p2, p3, p4):
-    quality = quadrilateral_quality(p1, p2, p3, p4)
+    quality = quadrilateral_shape_quality(p1, p2, p3, p4)
     skewness = quadrilateral_skewness(p1, p2, p3, p4)
     aspect_ratio = quadrilateral_aspect_ratio(p1, p2, p3, p4)
 
@@ -125,7 +125,7 @@ def quadrilateral_quality2(p1, p2, p3, p4):
     return (quality + 4.0 * skewness + as_quality) / 6.0
 
 
-def quadrilateral_quality(p1, p2, p3, p4):
+def quadrilateral_shape_quality(p1, p2, p3, p4):
     """计算四边形质量（基于子三角形质量的最小组合）"""
     from basic_elements import LineSegment
 
@@ -163,10 +163,10 @@ def quadrilateral_quality(p1, p2, p3, p4):
 
     try:
         # 计算四个子三角形质量
-        q1 = triangle_quality(p1, p2, po)
-        q2 = triangle_quality(p2, p3, po)
-        q3 = triangle_quality(p3, p4, po)
-        q4 = triangle_quality(p4, p1, po)
+        q1 = triangle_shape_quality(p1, p2, po)
+        q2 = triangle_shape_quality(p2, p3, po)
+        q3 = triangle_shape_quality(p3, p4, po)
+        q4 = triangle_shape_quality(p4, p1, po)
     except ValueError:
         return 0.0
 

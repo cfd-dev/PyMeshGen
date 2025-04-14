@@ -13,8 +13,9 @@ from geom_toolkit import (
     quad_intersects_quad,
 )
 from mesh_quality import (
-    triangle_quality,
-    quadrilateral_quality,
+    triangle_shape_quality,
+    triangle_skewness,
+    quadrilateral_shape_quality,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
 )
@@ -170,16 +171,24 @@ class Triangle:
                     f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
         if self.quality is None:
-            self.quality = triangle_quality(self.p1, self.p2, self.p3)
+            self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
             if self.quality == 0.0:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
     
+    def get_quality(self):
+        if self.quality is None:
+            self.init_metrics()
+        return self.quality
+        
     def get_area(self):
         if self.area is None:
             self.area = triangle_area(self.p1, self.p2, self.p3)
         return self.area
+
+    def get_skewness(self):
+        return triangle_skewness(self.p1, self.p2, self.p3)
 
     def get_element_size(self):
         if self.area is None:
@@ -264,7 +273,7 @@ class Quadrilateral:
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
         if self.quality is None:
-            # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+            # self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
             self.quality = self.get_skewness()
             if self.quality == 0.0:
                 warning(
@@ -278,7 +287,7 @@ class Quadrilateral:
 
     def get_quality(self):
         if self.quality is None:
-            self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+            self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
         return self.quality
 
     def get_element_size(self):
@@ -360,6 +369,7 @@ class Unstructured_Grid:
         self.num_faces = 0
         self.edges = []
         self.node2node = None
+        self.node2cell = None
 
         self.dim = len(node_coords[0])
 
@@ -597,6 +607,19 @@ class Unstructured_Grid:
 
             self.node2node[node_idx] = sorted_neighbors
 
+    def init_node2cell(self):
+        """初始化节点关联的单元列表"""
+        self.node2cell = {}
+        for cell in self.cell_container:
+            for node_idx in cell.node_ids:
+                if node_idx not in self.node2cell:
+                    self.node2cell[node_idx] = []
+                self.node2cell[node_idx].append(cell)
+
+        # 去除重复
+        for node_idx in self.node2cell:
+            self.node2cell[node_idx] = list(set(self.node2cell[node_idx]))
+    
 
 class Connector:
     """曲线对象，包含曲线的几何对象、网格生成参数和所属部件名称，以及曲线网格本身"""
