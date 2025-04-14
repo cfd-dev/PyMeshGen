@@ -10,8 +10,9 @@ An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA a
 
 ## Key Features
 - **Input/Output**
-  - Import Fluent `.cas` format
-  - Export VTK visualization `.vtk` format
+  - Import Fluent `.cas` mesh format
+  - Import and export VTK visualization `.vtk` format
+  - Import and export `.stl` tessellation format
 - **Core Algorithms**
   - 2D Advancing Front Method
   - Boundary Layer Advancing Technique

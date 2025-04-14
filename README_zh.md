@@ -10,8 +10,9 @@
   
 ## 主要特性
 - **输入输出**
-  - 支持导入Fluent `.cas` 格式
-  - 导出VTK `.vtk` 可视化格式
+  - 支持导入Fluent `.cas` 网格格式
+  - 导入导出VTK `.vtk` 可视化格式
+  - 导入导出`.stl`网格格式
 - **核心算法**
   - 二维阵面推进法（Advancing Front）
   - 边界层推进技术（Advancing Layer）
