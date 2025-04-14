@@ -92,36 +92,45 @@ class DRLSmoothingEnv(gym.Env):
 
         return new_point
 
+    def centroid(self, points):
+        # 计算多边形的形心
+        x = np.mean(points[:, 0])
+        y = np.mean(points[:, 1])
+        return np.array([x, y])
+
     def step(self, action):
-        # 实现环境交互逻辑
         observation = this.get_obs()
         reward = 0
         self.done = False
 
-        new_point = self.anti_normalize(action)  # 反归一化
+        # 对于超出最大环节点数的动作，使用形心代替
+        if len(self.ring_coords) > self.max_ring_nodes:
+            action = self.centroid(self.ring_coords)  # 计算多边形的形心
 
+        new_point = self.anti_normalize(action)  # 反归一化
+        
         self.compute_reward(new_point)  # 计算奖励
 
-        self.current_node_id += 1  # 更新节点ID
-
-        self.actionStorage = action
-        self.IsDone = True  # 简化示例
-        reward = self._calculate_reward()
-        return self._get_obs(), reward, self.IsDone, {}
-
-
+        # 计算下一个状态
+        self.current_node_id += 1
+        if self.current_node_id >= self.initial_grid.num_nodes:
+            self.done = True
+        else:
+            self.init_state()  # 初始化下一个状态
 
 
+        return self.get_obs(), reward, self.IsDone, {}
 
     def compute_reward(self, new_point):
-        # 判断new_point是否在当前环内
+        # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
         if not point_in_polygon(new_point, self.ring_coords):
             self.done = True
             return -100  # 惩罚
-
+        
+        # 当前节点的邻居单元及其质量
         neigbor_cells = self.initial_grid.node2cell[self.current_node_id]
+        
         shape_quality, skewness = self.neighbor_cells_quality(neigbor_cells)
-
         shape_min, shape_max, shape_avg = shape_quality
         skewness_min, skewness_max, skewness_avg = skewness
 
