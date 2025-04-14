@@ -1,16 +1,30 @@
+import sys
+from pathlib import Path
+root_dir = Path(__file__).parent.parent.parent
+sys.path.append(str(root_dir))
+sys.path.append(str(root_dir / "fileIO"))
+sys.path.append(str(root_dir / "data_structure"))
+sys.path.append(str(root_dir / "meshsize"))
+sys.path.append(str(root_dir / "visualization"))
+sys.path.append(str(root_dir / "adfront2"))
+sys.path.append(str(root_dir / "optimize"))
+sys.path.append(str(root_dir / "utils"))
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-import gym
-from collections import deque
 import random
+from collections import deque
+import matplotlib.pyplot as plt
+import gym
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
+
 from optimize import node_perturbation
 from geom_toolkit import point_in_polygon
 from stl_io import parse_stl_msh
-import matplotlib.pyplot as plt
+from mesh_visualization import Visualization
 
 class DRLSmoothingEnv(gym.Env):
     def __init__(
