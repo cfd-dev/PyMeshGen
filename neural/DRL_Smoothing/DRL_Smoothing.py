@@ -16,8 +16,9 @@ class DRLSmoothingEnv(gym.Env):
         self, max_ring_nodes=8,initial_grid = None
     ):
         super(DRLSmoothingEnv, self).__init__()
-        self.reward_coeff = 1.0 # minQuality在reward中的权重
-        self.lamda = 0.0 # shape quality所占权重，skewness权重为1-lamda
+        self.min_coeff = 1.0 # minQuality在reward中的权重
+        self.shape_coeff = 0.0 # shape quality所占权重，skewness权重为1-shape_coeff
+
         self.max_ring_nodes = max_ring_nodes # 最大允许的环节点数量
         self.initial_grid = initial_grid # 初始网格
         
@@ -33,6 +34,7 @@ class DRLSmoothingEnv(gym.Env):
     def init_env(self):
         # 初始化节点邻居环节点
         self.initial_grid.init_node2node_by_cell()
+        self.initial_grid.init_node2cell()
         
         # 初始化网格节点扰动
         self.initial_grid = node_perturbation(self.initial_grid)
@@ -116,8 +118,46 @@ class DRLSmoothingEnv(gym.Env):
         if not point_in_polygon(new_point, self.ring_coords):
             self.done = True
             return -100  # 惩罚
-        return 1.0
 
+        neigbor_cells = self.initial_grid.node2cell[self.current_node_id]
+        shape_quality, skewness = self.neighbor_cells_quality(neigbor_cells)
+
+        shape_min, shape_max, shape_avg = shape_quality
+        skewness_min, skewness_max, skewness_avg = skewness
+
+        shape = self.min_coeff * shape_min + (1 - self.min_coeff) * shape_avg
+        skew  = self.min_coeff * skewness_min + (1 - self.min_coeff) * skewness_avg
+
+        self.reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
+
+    def neighbor_cells_quality(self, cells):
+        sum_quality = 0
+        min_quality = np.inf
+        max_quality = -np.inf
+        for cell in cells:
+            if cell.quality is None:
+                cell.get_quality()
+            sum_quality += cell.quality
+            min_quality = min(min_quality, cell.quality)
+            max_quality = max(max_quality, cell.quality)
+
+        avg_quality = sum_quality / len(cells) if len(cells) > 0 else 0
+        shape_quality = (min_quality, max_quality, avg_quality)
+
+        sum_quality = 0
+        min_quality = np.inf
+        max_quality = -np.inf
+        for cell in cells:
+            if cell.quality is None:
+                cell.get_skewness()
+            sum_quality += cell.quality
+            min_quality = min(min_quality, cell.quality)
+            max_quality = max(max_quality, cell.quality)
+
+        avg_quality = sum_quality / len(cells) if len(cells) > 0 else 0
+        skewness_quality = (min_quality, max_quality, avg_quality)
+
+        return shape_quality, skewness_quality
 
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=64):

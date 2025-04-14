@@ -4,7 +4,7 @@ from geom_toolkit import (
     is_left2d,
     calculate_distance2,
 )
-from mesh_quality import triangle_quality
+from mesh_quality import triangle_shape_quality
 from front2d import Front
 from basic_elements import (
     NodeElement,
@@ -346,13 +346,13 @@ class Adfront2:
         scored_candidates = []
         # 遍历所有候选节点计算质量
         for node_elem in self.node_candidates:
-            quality = triangle_quality(p0, p1, node_elem.coords)
+            quality = triangle_shape_quality(p0, p1, node_elem.coords)
             if quality > 0:
                 scored_candidates.append((quality, node_elem))
 
         # 添加Pbest节点的质量（带折扣系数）
         pbest_quality = (
-            triangle_quality(p0, p1, self.pbest.coords) * self.discount
+            triangle_shape_quality(p0, p1, self.pbest.coords) * self.discount
             if self.pbest
             else 0
         )

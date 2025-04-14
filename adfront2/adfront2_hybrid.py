@@ -13,7 +13,7 @@ from geom_toolkit import (
     fast_distance_check,
     point_to_segment_distance,
 )
-from mesh_quality import triangle_quality, quadrilateral_quality2
+from mesh_quality import triangle_shape_quality, quadrilateral_quality2
 
 
 class Adfront2Hybrid(Adfront2):
