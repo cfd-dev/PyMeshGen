@@ -33,7 +33,9 @@ def read_stl(filename):
                 cell_idx_container.append(vertices)
             else:
                 raise ValueError(f"STL文件中的三角形面片顶点数量不正确: {vertices}")
-
+        else:
+            i += 1  # 跳过非三角形面片的行
+            
     # 自动检测边界边（出现次数为1的边）
     edge_count = {}
     for cell in cell_idx_container:
