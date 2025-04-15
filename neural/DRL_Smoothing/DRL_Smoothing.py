@@ -23,7 +23,7 @@ from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 
 from optimize import node_perturbation
-from geom_toolkit import point_in_polygon, calculate_distance2
+from geom_toolkit import point_in_polygon, calculate_distance2, centroid
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization
 from geom_normalization import normalize_ploygon, denormalize_point
@@ -45,7 +45,7 @@ class DRLSmoothingEnv(gym.Env):
         self.min_coeff = param_obj["min_coeff"]  # minQuality在reward中的权重
 
         self.initial_grid = initial_grid  # 初始网格
-        self.original_node_coords = np.copy(initial_grid.node_coords)  # 备份坐标
+        self.original_node_coords = np.copy(initial_grid.node_coords)  # 备份初始坐标
 
         self.ax = visual_obj.ax  # 绘图对象
         self.visual_obj = visual_obj  # 绘图对象
@@ -73,11 +73,14 @@ class DRLSmoothingEnv(gym.Env):
         )
 
     def init_state(self):
+        # 遇到边界节点时，跳过并寻找下一个非边界节点
         while self.current_node_id in self.initial_grid.boundary_nodes_list:
             self.current_node_id += 1
-            if self.current_node_id >= self.initial_grid.num_nodes:
-                self.done = True
-                return
+        
+        if self.current_node_id >= self.initial_grid.num_nodes:
+            self.done = True
+            self.state = np.zeros((self.max_ring_nodes, 2))
+            return
 
         # 获取当前节点的环状邻居坐标
         node_ids = self.initial_grid.node2node[self.current_node_id]
@@ -95,11 +98,6 @@ class DRLSmoothingEnv(gym.Env):
         # 截断超长部分
         normalized_coords = normalized_coords[: self.max_ring_nodes]
 
-        # 再次断言：填充和截断后的结果必须在 [0,1] 范围内
-        assert np.all(
-            (normalized_coords >= 0) & (normalized_coords <= 1)
-        ), "Normalized coordinates after padding/truncation are out of [0, 1]!"
-
         self.state = normalized_coords.copy()
 
     def reset(self):
@@ -115,14 +113,7 @@ class DRLSmoothingEnv(gym.Env):
         return self.get_obs()
 
     def get_obs(self):
-        # 返回当前观测值
         return self.state.copy()
-
-    def centroid(self, points):
-        # 计算多边形的形心
-        x = np.mean(points[:, 0])
-        y = np.mean(points[:, 1])
-        return np.array([x, y])
 
     def plot_ring_and_action(self, new_point):
         new_point = denormalize_point(new_point, self.local_range)  # 反归一化
@@ -142,9 +133,9 @@ class DRLSmoothingEnv(gym.Env):
 
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
-            action = self.centroid(self.normalized_ring_coords)  # 计算多边形的形心
+            action = centroid(self.normalized_ring_coords)
         else:
-            action = action + self.centroid(self.normalized_ring_coords)  # 加上形心坐标
+            action = action + centroid(self.normalized_ring_coords)
 
         if __debug__ and self.viz_enabled:
             self.ax.clear()
@@ -159,10 +150,7 @@ class DRLSmoothingEnv(gym.Env):
         if not (reward < 0 or self.done):
             # 计算下一个状态
             self.current_node_id += 1
-            if self.current_node_id >= self.initial_grid.num_nodes:
-                self.done = True
-            else:
-                self.init_state()  # 初始化下一个状态
+            self.init_state()
 
         return self.get_obs(), reward, self.done
 
@@ -171,62 +159,34 @@ class DRLSmoothingEnv(gym.Env):
         new_point = np.squeeze(new_point)
         if not point_in_polygon(new_point, self.normalized_ring_coords):
             self.done = True
-            center_point = self.centroid(
-                self.normalized_ring_coords
-            )  # 计算多边形的形心
+            center_point = centroid(self.normalized_ring_coords)
             dis = calculate_distance2(new_point, center_point)  # 计算距离
-            reward = -0.1 * dis  # 距离惩罚
+            reward = -10 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
         neigbor_cells = self.initial_grid.node2cell[self.current_node_id]
+        min_shape = np.min([cell.get_quality() for cell in neigbor_cells])
+        avg_shape = np.mean([cell.get_quality() for cell in neigbor_cells])
+        min_skew = np.min([cell.get_skewness() for cell in neigbor_cells])
+        avg_skew = np.mean([cell.get_skewness() for cell in neigbor_cells])
 
-        shape_quality, skewness = self.neighbor_cells_quality(neigbor_cells)
-        shape_min, shape_max, shape_avg = shape_quality
-        skewness_min, skewness_max, skewness_avg = skewness
-
-        shape = self.min_coeff * shape_min + (1 - self.min_coeff) * shape_avg
-        skew = self.min_coeff * skewness_min + (1 - self.min_coeff) * skewness_avg
+        shape = self.min_coeff * min_shape + (1 - self.min_coeff) * avg_shape
+        skew = self.min_coeff * min_skew + (1 - self.min_coeff) * avg_skew
 
         self.reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
 
         return self.reward
 
-    def neighbor_cells_quality(self, cells):
-        sum_quality = 0
-        min_quality = np.inf
-        max_quality = -np.inf
-        for cell in cells:
-            cell_shape_q = cell.get_quality()
-            sum_quality += cell_shape_q
-            min_quality = min(min_quality, cell_shape_q)
-            max_quality = max(max_quality, cell_shape_q)
-
-        avg_quality = sum_quality / len(cells) if len(cells) > 0 else 0
-        shape_quality = (min_quality, max_quality, avg_quality)
-
-        sum_quality = 0
-        min_quality = np.inf
-        max_quality = -np.inf
-        for cell in cells:
-            cell_skew_q = cell.get_skewness()
-            sum_quality += cell_skew_q
-            min_quality = min(min_quality, cell_skew_q)
-            max_quality = max(max_quality, cell_skew_q)
-
-        avg_quality = sum_quality / len(cells) if len(cells) > 0 else 0
-        skewness_quality = (min_quality, max_quality, avg_quality)
-
-        return shape_quality, skewness_quality
-
-
 class Critic(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=64):
+    def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Critic, self).__init__()
         # State processing path
         self.state_path = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            nn.Linear(state_dim, 4*hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(4*hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
@@ -234,15 +194,16 @@ class Critic(nn.Module):
 
         # Action processing path
         self.action_path = nn.Sequential(
-            nn.Linear(action_dim, hidden_dim // 2), 
-            nn.BatchNorm1d(hidden_dim//2),
+            # nn.Linear(action_dim, hidden_dim // 2),
+            # nn.BatchNorm1d(hidden_dim // 2),
             nn.ReLU(),
+            nn.Linear(action_dim, hidden_dim // 2),
         )
         # Common path
         self.common_path = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1), 
+            nn.Linear(hidden_dim, hidden_dim // 4),
+            # nn.ReLU(),
+            nn.Linear(hidden_dim // 4, 1),
         )
         self.apply(self._init_weights)
 
@@ -263,10 +224,10 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             nn.Tanh(),
@@ -296,8 +257,8 @@ class DDPGAgent:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
 
         self.batch_size = 64
-        self.gamma = 0.99
-        self.tau = 1e-3
+        self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
+        self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
 
         # 目标网络初始化
         self.target_actor.load_state_dict(self.actor.state_dict())

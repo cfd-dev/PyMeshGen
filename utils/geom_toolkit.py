@@ -599,13 +599,14 @@ def quad_intersects_quad(q1, q2):
 
     return False
 
+
 # def is_point_on_segment(p, a, b):
 #     """判断点p是否在线段ab上（包括端点，排除共线但不在线段的情况）"""
 #     # 叉积判断共线
 #     cross = (p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])
 #     if abs(cross) > 1e-8:
 #         return False
-    
+
 #     # 坐标范围检查
 #     min_x = min(a[0], b[0]) - 1e-8
 #     max_x = max(a[0], b[0]) + 1e-8
@@ -650,6 +651,7 @@ def quad_intersects_quad(q1, q2):
 
 #     return inside
 
+
 def is_point_on_segment(p, a, b):
     cross = (p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])
     if abs(cross) > 1e-8:
@@ -660,6 +662,7 @@ def is_point_on_segment(p, a, b):
     max_y = max(a[1], b[1]) + 1e-8
     return (min_x <= p[0] <= max_x) and (min_y <= p[1] <= max_y)
 
+
 def point_in_polygon(p, polygon):
     x, y = p
     n = len(polygon)
@@ -667,32 +670,40 @@ def point_in_polygon(p, polygon):
         return False
     p_tuple = (x, y)
     polygon = [tuple(point) for point in polygon]
-    
+
     if p_tuple in polygon:
         return False
-    
+
     for i in range(n):
         a = polygon[i]
-        b = polygon[(i+1) % n]
+        b = polygon[(i + 1) % n]
         if is_point_on_segment(p, a, b):
             return False
-    
+
     inside = False
     for i in range(n):
-        a, b = polygon[i], polygon[(i+1) % n]
+        a, b = polygon[i], polygon[(i + 1) % n]
         xa, ya = a
         xb, yb = b
-        
+
         if xa == xb:  # 处理垂直线
-            if ((ya < y and yb >= y) or (yb < y and ya >= y) or 
-                (ya > y and yb <= y) or (yb > y and ya <= y)):
+            if (
+                (ya < y and yb >= y)
+                or (yb < y and ya >= y)
+                or (ya > y and yb <= y)
+                or (yb > y and ya <= y)
+            ):
                 if xa >= x:
                     inside = not inside
             continue
-        
+
         # 非垂直线，判断是否跨越y
-        if ((ya < y and yb >= y) or (yb < y and ya >= y) or 
-            (ya > y and yb <= y) or (yb > y and ya <= y)):
+        if (
+            (ya < y and yb >= y)
+            or (yb < y and ya >= y)
+            or (ya > y and yb <= y)
+            or (yb > y and ya <= y)
+        ):
             # 计算交点x坐标
             try:
                 x_inter = (y - ya) * (xb - xa) / (yb - ya) + xa
@@ -701,5 +712,12 @@ def point_in_polygon(p, polygon):
                 continue
             if x_inter >= x:
                 inside = not inside
-    
+
     return inside
+
+
+def centroid(polygon_points):
+    # 计算多边形的形心
+    x = np.mean(polygon_points[:, 0])
+    y = np.mean(polygon_points[:, 1])
+    return np.array([x, y])
