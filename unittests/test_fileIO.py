@@ -144,25 +144,25 @@ class TestVTKParser(unittest.TestCase):
         """验证环节点构建"""
         self.unstr_grid.cyclic_node2node()
         self.assertEqual(
-            self.unstr_grid.node2node[2198]
-            == [2167, 2187, 1587, 1593, 1599, 2197, 2208, 2157]
+            self.unstr_grid.node2node[2198],
+            [2167, 2187, 1587, 1593, 1599, 2197, 2208, 2157],
         )
         self.assertEqual(
-            self.unstr_grid.node2node[2206] == [1597, 1592, 2205, 2182, 2161, 2183]
+            self.unstr_grid.node2node[2206], [1597, 1592, 2205, 2182, 2161, 2183]
         )
 
     def test_node_parsing(self):
         """验证节点坐标解析"""
         node_coords = self.unstr_grid.node_coords
-        self.assertEqual(len(node_coords), 2200, "节点数量异常")
+        self.assertEqual(len(node_coords), 2210, "节点数量异常")
 
         # 验证前5个节点坐标
         expected_coords = [
-            (1.974237792185365e-05, -0.0006353139005032415),
-            (0.0, 0.0),
-            (1.974237792300345e-05, 0.0006353139005402422),
-            (0.986556812279211, -0.001890644533031036),
-            (0.9823045281426278, -0.002482556906843521),
+            (-4.33711323788159, 2.617711594749755),
+            (-4.70200777925994, 1.785852780007827),
+            (5.924987168714973, -0.9052702465440348),
+            (6.0, 0.0),
+            (-0.8501701792743945, -5.331701462666318),
         ]
 
         for i, node in enumerate(node_coords[:5]):
@@ -172,24 +172,25 @@ class TestVTKParser(unittest.TestCase):
     def test_cell_parsing(self):
         """验证单元数据解析"""
         cells = self.unstr_grid.cell_container
-        self.assertEqual(len(cells), 2911, "总单元数量异常")
+        self.assertEqual(len(cells), 2930, "总单元数量异常")
 
-        # 验证前5个三角形单元
+        # 验证最后5个三角形单元
         expected_cells = [
-            [333, 334, 1529],
-            [527, 528, 1530],
-            [344, 332, 1531],
-            [334, 348, 1532],
-            [548, 549, 1533],
+            [2148, 2209, 2169],
+            [2169, 2209, 2200],
+            [2196, 2192, 2158],
+            [2187, 1587, 2198],
+            [2177, 2169, 2200],
         ]
-        for i, cell in enumerate(cells[:5]):
+        
+        for i, cell in enumerate(cells[-5:]):
             self.assertIsInstance(cell, Triangle)  # 确保单元类型正确
             self.assertEqual(cell.node_ids, expected_cells[i])  # 验证节点索引
 
     def test_boundary_nodes(self):
         """验证边界节点解析"""
         boundary_nodes = self.unstr_grid.boundary_nodes
-        self.assertEqual(len(boundary_nodes), 136, "边界节点数量异常")
+        self.assertEqual(len(boundary_nodes), 314, "边界节点数量异常")
 
     def test_hybrid_mesh(self):
         """验证混合网格解析"""
@@ -200,8 +201,8 @@ class TestVTKParser(unittest.TestCase):
             1 for c in self.unstr_grid.cell_container if isinstance(c, Quadrilateral)
         )
 
-        self.assertEqual(tri_count, 1558, "三角形单元数量错误")
-        self.assertEqual(quad_count, 1353, "四边形单元单元数量错误")
+        self.assertEqual(tri_count, 1576, "三角形单元数量错误")
+        self.assertEqual(quad_count, 1354, "四边形单元单元数量错误")
 
 
 if __name__ == "__main__":
