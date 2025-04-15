@@ -41,6 +41,7 @@ class DRLSmoothingEnv(gym.Env):
         self.node_perturb = False  # 是否进行节点扰动
         self.max_ring_nodes = max_ring_nodes  # 最大允许的环节点数量
         self.action_dim = 2  # 动作维度
+        self.viz_enabled = False
 
         self.initial_grid = initial_grid  # 初始网格
         self.original_node_coords = np.copy(initial_grid.node_coords)  # 备份坐标
@@ -132,7 +133,7 @@ class DRLSmoothingEnv(gym.Env):
         # 恢复网格坐标到初始状态
         self.initial_grid.node_coords = np.copy(self.original_node_coords)
         
-        if __debug__:
+        if __debug__ and self.viz_enabled:
             self.ax.clear()
             self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
         
@@ -203,7 +204,7 @@ class DRLSmoothingEnv(gym.Env):
         action = action + center  # 加上形心坐标
         
         # 绘图
-        if __debug__:
+        if __debug__ and self.viz_enabled:
             self.plot_ring_and_action(action)
 
         reward = self.compute_reward(action)  # 计算奖励
@@ -224,9 +225,9 @@ class DRLSmoothingEnv(gym.Env):
         
         if not point_in_polygon(new_point, self.normalized_ring_coords):
             self.done = True
-            center_point = self.centroid(self.ring_coords)  # 计算多边形的形心
+            center_point = self.centroid(self.normalized_ring_coords)  # 计算多边形的形心
             dis = calculate_distance2(new_point, center_point)  # 计算距离
-            reward = -dis  # 距离惩罚
+            reward = -100 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -515,7 +516,17 @@ def train_drl(train_grid, visual_obj):
     max_episodes = 5000000
     max_steps = env.initial_grid.num_nodes
     save_interval = 100000
-
+    
+    # 初始化奖励记录
+    episodes_list = []
+    rewards_list = []
+    
+    # 创建绘图对象
+    plt.ion()  # 启用交互模式
+    fig, ax = plt.subplots()
+    ax.set_title("Training Progress")
+    ax.set_xlabel("Episode")
+    ax.set_ylabel("Reward")
     for ep in range(max_episodes):
         state = env.reset()
         episode_reward = 0
@@ -532,6 +543,17 @@ def train_drl(train_grid, visual_obj):
 
             if done:
                 break
+        
+        # 记录奖励数据
+        episodes_list.append(ep + 1)
+        rewards_list.append(episode_reward)
+        
+        # 每100个episode更新一次曲线
+        if (ep + 1) % 100 == 0:
+            ax.clear()
+            ax.plot(episodes_list, rewards_list, 'b-', label='Episode Reward')
+            ax.legend()
+            plt.pause(0.0001)  # 短暂暂停更新图表
 
         if (ep + 1) % save_interval == 0:
             torch.save(agent.actor.state_dict(), f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth")
@@ -539,6 +561,10 @@ def train_drl(train_grid, visual_obj):
         
         print(f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}")
 
+    # 训练结束后保存图表
+    plt.ioff()
+    plt.savefig('./neural/DRL_Smoothing/training_progress.png')
+    plt.close()
 
 if __name__ == "__main__":
     random.seed(42)
@@ -548,7 +574,6 @@ if __name__ == "__main__":
     visual_obj = Visualization(True)
 
     train_grid = parse_stl_msh("./neural/DRL_Smoothing/training_mesh/training_mesh.stl")
-    train_grid.save_to_vtkfile("./neural/DRL_Smoothing/training_mesh/training_mesh.vtk")
     # train_grid.visualize_unstr_grid_2d(visual_obj)
 
     train_drl(train_grid, visual_obj)
