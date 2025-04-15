@@ -610,10 +610,10 @@ class Unstructured_Grid:
             prev_node = sorted_neighbors[-1]
             for curr_node in sorted_neighbors:
                 edge = tuple(sorted([prev_node, curr_node]))
-                if edge not in self.edges:
-                    warning(
-                        f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
-                    )
+                # if edge not in self.edges:
+                    # warning(
+                        # f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
+                    # )
                 prev_node = curr_node
 
             self.node2node[node_idx] = sorted_neighbors

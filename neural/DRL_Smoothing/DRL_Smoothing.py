@@ -26,22 +26,23 @@ from optimize import node_perturbation
 from geom_toolkit import point_in_polygon, calculate_distance2
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization
+from geom_normalization import normalize_ploygon, denormalize_point
 
 
 class DRLSmoothingEnv(gym.Env):
     def __init__(
         self,
-        max_ring_nodes=8,
         initial_grid=None,
         visual_obj=None,
+        param_obj=None,
     ):
         super(DRLSmoothingEnv, self).__init__()
-        self.min_coeff = 1.0  # minQuality在reward中的权重
-        self.shape_coeff = 0.0  # shape quality所占权重，skewness权重为1-shape_coeff
-        self.node_perturb = False  # 是否进行节点扰动
-        self.max_ring_nodes = max_ring_nodes  # 最大允许的环节点数量
         self.action_dim = 2  # 动作维度
-        self.viz_enabled = False
+        self.viz_enabled = param_obj["viz_enabled"]
+        self.max_ring_nodes = param_obj["max_ring_nodes"]
+        # shape quality所占权重，skewness权重为1-shape_coeff
+        self.shape_coeff = param_obj["shape_coeff"]
+        self.min_coeff = param_obj["min_coeff"]  # minQuality在reward中的权重
 
         self.initial_grid = initial_grid  # 初始网格
         self.original_node_coords = np.copy(initial_grid.node_coords)  # 备份坐标
@@ -51,11 +52,10 @@ class DRLSmoothingEnv(gym.Env):
 
         self.current_node_id = 0  # 当前节点ID
         self.ring_coords = []  # 当前环节点坐标
-        self.normalized_ring_coords=[]  # 归一化后的环节点坐标
+        self.normalized_ring_coords = []  # 归一化后的环节点坐标
         self.state = []  # 当前状态
         self.done = False  # 是否完成
         self.local_range = []  # 当前状态的局部范围，用于归一化和反归一化
-        self.action_storage = []  # 动作存储
 
         self.init_env()
 
@@ -63,10 +63,6 @@ class DRLSmoothingEnv(gym.Env):
         # 初始化节点邻居环节点
         self.initial_grid.cyclic_node2node()
         self.initial_grid.init_node2cell()
-
-        # 初始化网格节点扰动
-        if self.node_perturb:
-            self.initial_grid = node_perturbation(self.initial_grid)
 
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
@@ -76,38 +72,21 @@ class DRLSmoothingEnv(gym.Env):
             low=-1.0, high=1.0, shape=(self.action_dim,), dtype=np.float32
         )
 
-    def normalize_ploygon(self, polygon_coords):
-        # 计算坐标范围
-        x_min, x_max = np.min(polygon_coords[:, 0]), np.max(polygon_coords[:, 0])
-        y_min, y_max = np.min(polygon_coords[:, 1]), np.max(polygon_coords[:, 1])
-        ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
-
-        # 归一化处理
-        normalized_coords = polygon_coords - np.array([[x_min, y_min]])
-        normalized_coords /= ref_d
-        
-        # 断言：归一化后的坐标必须在 [0, 1] 范围内
-        assert np.all(
-            (normalized_coords >= 0) & (normalized_coords <= 1)
-        ), f"Normalized coordinates out of [0,1]: min={np.min(normalized_coords)}, max={np.max(normalized_coords)}"
-
-        local_range = (x_min, x_max, y_min, y_max)  # 保存范围用于逆变换
-
-        return normalized_coords, local_range
-
-
     def init_state(self):
-        # 获取当前节点的环状邻居坐标
         while self.current_node_id in self.initial_grid.boundary_nodes_list:
             self.current_node_id += 1
+            if self.current_node_id >= self.initial_grid.num_nodes:
+                self.done = True
+                return
         
+        # 获取当前节点的环状邻居坐标
         node_ids = self.initial_grid.node2node[self.current_node_id]
         ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
         self.ring_coords = ring_coords
 
-        normalized_coords, self.local_range = self.normalize_ploygon(ring_coords)
+        normalized_coords, self.local_range = normalize_ploygon(ring_coords)
         self.normalized_ring_coords = normalized_coords
-        
+
         # 填充至固定长度
         if len(normalized_coords) < self.max_ring_nodes:
             pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
@@ -126,17 +105,10 @@ class DRLSmoothingEnv(gym.Env):
     def reset(self):
         self.done = False
         self.current_node_id = 0
-        self.action_storage = np.zeros(
-            (self.initial_grid.num_nodes, 2)
-        )  # 初始化动作存储矩阵
 
         # 恢复网格坐标到初始状态
         self.initial_grid.node_coords = np.copy(self.original_node_coords)
-        
-        # if __debug__ and self.viz_enabled:
-        #     self.ax.clear()
-        #     self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
-        
+
         # 初始化状态
         self.init_state()
 
@@ -146,14 +118,6 @@ class DRLSmoothingEnv(gym.Env):
         # 返回当前观测值
         return self.state.copy()
 
-    def anti_normalize(self, action):
-        # 反归一化
-        x_min, x_max, y_min, y_max = self.local_range
-        ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
-        new_point = action * ref_d + np.array([x_min, y_min])
-
-        return np.squeeze(new_point)
-
     def centroid(self, points):
         # 计算多边形的形心
         x = np.mean(points[:, 0])
@@ -161,78 +125,57 @@ class DRLSmoothingEnv(gym.Env):
         return np.array([x, y])
 
     def plot_ring_and_action(self, new_point):
-        flat_point = np.squeeze(new_point)
-        flat_point = self.anti_normalize(flat_point)  # 反归一化
+        new_point = denormalize_point(new_point, self.local_range)  # 反归一化
         # 绘制当前环节点和动作
+        self.ax.scatter(self.ring_coords[:, 0], self.ring_coords[:, 1], color="green")
         self.ax.scatter(
-            self.ring_coords[:, 0], self.ring_coords[:, 1], color="green", label="Ring Nodes"
-        )
-        # self.ax.scatter(
-        #     self.action_storage[self.current_node_id, 0],
-        #     self.action_storage[self.current_node_id, 1],
-        #     color="red",
-        #     label="Action",
-        # )
-        self.ax.scatter(
-            flat_point[0],
-            flat_point[1],
+            new_point[0],
+            new_point[1],
             color="red",
-            label="Action",
         )
-        # self.ax.legend()
-        # self.ax.set_xlim(
-        #     self.initial_grid.bbox[0], self.initial_grid.bbox[2]
-        # )  # 限制x轴范围
-        # self.ax.set_ylim(
-        #     self.initial_grid.bbox[1], self.initial_grid.bbox[3]
-        # )  # 限制y轴范围
-        # self.ax.set_aspect("equal", "box")  # 保持x和y轴比例相等
         plt.pause(0.0000001)  # 暂停以更新图形
 
     def step(self, action):
         observation = self.get_obs()
         reward = 0
         self.done = False
-        
+
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
-            action = self.centroid(self.ring_coords)  # 计算多边形的形心
-        
-        action = np.squeeze(action)
-        
-        center =self.centroid(self.normalized_ring_coords) # 计算多边形的形心
-        action = action + center  # 加上形心坐标
-        
-        # 绘图
-        # if __debug__ and self.viz_enabled:
-            # self.plot_ring_and_action(action)
-            
+            action = self.centroid(self.normalized_ring_coords)  # 计算多边形的形心
+        else:
+            action = action + self.centroid(self.normalized_ring_coords)  # 加上形心坐标
+
         if __debug__ and self.viz_enabled:
             self.ax.clear()
             self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
             self.plot_ring_and_action(action)
 
-        reward = self.compute_reward(action)  # 计算奖励
+        reward = self.compute_reward(action)
 
-        self.initial_grid.node_coords[self.current_node_id] = self.anti_normalize(action)
+        new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
+        self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
 
-        # 计算下一个状态
-        self.current_node_id += 1
-        if self.current_node_id >= self.initial_grid.num_nodes:
-            self.done = True
-        else:
-            self.init_state()  # 初始化下一个状态
+        if not(reward < 0 or self.done):
+            # 计算下一个状态
+            self.current_node_id += 1
+            if self.current_node_id >= self.initial_grid.num_nodes:
+                self.done = True
+            else:
+                self.init_state()  # 初始化下一个状态
 
         return self.get_obs(), reward, self.done
 
     def compute_reward(self, new_point):
         # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
-        
+        new_point = np.squeeze(new_point)
         if not point_in_polygon(new_point, self.normalized_ring_coords):
             self.done = True
-            center_point = self.centroid(self.normalized_ring_coords)  # 计算多边形的形心
+            center_point = self.centroid(
+                self.normalized_ring_coords
+            )  # 计算多边形的形心
             dis = calculate_distance2(new_point, center_point)  # 计算距离
-            reward = -100 * dis  # 距离惩罚
+            reward = -0.1 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -317,7 +260,7 @@ class Actor(nn.Module):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
-            nn.Tanh(),
+            # nn.Tanh(),
         )
         self.apply(self._init_weights)
 
@@ -398,13 +341,20 @@ class DDPGAgent:
         # next_states = torch.FloatTensor(batch.next_observations)
         # dones = torch.FloatTensor(batch.dones)
 
-        obs, next_obs, actions, rewards, dones = self.replay_buffer.sample(self.batch_size)
-        states = torch.FloatTensor(obs.reshape(self.batch_size, -1))  # 展平为(batch_size, 16)
-        actions = torch.FloatTensor(actions.reshape(self.batch_size, -1))  # (batch_size, 2)
-        rewards = torch.FloatTensor(rewards)
+        obs, next_obs, actions, rewards, dones = self.replay_buffer.sample(
+            self.batch_size
+        )
+        states = torch.FloatTensor(
+            obs.reshape(self.batch_size, -1)
+        )  # 展平为(batch_size, 16)
+        actions = torch.FloatTensor(
+            actions.reshape(self.batch_size, -1)
+        )  # (batch_size, 2)
+        # rewards = torch.FloatTensor(rewards)
+        rewards = torch.FloatTensor(rewards).unsqueeze(1)
         next_states = torch.FloatTensor(next_obs.reshape(self.batch_size, -1))
-        dones = torch.FloatTensor(dones)
-
+        # dones = torch.FloatTensor(dones)
+        dones = torch.FloatTensor(dones).unsqueeze(1) 
 
         # Critic更新
         with torch.no_grad():
@@ -468,7 +418,9 @@ class MeshReplayBufferSB3(ReplayBuffer):
             dtype=action_space.dtype,
         )
 
-        super().__init__(int(buffer_size), modified_obs_space, modified_act_space, device="cpu")
+        super().__init__(
+            int(buffer_size), modified_obs_space, modified_act_space, device="cpu"
+        )
 
     def add(self, obs, next_obs, action, reward, done):
         super().add(
@@ -479,27 +431,21 @@ class MeshReplayBufferSB3(ReplayBuffer):
             done=done,
         )
 
+
 class MeshReplayBuffer:
     def __init__(self, buffer_size):
         self.buffer_size = int(buffer_size)
-        self.buffer = []
-        self.position = 0
-        
+        self.buffer = deque(maxlen=self.buffer_size)  # 使用双端队列替代列表
+
     def add(self, obs, next_obs, action, reward, done):
-        # 保持原始观测维度（8,2）无需展平
         experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
-        
-        if len(self.buffer) < self.buffer_size:
-            self.buffer.append(experience)
-        else:
-            self.buffer[self.position] = experience
-        self.position = (self.position + 1) % self.buffer_size
+        self.buffer.append(experience)  # 自动处理缓冲区满的情况
 
     def sample(self, batch_size):
         indices = np.random.choice(len(self.buffer), batch_size)
-        batch = [self.buffer[i] for i in indices]
+        batch = [self.buffer[i] for i in indices]  # 随机采样
         
-        # 转换为numpy数组并保持原始形状
+        # 保持原有数据处理逻辑不变
         observations = np.array([item[0] for item in batch])
         next_observations = np.array([item[1] for item in batch])
         actions = np.array([item[2] for item in batch])
@@ -514,7 +460,9 @@ class MeshReplayBuffer:
 
 def train_drl(train_grid, visual_obj):
     env = DRLSmoothingEnv(
-        max_ring_nodes=8, initial_grid=train_grid, visual_obj=visual_obj
+        initial_grid=train_grid,
+        visual_obj=visual_obj,
+        param_obj=param_obj,
     )
     agent = DDPGAgent(env)
 
@@ -523,16 +471,18 @@ def train_drl(train_grid, visual_obj):
     save_interval = 100000
     viz_history = False
 
-    # 初始化奖励记录
-    episodes_list = []
-    rewards_list = []
-    
-    # 创建绘图对象
-    plt.ion()  # 启用交互模式
-    fig, ax = plt.subplots()
-    ax.set_title("Training Progress")
-    ax.set_xlabel("Episode")
-    ax.set_ylabel("Reward")
+    if viz_history:
+        # 初始化奖励记录
+        episodes_list = []
+        rewards_list = []
+
+        # 创建绘图对象
+        plt.ion()  # 启用交互模式
+        fig, ax = plt.subplots()
+        ax.set_title("Training Progress")
+        ax.set_xlabel("Episode")
+        ax.set_ylabel("Reward")
+
     for ep in range(max_episodes):
         state = env.reset()
         episode_reward = 0
@@ -549,39 +499,61 @@ def train_drl(train_grid, visual_obj):
 
             if done:
                 break
-        
+
         if viz_history:
             # 记录奖励数据
             episodes_list.append(ep + 1)
             rewards_list.append(episode_reward)
-        
+
             # 每100个episode更新一次曲线
             if (ep + 1) % 100 == 0:
                 ax.clear()
-                ax.plot(episodes_list, rewards_list, 'b-', label='Episode Reward')
+                ax.plot(episodes_list, rewards_list, "b-", label="Episode Reward")
                 ax.legend()
                 plt.pause(0.0001)  # 短暂暂停更新图表
 
         if (ep + 1) % save_interval == 0:
-            torch.save(agent.actor.state_dict(), f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth")
-            torch.save(agent.critic.state_dict(), f"./neural/DRL_Smoothing/agent/critic_{ep+1}.pth")
-        
-        print(f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}")
-    
+            torch.save(
+                agent.actor.state_dict(),
+                f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth",
+            )
+            torch.save(
+                agent.critic.state_dict(),
+                f"./neural/DRL_Smoothing/agent/critic_{ep+1}.pth",
+            )
+
+        print(
+            f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}"
+        )
+
     if viz_history:
         # 训练结束后保存图表
         plt.ioff()
-        plt.savefig('./neural/DRL_Smoothing/training_progress.png')
+        plt.savefig("./neural/DRL_Smoothing/training_progress.png")
         plt.close()
+
 
 if __name__ == "__main__":
     random.seed(42)
     np.random.seed(42)
     torch.manual_seed(42)
 
+    # 参数
+    param_obj = {
+        "max_ring_nodes": 8,
+        "node_perturb": False,
+        "viz_enabled": False,
+        "shape_coeff": 0.0,
+        "min_coeff": 1.0,
+    }
+
     visual_obj = Visualization(True)
 
     train_grid = parse_stl_msh("./neural/DRL_Smoothing/training_mesh/training_mesh.stl")
     # train_grid.visualize_unstr_grid_2d(visual_obj)
+
+    # 初始化网格节点扰动
+    if param_obj["node_perturb"]:
+        train_grid = node_perturbation(train_grid)
 
     train_drl(train_grid, visual_obj)
