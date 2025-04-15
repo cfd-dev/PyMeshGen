@@ -133,9 +133,9 @@ class DRLSmoothingEnv(gym.Env):
         # 恢复网格坐标到初始状态
         self.initial_grid.node_coords = np.copy(self.original_node_coords)
         
-        if __debug__ and self.viz_enabled:
-            self.ax.clear()
-            self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
+        # if __debug__ and self.viz_enabled:
+        #     self.ax.clear()
+        #     self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
         
         # 初始化状态
         self.init_state()
@@ -165,7 +165,7 @@ class DRLSmoothingEnv(gym.Env):
         flat_point = self.anti_normalize(flat_point)  # 反归一化
         # 绘制当前环节点和动作
         self.ax.scatter(
-            self.ring_coords[:, 0], self.ring_coords[:, 1], label="Ring Nodes"
+            self.ring_coords[:, 0], self.ring_coords[:, 1], color="green", label="Ring Nodes"
         )
         # self.ax.scatter(
         #     self.action_storage[self.current_node_id, 0],
@@ -204,7 +204,12 @@ class DRLSmoothingEnv(gym.Env):
         action = action + center  # 加上形心坐标
         
         # 绘图
+        # if __debug__ and self.viz_enabled:
+            # self.plot_ring_and_action(action)
+            
         if __debug__ and self.viz_enabled:
+            self.ax.clear()
+            self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
             self.plot_ring_and_action(action)
 
         reward = self.compute_reward(action)  # 计算奖励
@@ -516,7 +521,8 @@ def train_drl(train_grid, visual_obj):
     max_episodes = 5000000
     max_steps = env.initial_grid.num_nodes
     save_interval = 100000
-    
+    viz_history = False
+
     # 初始化奖励记录
     episodes_list = []
     rewards_list = []
@@ -544,27 +550,29 @@ def train_drl(train_grid, visual_obj):
             if done:
                 break
         
-        # 记录奖励数据
-        episodes_list.append(ep + 1)
-        rewards_list.append(episode_reward)
+        if viz_history:
+            # 记录奖励数据
+            episodes_list.append(ep + 1)
+            rewards_list.append(episode_reward)
         
-        # 每100个episode更新一次曲线
-        if (ep + 1) % 100 == 0:
-            ax.clear()
-            ax.plot(episodes_list, rewards_list, 'b-', label='Episode Reward')
-            ax.legend()
-            plt.pause(0.0001)  # 短暂暂停更新图表
+            # 每100个episode更新一次曲线
+            if (ep + 1) % 100 == 0:
+                ax.clear()
+                ax.plot(episodes_list, rewards_list, 'b-', label='Episode Reward')
+                ax.legend()
+                plt.pause(0.0001)  # 短暂暂停更新图表
 
         if (ep + 1) % save_interval == 0:
             torch.save(agent.actor.state_dict(), f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth")
             torch.save(agent.critic.state_dict(), f"./neural/DRL_Smoothing/agent/critic_{ep+1}.pth")
         
         print(f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}")
-
-    # 训练结束后保存图表
-    plt.ioff()
-    plt.savefig('./neural/DRL_Smoothing/training_progress.png')
-    plt.close()
+    
+    if viz_history:
+        # 训练结束后保存图表
+        plt.ioff()
+        plt.savefig('./neural/DRL_Smoothing/training_progress.png')
+        plt.close()
 
 if __name__ == "__main__":
     random.seed(42)

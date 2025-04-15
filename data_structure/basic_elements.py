@@ -382,6 +382,9 @@ class Unstructured_Grid:
 
     def calculate_edges(self):
         """计算网格的边"""
+        if self.edges:
+            return
+
         edge_set = set()
         for cell in self.cell_container:
             for i in range(len(cell.node_ids)):
@@ -501,6 +504,7 @@ class Unstructured_Grid:
         # 绘制边
         if self.dim == 2:
             self.calculate_edges()
+            
         for edge in self.edges:
             x = [self.node_coords[i][0] for i in edge]
             y = [self.node_coords[i][1] for i in edge]
