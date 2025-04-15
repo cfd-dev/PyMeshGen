@@ -50,6 +50,7 @@ class DRLSmoothingEnv(gym.Env):
 
         self.current_node_id = 0  # 当前节点ID
         self.ring_coords = []  # 当前环节点坐标
+        self.normalized_ring_coords=[]  # 归一化后的环节点坐标
         self.state = []  # 当前状态
         self.done = False  # 是否完成
         self.local_range = []  # 当前状态的局部范围，用于归一化和反归一化
@@ -59,7 +60,7 @@ class DRLSmoothingEnv(gym.Env):
 
     def init_env(self):
         # 初始化节点邻居环节点
-        self.initial_grid.init_node2node_by_cell()
+        self.initial_grid.cyclic_node2node()
         self.initial_grid.init_node2cell()
 
         # 初始化网格节点扰动
@@ -74,26 +75,38 @@ class DRLSmoothingEnv(gym.Env):
             low=-1.0, high=1.0, shape=(self.action_dim,), dtype=np.float32
         )
 
-    def init_state(self):
-        # 获取当前节点的环状邻居坐标
-        node_ids = self.initial_grid.node2node[self.current_node_id]
-        ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
-        self.ring_coords = ring_coords
-
+    def normalize_ploygon(self, polygon_coords):
         # 计算坐标范围
-        x_min, x_max = np.min(ring_coords[:, 0]), np.max(ring_coords[:, 0])
-        y_min, y_max = np.min(ring_coords[:, 1]), np.max(ring_coords[:, 1])
+        x_min, x_max = np.min(polygon_coords[:, 0]), np.max(polygon_coords[:, 0])
+        y_min, y_max = np.min(polygon_coords[:, 1]), np.max(polygon_coords[:, 1])
         ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
 
         # 归一化处理
-        normalized_coords = ring_coords - np.array([[x_min, y_min]])
+        normalized_coords = polygon_coords - np.array([[x_min, y_min]])
         normalized_coords /= ref_d
-
+        
         # 断言：归一化后的坐标必须在 [0, 1] 范围内
         assert np.all(
             (normalized_coords >= 0) & (normalized_coords <= 1)
         ), f"Normalized coordinates out of [0,1]: min={np.min(normalized_coords)}, max={np.max(normalized_coords)}"
 
+        local_range = (x_min, x_max, y_min, y_max)  # 保存范围用于逆变换
+
+        return normalized_coords, local_range
+
+
+    def init_state(self):
+        # 获取当前节点的环状邻居坐标
+        while self.current_node_id in self.initial_grid.boundary_nodes_list:
+            self.current_node_id += 1
+        
+        node_ids = self.initial_grid.node2node[self.current_node_id]
+        ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
+        self.ring_coords = ring_coords
+
+        normalized_coords, self.local_range = self.normalize_ploygon(ring_coords)
+        self.normalized_ring_coords = normalized_coords
+        
         # 填充至固定长度
         if len(normalized_coords) < self.max_ring_nodes:
             pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
@@ -108,7 +121,6 @@ class DRLSmoothingEnv(gym.Env):
         ), "Normalized coordinates after padding/truncation are out of [0, 1]!"
 
         self.state = normalized_coords.copy()
-        self.local_range = (x_min, x_max, y_min, y_max)  # 保存范围用于逆变换
 
     def reset(self):
         self.done = False
@@ -119,8 +131,10 @@ class DRLSmoothingEnv(gym.Env):
 
         # 恢复网格坐标到初始状态
         self.initial_grid.node_coords = np.copy(self.original_node_coords)
-        # self.ax.clear()
-        # self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
+        
+        if __debug__:
+            self.ax.clear()
+            self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
         
         # 初始化状态
         self.init_state()
@@ -147,6 +161,7 @@ class DRLSmoothingEnv(gym.Env):
 
     def plot_ring_and_action(self, new_point):
         flat_point = np.squeeze(new_point)
+        flat_point = self.anti_normalize(flat_point)  # 反归一化
         # 绘制当前环节点和动作
         self.ax.scatter(
             self.ring_coords[:, 0], self.ring_coords[:, 1], label="Ring Nodes"
@@ -163,16 +178,15 @@ class DRLSmoothingEnv(gym.Env):
             color="red",
             label="Action",
         )
-        self.ax.legend()
-        self.ax.set_xlim(
-            self.initial_grid.bbox[0], self.initial_grid.bbox[2]
-        )  # 限制x轴范围
-        self.ax.set_ylim(
-            self.initial_grid.bbox[1], self.initial_grid.bbox[3]
-        )  # 限制y轴范围
-        self.ax.set_aspect("equal", "box")  # 保持x和y轴比例相等
-        plt.pause(0.0001)  # 暂停以更新图形
-        # self.ax.clear()  # 清除上一帧的内容
+        # self.ax.legend()
+        # self.ax.set_xlim(
+        #     self.initial_grid.bbox[0], self.initial_grid.bbox[2]
+        # )  # 限制x轴范围
+        # self.ax.set_ylim(
+        #     self.initial_grid.bbox[1], self.initial_grid.bbox[3]
+        # )  # 限制y轴范围
+        # self.ax.set_aspect("equal", "box")  # 保持x和y轴比例相等
+        plt.pause(0.0000001)  # 暂停以更新图形
 
     def step(self, action):
         observation = self.get_obs()
@@ -184,14 +198,17 @@ class DRLSmoothingEnv(gym.Env):
             action = self.centroid(self.ring_coords)  # 计算多边形的形心
         
         action = np.squeeze(action)
-        new_point = self.anti_normalize(action)  # 反归一化
-
+        
+        center =self.centroid(self.normalized_ring_coords) # 计算多边形的形心
+        action = action + center  # 加上形心坐标
+        
         # 绘图
-        # self.plot_ring_and_action(new_point)
+        if __debug__:
+            self.plot_ring_and_action(action)
 
-        reward = self.compute_reward(new_point)  # 计算奖励
+        reward = self.compute_reward(action)  # 计算奖励
 
-        self.initial_grid.node_coords[self.current_node_id] = new_point
+        self.initial_grid.node_coords[self.current_node_id] = self.anti_normalize(action)
 
         # 计算下一个状态
         self.current_node_id += 1
@@ -205,7 +222,7 @@ class DRLSmoothingEnv(gym.Env):
     def compute_reward(self, new_point):
         # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
         
-        if not point_in_polygon(new_point, self.ring_coords):
+        if not point_in_polygon(new_point, self.normalized_ring_coords):
             self.done = True
             center_point = self.centroid(self.ring_coords)  # 计算多边形的形心
             dis = calculate_distance2(new_point, center_point)  # 计算距离
@@ -497,7 +514,7 @@ def train_drl(train_grid, visual_obj):
 
     max_episodes = 5000000
     max_steps = env.initial_grid.num_nodes
-    save_interval = 10000
+    save_interval = 100000
 
     for ep in range(max_episodes):
         state = env.reset()
@@ -531,7 +548,7 @@ if __name__ == "__main__":
     visual_obj = Visualization(True)
 
     train_grid = parse_stl_msh("./neural/DRL_Smoothing/training_mesh/training_mesh.stl")
-
+    train_grid.save_to_vtkfile("./neural/DRL_Smoothing/training_mesh/training_mesh.vtk")
     # train_grid.visualize_unstr_grid_2d(visual_obj)
 
     train_drl(train_grid, visual_obj)
