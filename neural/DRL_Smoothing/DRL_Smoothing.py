@@ -78,7 +78,7 @@ class DRLSmoothingEnv(gym.Env):
             if self.current_node_id >= self.initial_grid.num_nodes:
                 self.done = True
                 return
-        
+
         # 获取当前节点的环状邻居坐标
         node_ids = self.initial_grid.node2node[self.current_node_id]
         ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
@@ -156,7 +156,7 @@ class DRLSmoothingEnv(gym.Env):
         new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
 
-        if not(reward < 0 or self.done):
+        if not (reward < 0 or self.done):
             # 计算下一个状态
             self.current_node_id += 1
             if self.current_node_id >= self.initial_grid.num_nodes:
@@ -223,19 +223,26 @@ class DRLSmoothingEnv(gym.Env):
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=64):
         super(Critic, self).__init__()
+        # State processing path
         self.state_path = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
         )
+
+        # Action processing path
         self.action_path = nn.Sequential(
-            nn.Linear(action_dim, hidden_dim // 2),
+            nn.Linear(action_dim, hidden_dim // 2), 
+            nn.BatchNorm1d(hidden_dim//2),
             nn.ReLU(),
         )
+        # Common path
         self.common_path = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 4),
+            nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 4, 1),
+            nn.Linear(hidden_dim // 2, 1), 
         )
         self.apply(self._init_weights)
 
@@ -256,11 +263,13 @@ class Actor(nn.Module):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
-            # nn.Tanh(),
+            nn.Tanh(),
         )
         self.apply(self._init_weights)
 
@@ -354,7 +363,7 @@ class DDPGAgent:
         rewards = torch.FloatTensor(rewards).unsqueeze(1)
         next_states = torch.FloatTensor(next_obs.reshape(self.batch_size, -1))
         # dones = torch.FloatTensor(dones)
-        dones = torch.FloatTensor(dones).unsqueeze(1) 
+        dones = torch.FloatTensor(dones).unsqueeze(1)
 
         # Critic更新
         with torch.no_grad():
@@ -444,14 +453,14 @@ class MeshReplayBuffer:
     def sample(self, batch_size):
         indices = np.random.choice(len(self.buffer), batch_size)
         batch = [self.buffer[i] for i in indices]  # 随机采样
-        
+
         # 保持原有数据处理逻辑不变
         observations = np.array([item[0] for item in batch])
         next_observations = np.array([item[1] for item in batch])
         actions = np.array([item[2] for item in batch])
         rewards = np.array([item[3] for item in batch])
         dones = np.array([item[4] for item in batch])
-        
+
         return (observations, next_observations, actions, rewards, dones)
 
     def __len__(self):
