@@ -23,7 +23,7 @@ from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 
 from optimize import node_perturbation
-from geom_toolkit import point_in_polygon
+from geom_toolkit import point_in_polygon, calculate_distance2
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization
 
@@ -66,8 +66,6 @@ class DRLSmoothingEnv(gym.Env):
         if self.node_perturb:
             self.initial_grid = node_perturbation(self.initial_grid)
 
-        self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
-
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
             low=0.0, high=1.0, shape=(self.max_ring_nodes, 2), dtype=np.float32
@@ -103,6 +101,7 @@ class DRLSmoothingEnv(gym.Env):
 
         # 截断超长部分
         normalized_coords = normalized_coords[: self.max_ring_nodes]
+
         # 再次断言：填充和截断后的结果必须在 [0,1] 范围内
         assert np.all(
             (normalized_coords >= 0) & (normalized_coords <= 1)
@@ -120,6 +119,9 @@ class DRLSmoothingEnv(gym.Env):
 
         # 恢复网格坐标到初始状态
         self.initial_grid.node_coords = np.copy(self.original_node_coords)
+        # self.ax.clear()
+        # self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
+        
         # 初始化状态
         self.init_state()
 
@@ -135,7 +137,7 @@ class DRLSmoothingEnv(gym.Env):
         ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
         new_point = action * ref_d + np.array([x_min, y_min])
 
-        return new_point
+        return np.squeeze(new_point)
 
     def centroid(self, points):
         # 计算多边形的形心
@@ -143,14 +145,21 @@ class DRLSmoothingEnv(gym.Env):
         y = np.mean(points[:, 1])
         return np.array([x, y])
 
-    def plot_ring_and_action(self):
+    def plot_ring_and_action(self, new_point):
+        flat_point = np.squeeze(new_point)
         # 绘制当前环节点和动作
         self.ax.scatter(
             self.ring_coords[:, 0], self.ring_coords[:, 1], label="Ring Nodes"
         )
+        # self.ax.scatter(
+        #     self.action_storage[self.current_node_id, 0],
+        #     self.action_storage[self.current_node_id, 1],
+        #     color="red",
+        #     label="Action",
+        # )
         self.ax.scatter(
-            self.action_storage[self.current_node_id, 0],
-            self.action_storage[self.current_node_id, 1],
+            flat_point[0],
+            flat_point[1],
             color="red",
             label="Action",
         )
@@ -162,22 +171,23 @@ class DRLSmoothingEnv(gym.Env):
             self.initial_grid.bbox[1], self.initial_grid.bbox[3]
         )  # 限制y轴范围
         self.ax.set_aspect("equal", "box")  # 保持x和y轴比例相等
-        plt.pause(0.001)  # 暂停以更新图形
-        self.ax.clear()  # 清除上一帧的内容
+        plt.pause(0.0001)  # 暂停以更新图形
+        # self.ax.clear()  # 清除上一帧的内容
 
     def step(self, action):
         observation = self.get_obs()
         reward = 0
         self.done = False
-
+        
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
             action = self.centroid(self.ring_coords)  # 计算多边形的形心
-
+        
+        action = np.squeeze(action)
         new_point = self.anti_normalize(action)  # 反归一化
 
         # 绘图
-        self.plot_ring_and_action()
+        # self.plot_ring_and_action(new_point)
 
         reward = self.compute_reward(new_point)  # 计算奖励
 
@@ -190,13 +200,17 @@ class DRLSmoothingEnv(gym.Env):
         else:
             self.init_state()  # 初始化下一个状态
 
-        return self.get_obs(), reward, self.done, {}
+        return self.get_obs(), reward, self.done
 
     def compute_reward(self, new_point):
         # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
+        
         if not point_in_polygon(new_point, self.ring_coords):
             self.done = True
-            return -100  # 惩罚
+            center_point = self.centroid(self.ring_coords)  # 计算多边形的形心
+            dis = calculate_distance2(new_point, center_point)  # 计算距离
+            reward = -dis  # 距离惩罚
+            return reward
 
         # 当前节点的邻居单元及其质量
         neigbor_cells = self.initial_grid.node2cell[self.current_node_id]
@@ -306,12 +320,6 @@ class DDPGAgent:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
 
-        # self.buffer = deque(maxlen=1000000)
-        self.replay_buffer = MeshReplayBuffer(
-            buffer_size=1e6,  # 经验回放缓冲区大小
-            observation_space=env.observation_space,  # 环境的 observation space
-            action_space=env.action_space,  # 环境的 action space
-        )
         self.batch_size = 64
         self.gamma = 0.99
         self.tau = 1e-3
@@ -328,12 +336,15 @@ class DDPGAgent:
             dt=1e-2,
         )
 
-        # 训练参数
         self.replay_buffer = MeshReplayBuffer(
-            buffer_size=1e6,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
+            buffer_size=1e6  # 只需要传递buffer_size参数
         )
+
+        # self.replay_buffer = MeshReplayBufferSB3(
+        #     buffer_size=1e6,  # 经验回放缓冲区大小
+        #     observation_space=env.observation_space,  # 环境的 observation space
+        #     action_space=env.action_space,  # 环境的 action space
+        # )
 
     # 新增软更新方法
     def soft_update(self):
@@ -357,12 +368,20 @@ class DDPGAgent:
             return
 
         # 从缓冲区采样
-        batch = self.replay_buffer.sample(self.batch_size)
-        states = torch.FloatTensor(batch.observations)
-        actions = torch.FloatTensor(batch.actions)
-        rewards = torch.FloatTensor(batch.rewards)
-        next_states = torch.FloatTensor(batch.next_observations)
-        dones = torch.FloatTensor(batch.dones)
+        # batch = self.replay_buffer.sample(self.batch_size)
+        # states = torch.FloatTensor(batch.observations)
+        # actions = torch.FloatTensor(batch.actions)
+        # rewards = torch.FloatTensor(batch.rewards)
+        # next_states = torch.FloatTensor(batch.next_observations)
+        # dones = torch.FloatTensor(batch.dones)
+
+        obs, next_obs, actions, rewards, dones = self.replay_buffer.sample(self.batch_size)
+        states = torch.FloatTensor(obs.reshape(self.batch_size, -1))  # 展平为(batch_size, 16)
+        actions = torch.FloatTensor(actions.reshape(self.batch_size, -1))  # (batch_size, 2)
+        rewards = torch.FloatTensor(rewards)
+        next_states = torch.FloatTensor(next_obs.reshape(self.batch_size, -1))
+        dones = torch.FloatTensor(dones)
+
 
         # Critic更新
         with torch.no_grad():
@@ -402,58 +421,33 @@ class DDPGAgent:
             # 使用 OU 噪声
             noise = torch.tensor(self.noise(), dtype=torch.float32)
             action = action + noise
-            return action.numpy().reshape(-1, 2)
+            action = np.clip(action.detach().numpy().reshape(-1, 2), -1, 1)
+            return action
 
 
 # 新增经验回放缓冲区（兼容SB3）
-class MeshReplayBuffer(ReplayBuffer):
+class MeshReplayBufferSB3(ReplayBuffer):
     def __init__(self, buffer_size, observation_space, action_space):
-        # ... existing code ...
-        
-        # 验证修改后的空间定义
+        # 将二维观测空间展平以适应SB3的ReplayBuffer
+        self.original_obs_shape = observation_space.shape
         modified_obs_space = gym.spaces.Box(
-            low=0.0, 
-            high=1.0,
-            shape=(16,),  # 1D形状符合SB3要求
-            dtype=np.float32
+            low=observation_space.low.flatten(),
+            high=observation_space.high.flatten(),
+            shape=(np.prod(observation_space.shape),),  # 展平为1D
+            dtype=observation_space.dtype,
         )
-        
+
+        # 调整动作空间维度
         modified_act_space = gym.spaces.Box(
-            low=-1.0,
-            high=1.0,
-            shape=(2,),   # 1D动作空间
-            dtype=np.float32
+            low=action_space.low.flatten(),  # Flatten the low bounds
+            high=action_space.high.flatten(),  # Flatten the high bounds
+            shape=(np.prod(action_space.shape),),  # 展平为1D
+            dtype=action_space.dtype,
         )
 
-        super().__init__(
-            buffer_size=int(buffer_size),
-            observation_space=modified_obs_space,
-            action_space=modified_act_space,
-            device="cpu"
-        )
-
-    # def __init__(self, buffer_size, observation_space, action_space):
-    #     # 将二维观测空间展平以适应SB3的ReplayBuffer
-    #     self.original_obs_shape = observation_space.shape
-    #     modified_obs_space = gym.spaces.Box(
-    #         low=observation_space.low.flatten(),
-    #         high=observation_space.high.flatten(),
-    #         shape=(np.prod(observation_space.shape),),  # 展平为1D
-    #         dtype=observation_space.dtype,
-    #     )
-
-    #     # 调整动作空间维度
-    #     modified_act_space = gym.spaces.Box(
-    #         low=action_space.low.flatten(),  # Flatten the low bounds
-    #         high=action_space.high.flatten(),  # Flatten the high bounds
-    #         shape=(np.prod(action_space.shape),),  # 展平为1D
-    #         dtype=action_space.dtype,
-    #     )
-
-    #     super().__init__(int(buffer_size), modified_obs_space, modified_act_space, device="cpu")
+        super().__init__(int(buffer_size), modified_obs_space, modified_act_space, device="cpu")
 
     def add(self, obs, next_obs, action, reward, done):
-        # 保持原有reshape逻辑，但使用展平后的形状
         super().add(
             obs=obs.reshape(-1),  # 二维转一维
             next_obs=next_obs.reshape(-1),
@@ -462,6 +456,38 @@ class MeshReplayBuffer(ReplayBuffer):
             done=done,
         )
 
+class MeshReplayBuffer:
+    def __init__(self, buffer_size):
+        self.buffer_size = int(buffer_size)
+        self.buffer = []
+        self.position = 0
+        
+    def add(self, obs, next_obs, action, reward, done):
+        # 保持原始观测维度（8,2）无需展平
+        experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
+        
+        if len(self.buffer) < self.buffer_size:
+            self.buffer.append(experience)
+        else:
+            self.buffer[self.position] = experience
+        self.position = (self.position + 1) % self.buffer_size
+
+    def sample(self, batch_size):
+        indices = np.random.choice(len(self.buffer), batch_size)
+        batch = [self.buffer[i] for i in indices]
+        
+        # 转换为numpy数组并保持原始形状
+        observations = np.array([item[0] for item in batch])
+        next_observations = np.array([item[1] for item in batch])
+        actions = np.array([item[2] for item in batch])
+        rewards = np.array([item[3] for item in batch])
+        dones = np.array([item[4] for item in batch])
+        
+        return (observations, next_observations, actions, rewards, dones)
+
+    def __len__(self):
+        return len(self.buffer)
+
 
 def train_drl(train_grid, visual_obj):
     env = DRLSmoothingEnv(
@@ -469,8 +495,8 @@ def train_drl(train_grid, visual_obj):
     )
     agent = DDPGAgent(env)
 
-    max_episodes = 50000
-    max_steps = env.initial_grid.num_nodes or 1000
+    max_episodes = 5000000
+    max_steps = env.initial_grid.num_nodes
     save_interval = 10000
 
     for ep in range(max_episodes):
@@ -479,7 +505,7 @@ def train_drl(train_grid, visual_obj):
 
         for step in range(max_steps):
             action = agent.select_action(state)
-            next_state, reward, done, _ = env.step(action)
+            next_state, reward, done = env.step(action)
 
             agent.replay_buffer.add(state, next_state, action, reward, done)
             agent.train_step()
@@ -491,10 +517,10 @@ def train_drl(train_grid, visual_obj):
                 break
 
         if (ep + 1) % save_interval == 0:
-            torch.save(agent.actor.state_dict(), f"./agent/actor_{ep+1}.pth")
-            torch.save(agent.critic.state_dict(), f"./agent/critic_{ep+1}.pth")
-
-        print(f"Episode {ep+1}, Reward: {episode_reward:.2f}")
+            torch.save(agent.actor.state_dict(), f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth")
+            torch.save(agent.critic.state_dict(), f"./neural/DRL_Smoothing/agent/critic_{ep+1}.pth")
+        
+        print(f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}")
 
 
 if __name__ == "__main__":
