@@ -23,7 +23,12 @@ from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.buffers import ReplayBuffer
 
 from optimize import node_perturbation
-from geom_toolkit import point_in_polygon, calculate_distance2, centroid
+from geom_toolkit import (
+    point_in_polygon,
+    calculate_distance2,
+    centroid,
+    calculate_distance,
+)
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization
 from geom_normalization import normalize_ploygon, denormalize_point
@@ -76,7 +81,7 @@ class DRLSmoothingEnv(gym.Env):
         # 遇到边界节点时，跳过并寻找下一个非边界节点
         while self.current_node_id in self.initial_grid.boundary_nodes_list:
             self.current_node_id += 1
-        
+
         if self.current_node_id >= self.initial_grid.num_nodes:
             self.done = True
             self.state = np.zeros((self.max_ring_nodes, 2))
@@ -146,9 +151,9 @@ class DRLSmoothingEnv(gym.Env):
 
         new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
-
-        if not (reward < 0 or self.done):
-            # 计算下一个状态
+        
+        # 计算下一个状态，如果当前步给了惩罚，则退出重来
+        if not (reward < 0 or self.done): 
             self.current_node_id += 1
             self.init_state()
 
@@ -156,12 +161,13 @@ class DRLSmoothingEnv(gym.Env):
 
     def compute_reward(self, new_point):
         # 判断new_point是否在当前环内，如果在环外，则惩罚并终止
+        reward = 0.0
         new_point = np.squeeze(new_point)
         if not point_in_polygon(new_point, self.normalized_ring_coords):
             self.done = True
             center_point = centroid(self.normalized_ring_coords)
-            dis = calculate_distance2(new_point, center_point)  # 计算距离
-            reward = -10 * dis  # 距离惩罚
+            dis = calculate_distance(new_point, center_point)
+            reward = -1.0 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -174,22 +180,23 @@ class DRLSmoothingEnv(gym.Env):
         shape = self.min_coeff * min_shape + (1 - self.min_coeff) * avg_shape
         skew = self.min_coeff * min_skew + (1 - self.min_coeff) * avg_skew
 
-        self.reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
+        reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
 
-        return self.reward
+        return reward
+
 
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Critic, self).__init__()
         # State processing path
         self.state_path = nn.Sequential(
-            nn.Linear(state_dim, 4*hidden_dim),
+            nn.Linear(state_dim, 4 * hidden_dim),
             # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(4*hidden_dim, hidden_dim),
+            nn.Linear(4 * hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
+            # nn.ReLU(),
         )
 
         # Action processing path
@@ -253,8 +260,8 @@ class DDPGAgent:
         self.target_actor = Actor(state_dim, action_dim)
         self.target_critic = Critic(state_dim, action_dim)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-4)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
         self.batch_size = 64
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
@@ -428,7 +435,7 @@ class MeshReplayBuffer:
         return len(self.buffer)
 
 
-def train_drl(train_grid, visual_obj):
+def train_drl(train_grid, visual_obj, param_obj):
     env = DRLSmoothingEnv(
         initial_grid=train_grid,
         visual_obj=visual_obj,
@@ -436,10 +443,10 @@ def train_drl(train_grid, visual_obj):
     )
     agent = DDPGAgent(env)
 
-    max_episodes = 5000000
+    max_episodes = param_obj["max_episodes"]
     max_steps = env.initial_grid.num_nodes
-    save_interval = 100000
-    viz_history = False
+    save_interval = param_obj["save_interval"]
+    viz_history = param_obj["viz_history"]
 
     if viz_history:
         # 初始化奖励记录
@@ -515,6 +522,9 @@ if __name__ == "__main__":
         "viz_enabled": False,
         "shape_coeff": 0.0,
         "min_coeff": 1.0,
+        "max_episodes": 100000,
+        "save_interval": 1000,
+        "viz_history": False,
     }
 
     visual_obj = Visualization(True)
@@ -526,4 +536,4 @@ if __name__ == "__main__":
     if param_obj["node_perturb"]:
         train_grid = node_perturbation(train_grid)
 
-    train_drl(train_grid, visual_obj)
+    train_drl(train_grid, visual_obj, param_obj)
