@@ -150,8 +150,8 @@ class DRLSmoothingEnv(gym.Env):
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
             action = centroid(self.normalized_ring_coords)
-        else:
-            action = action + centroid(self.normalized_ring_coords)
+        # else:
+            # action = action + centroid(self.normalized_ring_coords)
 
         if __debug__ and self.viz_enabled:
             self.ax.clear()
@@ -212,10 +212,11 @@ class Critic(nn.Module):
 
         # Action processing path
         self.action_path = nn.Sequential(
-            # nn.Linear(action_dim, hidden_dim // 2),
-            # nn.BatchNorm1d(hidden_dim // 2),
-            nn.ReLU(),
             nn.Linear(action_dim, hidden_dim // 2),
+            # nn.Linear(action_dim, hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
+            # nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim // 2),
         )
         # Common path
         self.common_path = nn.Sequential(
@@ -238,14 +239,15 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, hidden_dim=64):
+    def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(state_dim, hidden_dim),
+            nn.Linear(state_dim, 2*hidden_dim),
             # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
+            nn.Linear(2*hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             nn.Tanh(),
@@ -274,7 +276,7 @@ class DDPGAgent:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-4)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
-        self.batch_size = 64
+        self.batch_size = 128
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
         self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
 
@@ -285,10 +287,17 @@ class DDPGAgent:
         # OU噪声
         self.noise = OrnsteinUhlenbeckActionNoise(
             mean=np.zeros(env.action_space.shape),
-            sigma=0.3 * np.ones(env.action_space.shape),
+            sigma=0.5 * np.ones(env.action_space.shape),
             theta=0.15,
             dt=1e-2,
         )
+
+        # GaussianNoise噪声：
+        # self.noise = GaussianNoise(
+        #     mu=np.zeros(env.action_space.shape), 
+        #     sigma=0.3,  # 初始标准差，可逐步衰减
+        #     action_dim=env.action_space.shape[0]
+        # )
 
         self.replay_buffer = MeshReplayBuffer(
             buffer_size=1e6  # 只需要传递buffer_size参数
@@ -368,12 +377,6 @@ class DDPGAgent:
         # 软更新目标网络
         self.soft_update()
 
-    # def select_action(self, state, noise_scale=0.3):
-    #     with torch.no_grad():
-    #         state = torch.FloatTensor(state.flatten())
-    #         action = self.actor(state)
-    #         action += noise_scale * torch.randn_like(action)
-    #         return action.numpy().reshape(-1, 2)
 
     def select_action(self, state):
         with torch.no_grad():
@@ -444,6 +447,15 @@ class MeshReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
+
+class GaussianNoise:
+    def __init__(self, mu, sigma, action_dim):
+        self.mu = mu
+        self.sigma = sigma
+        self.action_dim = action_dim
+
+    def __call__(self):
+        return np.random.normal(self.mu, self.sigma, self.action_dim)
 
 
 def train_drl(train_grid, visual_obj, param_obj):
