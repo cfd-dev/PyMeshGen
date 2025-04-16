@@ -30,8 +30,8 @@ from geom_toolkit import (
     calculate_distance,
 )
 from stl_io import parse_stl_msh
-from mesh_visualization import Visualization
-from geom_normalization import normalize_ploygon, denormalize_point
+from mesh_visualization import Visualization, plot_polygon
+from geom_normalization import normalize_ploygon, denormalize_point, normalize_point
 
 
 class DRLSmoothingEnv(gym.Env):
@@ -120,16 +120,27 @@ class DRLSmoothingEnv(gym.Env):
     def get_obs(self):
         return self.state.copy()
 
+    def plot_normalized_ring(self, new_point):
+        # 绘制归一化后的环节点
+        fig, ax = plt.subplots(figsize=(10, 8))
+        plot_polygon(self.normalized_ring_coords, ax, color="blue", alpha=0.5)
+
+        new_point = np.squeeze(new_point)
+        current_point = self.initial_grid.node_coords[self.current_node_id]
+        current_point = normalize_point(current_point, self.local_range)
+        ax.scatter(current_point[0], current_point[1], color="green")
+        ax.scatter(new_point[0], new_point[1], color="red")
+        ax.set_aspect('equal')
+
     def plot_ring_and_action(self, new_point):
-        new_point = denormalize_point(new_point, self.local_range)  # 反归一化
+        # self.plot_normalized_ring(new_point)
+
         # 绘制当前环节点和动作
+        new_point = denormalize_point(new_point, self.local_range)
+        plot_polygon(self.ring_coords, self.ax, color="blue", alpha=0.5)  # 绘制环
         self.ax.scatter(self.ring_coords[:, 0], self.ring_coords[:, 1], color="green")
-        self.ax.scatter(
-            new_point[0],
-            new_point[1],
-            color="red",
-        )
-        plt.pause(0.0000001)  # 暂停以更新图形
+        self.ax.scatter(new_point[0], new_point[1], color="red")
+        plt.pause(0.001)
 
     def step(self, action):
         observation = self.get_obs()
@@ -151,9 +162,9 @@ class DRLSmoothingEnv(gym.Env):
 
         new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
-        
+
         # 计算下一个状态，如果当前步给了惩罚，则退出重来
-        if not (reward < 0 or self.done): 
+        if not (reward < 0 or self.done):
             self.current_node_id += 1
             self.init_state()
 
