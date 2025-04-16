@@ -10,7 +10,15 @@ def denormalize_point(point, local_range):
 
     return np.squeeze(new_point)
 
+def normalize_point(point, local_range):
+    # 归一化
+    point = np.squeeze(point)
+    x_min, x_max, y_min, y_max = local_range
+    ref_d = max(x_max - x_min, y_max - y_min) + 1e-8  # 防止除零
+    new_point = (point - np.array([x_min, y_min])) / ref_d
 
+    return np.squeeze(new_point)
+    
 def normalize_ploygon(polygon_coords):
     # 计算坐标范围
     x_min, x_max = np.min(polygon_coords[:, 0]), np.max(polygon_coords[:, 0])
