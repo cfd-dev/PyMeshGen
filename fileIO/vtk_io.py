@@ -138,8 +138,8 @@ def read_vtk(filename):
         elif line.startswith("POINT_DATA"):
             _, nNodes = line.split()
             nNodes = int(nNodes)
-            i += 1  # 跳过SCALARS node_id int 1行
-            if lines[i].startswith("SCALARS node_id"):
+            i += 1  # 跳过SCALARS fixed int 1行
+            if lines[i].startswith("SCALARS fixed int"):
                 i += 1  # 跳过LOOKUP_TABLE行
                 if lines[i].startswith("LOOKUP_TABLE default"):
                     NodeTypes = []
@@ -194,10 +194,10 @@ def reconstruct_mesh_from_vtk(
             raise ValueError(f"Unsupported cell type: {cell_type_container[idx]}")
         cell_container[idx] = cell
 
-        boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx]
-        unstr_grid = Unstructured_Grid(
+    boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx]
+    unstr_grid = Unstructured_Grid(
             cell_container, node_coords, boundary_nodes
-        )  # 注意这里的cell_container是修改过的，已经包含了单元对象而不是索引列表
+    )  # 注意这里的cell_container是修改过的，已经包含了单元对象而不是索引列表
     return unstr_grid
 
 

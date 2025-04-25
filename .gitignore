@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 /neural/model
+/neural/DRL_Smoothing/agent/
 /neural/sample_grids
 /.vscode
 /out
