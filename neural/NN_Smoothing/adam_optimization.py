@@ -253,6 +253,20 @@ def build_adam_optimizer(
     return optimizer, scheduler, param_groups
 
 
+def print_optimizer_status(epoch, optimizer, total_energy, start_time, end_time):
+    """
+    打印当前epoch优化器的学习率和能量等信息
+    """
+    lrs = [group["lr"] for group in optimizer.param_groups]
+    avg_lr = sum(lrs) / len(lrs)
+    max_lr = max(lrs)
+    min_lr = min(lrs)
+    print(
+        f"epoch {epoch+1}, lr_min = {min_lr:.3e}, lr_max = {max_lr:.3e}, lr_avg = {avg_lr:.3e}, "
+        f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
+    )
+
+
 DEFAULT_MOVEMENT_FACTOR = 0.001
 DEFAULT_ITERATION_LIMIT = 100
 
@@ -330,14 +344,7 @@ def run_element_on_vertex(
         scheduler.step()
 
         end_time = time.time()
-        lrs = [group["lr"] for group in optimizer.param_groups]
-        avg_lr = sum(lrs) / len(lrs)
-        max_lr = max(lrs)
-        min_lr = min(lrs)
-        print(
-            f"epoch {epoch+1}, lr_min = {min_lr:.3e}, lr_max = {max_lr:.3e}, lr_avg = {avg_lr:.3e}, "
-            f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
-        )
+        print_optimizer_status(epoch, optimizer, total_energy, start_time, end_time)
 
     # 将variapoints转换到points
     for i in np.where(~bpindex)[0]:
@@ -438,14 +445,7 @@ def run_global_patch(
         #     )
 
         end_time = time.time()
-        lrs = [group["lr"] for group in optimizer.param_groups]
-        avg_lr = sum(lrs) / len(lrs)
-        max_lr = max(lrs)
-        min_lr = min(lrs)
-        print(
-            f"epoch {epoch+1}, lr_min = {min_lr:.3e}, lr_max = {max_lr:.3e}, lr_avg = {avg_lr:.3e}, "
-            f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
-        )
+        print_optimizer_status(epoch, optimizer, total_energy, start_time, end_time)
 
     # 将variapoints转换到points
     for i in np.where(~bpindex)[0]:
