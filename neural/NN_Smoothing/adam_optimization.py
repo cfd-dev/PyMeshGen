@@ -105,7 +105,29 @@ def output(ring, f):
     f.write(s)
 
 
-def run(input_file, output_file, opt_epoch, lr, conver_tol, energy_type):
+def compute_local_cell_size(cell_indices, points, faces):
+    """计算节点周围单元的平均尺寸"""
+    total_size = 0.0
+    valid_cells = 0
+    for idx in cell_indices:
+        if idx == -1:
+            continue
+        p1, p2, p3 = points[faces[idx, 0]], points[faces[idx, 1]], points[faces[idx, 2]]
+        edge_lengths = [torch.norm(p2 - p1), torch.norm(p3 - p2), torch.norm(p1 - p3)]
+        total_size += sum(edge_lengths) / 3  # 单元平均边长
+        valid_cells += 1
+    return total_size / valid_cells if valid_cells > 0 else 0.0
+
+
+def run(
+    input_file,
+    output_file,
+    opt_epoch=10,
+    lr=0.01,
+    conver_tol=0.1,
+    energy_type="L1",
+    movement_factor=0.3,
+):
     """使用Adam优化器优化网格"""
     mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
     points = mesh.vertices  # 网格的点的坐标
@@ -163,6 +185,28 @@ def run(input_file, output_file, opt_epoch, lr, conver_tol, energy_type):
         total_energy.backward()
         optimizer.step()
 
+        # 添加位移限制
+        with torch.no_grad():
+            for idx in np.where(~bpindex)[0]:
+                # 获取当前节点周围单元的尺寸
+                neighbor_cells = [f for f in vfarray[idx] if f != -1]
+                avg_cell_size = compute_local_cell_size(
+                    neighbor_cells, variapoints, faces
+                )
+
+                # 计算当前位移量
+                displacement = variapoints[idx].data - torch.from_numpy(points[idx])
+                max_displacement = movement_factor * avg_cell_size
+
+                # 限制位移量
+                if torch.norm(displacement) > max_displacement:
+                    clamped_displacement = displacement * (
+                        max_displacement / (torch.norm(displacement) + 1e-8)
+                    )
+                    variapoints[idx].data.copy_(
+                        torch.from_numpy(points[idx]) + clamped_displacement
+                    )
+
         # for epoch in range(opt_epoch):
         # for i in range(0, points.shape[0]):
         #     if bpindex[i] == True:
@@ -192,8 +236,8 @@ def run(input_file, output_file, opt_epoch, lr, conver_tol, energy_type):
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     new_mesh.export(output_file)
 
-    print("Export output mesh file..., DONE!")
     print("Output file path: ", output_file)
+    print("Export output mesh file..., DONE!")
 
     # new_mesh.show(
     #     wireframe=True,
@@ -234,7 +278,7 @@ def predefined_examples(example_index):
         1: {
             "input_file": example_dir / "first.stl",
             "output_file": example_dir / "first_opt.stl",
-            "opt_epoch": 10,
+            "opt_epoch": 20,
             "lr": 0.5,
             "conver_tol": 0.1,
             "energy_type": "L1",

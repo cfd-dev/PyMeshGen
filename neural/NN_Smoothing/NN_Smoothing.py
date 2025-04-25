@@ -124,8 +124,9 @@ def run(input_file, output_file, opt_epoch):
 
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     new_mesh.export(output_file)
-    print("Export output mesh file..., DONE!")
+
     print("Output file path: ", output_file)
+    print("Export output mesh file..., DONE!")
 
     # new_mesh.show(
     #     wireframe=True,
