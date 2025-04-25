@@ -121,8 +121,6 @@ def limit_displacement(
     variapoints,
     prev_variapoints,
     original_points,
-    vfarray,
-    faces,
     movement_factor,
     cell_size_cache,
 ):
@@ -154,9 +152,6 @@ def update_learning_rate_based_on_size(
     global_size_ref,
     base_lr,
     last_lr,
-    vfarray,
-    variapoints,
-    faces,
     cell_size_cache,
 ):
     """根据单元尺寸动态更新学习率"""
@@ -329,8 +324,6 @@ def run_element_on_vertex(
                         variapoints,
                         prev_variapoints,
                         original_points,
-                        vfarray,
-                        faces,
                         movement_factor,
                         cell_size_cache,
                     )
@@ -424,8 +417,6 @@ def run_global_patch(
                 variapoints,
                 prev_variapoints,
                 original_points,
-                vfarray,
-                faces,
                 movement_factor,
                 cell_size_cache,
             )
@@ -438,9 +429,6 @@ def run_global_patch(
         #         global_avg_size,
         #         base_lr,
         #         scheduler.get_last_lr()[0],
-        #         vfarray,
-        #         variapoints,
-        #         faces,
         #         cell_size_cache,
         #     )
 
