@@ -117,7 +117,7 @@ def compute_local_cell_size(cell_indices, points, faces):
 
 
 def limit_displacement(
-    point_idx,
+    non_boundary_indices,
     variapoints,
     prev_variapoints,
     original_points,
@@ -127,23 +127,25 @@ def limit_displacement(
     cell_size_cache,
 ):
     """限制节点位移的辅助函数"""
-    # 计算当前位移量
-    # prev_point = torch.from_numpy(original_points[point_idx])
-    prev_point = prev_variapoints[point_idx].data
-    current_point = variapoints[point_idx].data
-    displacement = current_point - prev_point
+    with torch.no_grad():
+        for idx in non_boundary_indices:
+            # prev_point = torch.from_numpy(original_points[idx])#限制与原始位置的距离
+            prev_point = prev_variapoints[idx].data  # 限制与前一步位置的距离
+            current_point = variapoints[idx].data
+            displacement = current_point - prev_point  # 计算当前位移量
 
-    # print(f"Node {point_idx} displacement: {torch.norm(displacement):.4e}")
+            max_allow_disp = movement_factor * cell_size_cache[idx]
 
-    max_displacement = movement_factor * cell_size_cache[point_idx]
-
-    # 限制位移量
-    if torch.norm(displacement) > max_displacement:
-        clamped_displacement = displacement * (
-            max_displacement / (torch.norm(displacement) + 1e-8)
-        )
-        return prev_point + clamped_displacement
-    return current_point
+            # 限制位移量
+            if torch.norm(displacement) > max_allow_disp:
+                clamped_disp = displacement * (
+                    max_allow_disp / (torch.norm(displacement) + 1e-12)
+                )
+                # new_position = original_points[idx] + clamped_disp # 在原始位置上继续位移
+                new_position = prev_point + clamped_disp  # 在上一步的位移基础上继续位移
+                variapoints[idx].data.copy_(new_position)
+            else:
+                variapoints[idx].data.copy_(current_point)
 
 
 def update_learning_rate_based_on_size(
@@ -174,7 +176,7 @@ def run(
     input_file,
     output_file,
     opt_epoch=10,
-    lr=0.01,
+    lr=0.2,
     conver_tol=0.1,
     energy_type="L1",
     movement_factor=0.3,  # 位移限制因子
@@ -191,11 +193,8 @@ def run(
     boundary_ids = np.unique(boundary_edges.ravel())  # 边界点的索引
     bpindex = np.zeros(len(points), dtype=bool)  # 记录边界点flag
     bpindex[boundary_ids] = True  # boundary point flag
-
-    vfarray = mesh.vertex_faces
-
-    # 保存原始点位置
-    original_points = points.copy()
+    vfarray = mesh.vertex_faces  # 记录每个点对应的三角片索引
+    original_points = points.copy()  # 保存原始点位置
 
     # 打印网格信息
     print("Input file path: ", input_file)
@@ -222,10 +221,12 @@ def run(
     # 预计算所有非边界点的单元尺寸
     cell_size_cache = {}
     global_avg_size = 0.0
-    for i in np.where(~bpindex)[0]:
-        neighbor_cells = [f for f in vfarray[i] if f != -1]
-        cell_size_cache[i] = compute_local_cell_size(neighbor_cells, variapoints, faces)
-        global_avg_size += cell_size_cache[i]
+    for idx in np.where(~bpindex)[0]:
+        neighbor_cells = [f for f in vfarray[idx] if f != -1]
+        cell_size_cache[idx] = compute_local_cell_size(
+            neighbor_cells, variapoints, faces
+        )
+        global_avg_size += cell_size_cache[idx]
     global_avg_size /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
 
     # 创建自适应学习率参数组
@@ -237,7 +238,7 @@ def run(
             {
                 "params": variapoints[i],
                 "lr": base_lr * cell_size_cache[i],
-            }  # 防止零尺寸
+            }
         )
     optimizer = optim.Adam(param_groups)  # 使用参数组替代统一学习率
 
@@ -258,6 +259,7 @@ def run(
                 vfarray[idx], variapoints, faces, energy_type
             )
 
+        # 判断是否收敛
         if abs(prev_energy - total_energy) < conver_tol:
             break
         prev_energy = total_energy
@@ -268,25 +270,23 @@ def run(
 
         # 添加位移限制
         with torch.no_grad():
-            for idx in np.where(~bpindex)[0]:
-                new_position = limit_displacement(
-                    idx,
-                    variapoints,
-                    prev_variapoints,
-                    original_points,
-                    vfarray,
-                    faces,
-                    movement_factor,
-                    cell_size_cache,
-                )
-                variapoints[idx].data.copy_(new_position)
+            limit_displacement(
+                np.where(~bpindex)[0],
+                variapoints,
+                prev_variapoints,
+                original_points,
+                vfarray,
+                faces,
+                movement_factor,
+                cell_size_cache,
+            )
 
         # 训练过程中实时更新学习率
         # with torch.no_grad():
         #     update_learning_rate_based_on_size(
         #         np.where(~bpindex)[0],
         #         optimizer.param_groups,
-        #         global_size_ref,
+        #         global_avg_size,
         #         base_lr,
         #         scheduler.get_last_lr()[0],
         #         vfarray,
@@ -349,6 +349,7 @@ def parse_args():
 
 def predefined_examples(example_index):
     """Predefined examples."""
+    # TODO example 2, 3, 4优化后节点超出边界，需要修复
     example_dir = Path(__file__).parent / "example"
     examples = {
         1: {
@@ -371,7 +372,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "third.stl",
             "output_file": example_dir / "third_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -379,7 +380,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "fourth.stl",
             "output_file": example_dir / "fourth_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -435,7 +436,7 @@ def predefined_examples(example_index):
 #     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.energy_type)
 
 if __name__ == "__main__":
-    example_index = 5  # 选择一个示例
+    example_index = 2  # 选择一个示例
     example_args = predefined_examples(example_index)
     run(
         example_args["input_file"],
