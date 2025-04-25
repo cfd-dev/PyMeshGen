@@ -124,24 +124,18 @@ def limit_displacement(
     vfarray,
     faces,
     movement_factor,
-    logging_enabled=False,
+    cell_size_cache,
 ):
     """限制节点位移的辅助函数"""
-    neighbor_cells = [f for f in vfarray[point_idx] if f != -1]
-    avg_cell_size = compute_local_cell_size(
-        neighbor_cells, torch.from_numpy(original_points), faces
-    )
-
     # 计算当前位移量
     # prev_point = torch.from_numpy(original_points[point_idx])
     prev_point = prev_variapoints[point_idx].data
     current_point = variapoints[point_idx].data
     displacement = current_point - prev_point
 
-    if logging_enabled:
-        print(f"Node {point_idx} displacement: {torch.norm(displacement):.4e}")
+    # print(f"Node {point_idx} displacement: {torch.norm(displacement):.4e}")
 
-    max_displacement = movement_factor * avg_cell_size
+    max_displacement = movement_factor * cell_size_cache[point_idx]
 
     # 限制位移量
     if torch.norm(displacement) > max_displacement:
@@ -161,6 +155,7 @@ def update_learning_rate_based_on_size(
     vfarray,
     variapoints,
     faces,
+    cell_size_cache,
 ):
     """根据单元尺寸动态更新学习率"""
     # 计算动态边界阈值
@@ -168,11 +163,10 @@ def update_learning_rate_based_on_size(
     dynamic_max = global_size_ref * 10.0  # 基准的10倍
 
     for idx, param_group in zip(non_boundary_indices, param_groups):
-        neighbor_cells = [f for f in vfarray[idx] if f != -1]
-        current_size = compute_local_cell_size(neighbor_cells, variapoints, faces)
-
         # 使用动态阈值限制
-        clamped_size = torch.clamp(current_size, min=dynamic_min, max=dynamic_max)
+        clamped_size = torch.clamp(
+            cell_size_cache[idx], min=dynamic_min, max=dynamic_max
+        )
         param_group["lr"] = base_lr * clamped_size * last_lr
 
 
@@ -183,7 +177,7 @@ def run(
     lr=0.01,
     conver_tol=0.1,
     energy_type="L1",
-    movement_factor=0.3,
+    movement_factor=0.3,  # 位移限制因子
     lr_step_size=1,  # 每步调整学习率的步数
     lr_gamma=0.9,  # 学习率衰减系数
 ):
@@ -225,24 +219,25 @@ def run(
         tfpoint = Variable(torch_point, requires_grad=True)
         variapoints.append(tfpoint)
 
-    # 计算初始全局平均尺寸
-    global_size_ref = 0.0
+    # 预计算所有非边界点的单元尺寸
+    cell_size_cache = {}
+    global_avg_size = 0.0
     for i in np.where(~bpindex)[0]:
         neighbor_cells = [f for f in vfarray[i] if f != -1]
-        global_size_ref += compute_local_cell_size(neighbor_cells, variapoints, faces)
-    global_size_ref /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
+        cell_size_cache[i] = compute_local_cell_size(neighbor_cells, variapoints, faces)
+        global_avg_size += cell_size_cache[i]
+    global_avg_size /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
 
     # 创建自适应学习率参数组
     base_lr = lr
     param_groups = []
     for i in np.where(~bpindex)[0]:
-        # 计算初始单元尺寸
-        neighbor_cells = [f for f in vfarray[i] if f != -1]
-        avg_size = compute_local_cell_size(neighbor_cells, variapoints, faces)
-
         # 设置参数组，学习率与单元尺寸成比例
         param_groups.append(
-            {"params": variapoints[i], "lr": base_lr * (avg_size + 1e-8)}  # 防止零尺寸
+            {
+                "params": variapoints[i],
+                "lr": base_lr * cell_size_cache[i],
+            }  # 防止零尺寸
         )
     optimizer = optim.Adam(param_groups)  # 使用参数组替代统一学习率
 
@@ -282,6 +277,7 @@ def run(
                     vfarray,
                     faces,
                     movement_factor,
+                    cell_size_cache,
                 )
                 variapoints[idx].data.copy_(new_position)
 
@@ -296,6 +292,7 @@ def run(
         #         vfarray,
         #         variapoints,
         #         faces,
+        #         cell_size_cache,
         #     )
 
         end_time = time.time()
@@ -304,7 +301,7 @@ def run(
         max_lr = max(lrs)
         min_lr = min(lrs)
         print(
-            f"epoch {epoch+1}, lr_avg = {avg_lr:.3e}, lr_max = {max_lr:.3e}, lr_min = {min_lr:.3e}, "
+            f"epoch {epoch+1}, lr_min = {min_lr:.3e}, lr_max = {max_lr:.3e}, lr_avg = {avg_lr:.3e}, "
             f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
         )
 
@@ -390,7 +387,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "fifth.stl",
             "output_file": example_dir / "fifth_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -398,7 +395,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "sixth.stl",
             "output_file": example_dir / "sixth_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -406,7 +403,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "rae2822_bad.stl",
             "output_file": example_dir / "rae2822_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -414,7 +411,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "30p30n_bad.stl",
             "output_file": example_dir / "30p30n_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -422,7 +419,7 @@ def predefined_examples(example_index):
             "input_file": example_dir / "naca0012_bad.stl",
             "output_file": example_dir / "naca0012_opt.stl",
             "opt_epoch": 100,
-            "lr": 0.1,
+            "lr": 0.2,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
@@ -438,7 +435,7 @@ def predefined_examples(example_index):
 #     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.energy_type)
 
 if __name__ == "__main__":
-    example_index = 2  # 选择一个示例
+    example_index = 5  # 选择一个示例
     example_args = predefined_examples(example_index)
     run(
         example_args["input_file"],
