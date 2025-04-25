@@ -45,9 +45,11 @@ class DRLSmoothingEnv(gym.Env):
         self.action_dim = 2  # 动作维度
         self.viz_enabled = param_obj["viz_enabled"]
         self.max_ring_nodes = param_obj["max_ring_nodes"]
+
         # shape quality所占权重，skewness权重为1-shape_coeff
         self.shape_coeff = param_obj["shape_coeff"]
-        self.min_coeff = param_obj["min_coeff"]  # minQuality在reward中的权重
+        # minQuality在reward中的权重
+        self.min_coeff = param_obj["min_coeff"]
 
         self.initial_grid = initial_grid  # 初始网格
         self.original_node_coords = np.copy(initial_grid.node_coords)  # 备份初始坐标
@@ -74,7 +76,7 @@ class DRLSmoothingEnv(gym.Env):
             low=0.0, high=1.0, shape=(self.max_ring_nodes, 2), dtype=np.float32
         )
         self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(self.action_dim,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(1, self.action_dim), dtype=np.float32
         )
 
     def init_state(self):
@@ -89,10 +91,11 @@ class DRLSmoothingEnv(gym.Env):
 
         # 获取当前节点的环状邻居坐标
         node_ids = self.initial_grid.node2node[self.current_node_id]
-        ring_coords = np.array([self.initial_grid.node_coords[i] for i in node_ids])
-        self.ring_coords = ring_coords
+        self.ring_coords = np.array(
+            [self.initial_grid.node_coords[i] for i in node_ids]
+        )
 
-        normalized_coords, self.local_range = normalize_ploygon(ring_coords)
+        normalized_coords, self.local_range = normalize_ploygon(self.ring_coords)
         self.normalized_ring_coords = normalized_coords
 
         # 填充至固定长度
@@ -150,10 +153,10 @@ class DRLSmoothingEnv(gym.Env):
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
             action = centroid(self.normalized_ring_coords)
-        # else:
-            # action = action + centroid(self.normalized_ring_coords)
+        else:
+            action = action + centroid(self.normalized_ring_coords)
 
-        if __debug__ and self.viz_enabled:
+        if self.viz_enabled:
             self.ax.clear()
             self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
             self.plot_ring_and_action(action)
@@ -215,7 +218,7 @@ class Critic(nn.Module):
             nn.Linear(action_dim, hidden_dim // 2),
             # nn.Linear(action_dim, hidden_dim),
             # nn.BatchNorm1d(hidden_dim),
-            # nn.ReLU(),
+            nn.ReLU(),
             # nn.Linear(hidden_dim, hidden_dim // 2),
         )
         # Common path
@@ -242,15 +245,15 @@ class Actor(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(state_dim, 2*hidden_dim),
+            nn.Linear(state_dim, 2 * hidden_dim),
             # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
-            nn.Linear(2*hidden_dim, hidden_dim),
+            nn.Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
-            nn.Tanh(),
+            # nn.Tanh(),
         )
         self.apply(self._init_weights)
 
@@ -266,7 +269,7 @@ class Actor(nn.Module):
 class DDPGAgent:
     def __init__(self, env):
         state_dim = np.prod(env.observation_space.shape)
-        action_dim = env.action_space.shape[0]
+        action_dim = np.prod(env.action_space.shape)
 
         self.actor = Actor(state_dim, action_dim)
         self.critic = Critic(state_dim, action_dim)
@@ -276,7 +279,7 @@ class DDPGAgent:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-4)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
 
-        self.batch_size = 128
+        self.batch_size = 64
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
         self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
 
@@ -287,14 +290,14 @@ class DDPGAgent:
         # OU噪声
         self.noise = OrnsteinUhlenbeckActionNoise(
             mean=np.zeros(env.action_space.shape),
-            sigma=0.5 * np.ones(env.action_space.shape),
+            sigma=0.3 * np.ones(env.action_space.shape),
             theta=0.15,
             dt=1e-2,
         )
 
         # GaussianNoise噪声：
         # self.noise = GaussianNoise(
-        #     mu=np.zeros(env.action_space.shape), 
+        #     mu=np.zeros(env.action_space.shape),
         #     sigma=0.3,  # 初始标准差，可逐步衰减
         #     action_dim=env.action_space.shape[0]
         # )
@@ -377,12 +380,10 @@ class DDPGAgent:
         # 软更新目标网络
         self.soft_update()
 
-
     def select_action(self, state):
         with torch.no_grad():
             state = torch.FloatTensor(state.flatten())
             action = self.actor(state)
-            # 使用 OU 噪声
             noise = torch.tensor(self.noise(), dtype=torch.float32)
             action = action + noise
             action = np.clip(action.detach().numpy().reshape(-1, 2), -1, 1)
@@ -434,7 +435,12 @@ class MeshReplayBuffer:
 
     def sample(self, batch_size):
         indices = np.random.choice(len(self.buffer), batch_size)
-        batch = [self.buffer[i] for i in indices]  # 随机采样
+        # # 改为优先经验回放
+        # priorities = np.abs(np.array([item[3] for item in self.buffer])) + 1e-5  # 使用奖励绝对值作为优先级
+        # probabilities = priorities / np.sum(priorities)
+        # indices = np.random.choice(len(self.buffer), batch_size, p=probabilities)
+
+        batch = [self.buffer[i] for i in indices]
 
         # 保持原有数据处理逻辑不变
         observations = np.array([item[0] for item in batch])

@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 """
-This is the implementation of the paper:
+This code using neural network to smooth the mesh. This is the implementation of the paper:
 [1] Guo Y F, Wang C R, Ma Z, et al. A new mesh smoothing method based on a neural network[J]. 
 Computational Mechanics, 2022, 69:425-438.
 
