@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 import numpy as np
 
 
@@ -218,3 +219,15 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
     ax.set_ylabel("Y Coordinate")
     ax.axis("equal")
     plt.show(block=False)
+
+def plot_polygon(polygon_coords, ax, color="blue", alpha=0.5):
+    # 绘制多边形
+    polygon = Polygon(polygon_coords, closed=True, fill=True, color=color, alpha=alpha)
+    ax.add_patch(polygon)
+    
+    # polygon = polygon_coords
+    # polygon = np.vstack([polygon, polygon[0]])  # 使用numpy正确闭合多边形
+    # ax.clear()
+    # if len(polygon) >= 3:  # 至少3个点才能绘制多边形
+    #     x, y = zip(*polygon)
+    #     ax.plot(x, y, "g-", alpha=0.5)

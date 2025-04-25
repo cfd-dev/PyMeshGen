@@ -1,11 +1,11 @@
 import unittest
 import numpy as np
 from mesh_quality import (
-    triangle_quality,
+    triangle_shape_quality,
     triangle_skewness,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
-    quadrilateral_quality
+    quadrilateral_shape_quality
 )
 
 class TestMeshQuality(unittest.TestCase):
@@ -19,11 +19,11 @@ class TestMeshQuality(unittest.TestCase):
 
     def test_triangle_quality_valid(self):
         # 测试理想三角形质量
-        quality = triangle_quality(*self.perfect_triangle)
+        quality = triangle_shape_quality(*self.perfect_triangle)
         self.assertAlmostEqual(quality, 1.0, delta=0.01)
         
         # 测试退化三角形
-        self.assertEqual(triangle_quality(*self.degenerate_triangle), 0.0)
+        self.assertEqual(triangle_shape_quality(*self.degenerate_triangle), 0.0)
 
     def test_triangle_skewness(self):
         # 等边三角形偏斜度应为1
@@ -51,11 +51,11 @@ class TestMeshQuality(unittest.TestCase):
 
     def test_quadrilateral_quality(self):
         # 完美四边形质量
-        quality = quadrilateral_quality(*self.square)
+        quality = quadrilateral_shape_quality(*self.square)
         self.assertGreater(quality, 0.9)
         
         # 非凸四边形质量应为0
-        self.assertEqual(quadrilateral_quality(*self.non_convex_quad), 0.0)
+        self.assertEqual(quadrilateral_shape_quality(*self.non_convex_quad), 0.0)
 
 if __name__ == '__main__':
     unittest.main()

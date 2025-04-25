@@ -13,8 +13,9 @@ from geom_toolkit import (
     quad_intersects_quad,
 )
 from mesh_quality import (
-    triangle_quality,
-    quadrilateral_quality,
+    triangle_shape_quality,
+    triangle_skewness,
+    quadrilateral_shape_quality,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
 )
@@ -170,11 +171,29 @@ class Triangle:
                     f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
         if self.quality is None:
-            self.quality = triangle_quality(self.p1, self.p2, self.p3)
+            self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
             if self.quality == 0.0:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
+    
+    def get_quality(self):
+        if self.quality is None:
+            self.init_metrics()
+        return self.quality
+        
+    def get_area(self):
+        if self.area is None:
+            self.area = triangle_area(self.p1, self.p2, self.p3)
+        return self.area
+
+    def get_skewness(self):
+        return triangle_skewness(self.p1, self.p2, self.p3)
+
+    def get_element_size(self):
+        if self.area is None:
+            self.get_area()
+        return sqrt(self.area)
 
     def is_intersect(self, triangle):
         p4 = triangle.p1
@@ -241,6 +260,11 @@ class Quadrilateral:
     def __hash__(self):
         return self.hash
 
+    def __eq__(self, other):
+        if isinstance(other, Triangle):
+            return self.hash == other.hash
+        return False
+
     def init_metrics(self):
         if self.area is None:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
@@ -249,19 +273,21 @@ class Quadrilateral:
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
         if self.quality is None:
-            # self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+            # self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
             self.quality = self.get_skewness()
             if self.quality == 0.0:
                 warning(
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-
+        
     def get_area(self):
-        self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
+        if self.area is None:
+            self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
         return self.area
 
     def get_quality(self):
-        self.quality = quadrilateral_quality(self.p1, self.p2, self.p3, self.p4)
+        if self.quality is None:
+            self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
         return self.quality
 
     def get_element_size(self):
@@ -342,11 +368,23 @@ class Unstructured_Grid:
         self.num_edges = 0
         self.num_faces = 0
         self.edges = []
+        self.node2node = None
+        self.node2cell = None
 
         self.dim = len(node_coords[0])
+        self.bbox = [
+            min(coord[0] for coord in node_coords),
+            min(coord[1] for coord in node_coords),
+            max(coord[0] for coord in node_coords),
+            max(coord[1] for coord in node_coords),
+        ]
+        
 
     def calculate_edges(self):
         """计算网格的边"""
+        if self.edges:
+            return
+
         edge_set = set()
         for cell in self.cell_container:
             for i in range(len(cell.node_ids)):
@@ -466,6 +504,7 @@ class Unstructured_Grid:
         # 绘制边
         if self.dim == 2:
             self.calculate_edges()
+            
         for edge in self.edges:
             x = [self.node_coords[i][0] for i in edge]
             y = [self.node_coords[i][1] for i in edge]
@@ -503,6 +542,95 @@ class Unstructured_Grid:
             cell_type_container,
         )
 
+    def init_node2node(self):
+        """初始化节点关联的节点列表"""
+        self.calculate_edges()
+
+        self.node2node = {}
+        # 按照边连接关系构建
+        for edge in self.edges:
+            for node_idx in edge:
+                if node_idx not in self.node2node:
+                    self.node2node[node_idx] = []
+                for other_node_idx in edge:
+                    if other_node_idx != node_idx:
+                        self.node2node[node_idx].append(other_node_idx)
+
+        # 去除重复
+        for node_idx in self.node2node:
+            self.node2node[node_idx] = list(set(self.node2node[node_idx]))
+    
+    def init_node2node_by_cell(self):
+        """初始化节点关联的节点列表"""
+        self.calculate_edges()
+        
+        self.node2node = {}
+        # 按照点相连的单元构建
+        for cell in self.cell_container:
+            for node_idx in cell.node_ids:
+                if node_idx not in self.node2node:
+                    self.node2node[node_idx] = []
+                for other_node_idx in cell.node_ids:
+                    if other_node_idx != node_idx:
+                        self.node2node[node_idx].append(other_node_idx)
+                        
+        # 去除重复
+        for node_idx in self.node2node:
+            self.node2node[node_idx] = list(set(self.node2node[node_idx]))
+    
+    def cyclic_node2node(self):
+        """根据edge的连接关系将node2node构建为首尾相连成环的方式"""
+        if not self.node2node:
+            # self.init_node2node()
+            self.init_node2node_by_cell()
+
+        # 创建节点坐标字典加速查询
+        coord_dict = {
+            idx: np.array(coords) for idx, coords in enumerate(self.node_coords)
+        }
+
+        for node_idx in self.node2node:
+            neighbors = self.node2node[node_idx]
+            if len(neighbors) < 2:
+                continue
+
+            # 获取当前节点坐标
+            current_coord = coord_dict[node_idx]
+
+            # 计算相邻节点相对当前节点的极角并排序
+            sorted_neighbors = sorted(
+                neighbors,
+                key=lambda n: np.arctan2(
+                    coord_dict[n][1] - current_coord[1],
+                    coord_dict[n][0] - current_coord[0],
+                ),
+            )
+
+            # 验证环形连接完整性
+            prev_node = sorted_neighbors[-1]
+            for curr_node in sorted_neighbors:
+                edge = tuple(sorted([prev_node, curr_node]))
+                # if edge not in self.edges:
+                    # warning(
+                        # f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
+                    # )
+                prev_node = curr_node
+
+            self.node2node[node_idx] = sorted_neighbors
+
+    def init_node2cell(self):
+        """初始化节点关联的单元列表"""
+        self.node2cell = {}
+        for cell in self.cell_container:
+            for node_idx in cell.node_ids:
+                if node_idx not in self.node2cell:
+                    self.node2cell[node_idx] = []
+                self.node2cell[node_idx].append(cell)
+
+        # 去除重复
+        for node_idx in self.node2cell:
+            self.node2cell[node_idx] = list(set(self.node2cell[node_idx]))
+    
 
 class Connector:
     """曲线对象，包含曲线的几何对象、网格生成参数和所属部件名称，以及曲线网格本身"""

@@ -598,3 +598,126 @@ def quad_intersects_quad(q1, q2):
         return True
 
     return False
+
+
+# def is_point_on_segment(p, a, b):
+#     """判断点p是否在线段ab上（包括端点，排除共线但不在线段的情况）"""
+#     # 叉积判断共线
+#     cross = (p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])
+#     if abs(cross) > 1e-8:
+#         return False
+
+#     # 坐标范围检查
+#     min_x = min(a[0], b[0]) - 1e-8
+#     max_x = max(a[0], b[0]) + 1e-8
+#     min_y = min(a[1], b[1]) - 1e-8
+#     max_y = max(a[1], b[1]) + 1e-8
+#     return (min_x <= p[0] <= max_x) and (min_y <= p[1] <= max_y)
+
+# def point_in_polygon(p, polygon):
+#     x, y = p
+#     n = len(polygon)
+#     if n == 0:
+#         return False
+
+#     # 转换为元组避免列表与元组比较问题
+#     p_tuple = (x, y)
+#     polygon = [tuple(point) for point in polygon]
+
+#     # 检查是否是顶点
+#     if p_tuple in polygon:
+#         return False
+
+#     # 检查是否在边上（非顶点）
+#     for i in range(n):
+#         a = polygon[i]
+#         b = polygon[(i+1) % n]
+#         if is_point_on_segment(p, a, b):
+#             return False
+
+#     # 射线法判断内部（奇数次交叉为内部）
+#     inside = False
+#     for i in range(n):
+#         a, b = polygon[i], polygon[(i + 1) % n]
+#         xa, ya = a
+#         xb, yb = b
+
+#         # 边AB跨越射线的y坐标
+#         if (ya <= y < yb) != (yb <= y < ya):
+#             # 计算交点x坐标
+#             x_inter = (y - ya) * (xb - xa) / (yb - ya) + xa
+#             if x_inter >= x:
+#                 inside = not inside
+
+#     return inside
+
+
+def is_point_on_segment(p, a, b):
+    cross = (p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])
+    if abs(cross) > 1e-8:
+        return False
+    min_x = min(a[0], b[0]) - 1e-8
+    max_x = max(a[0], b[0]) + 1e-8
+    min_y = min(a[1], b[1]) - 1e-8
+    max_y = max(a[1], b[1]) + 1e-8
+    return (min_x <= p[0] <= max_x) and (min_y <= p[1] <= max_y)
+
+
+def point_in_polygon(p, polygon):
+    x, y = p
+    n = len(polygon)
+    if n == 0:
+        return False
+    p_tuple = (x, y)
+    polygon = [tuple(point) for point in polygon]
+
+    if p_tuple in polygon:
+        return False
+
+    for i in range(n):
+        a = polygon[i]
+        b = polygon[(i + 1) % n]
+        if is_point_on_segment(p, a, b):
+            return False
+
+    inside = False
+    for i in range(n):
+        a, b = polygon[i], polygon[(i + 1) % n]
+        xa, ya = a
+        xb, yb = b
+
+        if xa == xb:  # 处理垂直线
+            if (
+                (ya < y and yb >= y)
+                or (yb < y and ya >= y)
+                or (ya > y and yb <= y)
+                or (yb > y and ya <= y)
+            ):
+                if xa >= x:
+                    inside = not inside
+            continue
+
+        # 非垂直线，判断是否跨越y
+        if (
+            (ya < y and yb >= y)
+            or (yb < y and ya >= y)
+            or (ya > y and yb <= y)
+            or (yb > y and ya <= y)
+        ):
+            # 计算交点x坐标
+            try:
+                x_inter = (y - ya) * (xb - xa) / (yb - ya) + xa
+            except ZeroDivisionError:
+                # 避免因浮点误差导致的除零，但非垂直线应不会出现
+                continue
+            if x_inter >= x:
+                inside = not inside
+
+    return inside
+
+
+def centroid(polygon_points):
+    # 计算多边形的形心
+    x = np.mean(polygon_points[:, 0])
+    y = np.mean(polygon_points[:, 1])
+    return np.array([x, y])

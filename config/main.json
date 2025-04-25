@@ -1,9 +1,8 @@
 {
-    "case_file": "config/30p30n_mixed.json",
+    "case_file": "config/anw.json",
     "comments": "This the main configuration file for PyMeshGen, the test cases is listed below.",
     "available_cases": [
         "config/quad.json",
-        "config/pentagon.json",
         "config/quad_quad.json",
         "config/naca0012.json",
         "config/rae2822.json",
