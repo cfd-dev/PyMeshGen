@@ -1,0 +1,326 @@
+import argparse
+import torch
+from torch.autograd import Variable
+import torch.optim as optim
+import numpy as np
+import time
+import trimesh
+from pathlib import Path
+from math import sqrt
+
+"""
+This code using adam optimization to smooth the mesh. This is the implementation of the paper:
+[1] Guo Y F, Wang C R, Ma Z, et al. A new mesh smoothing method based on a neural network[J]. 
+Computational Mechanics, 2022, 69:425-438.
+
+The opensource code is originally from the author's GitHub:
+https://github.com/yfguo91/meshsmoothing
+
+The code is modified by the author of this repository to make it more readable and usable.
+"""
+
+
+def laplacian(ring):
+    newpoints = np.mean(ring, axis=0)
+    return newpoints
+
+
+def calc_area(p1, p2, p3):
+    """计算三角形面积"""
+    p4 = p2 - p1
+    p5 = p3 - p1
+
+    v = 0.5 * torch.abs(p4[0] * p5[1] - p4[1] * p5[0])
+
+    return v
+
+
+def calc_len(p1, p2, p3):
+    """计算三角形三边长之和"""
+    p4 = p2 - p1
+    p5 = p3 - p2
+    p6 = p1 - p3
+
+    v1 = p4.dot(p4)
+    v2 = p5.dot(p5)
+    v3 = p6.dot(p6)
+
+    v = torch.sqrt(v1) + torch.sqrt(v2) + torch.sqrt(v3)
+
+    return v
+
+
+def calc_len2(p1, p2, p3):
+    """计算三角形三边长之平方和"""
+    p4 = p2 - p1
+    p5 = p3 - p2
+    p6 = p1 - p3
+
+    v1 = p4.dot(p4)
+    v2 = p5.dot(p5)
+    v3 = p6.dot(p6)
+
+    v = v1 + v2 + v3
+
+    return v
+
+
+def compute_element_energy(cell_indices, points, cells, energy_type="L1"):
+    """计算单元质量的L1、L2、Loo"""
+    total_energy = 0
+    num_cells = len(cell_indices)
+    max_energy = 0
+    for idx in cell_indices:
+        if idx == -1:
+            continue
+
+        # 提取三角形顶点
+        p1, p2, p3 = points[cells[idx, 0]], points[cells[idx, 1]], points[cells[idx, 2]]
+        sum_len2 = calc_len2(p1, p2, p3)
+        area = calc_area(p1, p2, p3)
+
+        # 按照三角形质量公式计算quality = 4.0 * sqrt(3.0) * area / a**2 + b**2 + c**2
+        # 由于要energy最小化，所以取1-quality
+        energy = 1.0 - 4.0 * sqrt(3.0) * area / (sum_len2 + 1e-8)
+
+        if energy > max_energy:
+            max_energy = energy
+
+        if energy_type == "L1":
+            total_energy = total_energy + energy
+        elif energy_type == "L2":
+            total_energy = total_energy + energy**2
+
+    if energy_type == "Loo":
+        return max_energy
+    else:
+        return total_energy / num_cells
+
+
+def output(ring, f):
+    s = ""
+    for i, num in enumerate(ring):
+        s += "{} ".format(num)
+    s += "\n"
+    f.write(s)
+
+
+def run(input_file, output_file, opt_epoch, lr, conver_tol, energy_type):
+    """使用Adam优化器优化网格"""
+    mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
+    points = mesh.vertices  # 网格的点的坐标
+    faces = mesh.faces  # 网格的三角片
+
+    boundary_mask = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
+    boundary_edges = mesh.edges[boundary_mask]  # 边界edges
+    boundary_ids = np.unique(boundary_edges.ravel())  # 边界点的索引
+    bpindex = np.zeros(len(points), dtype=bool)  # 记录边界点flag
+    bpindex[boundary_ids] = True  # boundary point flag
+
+    vfarray = mesh.vertex_faces
+
+    # 打印网格信息
+    print("Input file path: ", input_file)
+    print("Mesh loaded:", not (mesh.is_empty))
+    print("Mesh information:")
+    print("Vertices:", len(mesh.vertices))
+    print("Faces:", len(mesh.faces))
+    print("Edges:", len(mesh.edges))
+    print("Reading input mesh file..., DONE!")
+
+    # mesh.show(
+    #     wireframe=True,  # 启用线框模式
+    #     wireframe_color=[0, 0, 0, 1],  # 黑色线框
+    #     background=[1, 1, 1, 1],  # 白色背景
+    # )
+
+    # 创建变量，将所有节点都设置成变量
+    variapoints = []
+    for i in range(0, points.shape[0]):
+        torch_point = torch.from_numpy(points[i])
+        tfpoint = Variable(torch_point, requires_grad=True)
+        variapoints.append(tfpoint)
+
+    # 优化网格
+    start_time = time.time()
+
+    movable_points = [variapoints[i] for i in np.where(~bpindex)[0]]
+    optimizer = optim.Adam(movable_points, lr=lr)  # 创建单个优化器
+
+    prev_energy = 0
+    for epoch in range(opt_epoch):
+        optimizer.zero_grad()
+        total_energy = 0
+        for i in np.where(~bpindex)[0]:
+            total_energy += compute_element_energy(
+                vfarray[i], variapoints, faces, energy_type
+            )
+
+        if abs(prev_energy - total_energy) < conver_tol:
+            break
+        prev_energy = total_energy
+
+        total_energy.backward()
+        optimizer.step()
+
+        # for epoch in range(opt_epoch):
+        # for i in range(0, points.shape[0]):
+        #     if bpindex[i] == True:
+        #         continue
+
+        #     optimizer = optim.Adam([variapoints[i]], lr=lr)
+        #     prev_energy = 0
+        #     for step in range(5):
+        #         optimizer.zero_grad()
+        #         energy = compute_element_energy(vfarray[i], variapoints, faces)
+
+        #         if abs(prev_energy - energy) < conver_tol:
+        #             break
+        #         prev_energy = energy
+        #         energy.backward()
+        #         optimizer.step()
+
+        end_time = time.time()
+        print(
+            f"epoch {epoch+1}, total_energy = {total_energy:.6f}, time elapsed= {(end_time - start_time):.3f}s"
+        )
+
+    # 将variapoints转换到points
+    for i in range(0, points.shape[0]):
+        points[i] = variapoints[i].data.numpy()
+
+    new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
+    new_mesh.export(output_file)
+
+    print("Export output mesh file..., DONE!")
+    print("Output file path: ", output_file)
+
+    # new_mesh.show(
+    #     wireframe=True,
+    #     wireframe_color=[0, 0, 0, 1],
+    #     background=[1, 1, 1, 1],
+    #     smooth=False,
+    # )
+
+    return
+
+
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="optimize mesh by optimization")
+    parser.add_argument(
+        "--input_file", help="The input file.", default=None, required=True
+    )
+    parser.add_argument(
+        "--output_file", help="The output file.", default=None, required=True
+    )
+    parser.add_argument(
+        "--opt_epoch", help="the epoch of smooth.", type=int, default=10
+    )
+    parser.add_argument("--lr", help="the learning rate.", type=float, default=1e-3)
+    parser.add_argument(
+        "--conver_tol", help="the control number.", type=float, default=1e-12
+    )
+    parser.add_argument(
+        "--energy_type", help="the energy type.", type=str, default="L1"
+    )
+    return parser.parse_args()
+
+
+def predefined_examples(example_index):
+    """Predefined examples."""
+    example_dir = Path(__file__).parent / "example"
+    examples = {
+        1: {
+            "input_file": example_dir / "first.stl",
+            "output_file": example_dir / "first_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.5,
+            "conver_tol": 0.1,
+            "energy_type": "L1",
+        },
+        2: {
+            "input_file": example_dir / "second.stl",
+            "output_file": example_dir / "second_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.1,
+            "conver_tol": 0.1,
+            "energy_type": "L1",
+        },
+        3: {
+            "input_file": example_dir / "third.stl",
+            "output_file": example_dir / "third_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+        4: {
+            "input_file": example_dir / "fourth.stl",
+            "output_file": example_dir / "fourth_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+        },
+        5: {
+            "input_file": example_dir / "fifth.stl",
+            "output_file": example_dir / "fifth_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+        6: {
+            "input_file": example_dir / "sixth.stl",
+            "output_file": example_dir / "sixth_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+        7: {
+            "input_file": example_dir / "rae2822_bad.stl",
+            "output_file": example_dir / "rae2822_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+        8: {
+            "input_file": example_dir / "30p30n_bad.stl",
+            "output_file": example_dir / "30p30n_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+        9: {
+            "input_file": example_dir / "naca0012_bad.stl",
+            "output_file": example_dir / "naca0012_opt.stl",
+            "opt_epoch": 10,
+            "lr": 0.001,
+            "conver_tol": 0.00001,
+            "energy_type": "L1",
+        },
+    }
+    if example_index in examples:
+        return examples[example_index]
+    else:
+        raise ValueError(f"Example index {example_index} not found.")
+
+
+# if __name__ == "__main__":
+#     args = parse_args()
+#     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.energy_type)
+
+if __name__ == "__main__":
+    example_index = 2  # 选择一个示例
+    example_args = predefined_examples(example_index)
+    run(
+        example_args["input_file"],
+        example_args["output_file"],
+        example_args["opt_epoch"],
+        example_args["lr"],
+        example_args["conver_tol"],
+        example_args["energy_type"],
+    )
