@@ -9,10 +9,7 @@ from pathlib import Path
 from math import sqrt
 
 """
-This code using adam optimization to smooth the mesh. This is the implementation of the paper:
-[1] Guo Y F, Wang C R, Ma Z, et al. A new mesh smoothing method based on a neural network[J]. 
-Computational Mechanics, 2022, 69:425-438.
-
+This code using adam optimization to smooth the mesh. 
 The opensource code is originally from the author's GitHub:
 https://github.com/yfguo91/meshsmoothing
 
@@ -126,7 +123,9 @@ def run(
     lr=0.01,
     conver_tol=0.1,
     energy_type="L1",
-    movement_factor=0.3,
+    # movement_factor=0.3,
+    lr_step_size=1,  # 每步调整学习率的步数
+    lr_gamma=2,  # 学习率衰减系数
 ):
     """使用Adam优化器优化网格"""
     mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
@@ -166,8 +165,23 @@ def run(
     # 优化网格
     start_time = time.time()
 
-    movable_points = [variapoints[i] for i in np.where(~bpindex)[0]]
-    optimizer = optim.Adam(movable_points, lr=lr)  # 创建单个优化器
+    # 创建自适应学习率参数组
+    base_lr = lr
+    param_groups = []
+    for i in np.where(~bpindex)[0]:
+        # 计算初始单元尺寸
+        neighbor_cells = [f for f in vfarray[i] if f != -1]
+        avg_size = compute_local_cell_size(neighbor_cells, variapoints, faces)
+
+        # 设置参数组，学习率与单元尺寸成比例
+        param_groups.append(
+            {"params": variapoints[i], "lr": base_lr * (avg_size + 1e-8)}  # 防止零尺寸
+        )
+    optimizer = optim.Adam(param_groups)  # 使用参数组替代统一学习率
+
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=lr_step_size, gamma=lr_gamma
+    )  # 新增调度器
 
     prev_energy = 0
     for epoch in range(opt_epoch):
@@ -184,53 +198,51 @@ def run(
 
         total_energy.backward()
         optimizer.step()
+        scheduler.step()
 
         # 添加位移限制
+        # with torch.no_grad():
+        # for idx in np.where(~bpindex)[0]:
+        #     # 获取当前节点周围单元的尺寸
+        #     neighbor_cells = [f for f in vfarray[idx] if f != -1]
+        #     avg_cell_size = compute_local_cell_size(
+        #         neighbor_cells, variapoints, faces
+        #     )
+
+        #     # 计算当前位移量
+        #     displacement = variapoints[idx].data - torch.from_numpy(points[idx])
+        #     max_displacement = movement_factor * avg_cell_size
+
+        #     # 限制位移量
+        #     if torch.norm(displacement) > max_displacement:
+        #         clamped_displacement = displacement * (
+        #             max_displacement / (torch.norm(displacement) + 1e-8)
+        #         )
+        #         variapoints[idx].data.copy_(
+        #             torch.from_numpy(points[idx]) + clamped_displacement
+        #         )
+
+        # 训练过程中实时更新学习率
         with torch.no_grad():
-            for idx in np.where(~bpindex)[0]:
-                # 获取当前节点周围单元的尺寸
+            for idx, param_group in zip(np.where(~bpindex)[0], optimizer.param_groups):
                 neighbor_cells = [f for f in vfarray[idx] if f != -1]
-                avg_cell_size = compute_local_cell_size(
+                current_size = compute_local_cell_size(
                     neighbor_cells, variapoints, faces
                 )
-
-                # 计算当前位移量
-                displacement = variapoints[idx].data - torch.from_numpy(points[idx])
-                max_displacement = movement_factor * avg_cell_size
-
-                # 限制位移量
-                if torch.norm(displacement) > max_displacement:
-                    clamped_displacement = displacement * (
-                        max_displacement / (torch.norm(displacement) + 1e-8)
-                    )
-                    variapoints[idx].data.copy_(
-                        torch.from_numpy(points[idx]) + clamped_displacement
-                    )
-
-        # for epoch in range(opt_epoch):
-        # for i in range(0, points.shape[0]):
-        #     if bpindex[i] == True:
-        #         continue
-
-        #     optimizer = optim.Adam([variapoints[i]], lr=lr)
-        #     prev_energy = 0
-        #     for step in range(5):
-        #         optimizer.zero_grad()
-        #         energy = compute_element_energy(vfarray[i], variapoints, faces)
-
-        #         if abs(prev_energy - energy) < conver_tol:
-        #             break
-        #         prev_energy = energy
-        #         energy.backward()
-        #         optimizer.step()
+                param_group["lr"] = base_lr * current_size * scheduler.get_last_lr()[0]
 
         end_time = time.time()
+        lrs = [group["lr"] for group in optimizer.param_groups]
+        avg_lr = sum(lrs) / len(lrs)
+        max_lr = max(lrs)
+        min_lr = min(lrs)
         print(
-            f"epoch {epoch+1}, total_energy = {total_energy:.6f}, time elapsed= {(end_time - start_time):.3f}s"
+            f"epoch {epoch+1}, lr_avg = {avg_lr:.4e}, lr_max = {max_lr:.4e}, lr_min = {min_lr:.4e}, "
+            f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
         )
 
     # 将variapoints转换到points
-    for i in range(0, points.shape[0]):
+    for i in np.where(~bpindex)[0]:
         points[i] = variapoints[i].data.numpy()
 
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
@@ -261,9 +273,9 @@ def parse_args():
     parser.add_argument(
         "--opt_epoch", help="the epoch of smooth.", type=int, default=10
     )
-    parser.add_argument("--lr", help="the learning rate.", type=float, default=1e-3)
+    parser.add_argument("--lr", help="the learning rate.", type=float, default=1e-1)
     parser.add_argument(
-        "--conver_tol", help="the control number.", type=float, default=1e-12
+        "--conver_tol", help="the control number.", type=float, default=1e-1
     )
     parser.add_argument(
         "--energy_type", help="the energy type.", type=str, default="L1"
@@ -278,15 +290,15 @@ def predefined_examples(example_index):
         1: {
             "input_file": example_dir / "first.stl",
             "output_file": example_dir / "first_opt.stl",
-            "opt_epoch": 20,
-            "lr": 0.5,
+            "opt_epoch": 100,
+            "lr": 0.1,
             "conver_tol": 0.1,
             "energy_type": "L1",
         },
         2: {
             "input_file": example_dir / "second.stl",
             "output_file": example_dir / "second_opt.stl",
-            "opt_epoch": 10,
+            "opt_epoch": 100,
             "lr": 0.1,
             "conver_tol": 0.1,
             "energy_type": "L1",
@@ -294,56 +306,57 @@ def predefined_examples(example_index):
         3: {
             "input_file": example_dir / "third.stl",
             "output_file": example_dir / "third_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
         4: {
             "input_file": example_dir / "fourth.stl",
             "output_file": example_dir / "fourth_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
+            "energy_type": "L1",
         },
         5: {
             "input_file": example_dir / "fifth.stl",
             "output_file": example_dir / "fifth_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
         6: {
             "input_file": example_dir / "sixth.stl",
             "output_file": example_dir / "sixth_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
         7: {
             "input_file": example_dir / "rae2822_bad.stl",
             "output_file": example_dir / "rae2822_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
         8: {
             "input_file": example_dir / "30p30n_bad.stl",
             "output_file": example_dir / "30p30n_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
         9: {
             "input_file": example_dir / "naca0012_bad.stl",
             "output_file": example_dir / "naca0012_opt.stl",
-            "opt_epoch": 10,
-            "lr": 0.001,
-            "conver_tol": 0.00001,
+            "opt_epoch": 100,
+            "lr": 0.1,
+            "conver_tol": 0.1,
             "energy_type": "L1",
         },
     }
@@ -358,7 +371,7 @@ def predefined_examples(example_index):
 #     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.energy_type)
 
 if __name__ == "__main__":
-    example_index = 2  # 选择一个示例
+    example_index = 1  # 选择一个示例
     example_args = predefined_examples(example_index)
     run(
         example_args["input_file"],
