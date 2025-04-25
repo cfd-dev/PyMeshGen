@@ -129,7 +129,7 @@ def limit_displacement(
     """限制节点位移的辅助函数"""
     with torch.no_grad():
         for idx in non_boundary_indices:
-            # prev_point = torch.from_numpy(original_points[idx])#限制与原始位置的距离
+            # prev_point = torch.from_numpy(original_points[idx])  # 限制与原始位置的距离
             prev_point = prev_variapoints[idx].data  # 限制与前一步位置的距离
             current_point = variapoints[idx].data
             displacement = current_point - prev_point  # 计算当前位移量
@@ -141,7 +141,7 @@ def limit_displacement(
                 clamped_disp = displacement * (
                     max_allow_disp / (torch.norm(displacement) + 1e-12)
                 )
-                # new_position = original_points[idx] + clamped_disp # 在原始位置上继续位移
+                # new_position = original_points[idx] + clamped_disp  # 在原始位置上位移
                 new_position = prev_point + clamped_disp  # 在上一步的位移基础上继续位移
                 variapoints[idx].data.copy_(new_position)
             else:
@@ -171,8 +171,159 @@ def update_learning_rate_based_on_size(
         )
         param_group["lr"] = base_lr * clamped_size * last_lr
 
+DEFAULT_MOVEMENT_FACTOR = 0.001
+DEFAULT_ITERATION_LIMIT = 100
 
-def run(
+
+def run_element_on_vertex(
+    input_file,
+    output_file,
+    opt_epoch=DEFAULT_ITERATION_LIMIT,
+    lr=0.2,
+    conver_tol=0.1,
+    energy_type="L1",
+    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子0.001
+    lr_step_size=1,  # 每步调整学习率的步数
+    lr_gamma=0.9,  # 学习率衰减系数
+):
+    """使用Adam优化器优化网格，局部优化"""
+    ############################################################################
+    mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
+    points = mesh.vertices  # 网格的点的坐标
+    faces = mesh.faces  # 网格的三角片
+
+    boundary_mask = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
+    boundary_edges = mesh.edges[boundary_mask]  # 边界edges
+    boundary_ids = np.unique(boundary_edges.ravel())  # 边界点的索引
+    bpindex = np.zeros(len(points), dtype=bool)  # 记录边界点flag
+    bpindex[boundary_ids] = True  # boundary point flag
+    vfarray = mesh.vertex_faces  # 记录每个点对应的三角片索引
+    original_points = points.copy()  # 保存原始点位置
+
+    # 打印网格信息
+    print("Input file path: ", input_file)
+    print("Mesh loaded:", not (mesh.is_empty))
+    print("Mesh information:")
+    print("Vertices:", len(mesh.vertices))
+    print("Faces:", len(mesh.faces))
+    print("Edges:", len(mesh.edges))
+    print("Reading input mesh file..., DONE!")
+
+    # mesh.show(
+    #     wireframe=True,  # 启用线框模式
+    #     wireframe_color=[0, 0, 0, 1],  # 黑色线框
+    #     background=[1, 1, 1, 1],  # 白色背景
+    # )
+
+    # 创建变量，将所有节点都设置成变量
+    variapoints = []
+    for i in range(0, points.shape[0]):
+        torch_point = torch.from_numpy(points[i])
+        tfpoint = Variable(torch_point, requires_grad=True)
+        variapoints.append(tfpoint)
+
+    # 预计算所有非边界点的单元尺寸
+    cell_size_cache = {}
+    global_avg_size = 0.0
+    for idx in np.where(~bpindex)[0]:
+        neighbor_cells = [f for f in vfarray[idx] if f != -1]
+        cell_size_cache[idx] = compute_local_cell_size(
+            neighbor_cells, variapoints, faces
+        )
+        global_avg_size += cell_size_cache[idx]
+    global_avg_size /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
+
+    # 创建自适应学习率参数组
+    base_lr = lr
+    param_groups = []
+    for i in np.where(~bpindex)[0]:
+        # 设置参数组，学习率与单元尺寸成比例
+        param_groups.append(
+            {
+                "params": variapoints[i],
+                "lr": base_lr * cell_size_cache[i],
+            }
+        )
+    optimizer = optim.Adam(param_groups)  # 使用参数组替代统一学习率
+
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=lr_step_size, gamma=lr_gamma
+    )
+
+    # 优化网格
+    start_time = time.time()
+    prev_energy = 0
+    for epoch in range(opt_epoch):
+        # prev_variapoints = [p.clone().detach() for p in variapoints]  # 备份当前点位置
+
+        total_energy = 0
+        non_boundary_indices = np.where(~bpindex)[0]
+        for idx in non_boundary_indices:  # 外层：遍历所有非边界节点
+            neighbor_faces = [f for f in vfarray[idx] if f != -1]
+            # 内层：对该节点的局部 patch 进行多步优化
+            for inner_step in range(1):  # 可调整inner_step次数
+                prev_variapoints = [
+                    p.clone().detach() for p in variapoints
+                ]  # 备份当前点位置
+
+                optimizer.zero_grad()
+                local_energy = compute_element_energy(
+                    neighbor_faces, variapoints, faces, energy_type
+                )
+                local_energy.backward()
+                optimizer.step()
+
+                with torch.no_grad():
+                    limit_displacement(
+                        [idx],  # 只限制当前节点
+                        variapoints,
+                        prev_variapoints,
+                        original_points,
+                        vfarray,
+                        faces,
+                        movement_factor,
+                        cell_size_cache,
+                    )
+
+            total_energy += local_energy.item()
+
+        # 判断是否收敛
+        if abs(prev_energy - total_energy) < conver_tol:
+            break
+        prev_energy = total_energy
+        scheduler.step()
+
+        end_time = time.time()
+        lrs = [group["lr"] for group in optimizer.param_groups]
+        avg_lr = sum(lrs) / len(lrs)
+        max_lr = max(lrs)
+        min_lr = min(lrs)
+        print(
+            f"epoch {epoch+1}, lr_min = {min_lr:.3e}, lr_max = {max_lr:.3e}, lr_avg = {avg_lr:.3e}, "
+            f"total_energy = {total_energy:.3f}, time elapsed= {(end_time - start_time):.3f}s"
+        )
+
+    # 将variapoints转换到points
+    for i in np.where(~bpindex)[0]:
+        points[i] = variapoints[i].data.numpy()
+
+    new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
+    new_mesh.export(output_file)
+
+    print("Output file path: ", output_file)
+    print("Export output mesh file..., DONE!")
+
+    # new_mesh.show(
+    #     wireframe=True,
+    #     wireframe_color=[0, 0, 0, 1],
+    #     background=[1, 1, 1, 1],
+    #     smooth=False,
+    # )
+
+    return
+
+
+def run_global_patch(
     input_file,
     output_file,
     opt_epoch=10,
@@ -183,7 +334,8 @@ def run(
     lr_step_size=1,  # 每步调整学习率的步数
     lr_gamma=0.9,  # 学习率衰减系数
 ):
-    """使用Adam优化器优化网格"""
+    """使用Adam优化器优化网格，全局优化"""
+    ############################################################################
     mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
     points = mesh.vertices  # 网格的点的坐标
     faces = mesh.faces  # 网格的三角片
@@ -435,14 +587,18 @@ def predefined_examples(example_index):
 #     args = parse_args()
 #     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.energy_type)
 
+
 if __name__ == "__main__":
-    example_index = 2  # 选择一个示例
+    example_index = 4  # 选择一个示例
     example_args = predefined_examples(example_index)
-    run(
+    run_global_patch(
         example_args["input_file"],
         example_args["output_file"],
         example_args["opt_epoch"],
-        example_args["lr"],
-        example_args["conver_tol"],
-        example_args["energy_type"],
+        example_args.get("lr", 0.2),
+        example_args.get("conver_tol", 0.1),
+        example_args.get("energy_type", "L1"),
+        example_args.get("movement_factor", 0.3),
+        example_args.get("lr_step_size", 1),
+        example_args.get("lr_gamma", 0.9),
     )
