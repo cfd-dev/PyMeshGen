@@ -171,23 +171,12 @@ def update_learning_rate_based_on_size(
         )
         param_group["lr"] = base_lr * clamped_size * last_lr
 
-DEFAULT_MOVEMENT_FACTOR = 0.001
-DEFAULT_ITERATION_LIMIT = 100
 
-
-def run_element_on_vertex(
-    input_file,
-    output_file,
-    opt_epoch=DEFAULT_ITERATION_LIMIT,
-    lr=0.2,
-    conver_tol=0.1,
-    energy_type="L1",
-    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子0.001
-    lr_step_size=1,  # 每步调整学习率的步数
-    lr_gamma=0.9,  # 学习率衰减系数
-):
-    """使用Adam优化器优化网格，局部优化"""
-    ############################################################################
+def init_mesh_and_variables(input_file):
+    """
+    加载网格并初始化优化所需变量
+    返回: points, faces, bpindex, vfarray, original_points, variapoints, cell_size_cache, global_avg_size
+    """
     mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
     points = mesh.vertices  # 网格的点的坐标
     faces = mesh.faces  # 网格的三角片
@@ -209,12 +198,6 @@ def run_element_on_vertex(
     print("Edges:", len(mesh.edges))
     print("Reading input mesh file..., DONE!")
 
-    # mesh.show(
-    #     wireframe=True,  # 启用线框模式
-    #     wireframe_color=[0, 0, 0, 1],  # 黑色线框
-    #     background=[1, 1, 1, 1],  # 白色背景
-    # )
-
     # 创建变量，将所有节点都设置成变量
     variapoints = []
     for i in range(0, points.shape[0]):
@@ -233,7 +216,25 @@ def run_element_on_vertex(
         global_avg_size += cell_size_cache[idx]
     global_avg_size /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
 
-    # 创建自适应学习率参数组
+    return (
+        points,
+        faces,
+        bpindex,
+        vfarray,
+        original_points,
+        variapoints,
+        cell_size_cache,
+        global_avg_size,
+    )
+
+
+def build_adam_optimizer(
+    variapoints, bpindex, cell_size_cache, lr, lr_step_size, lr_gamma
+):
+    """
+    构建自适应学习率的Adam优化器和调度器
+    返回 optimizer, scheduler, param_groups
+    """
     base_lr = lr
     param_groups = []
     for i in np.where(~bpindex)[0]:
@@ -248,6 +249,41 @@ def run_element_on_vertex(
 
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=lr_step_size, gamma=lr_gamma
+    )
+    return optimizer, scheduler, param_groups
+
+
+DEFAULT_MOVEMENT_FACTOR = 0.001
+DEFAULT_ITERATION_LIMIT = 100
+
+
+def run_element_on_vertex(
+    input_file,
+    output_file,
+    opt_epoch=DEFAULT_ITERATION_LIMIT,
+    lr=0.2,
+    conver_tol=0.1,
+    energy_type="L1",
+    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子0.001
+    lr_step_size=1,  # 每步调整学习率的步数
+    lr_gamma=0.9,  # 学习率衰减系数
+):
+    """使用Adam优化器优化网格，局部优化"""
+    ############################################################################
+    (
+        points,
+        faces,
+        bpindex,
+        vfarray,
+        original_points,
+        variapoints,
+        cell_size_cache,
+        global_avg_size,
+    ) = init_mesh_and_variables(input_file)
+
+    # 创建自适应学习率参数组
+    optimizer, scheduler, param_groups = build_adam_optimizer(
+        variapoints, bpindex, cell_size_cache, lr, lr_step_size, lr_gamma
     )
 
     # 优化网格
@@ -336,66 +372,20 @@ def run_global_patch(
 ):
     """使用Adam优化器优化网格，全局优化"""
     ############################################################################
-    mesh = trimesh.load(input_file)  # 这个网格结构可以方便的寻找点面之间的邻接关系
-    points = mesh.vertices  # 网格的点的坐标
-    faces = mesh.faces  # 网格的三角片
-
-    boundary_mask = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
-    boundary_edges = mesh.edges[boundary_mask]  # 边界edges
-    boundary_ids = np.unique(boundary_edges.ravel())  # 边界点的索引
-    bpindex = np.zeros(len(points), dtype=bool)  # 记录边界点flag
-    bpindex[boundary_ids] = True  # boundary point flag
-    vfarray = mesh.vertex_faces  # 记录每个点对应的三角片索引
-    original_points = points.copy()  # 保存原始点位置
-
-    # 打印网格信息
-    print("Input file path: ", input_file)
-    print("Mesh loaded:", not (mesh.is_empty))
-    print("Mesh information:")
-    print("Vertices:", len(mesh.vertices))
-    print("Faces:", len(mesh.faces))
-    print("Edges:", len(mesh.edges))
-    print("Reading input mesh file..., DONE!")
-
-    # mesh.show(
-    #     wireframe=True,  # 启用线框模式
-    #     wireframe_color=[0, 0, 0, 1],  # 黑色线框
-    #     background=[1, 1, 1, 1],  # 白色背景
-    # )
-
-    # 创建变量，将所有节点都设置成变量
-    variapoints = []
-    for i in range(0, points.shape[0]):
-        torch_point = torch.from_numpy(points[i])
-        tfpoint = Variable(torch_point, requires_grad=True)
-        variapoints.append(tfpoint)
-
-    # 预计算所有非边界点的单元尺寸
-    cell_size_cache = {}
-    global_avg_size = 0.0
-    for idx in np.where(~bpindex)[0]:
-        neighbor_cells = [f for f in vfarray[idx] if f != -1]
-        cell_size_cache[idx] = compute_local_cell_size(
-            neighbor_cells, variapoints, faces
-        )
-        global_avg_size += cell_size_cache[idx]
-    global_avg_size /= len(np.where(~bpindex)[0])  # 计算初始全局平均尺寸
+    (
+        points,
+        faces,
+        bpindex,
+        vfarray,
+        original_points,
+        variapoints,
+        cell_size_cache,
+        global_avg_size,
+    ) = init_mesh_and_variables(input_file)
 
     # 创建自适应学习率参数组
-    base_lr = lr
-    param_groups = []
-    for i in np.where(~bpindex)[0]:
-        # 设置参数组，学习率与单元尺寸成比例
-        param_groups.append(
-            {
-                "params": variapoints[i],
-                "lr": base_lr * cell_size_cache[i],
-            }
-        )
-    optimizer = optim.Adam(param_groups)  # 使用参数组替代统一学习率
-
-    scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer, step_size=lr_step_size, gamma=lr_gamma
+    optimizer, scheduler, param_groups = build_adam_optimizer(
+        variapoints, bpindex, cell_size_cache, lr, lr_step_size, lr_gamma
     )
 
     # 优化网格
@@ -589,7 +579,7 @@ def predefined_examples(example_index):
 
 
 if __name__ == "__main__":
-    example_index = 4  # 选择一个示例
+    example_index = 1  # 选择一个示例
     example_args = predefined_examples(example_index)
     run_global_patch(
         example_args["input_file"],
