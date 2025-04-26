@@ -17,15 +17,15 @@ https://github.com/yfguo91/meshsmoothing
 The code is modified by the author of this repository to make it more readable and usable.
 """
 
-DEFAULT_MOVEMENT_FACTOR = 0.3  # 位移限制因子
+DEFAULT_MOVEMENT_FACTOR = 0.1  # 位移限制因子
 DEFAULT_ITERATION_LIMIT = 100  # 最大迭代次数
 DEFAULT_LEARNING_RATE = 0.2  # 学习率
-DEFAULT_CONVERGENCE_TOLERANCE = 0.1  # 收敛容忍度
+DEFAULT_CONVERGENCE_TOLERANCE = 0.1  # 收敛容差
 DEFAULT_OBJ_FUNC = "L1"  # 目标函数类型
 DEFAULT_LR_STEP_SIZE = 1  # 学习率调整步数
 DEFAULT_LR_GAMMA = 0.9  # 学习率衰减系数
-DEFAULT_INNER_STEPS = 5  # 内层优化步数
-
+DEFAULT_INNER_STEPS = 1  # 内层优化步数
+DEFAULT_PRE_SMOOTH_ITER = 2  # laplacian预光滑步数
 
 def laplacian(ring):
     newpoints = np.mean(ring, axis=0)
@@ -315,6 +315,44 @@ def optimize_single_node(
     return local_energy.item()
 
 
+def pre_laplacian_smooth(
+    points,
+    faces,
+    vertex_faces,
+    non_boundary_indices,
+    variapoints,
+    num_iter=DEFAULT_PRE_SMOOTH_ITER,
+):
+    """
+    对所有非边界点进行laplacian平滑
+    points: 节点坐标数组
+    faces: 三角片索引
+    vertex_faces: 每个点连接的三角片索引
+    non_boundary_indices: 非边界点索引
+    variapoints: torch变量列表
+    num_iter: 平滑迭代次数
+    """
+    start = time.time()
+    for _ in range(num_iter):
+        for idx in non_boundary_indices:
+            neighbor_faces = [f for f in vertex_faces[idx] if f != -1]
+            # 获取所有邻居点的索引
+            neighbor_vertices = set()
+            for fidx in neighbor_faces:
+                neighbor_vertices.update(faces[fidx])
+            neighbor_vertices.discard(idx)  # 可选：去掉自身
+            if not neighbor_vertices:
+                continue
+            neighbor_points = np.array([points[v] for v in neighbor_vertices])
+            newpoint = laplacian(neighbor_points)
+            variapoints[idx].data.copy_(torch.from_numpy(newpoint))
+            points[idx] = newpoint
+
+    end = time.time()
+    print(f"Laplacian pre-smoothing {num_iter} iters, time: {end - start:.3f}s")
+    return points, variapoints
+
+
 def run_element_on_vertex(
     input_file,
     output_file,
@@ -340,12 +378,18 @@ def run_element_on_vertex(
         global_avg_size,  # 全局平均尺寸
     ) = init_mesh_and_variables(input_file)
 
+    # 预处理：先使用laplacian平滑1次
+    points, variapoints = pre_laplacian_smooth(
+        points, faces, vertex_faces, non_boundary_indices, variapoints
+    )
+
     # 创建自适应学习率参数组
     optimizer, scheduler, param_groups = build_adam_optimizer(
         variapoints, non_boundary_indices, cell_size_cache, lr, lr_step_size, lr_gamma
     )
 
     # 优化网格
+    print("Smoothing mesh using local patch optimization...")
     start_time = time.time()
     prev_energy = 0
     for epoch in range(opt_epoch):
@@ -357,8 +401,9 @@ def run_element_on_vertex(
             neighbor_faces = [f for f in vertex_faces[idx] if f != -1]
 
             # 内层：对该节点的局部 patch 进行多步优化
+            local_energy = 0.0
             for istep in range(inner_steps):
-                total_energy += optimize_single_node(
+                local_energy = optimize_single_node(
                     idx,
                     neighbor_faces,
                     variapoints,
@@ -369,6 +414,8 @@ def run_element_on_vertex(
                     movement_factor,
                     cell_size_cache,
                 )
+
+            total_energy += local_energy
 
         # 统一做位移限制
         with torch.no_grad():
@@ -394,6 +441,8 @@ def run_element_on_vertex(
     # 将variapoints转换到points
     for i in non_boundary_indices:
         points[i] = variapoints[i].data.numpy()
+
+    print("Smoothing mesh using local patch optimization..., DONE!")
 
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     new_mesh.export(output_file)
@@ -436,12 +485,18 @@ def run_global_patch(
         global_avg_size,
     ) = init_mesh_and_variables(input_file)
 
+    # 预处理：先使用laplacian平滑1次
+    points, variapoints = pre_laplacian_smooth(
+        points, faces, vertex_faces, non_boundary_indices, variapoints
+    )
+
     # 创建自适应学习率参数组
     optimizer, scheduler, param_groups = build_adam_optimizer(
         variapoints, non_boundary_indices, cell_size_cache, lr, lr_step_size, lr_gamma
     )
 
     # 优化网格
+    print("Smoothing mesh using global patch optimization...")
     start_time = time.time()
     prev_energy = 0
     for epoch in range(opt_epoch):
@@ -491,6 +546,8 @@ def run_global_patch(
     # 将variapoints转换到points
     for i in non_boundary_indices:
         points[i] = variapoints[i].data.numpy()
+
+    print("Smoothing mesh using global patch optimization..., DONE!")
 
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     new_mesh.export(output_file)
@@ -652,10 +709,10 @@ if __name__ == "__main__":
             )
     else:
         # 默认示例参数
-        example_index = 1  # 可修改为其他示例
+        example_index = 8  # 可修改为其他示例
         example_args = predefined_examples(example_index)
-        # run_element_on_vertex(
-        run_global_patch(
+        run_element_on_vertex(
+            # run_global_patch(
             example_args.get("input_file", "example/first.stl"),
             example_args.get("output_file", "example/first_opt.stl"),
             example_args.get("opt_epoch", DEFAULT_ITERATION_LIMIT),
