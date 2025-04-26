@@ -7,6 +7,7 @@ import time
 import trimesh
 from pathlib import Path
 from math import sqrt
+import sys
 
 """
 This code using adam optimization to smooth the mesh. 
@@ -16,6 +17,15 @@ https://github.com/yfguo91/meshsmoothing
 The code is modified by the author of this repository to make it more readable and usable.
 """
 
+DEFAULT_MOVEMENT_FACTOR = 0.3  # 位移限制因子
+DEFAULT_ITERATION_LIMIT = 100  # 最大迭代次数
+DEFAULT_LEARNING_RATE = 0.2  # 学习率
+DEFAULT_CONVERGENCE_TOLERANCE = 0.1  # 收敛容忍度
+DEFAULT_OBJ_FUNC = "L1"  # 目标函数类型
+DEFAULT_LR_STEP_SIZE = 1  # 学习率调整步数
+DEFAULT_LR_GAMMA = 0.9  # 学习率衰减系数
+DEFAULT_INNER_STEPS = 5  # 内层优化步数
+
 
 def laplacian(ring):
     newpoints = np.mean(ring, axis=0)
@@ -24,7 +34,7 @@ def laplacian(ring):
 
 def calc_area(p1, p2, p3):
     """计算三角形面积
-    return (0.5 * |p4 x p5|)
+    return (0.5 * |v1 x v2|)
     """
     v1 = p2 - p1
     v2 = p3 - p1
@@ -305,21 +315,17 @@ def optimize_single_node(
     return local_energy.item()
 
 
-DEFAULT_MOVEMENT_FACTOR = 0.001
-DEFAULT_ITERATION_LIMIT = 100
-
-
 def run_element_on_vertex(
     input_file,
     output_file,
     opt_epoch=DEFAULT_ITERATION_LIMIT,
-    lr=0.2,
-    conver_tol=0.1,
-    obj_func="L1",
-    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子0.001
-    lr_step_size=1,  # 每步调整学习率的步数
-    lr_gamma=0.9,  # 学习率衰减系数
-    inner_steps=5,  # 内层优化步数
+    lr=DEFAULT_LEARNING_RATE,
+    conver_tol=DEFAULT_CONVERGENCE_TOLERANCE,
+    obj_func=DEFAULT_OBJ_FUNC,
+    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子
+    lr_step_size=DEFAULT_LR_STEP_SIZE,  # 每步调整学习率的步数
+    lr_gamma=DEFAULT_LR_GAMMA,  # 学习率衰减系数
+    inner_steps=DEFAULT_INNER_STEPS,  # 内层优化步数
 ):
     """使用Adam优化器优化网格，局部优化"""
     ############################################################################
@@ -408,14 +414,14 @@ def run_element_on_vertex(
 def run_global_patch(
     input_file,
     output_file,
-    opt_epoch=10,
-    lr=0.2,
-    conver_tol=0.1,
-    obj_func="L1",
-    movement_factor=0.3,  # 位移限制因子
-    lr_step_size=1,  # 每步调整学习率的步数
-    lr_gamma=0.9,  # 学习率衰减系数
-    inner_steps=5,  # 内层优化步数
+    opt_epoch=DEFAULT_ITERATION_LIMIT,
+    lr=DEFAULT_LEARNING_RATE,
+    conver_tol=DEFAULT_CONVERGENCE_TOLERANCE,
+    obj_func=DEFAULT_OBJ_FUNC,
+    movement_factor=DEFAULT_MOVEMENT_FACTOR,  # 位移限制因子
+    lr_step_size=DEFAULT_LR_STEP_SIZE,  # 每步调整学习率的步数
+    lr_gamma=DEFAULT_LR_GAMMA,  # 学习率衰减系数
+    inner_steps=DEFAULT_INNER_STEPS,  # 内层优化步数
 ):
     """使用Adam优化器优化网格，全局优化"""
     ############################################################################
@@ -512,13 +518,58 @@ def parse_args():
         "--output_file", help="The output file.", default=None, required=True
     )
     parser.add_argument(
-        "--opt_epoch", help="the epoch of smooth.", type=int, default=10
+        "--opt_epoch",
+        help="the epoch of smoothing.",
+        type=int,
+        default=DEFAULT_ITERATION_LIMIT,
     )
-    parser.add_argument("--lr", help="the learning rate.", type=float, default=1e-1)
     parser.add_argument(
-        "--conver_tol", help="the control number.", type=float, default=1e-1
+        "--lr", help="the learning rate.", type=float, default=DEFAULT_LEARNING_RATE
     )
-    parser.add_argument("--obj_func", help="the energy type.", type=str, default="L1")
+    parser.add_argument(
+        "--conver_tol",
+        help="the convergence tolerance.",
+        type=float,
+        default=DEFAULT_CONVERGENCE_TOLERANCE,
+    )
+    parser.add_argument(
+        "--obj_func", help="the energy type.", type=str, default=DEFAULT_OBJ_FUNC
+    )
+    parser.add_argument(
+        "--movement_factor",
+        help="the movement factor.",
+        type=float,
+        default=DEFAULT_MOVEMENT_FACTOR,
+    )
+    parser.add_argument(
+        "--lr_step_size",
+        help="the step size of learning rate.",
+        type=int,
+        default=DEFAULT_LR_STEP_SIZE,
+    )
+    parser.add_argument(
+        "--lr_gamma",
+        help="the gamma of learning rate.",
+        type=float,
+        default=DEFAULT_LR_GAMMA,
+    )
+    parser.add_argument(
+        "--inner_steps",
+        help="the inner steps.",
+        type=int,
+        default=DEFAULT_INNER_STEPS,
+    )
+    parser.add_argument(
+        "--example_index",
+        help="the example index.",
+        type=int,
+    )
+    parser.add_argument(
+        "--global_patch",
+        help="use global patch.",
+        action="store_true",
+    )
+
     return parser.parse_args()
 
 
@@ -530,74 +581,38 @@ def predefined_examples(example_index):
         1: {
             "input_file": example_dir / "first.stl",
             "output_file": example_dir / "first_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         2: {
             "input_file": example_dir / "second.stl",
             "output_file": example_dir / "second_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         3: {
             "input_file": example_dir / "third.stl",
             "output_file": example_dir / "third_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         4: {
             "input_file": example_dir / "fourth.stl",
             "output_file": example_dir / "fourth_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         5: {
             "input_file": example_dir / "fifth.stl",
             "output_file": example_dir / "fifth_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         6: {
             "input_file": example_dir / "sixth.stl",
             "output_file": example_dir / "sixth_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         7: {
             "input_file": example_dir / "rae2822_bad.stl",
             "output_file": example_dir / "rae2822_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         8: {
             "input_file": example_dir / "30p30n_bad.stl",
             "output_file": example_dir / "30p30n_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
         9: {
             "input_file": example_dir / "naca0012_bad.stl",
             "output_file": example_dir / "naca0012_opt.stl",
-            "opt_epoch": 100,
-            "lr": 0.2,
-            "conver_tol": 0.1,
-            "obj_func": "L1",
         },
     }
     if example_index in examples:
@@ -606,23 +621,49 @@ def predefined_examples(example_index):
         raise ValueError(f"Example index {example_index} not found.")
 
 
-# if __name__ == "__main__":
-#     args = parse_args()
-#     run(args.input_file, args.output_file, args.opt_epoch, args.lr, args.conver_tol, args.obj_func)
-
-
 if __name__ == "__main__":
-    example_index = 1  # 选择一个示例
-    example_args = predefined_examples(example_index)
-    run_global_patch(
-        example_args["input_file"],
-        example_args["output_file"],
-        example_args["opt_epoch"],
-        example_args.get("lr", 0.2),
-        example_args.get("conver_tol", 0.1),
-        example_args.get("obj_func", "L1"),
-        example_args.get("movement_factor", 0.3),
-        example_args.get("lr_step_size", 1),
-        example_args.get("lr_gamma", 0.9),
-        example_args.get("inner_steps", 5),
-    )
+    # 支持直接运行和示例调用
+    if len(sys.argv) > 1:
+        args = parse_args()
+        if getattr(args, "global_patch", False):
+            run_global_patch(
+                args.input_file,
+                args.output_file,
+                args.opt_epoch,
+                args.lr,
+                args.conver_tol,
+                args.obj_func,
+                args.movement_factor,
+                args.lr_step_size,
+                args.lr_gamma,
+            )
+        else:
+            run_element_on_vertex(
+                args.input_file,
+                args.output_file,
+                args.opt_epoch,
+                args.lr,
+                args.conver_tol,
+                args.obj_func,
+                args.movement_factor,
+                args.lr_step_size,
+                args.lr_gamma,
+                args.inner_steps,
+            )
+    else:
+        # 默认示例参数
+        example_index = 1  # 可修改为其他示例
+        example_args = predefined_examples(example_index)
+        # run_element_on_vertex(
+        run_global_patch(
+            example_args.get("input_file", "example/first.stl"),
+            example_args.get("output_file", "example/first_opt.stl"),
+            example_args.get("opt_epoch", DEFAULT_ITERATION_LIMIT),
+            example_args.get("lr", DEFAULT_LEARNING_RATE),
+            example_args.get("conver_tol", DEFAULT_CONVERGENCE_TOLERANCE),
+            example_args.get("obj_func", DEFAULT_OBJ_FUNC),
+            example_args.get("movement_factor", DEFAULT_MOVEMENT_FACTOR),
+            example_args.get("lr_step_size", DEFAULT_LR_STEP_SIZE),
+            example_args.get("lr_gamma", DEFAULT_LR_GAMMA),
+            example_args.get("inner_steps", DEFAULT_INNER_STEPS),
+        )
