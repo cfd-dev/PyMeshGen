@@ -349,7 +349,7 @@ def pre_laplacian_smooth(
             points[idx] = newpoint
 
     end = time.time()
-    print(f"Laplacian pre-smoothing {num_iter} iters, time: {end - start:.3f}s")
+    print(f"Laplacian pre-smoothing {num_iter} iters, time elapsed: {end - start:.3f}s")
     return points, variapoints
 
 
