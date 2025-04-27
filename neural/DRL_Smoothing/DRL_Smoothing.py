@@ -42,9 +42,10 @@ class DRLSmoothingEnv(gym.Env):
         param_obj=None,
     ):
         super(DRLSmoothingEnv, self).__init__()
-        self.action_dim = 2  # 动作维度
         self.viz_enabled = param_obj["viz_enabled"]
         self.max_ring_nodes = param_obj["max_ring_nodes"]
+        self.action_dim = 2  # 动作维度
+        self.obs_dim = self.max_ring_nodes * 2
 
         # shape quality所占权重，skewness权重为1-shape_coeff
         self.shape_coeff = param_obj["shape_coeff"]
@@ -73,10 +74,10 @@ class DRLSmoothingEnv(gym.Env):
 
         # 初始化观测和动作空间
         self.observation_space = gym.spaces.Box(
-            low=0.0, high=1.0, shape=(self.max_ring_nodes, 2), dtype=np.float32
+            low=0.0, high=1.0, shape=(self.obs_dim,), dtype=np.float32
         )
         self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(1, self.action_dim), dtype=np.float32
+            low=-1.0, high=1.0, shape=(self.action_dim,), dtype=np.float32
         )
 
     def init_state(self):
@@ -106,7 +107,7 @@ class DRLSmoothingEnv(gym.Env):
         # 截断超长部分
         normalized_coords = normalized_coords[: self.max_ring_nodes]
 
-        self.state = normalized_coords.copy()
+        self.state = normalized_coords.copy().reshape(-1)  # 展平成一维
 
     def reset(self):
         self.done = False
@@ -121,7 +122,7 @@ class DRLSmoothingEnv(gym.Env):
         return self.get_obs()
 
     def get_obs(self):
-        return self.state.copy()
+        return self.state.copy().reshape(-1)  # 保证返回一维
 
     def plot_normalized_ring(self, new_point):
         # 绘制归一化后的环节点
@@ -133,7 +134,7 @@ class DRLSmoothingEnv(gym.Env):
         current_point = normalize_point(current_point, self.local_range)
         ax.scatter(current_point[0], current_point[1], color="green")
         ax.scatter(new_point[0], new_point[1], color="red")
-        ax.set_aspect('equal')
+        ax.set_aspect("equal")
 
     def plot_ring_and_action(self, new_point):
         # self.plot_normalized_ring(new_point)
@@ -150,6 +151,7 @@ class DRLSmoothingEnv(gym.Env):
         reward = 0
         self.done = False
 
+        action = np.asarray(action).reshape(-1)  # 保证action是一维
         # 对于超出最大环节点数的动作，使用形心代替
         if len(self.ring_coords) > self.max_ring_nodes:
             action = centroid(self.normalized_ring_coords)
@@ -167,9 +169,9 @@ class DRLSmoothingEnv(gym.Env):
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
 
         # 计算下一个状态，如果当前步给了惩罚，则退出重来
-        if not (reward < 0 or self.done):
-            self.current_node_id += 1
-            self.init_state()
+        # if not (reward < 0 or self.done):
+        self.current_node_id += 1
+        self.init_state()
 
         return self.get_obs(), reward, self.done
 
@@ -178,10 +180,10 @@ class DRLSmoothingEnv(gym.Env):
         reward = 0.0
         new_point = np.squeeze(new_point)
         if not point_in_polygon(new_point, self.normalized_ring_coords):
-            self.done = True
+            # self.done = True
             center_point = centroid(self.normalized_ring_coords)
             dis = calculate_distance(new_point, center_point)
-            reward = -1.0 * dis  # 距离惩罚
+            reward = -2.0 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -268,16 +270,18 @@ class Actor(nn.Module):
 
 class DDPGAgent:
     def __init__(self, env):
-        state_dim = np.prod(env.observation_space.shape)
-        action_dim = np.prod(env.action_space.shape)
+        # state_dim = np.prod(env.observation_space.shape)
+        # action_dim = np.prod(env.action_space.shape)
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.shape[0]
 
         self.actor = Actor(state_dim, action_dim)
         self.critic = Critic(state_dim, action_dim)
         self.target_actor = Actor(state_dim, action_dim)
         self.target_critic = Critic(state_dim, action_dim)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=3e-4)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=1e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
 
         self.batch_size = 64
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
@@ -290,7 +294,7 @@ class DDPGAgent:
         # OU噪声
         self.noise = OrnsteinUhlenbeckActionNoise(
             mean=np.zeros(env.action_space.shape),
-            sigma=0.3 * np.ones(env.action_space.shape),
+            sigma=0.1 * np.ones(env.action_space.shape),
             theta=0.15,
             dt=1e-2,
         )
@@ -427,22 +431,25 @@ class MeshReplayBufferSB3(ReplayBuffer):
 class MeshReplayBuffer:
     def __init__(self, buffer_size):
         self.buffer_size = int(buffer_size)
-        self.buffer = deque(maxlen=self.buffer_size)  # 使用双端队列替代列表
+        self.buffer = deque(maxlen=self.buffer_size)
 
     def add(self, obs, next_obs, action, reward, done):
-        experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
-        self.buffer.append(experience)  # 自动处理缓冲区满的情况
+        # experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
+        import copy
+
+        experience = (
+            copy.deepcopy(obs),
+            copy.deepcopy(next_obs),
+            copy.deepcopy(action),
+            reward,
+            done,
+        )
+
+        self.buffer.append(experience)
 
     def sample(self, batch_size):
-        indices = np.random.choice(len(self.buffer), batch_size)
-        # # 改为优先经验回放
-        # priorities = np.abs(np.array([item[3] for item in self.buffer])) + 1e-5  # 使用奖励绝对值作为优先级
-        # probabilities = priorities / np.sum(priorities)
-        # indices = np.random.choice(len(self.buffer), batch_size, p=probabilities)
+        batch = random.sample(self.buffer, batch_size)
 
-        batch = [self.buffer[i] for i in indices]
-
-        # 保持原有数据处理逻辑不变
         observations = np.array([item[0] for item in batch])
         next_observations = np.array([item[1] for item in batch])
         actions = np.array([item[2] for item in batch])
@@ -453,6 +460,7 @@ class MeshReplayBuffer:
 
     def __len__(self):
         return len(self.buffer)
+
 
 class GaussianNoise:
     def __init__(self, mu, sigma, action_dim):
@@ -552,7 +560,7 @@ if __name__ == "__main__":
         "shape_coeff": 0.0,
         "min_coeff": 1.0,
         "max_episodes": 100000,
-        "save_interval": 1000,
+        "save_interval": 100000,
         "viz_history": False,
     }
 
