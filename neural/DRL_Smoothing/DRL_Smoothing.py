@@ -30,7 +30,7 @@ from geom_toolkit import (
 )
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization, plot_polygon
-from geom_normalization import normalize_ploygon, denormalize_point, normalize_point
+from geom_normalization import normalize_polygon, denormalize_point, normalize_point
 from basic_elements import Triangle, Quadrilateral
 
 
@@ -81,7 +81,7 @@ class DRLSmoothingEnv(gym.Env):
         )
 
     def init_state(self):
-        # 遇到边界节点时，跳过并寻找下一个非边界节点
+        # 遇到边界节点时，跳过并遍历下一个非边界节点
         while self.current_node_id in self.initial_grid.boundary_nodes_list:
             self.current_node_id += 1
 
@@ -96,13 +96,15 @@ class DRLSmoothingEnv(gym.Env):
             [self.initial_grid.node_coords[i] for i in node_ids]
         )
 
-        normalized_coords, self.local_range = normalize_ploygon(self.ring_coords)
+        normalized_coords, self.local_range = normalize_polygon(self.ring_coords)
         self.normalized_ring_coords = normalized_coords
 
         # 填充至固定长度
         if len(normalized_coords) < self.max_ring_nodes:
-            # pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
-            pad = np.full((self.max_ring_nodes - len(normalized_coords), 2), -1e-15)
+            # pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2)) # 填充为0
+            pad = np.full(
+                (self.max_ring_nodes - len(normalized_coords), 2), -1e-15
+            )  # 填充为-1e-15
             normalized_coords = np.vstack([normalized_coords, pad])
 
         # 截断超长部分
@@ -161,7 +163,6 @@ class DRLSmoothingEnv(gym.Env):
                 ]
 
     def step(self, action):
-        observation = self.get_obs()
         reward = 0
         self.done = False
 
@@ -259,15 +260,15 @@ class Critic(nn.Module):
             nn.Linear(4 * hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
-            # nn.ReLU(),
+            nn.ReLU(),
+            nn.Linear(hidden_dim // 2, hidden_dim // 2),
         )
 
         # Action processing path
         self.action_path = nn.Sequential(
             nn.Linear(action_dim, hidden_dim // 2),
-            # nn.Linear(action_dim, hidden_dim),
             nn.ReLU(),
-            # nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Linear(hidden_dim // 2, hidden_dim // 2),
         )
         # Common path
         self.common_path = nn.Sequential(
@@ -300,6 +301,8 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             # nn.Tanh(),
         )
@@ -315,9 +318,8 @@ class Actor(nn.Module):
 
 
 class DDPGAgent:
+
     def __init__(self, env):
-        # state_dim = np.prod(env.observation_space.shape)
-        # action_dim = np.prod(env.action_space.shape)
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
 
@@ -352,7 +354,7 @@ class DDPGAgent:
             dt=1e-2,
         )
         self.current_sigma = 0.3  # 初始sigma值
-        self.sigma_decay = 0.999  # 衰减系数
+        self.sigma_decay = 0.99  # 衰减系数
         self.min_sigma = 0.01  # 最小sigma值
 
         # GaussianNoise噪声：
