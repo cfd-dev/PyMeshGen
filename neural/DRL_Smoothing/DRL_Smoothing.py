@@ -101,7 +101,8 @@ class DRLSmoothingEnv(gym.Env):
 
         # 填充至固定长度
         if len(normalized_coords) < self.max_ring_nodes:
-            pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
+            # pad = np.zeros((self.max_ring_nodes - len(normalized_coords), 2))
+            pad = np.full((self.max_ring_nodes - len(normalized_coords), 2), -1e-15)
             normalized_coords = np.vstack([normalized_coords, pad])
 
         # 截断超长部分
@@ -169,9 +170,9 @@ class DRLSmoothingEnv(gym.Env):
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
 
         # 计算下一个状态，如果当前步给了惩罚，则退出重来
-        # if not (reward < 0 or self.done):
-        self.current_node_id += 1
-        self.init_state()
+        if not (reward < 0 or self.done):
+            self.current_node_id += 1
+            self.init_state()
 
         return self.get_obs(), reward, self.done
 
@@ -180,10 +181,10 @@ class DRLSmoothingEnv(gym.Env):
         reward = 0.0
         new_point = np.squeeze(new_point)
         if not point_in_polygon(new_point, self.normalized_ring_coords):
-            # self.done = True
+            self.done = True
             center_point = centroid(self.normalized_ring_coords)
             dis = calculate_distance(new_point, center_point)
-            reward = -2.0 * dis  # 距离惩罚
+            reward = -1.0 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -219,7 +220,6 @@ class Critic(nn.Module):
         self.action_path = nn.Sequential(
             nn.Linear(action_dim, hidden_dim // 2),
             # nn.Linear(action_dim, hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             # nn.Linear(hidden_dim, hidden_dim // 2),
         )
@@ -283,6 +283,13 @@ class DDPGAgent:
         self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
 
+        # # 添加学习率调度器
+        # self.actor_scheduler = optim.lr_scheduler.StepLR(
+        #     self.actor_optimizer, step_size=5000, gamma=0.95
+        # )
+        # self.critic_scheduler = optim.lr_scheduler.StepLR(
+        #     self.critic_optimizer, step_size=5000, gamma=0.95
+        # )
         self.batch_size = 64
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
         self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
@@ -294,10 +301,13 @@ class DDPGAgent:
         # OU噪声
         self.noise = OrnsteinUhlenbeckActionNoise(
             mean=np.zeros(env.action_space.shape),
-            sigma=0.1 * np.ones(env.action_space.shape),
+            sigma=0.3 * np.ones(env.action_space.shape),
             theta=0.15,
             dt=1e-2,
         )
+        self.current_sigma = 0.3  # 初始sigma值
+        self.sigma_decay = 0.9  # 衰减系数
+        self.min_sigma = 0.01  # 最小sigma值
 
         # GaussianNoise噪声：
         # self.noise = GaussianNoise(
@@ -371,6 +381,9 @@ class DDPGAgent:
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
+        # torch.nn.utils.clip_grad_norm_(
+        # self.critic.parameters(), max_norm=1.0
+        # )  # 添加梯度剪裁
         self.critic_optimizer.step()
 
         # Actor更新
@@ -379,18 +392,33 @@ class DDPGAgent:
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
+        # torch.nn.utils.clip_grad_norm_(
+        # self.actor.parameters(), max_norm=1.0
+        # )  # 添加梯度剪裁
         self.actor_optimizer.step()
 
         # 软更新目标网络
         self.soft_update()
 
+        # 更新学习率
+        # self.actor_scheduler.step()
+        # self.critic_scheduler.step()
+
     def select_action(self, state):
         with torch.no_grad():
             state = torch.FloatTensor(state.flatten())
             action = self.actor(state)
+
+            # 生成带衰减的噪声
             noise = torch.tensor(self.noise(), dtype=torch.float32)
             action = action + noise
-            action = np.clip(action.detach().numpy().reshape(-1, 2), -1, 1)
+            action = action.detach().numpy().reshape(-1, 2)
+
+            # 更新sigma值
+            self.current_sigma = max(
+                self.sigma_decay * self.current_sigma, self.min_sigma
+            )
+            self.noise._sigma = self.current_sigma * np.ones(action.shape)
             return action
 
 
@@ -434,17 +462,7 @@ class MeshReplayBuffer:
         self.buffer = deque(maxlen=self.buffer_size)
 
     def add(self, obs, next_obs, action, reward, done):
-        # experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
-        import copy
-
-        experience = (
-            copy.deepcopy(obs),
-            copy.deepcopy(next_obs),
-            copy.deepcopy(action),
-            reward,
-            done,
-        )
-
+        experience = (obs.copy(), next_obs.copy(), action.copy(), reward, done)
         self.buffer.append(experience)
 
     def sample(self, batch_size):
