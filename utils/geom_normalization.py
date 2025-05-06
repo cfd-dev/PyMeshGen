@@ -19,7 +19,8 @@ def normalize_point(point, local_range):
 
     return np.squeeze(new_point)
 
-def normalize_ploygon(polygon_coords):
+
+def normalize_polygon(polygon_coords):
     # 计算坐标范围
     x_min, x_max = np.min(polygon_coords[:, 0]), np.max(polygon_coords[:, 0])
     y_min, y_max = np.min(polygon_coords[:, 1]), np.max(polygon_coords[:, 1])
@@ -39,7 +40,7 @@ def normalize_ploygon(polygon_coords):
     return normalized_coords, local_range
 
 
-# def normalize_ploygon(polygon_coords):
+# def normalize_polygon(polygon_coords):
 #     if polygon_coords.shape[1] == 2:
 #         polygon_coords = np.hstack([polygon_coords, np.zeros((len(polygon_coords), 1))])
 
