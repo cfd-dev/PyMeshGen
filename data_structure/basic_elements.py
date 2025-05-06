@@ -164,20 +164,20 @@ class Triangle:
             return self.hash == other.hash
         return False
 
-    def init_metrics(self):
-        if self.area is None:
+    def init_metrics(self, force_update=False):
+        if self.area is None or force_update:
             self.area = triangle_area(self.p1, self.p2, self.p3)
             if self.area == 0.0:
                 raise ValueError(
                     f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
-        if self.quality is None:
+        if self.quality is None or force_update:
             self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
             if self.quality == 0.0:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
-        if self.skewness is None:
+        if self.skewness is None or force_update:
             self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
 
     def get_quality(self):
@@ -271,14 +271,14 @@ class Quadrilateral:
             return self.hash == other.hash
         return False
 
-    def init_metrics(self):
-        if self.area is None:
+    def init_metrics(self, force_update=False):
+        if self.area is None or force_update:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
             if self.area == 0.0:
                 warning(
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-        if self.quality is None:
+        if self.quality is None or force_update:
             self.quality = quadrilateral_shape_quality(
                 self.p1, self.p2, self.p3, self.p4
             )
@@ -287,7 +287,7 @@ class Quadrilateral:
                 warning(
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-        if self.skewness is None:
+        if self.skewness is None or force_update:
             self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
 
     def get_skewness(self):

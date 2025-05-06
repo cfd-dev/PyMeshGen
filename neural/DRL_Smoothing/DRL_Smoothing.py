@@ -20,7 +20,6 @@ from collections import deque
 import matplotlib.pyplot as plt
 import gym
 from stable_baselines3.common.noise import OrnsteinUhlenbeckActionNoise
-from stable_baselines3.common.buffers import ReplayBuffer
 
 from optimize import node_perturbation
 from geom_toolkit import (
@@ -32,6 +31,7 @@ from geom_toolkit import (
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization, plot_polygon
 from geom_normalization import normalize_ploygon, denormalize_point, normalize_point
+from basic_elements import Triangle, Quadrilateral
 
 
 class DRLSmoothingEnv(gym.Env):
@@ -147,6 +147,19 @@ class DRLSmoothingEnv(gym.Env):
         self.ax.scatter(new_point[0], new_point[1], color="red")
         plt.pause(0.001)
 
+    def update_neighbor_cells(self, node_id):
+        """更新与节点相关的单元的几何信息"""
+        neighbor_cells = self.initial_grid.node2cell[node_id]
+        for cell in neighbor_cells:
+            if isinstance(cell, Triangle):
+                cell.p1, cell.p2, cell.p3 = [
+                    self.initial_grid.node_coords[i] for i in cell.node_ids
+                ]
+            elif isinstance(cell, Quadrilateral):
+                cell.p1, cell.p2, cell.p3, cell.p4 = [
+                    self.initial_grid.node_coords[i] for i in cell.node_ids
+                ]
+
     def step(self, action):
         observation = self.get_obs()
         reward = 0
@@ -164,10 +177,13 @@ class DRLSmoothingEnv(gym.Env):
             self.initial_grid.visualize_unstr_grid_2d(self.visual_obj)
             self.plot_ring_and_action(action)
 
-        reward = self.compute_reward(action)
-
+        # 注意先更新坐标，再计算奖励
         new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
         self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
+        # 更新与当前节点相关的单元的几何信息
+        self.update_neighbor_cells(self.current_node_id)
+
+        reward = self.compute_reward(action)
 
         # 计算下一个状态，如果当前步给了惩罚，则退出重来
         if not (reward < 0 or self.done):
@@ -189,6 +205,11 @@ class DRLSmoothingEnv(gym.Env):
 
         # 当前节点的邻居单元及其质量
         neigbor_cells = self.initial_grid.node2cell[self.current_node_id]
+
+        # 更新邻居单元的质量，此处需要强制更新
+        for cell in neigbor_cells:
+            cell.init_metrics(True)
+
         min_shape = np.min([cell.get_quality() for cell in neigbor_cells])
         avg_shape = np.mean([cell.get_quality() for cell in neigbor_cells])
         min_skew = np.min([cell.get_skewness() for cell in neigbor_cells])
@@ -200,6 +221,31 @@ class DRLSmoothingEnv(gym.Env):
         reward = self.shape_coeff * shape + (1 - self.shape_coeff) * skew
 
         return reward
+
+
+class TrainingVisualizer:
+    def __init__(self):
+        self.episodes = []
+        self.rewards = []
+        plt.ion()
+        self.fig, self.ax = plt.subplots()
+        self.ax.set_title("Training Progress")
+        self.ax.set_xlabel("Episode")
+        self.ax.set_ylabel("Reward")
+
+    def update(self, episode, reward):
+        self.episodes.append(episode)
+        self.rewards.append(reward)
+        if episode % 100 == 0:
+            self.ax.clear()
+            self.ax.plot(self.episodes, self.rewards, "b-", label="Episode Reward")
+            self.ax.legend()
+            plt.pause(0.001)
+
+    def save(self, path):
+        plt.ioff()
+        plt.savefig(path)
+        plt.close()
 
 
 class Critic(nn.Module):
@@ -306,7 +352,7 @@ class DDPGAgent:
             dt=1e-2,
         )
         self.current_sigma = 0.3  # 初始sigma值
-        self.sigma_decay = 0.9  # 衰减系数
+        self.sigma_decay = 0.999  # 衰减系数
         self.min_sigma = 0.01  # 最小sigma值
 
         # GaussianNoise噪声：
@@ -422,40 +468,6 @@ class DDPGAgent:
             return action
 
 
-# 新增经验回放缓冲区（兼容SB3）
-class MeshReplayBufferSB3(ReplayBuffer):
-    def __init__(self, buffer_size, observation_space, action_space):
-        # 将二维观测空间展平以适应SB3的ReplayBuffer
-        self.original_obs_shape = observation_space.shape
-        modified_obs_space = gym.spaces.Box(
-            low=observation_space.low.flatten(),
-            high=observation_space.high.flatten(),
-            shape=(np.prod(observation_space.shape),),  # 展平为1D
-            dtype=observation_space.dtype,
-        )
-
-        # 调整动作空间维度
-        modified_act_space = gym.spaces.Box(
-            low=action_space.low.flatten(),  # Flatten the low bounds
-            high=action_space.high.flatten(),  # Flatten the high bounds
-            shape=(np.prod(action_space.shape),),  # 展平为1D
-            dtype=action_space.dtype,
-        )
-
-        super().__init__(
-            int(buffer_size), modified_obs_space, modified_act_space, device="cpu"
-        )
-
-    def add(self, obs, next_obs, action, reward, done):
-        super().add(
-            obs=obs.reshape(-1),  # 二维转一维
-            next_obs=next_obs.reshape(-1),
-            action=action.reshape(-1),
-            reward=reward,
-            done=done,
-        )
-
-
 class MeshReplayBuffer:
     def __init__(self, buffer_size):
         self.buffer_size = int(buffer_size)
@@ -504,16 +516,7 @@ def train_drl(train_grid, visual_obj, param_obj):
     viz_history = param_obj["viz_history"]
 
     if viz_history:
-        # 初始化奖励记录
-        episodes_list = []
-        rewards_list = []
-
-        # 创建绘图对象
-        plt.ion()  # 启用交互模式
-        fig, ax = plt.subplots()
-        ax.set_title("Training Progress")
-        ax.set_xlabel("Episode")
-        ax.set_ylabel("Reward")
+        visualizer = TrainingVisualizer()
 
     for ep in range(max_episodes):
         state = env.reset()
@@ -533,16 +536,7 @@ def train_drl(train_grid, visual_obj, param_obj):
                 break
 
         if viz_history:
-            # 记录奖励数据
-            episodes_list.append(ep + 1)
-            rewards_list.append(episode_reward)
-
-            # 每100个episode更新一次曲线
-            if (ep + 1) % 100 == 0:
-                ax.clear()
-                ax.plot(episodes_list, rewards_list, "b-", label="Episode Reward")
-                ax.legend()
-                plt.pause(0.0001)  # 短暂暂停更新图表
+            visualizer.update(ep + 1, episode_reward)
 
         if (ep + 1) % save_interval == 0:
             torch.save(
@@ -560,9 +554,7 @@ def train_drl(train_grid, visual_obj, param_obj):
 
     if viz_history:
         # 训练结束后保存图表
-        plt.ioff()
-        plt.savefig("./neural/DRL_Smoothing/training_progress.png")
-        plt.close()
+        visualizer.save("./neural/DRL_Smoothing/training_progress.png")
 
 
 if __name__ == "__main__":
@@ -577,8 +569,8 @@ if __name__ == "__main__":
         "viz_enabled": False,
         "shape_coeff": 0.0,
         "min_coeff": 1.0,
-        "max_episodes": 100000,
-        "save_interval": 100000,
+        "max_episodes": 10000,
+        "save_interval": 10000,
         "viz_history": False,
     }
 
