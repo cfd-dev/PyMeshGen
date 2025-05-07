@@ -260,15 +260,16 @@ class Critic(nn.Module):
             nn.Linear(4 * hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.ReLU(),
-            nn.Linear(hidden_dim // 2, hidden_dim // 2),
+            # nn.ReLU(),
+            # nn.Linear(hidden_dim // 2, hidden_dim // 2),
         )
 
         # Action processing path
         self.action_path = nn.Sequential(
-            nn.Linear(action_dim, hidden_dim // 2),
+            # nn.Linear(action_dim, hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, hidden_dim // 2),
+            nn.Linear(action_dim, hidden_dim // 2),
+            # nn.Linear(hidden_dim // 2, hidden_dim // 2),
         )
         # Common path
         self.common_path = nn.Sequential(
@@ -276,7 +277,7 @@ class Critic(nn.Module):
             # nn.ReLU(),
             nn.Linear(hidden_dim // 4, 1),
         )
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -301,12 +302,12 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            # nn.Linear(hidden_dim, hidden_dim),
+            # nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             # nn.Tanh(),
         )
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -328,8 +329,8 @@ class DDPGAgent:
         self.target_actor = Actor(state_dim, action_dim)
         self.target_critic = Critic(state_dim, action_dim)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-4)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-3)
+        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
+        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
 
         # # 添加学习率调度器
         # self.actor_scheduler = optim.lr_scheduler.StepLR(
@@ -354,8 +355,8 @@ class DDPGAgent:
             dt=1e-2,
         )
         self.current_sigma = 0.3  # 初始sigma值
-        self.sigma_decay = 0.95  # 衰减系数
-        self.min_sigma = 0.01  # 最小sigma值
+        self.sigma_decay = 0.9999  # 衰减系数
+        self.min_sigma = 0.0  # 最小sigma值
 
         # GaussianNoise噪声：
         # self.noise = GaussianNoise(
@@ -364,17 +365,9 @@ class DDPGAgent:
         #     action_dim=env.action_space.shape[0]
         # )
 
-        self.replay_buffer = MeshReplayBuffer(
-            buffer_size=1e6  # 只需要传递buffer_size参数
-        )
+        self.replay_buffer = MeshReplayBuffer(buffer_size=1e6)
 
-        # self.replay_buffer = MeshReplayBufferSB3(
-        #     buffer_size=1e6,  # 经验回放缓冲区大小
-        #     observation_space=env.observation_space,  # 环境的 observation space
-        #     action_space=env.action_space,  # 环境的 action space
-        # )
-
-    # 新增软更新方法
+    # 软更新方法
     def soft_update(self):
         with torch.no_grad():
             for target_param, param in zip(
@@ -390,18 +383,9 @@ class DDPGAgent:
                     self.tau * param.data + (1.0 - self.tau) * target_param.data
                 )
 
-    # 新增训练步骤
     def train_step(self):
         if len(self.replay_buffer) < self.batch_size:
             return
-
-        # 从缓冲区采样
-        # batch = self.replay_buffer.sample(self.batch_size)
-        # states = torch.FloatTensor(batch.observations)
-        # actions = torch.FloatTensor(batch.actions)
-        # rewards = torch.FloatTensor(batch.rewards)
-        # next_states = torch.FloatTensor(batch.next_observations)
-        # dones = torch.FloatTensor(batch.dones)
 
         obs, next_obs, actions, rewards, dones = self.replay_buffer.sample(
             self.batch_size
@@ -412,10 +396,8 @@ class DDPGAgent:
         actions = torch.FloatTensor(
             actions.reshape(self.batch_size, -1)
         )  # (batch_size, 2)
-        # rewards = torch.FloatTensor(rewards)
         rewards = torch.FloatTensor(rewards).unsqueeze(1)
         next_states = torch.FloatTensor(next_obs.reshape(self.batch_size, -1))
-        # dones = torch.FloatTensor(dones)
         dones = torch.FloatTensor(dones).unsqueeze(1)
 
         # Critic更新
@@ -429,9 +411,9 @@ class DDPGAgent:
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.critic.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+            self.critic.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.critic_optimizer.step()
 
         # Actor更新
@@ -440,9 +422,9 @@ class DDPGAgent:
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.actor.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+            self.actor.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.actor_optimizer.step()
 
         # 软更新目标网络
@@ -457,16 +439,10 @@ class DDPGAgent:
             state = torch.FloatTensor(state.flatten())
             action = self.actor(state)
 
-            # 生成带衰减的噪声
             noise = torch.tensor(self.noise(), dtype=torch.float32)
             action = action + noise
             action = action.detach().numpy().reshape(-1, 2)
 
-            # 更新sigma值
-            self.current_sigma = max(
-                self.sigma_decay * self.current_sigma, self.min_sigma
-            )
-            self.noise._sigma = self.current_sigma * np.ones(action.shape)
             return action
 
 
@@ -537,6 +513,12 @@ def train_drl(train_grid, visual_obj, param_obj):
             if done:
                 break
 
+        # 在每个 episode 结束时衰减噪声的 sigma 值
+        agent.current_sigma = max(
+            agent.sigma_decay * agent.current_sigma, agent.min_sigma
+        )
+        agent.noise._sigma = agent.current_sigma * np.ones(env.action_space.shape)
+
         if viz_history:
             visualizer.update(ep + 1, episode_reward)
 
@@ -571,7 +553,7 @@ if __name__ == "__main__":
         "viz_enabled": False,
         "shape_coeff": 0.0,
         "min_coeff": 1.0,
-        "max_episodes": 10000,
+        "max_episodes": 20000,
         "save_interval": 10000,
         "viz_history": False,
     }
