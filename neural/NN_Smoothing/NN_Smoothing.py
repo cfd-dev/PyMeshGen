@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 """
-This is the implementation of the paper:
+This code using neural network to smooth the mesh. This is the implementation of the paper:
 [1] Guo Y F, Wang C R, Ma Z, et al. A new mesh smoothing method based on a neural network[J]. 
 Computational Mechanics, 2022, 69:425-438.
 
@@ -57,7 +57,6 @@ def run(input_file, output_file, opt_epoch):
     faces = mesh.faces  # 网格的三角片
 
     # 提取边界点、点的邻接关系
-    edges = mesh.edges_unique
     boundary_mask = trimesh.grouping.group_rows(mesh.edges_sorted, require_count=1)
     boundary_edges = mesh.edges[boundary_mask]  # 边界edges
     boundary_ids = np.unique(boundary_edges.ravel())  # 边界点的索引
@@ -66,6 +65,7 @@ def run(input_file, output_file, opt_epoch):
     vvlist = mesh.vertex_neighbors  # 点的邻接关系
 
     # 打印网格信息
+    print("Input file path: ", input_file)
     print("Mesh loaded:", not (mesh.is_empty))
     print("Mesh information:")
     print("Vertices:", len(mesh.vertices))
@@ -73,7 +73,6 @@ def run(input_file, output_file, opt_epoch):
     print("Edges:", len(mesh.edges))
     print("Reading input mesh file..., DONE!")
 
-    print("Input file path: ", input_file)
     # mesh.show(
     #     wireframe=True,  # 启用线框模式
     #     wireframe_color=[0, 0, 0, 1],  # 黑色线框
@@ -125,8 +124,9 @@ def run(input_file, output_file, opt_epoch):
 
     new_mesh = trimesh.Trimesh(vertices=points, faces=faces)
     new_mesh.export(output_file)
-    print("Export output mesh file..., DONE!")
+
     print("Output file path: ", output_file)
+    print("Export output mesh file..., DONE!")
 
     # new_mesh.show(
     #     wireframe=True,
