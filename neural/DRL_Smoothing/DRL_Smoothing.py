@@ -443,6 +443,12 @@ class DDPGAgent:
             action = action + noise
             action = action.detach().numpy().reshape(-1, 2)
 
+            # 衰减噪声的 sigma 值
+            self.current_sigma = max(
+                self.sigma_decay * self.current_sigma, self.min_sigma
+            )
+            self.noise._sigma = self.current_sigma * np.ones(self.action_space.shape)
+            action = np.clip(action, -1.0, 1.0)  # 限制动作范围在[-1, 1]
             return action
 
 
@@ -512,12 +518,6 @@ def train_drl(train_grid, visual_obj, param_obj):
 
             if done:
                 break
-
-        # 在每个 episode 结束时衰减噪声的 sigma 值
-        agent.current_sigma = max(
-            agent.sigma_decay * agent.current_sigma, agent.min_sigma
-        )
-        agent.noise._sigma = agent.current_sigma * np.ones(env.action_space.shape)
 
         if viz_history:
             visualizer.update(ep + 1, episode_reward)
