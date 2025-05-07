@@ -148,6 +148,7 @@ class Triangle:
 
         self.area = None
         self.quality = None
+        self.skewness = None
         self.bbox = [
             min(self.p1[0], self.p2[0], self.p3[0]),  # (min_x, min_y, max_x, max_y)
             min(self.p1[1], self.p2[1], self.p3[1]),
@@ -163,32 +164,36 @@ class Triangle:
             return self.hash == other.hash
         return False
 
-    def init_metrics(self):
-        if self.area is None:
+    def init_metrics(self, force_update=False):
+        if self.area is None or force_update:
             self.area = triangle_area(self.p1, self.p2, self.p3)
             if self.area == 0.0:
                 raise ValueError(
                     f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
-        if self.quality is None:
+        if self.quality is None or force_update:
             self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
             if self.quality == 0.0:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
-    
+        if self.skewness is None or force_update:
+            self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
+
     def get_quality(self):
         if self.quality is None:
-            self.init_metrics()
+            self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
         return self.quality
-        
+
     def get_area(self):
         if self.area is None:
             self.area = triangle_area(self.p1, self.p2, self.p3)
         return self.area
 
     def get_skewness(self):
-        return triangle_skewness(self.p1, self.p2, self.p3)
+        if self.skewness is None:
+            self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
+        return self.skewness
 
     def get_element_size(self):
         if self.area is None:
@@ -250,6 +255,7 @@ class Quadrilateral:
 
         self.area = None
         self.quality = None
+        self.skewness = None
         self.bbox = [  # (min_x, min_y, max_x, max_y)
             min(self.p1[0], self.p2[0], self.p3[0], self.p4[0]),
             min(self.p1[1], self.p2[1], self.p3[1], self.p4[1]),
@@ -265,21 +271,30 @@ class Quadrilateral:
             return self.hash == other.hash
         return False
 
-    def init_metrics(self):
-        if self.area is None:
+    def init_metrics(self, force_update=False):
+        if self.area is None or force_update:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
             if self.area == 0.0:
                 warning(
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-        if self.quality is None:
-            # self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
-            self.quality = self.get_skewness()
+        if self.quality is None or force_update:
+            self.quality = quadrilateral_shape_quality(
+                self.p1, self.p2, self.p3, self.p4
+            )
+            # self.quality = self.get_skewness()
             if self.quality == 0.0:
                 warning(
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
-        
+        if self.skewness is None or force_update:
+            self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+
+    def get_skewness(self):
+        if self.skewness is None:
+            self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+        return self.skewness
+
     def get_area(self):
         if self.area is None:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
@@ -378,7 +393,6 @@ class Unstructured_Grid:
             max(coord[0] for coord in node_coords),
             max(coord[1] for coord in node_coords),
         ]
-        
 
     def calculate_edges(self):
         """计算网格的边"""
@@ -463,11 +477,18 @@ class Unstructured_Grid:
 
         area_values = [c.area for c in self.cell_container if c.area is not None]
 
+        skewness_values = [
+            c.skewness for c in self.cell_container if c.skewness is not None
+        ]
         # 输出质量信息
         print(f"Quality Statistics:")
         print(f"  Min Quality: {min(quality_values):.4f}")
         print(f"  Max Quality: {max(quality_values):.4f}")
-        print(f"  Mean Quality: {np.mean(quality_values):.4f}")
+        print(f"  Mean Quality: {np.mean(quality_values):.4f}\n")
+
+        print(f"  Min Skewness: {min(skewness_values):.4f}")
+        print(f"  Max Skewness: {max(skewness_values):.4f}")
+        print(f"  Mean Skewness: {np.mean(skewness_values):.4f}")
         print(f"  Min Area: {min(area_values):.4e}")
 
     def quality_histogram(self):
@@ -504,7 +525,7 @@ class Unstructured_Grid:
         # 绘制边
         if self.dim == 2:
             self.calculate_edges()
-            
+
         for edge in self.edges:
             x = [self.node_coords[i][0] for i in edge]
             y = [self.node_coords[i][1] for i in edge]
@@ -559,11 +580,11 @@ class Unstructured_Grid:
         # 去除重复
         for node_idx in self.node2node:
             self.node2node[node_idx] = list(set(self.node2node[node_idx]))
-    
+
     def init_node2node_by_cell(self):
         """初始化节点关联的节点列表"""
         self.calculate_edges()
-        
+
         self.node2node = {}
         # 按照点相连的单元构建
         for cell in self.cell_container:
@@ -573,11 +594,11 @@ class Unstructured_Grid:
                 for other_node_idx in cell.node_ids:
                     if other_node_idx != node_idx:
                         self.node2node[node_idx].append(other_node_idx)
-                        
+
         # 去除重复
         for node_idx in self.node2node:
             self.node2node[node_idx] = list(set(self.node2node[node_idx]))
-    
+
     def cyclic_node2node(self):
         """根据edge的连接关系将node2node构建为首尾相连成环的方式"""
         if not self.node2node:
@@ -611,9 +632,9 @@ class Unstructured_Grid:
             for curr_node in sorted_neighbors:
                 edge = tuple(sorted([prev_node, curr_node]))
                 # if edge not in self.edges:
-                    # warning(
-                        # f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
-                    # )
+                # warning(
+                # f"节点 {node_idx} 的邻接节点 {prev_node} 和 {curr_node} 未直接连接"
+                # )
                 prev_node = curr_node
 
             self.node2node[node_idx] = sorted_neighbors
@@ -630,7 +651,7 @@ class Unstructured_Grid:
         # 去除重复
         for node_idx in self.node2cell:
             self.node2cell[node_idx] = list(set(self.node2cell[node_idx]))
-    
+
 
 class Connector:
     """曲线对象，包含曲线的几何对象、网格生成参数和所属部件名称，以及曲线网格本身"""
