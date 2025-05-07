@@ -357,7 +357,7 @@ class DDPGAgent:
             dt=1e-2,
         )
         self.current_sigma = 0.3  # 初始sigma值
-        self.sigma_decay = 0.999  # 衰减系数
+        self.sigma_decay = 0.9999  # 衰减系数
         self.min_sigma = 0.0  # 最小sigma值
 
         # GaussianNoise噪声：
