@@ -201,7 +201,7 @@ class DRLSmoothingEnv(gym.Env):
             self.done = True
             center_point = centroid(self.normalized_ring_coords)
             dis = calculate_distance(new_point, center_point)
-            reward = -1.0 * dis  # 距离惩罚
+            reward = -5.0 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -250,6 +250,7 @@ class TrainingVisualizer:
 
 
 class Critic(nn.Module):
+
     def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Critic, self).__init__()
         # State processing path
@@ -277,7 +278,7 @@ class Critic(nn.Module):
             # nn.ReLU(),
             nn.Linear(hidden_dim // 4, 1),
         )
-        # self.apply(self._init_weights)
+        self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -292,11 +293,11 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
+
     def __init__(self, state_dim, action_dim, hidden_dim=16):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, 2 * hidden_dim),
-            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(),
             nn.Linear(2 * hidden_dim, hidden_dim),
             nn.ReLU(),
@@ -307,7 +308,7 @@ class Actor(nn.Module):
             nn.Linear(hidden_dim, action_dim),
             # nn.Tanh(),
         )
-        # self.apply(self._init_weights)
+        self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -447,9 +448,9 @@ class DDPGAgent:
             self.current_sigma = max(
                 self.sigma_decay * self.current_sigma, self.min_sigma
             )
-            self.noise._sigma = self.current_sigma * np.ones(self.action_space.shape)
-            action = np.clip(action, -1.0, 1.0)  # 限制动作范围在[-1, 1]
-            return action
+            self.noise._sigma = self.current_sigma * np.ones(action.shape)
+            # action = np.clip(action, -1.0, 1.0)  # 限制动作范围在[-1, 1]
+        return action
 
 
 class MeshReplayBuffer:
@@ -485,7 +486,7 @@ class GaussianNoise:
     def __call__(self):
         return np.random.normal(self.mu, self.sigma, self.action_dim)
 
-
+# FIXME: 训练无法收敛到最优解，待调试
 def train_drl(train_grid, visual_obj, param_obj):
     env = DRLSmoothingEnv(
         initial_grid=train_grid,
