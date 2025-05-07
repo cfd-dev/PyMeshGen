@@ -332,12 +332,12 @@ class DDPGAgent:
         self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-3)
 
         # # 添加学习率调度器
-        # self.actor_scheduler = optim.lr_scheduler.StepLR(
-        #     self.actor_optimizer, step_size=5000, gamma=0.95
-        # )
-        # self.critic_scheduler = optim.lr_scheduler.StepLR(
-        #     self.critic_optimizer, step_size=5000, gamma=0.95
-        # )
+        self.actor_scheduler = optim.lr_scheduler.StepLR(
+            self.actor_optimizer, step_size=500, gamma=0.95
+        )
+        self.critic_scheduler = optim.lr_scheduler.StepLR(
+            self.critic_optimizer, step_size=500, gamma=0.95
+        )
         self.batch_size = 64
         self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
         self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
@@ -429,9 +429,9 @@ class DDPGAgent:
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.critic.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+        self.critic.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.critic_optimizer.step()
 
         # Actor更新
@@ -440,17 +440,17 @@ class DDPGAgent:
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.actor.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+        self.actor.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.actor_optimizer.step()
 
         # 软更新目标网络
         self.soft_update()
 
         # 更新学习率
-        # self.actor_scheduler.step()
-        # self.critic_scheduler.step()
+        self.actor_scheduler.step()
+        self.critic_scheduler.step()
 
     def select_action(self, state):
         with torch.no_grad():

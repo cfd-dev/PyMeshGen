@@ -429,9 +429,9 @@ class DDPGAgent:
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.critic.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+        self.critic.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.critic_optimizer.step()
 
         # Actor更新
@@ -440,9 +440,9 @@ class DDPGAgent:
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
-        # torch.nn.utils.clip_grad_norm_(
-        # self.actor.parameters(), max_norm=1.0
-        # )  # 添加梯度剪裁
+        torch.nn.utils.clip_grad_norm_(
+        self.actor.parameters(), max_norm=1.0
+        )  # 添加梯度剪裁
         self.actor_optimizer.step()
 
         # 软更新目标网络
