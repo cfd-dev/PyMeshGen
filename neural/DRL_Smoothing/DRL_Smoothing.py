@@ -1,3 +1,14 @@
+"""
+This code using deep reinforcement learning to train an actor neural network to smooth the mesh.
+This is the implementation of the paper:
+[1] Wang Nianhua, Zhang Laiping, Deng Xiaogang. Unstructured surface mesh smoothing method based on deep reinforcement learning.
+ Computational mechanics, 2023, 73(2): 341-364. DOI10.1007/s00466-023-02370-3
+
+The opensource code is originally from the author's GitHub:
+URL_ADDRESS https://github.com/nianhuawang/DRL_Smoothing
+The code is modified by the author of this repository to make it more readable and usable.
+"""
+
 import sys
 from pathlib import Path
 
