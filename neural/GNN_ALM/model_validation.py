@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent /"sample"))
 sys.path.append(str(Path(__file__).parent /"data_structure"))
 sys.path.append(str(Path(__file__).parent /"visualization"))
-import boundary_mesh_sample as bl_samp
+import neural.GNN_ALM.boundary_mesh_sample as bl_samp
 from model_train import build_graph_data, EnhancedGNN
 from visualization import visualize_predictions
 
