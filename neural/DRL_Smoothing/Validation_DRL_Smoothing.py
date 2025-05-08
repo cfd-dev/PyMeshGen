@@ -12,11 +12,37 @@ sys.path.append(str(root_dir / "optimize"))
 sys.path.append(str(root_dir / "utils"))
 
 import torch
+import matplotlib.pyplot as plt
+import numpy as np
 from DRL_Smoothing import Actor, DRLSmoothingEnv
 from stl_io import parse_stl_msh
-import numpy as np
 from mesh_visualization import Visualization
-from basic_elements import UnstructuredGrid
+from basic_elements import Unstructured_Grid
+from mesh_visualization import visualize_unstr_grid_2d
+from message import info
+
+
+def plot_mesh_comparison(original_mesh, optimized_mesh):
+    """
+    并列显示原始网格和优化后的网格。
+
+    :param original_mesh: 原始网格对象
+    :param optimized_mesh: 优化后的网格对象
+    """
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))  # 创建并列的两个子图
+
+    # 绘制原始网格
+    axes[0].set_title("Original Mesh")
+    visualize_unstr_grid_2d(original_mesh, axes[0])
+
+    # 绘制优化后的网格
+    axes[1].set_title("Optimized Mesh")
+    visualize_unstr_grid_2d(optimized_mesh, axes[1])
+
+    # 调整布局并显示
+    plt.tight_layout()
+    plt.show()
 
 
 def load_actor(model_path, state_dim, action_dim):
@@ -42,9 +68,10 @@ def optimize_mesh_with_env(actor, env, iterations=1):
     :param env: DRLSmoothingEnv 环境
     :return: 优化后的网格和累计奖励
     """
-    total_reward = 0.0
-    state = env.reset()
+
     for i in range(iterations):
+        state = env.reset(True)
+        total_reward = 0
         while not env.done:
             # 使用 actor 模型预测动作
             state_tensor = torch.FloatTensor(state).unsqueeze(0)  # 添加 batch 维度
@@ -53,7 +80,7 @@ def optimize_mesh_with_env(actor, env, iterations=1):
             # 执行动作并获取奖励
             state, reward, done = env.step(action)
             total_reward += reward
-        print(f"Iteration {i + 1}/{iterations}: Total reward: {total_reward}")
+        info(f"Iteration {i + 1}/{iterations}: Total reward: {total_reward:.2f}")
 
     return env.initial_grid, total_reward
 
@@ -70,28 +97,39 @@ def main():
     actor = load_actor(model_path, state_dim, action_dim)
 
     # 加载 STL 网格
-    input_mesh_path = Path(__file__).parent / "validation1.stl"
-    mesh = parse_stl_msh(input_mesh_path)
+    input_mesh_path = Path(__file__).parent / "training_mesh/validation1.stl"
+    original_mesh = parse_stl_msh(input_mesh_path)
 
-    visual_obj = Visualization()
-    mesh.visualize_unstr_grid_2d(visual_obj)
+    # 拷贝一份原始网格，以免后续操作影响原始网格
+    original_mesh_bak = Unstructured_Grid(
+        original_mesh.cell_container,
+        original_mesh.node_coords.copy(),
+        original_mesh.boundary_nodes,
+    )
+    original_mesh.summary()
+
     # 创建 DRLSmoothingEnv 环境
     param_obj = {
-        "viz_enabled": True,
+        "viz_enabled": False,
         "max_ring_nodes": 8,
         "shape_coeff": 0.0,
         "min_coeff": 1.0,
     }
-    env = DRLSmoothingEnv(initial_grid=mesh, visual_obj=visual_obj, param_obj=param_obj)
+    visual_obj = Visualization(param_obj["viz_enabled"])
 
     # 使用 actor 模型优化网格
+    env = DRLSmoothingEnv(
+        initial_grid=original_mesh, visual_obj=visual_obj, param_obj=param_obj
+    )
     optimized_mesh, total_reward = optimize_mesh_with_env(actor, env, iterations=3)
+    optimized_mesh.summary()
+    plot_mesh_comparison(original_mesh_bak, optimized_mesh)
 
     # 保存优化后的网格
-    output_mesh_path = Path(__file__).parent / "optimized_mesh.stl"
-    optimized_mesh.export(output_mesh_path)
-    print(f"Optimized mesh saved to {output_mesh_path}")
-    print(f"Total reward: {total_reward}")
+    output_mesh_path = Path(__file__).parent / "training_mesh/optimized_mesh.vtk"
+    optimized_mesh.save_to_vtkfile(output_mesh_path)
+
+    info(f"Final total reward: {total_reward:.2f}")
 
 
 if __name__ == "__main__":

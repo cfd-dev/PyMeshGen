@@ -204,7 +204,7 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
     xs = [n[0] for n in unstr_grid.node_coords]
     ys = [n[1] for n in unstr_grid.node_coords]
 
-    ax.scatter(xs, ys, c="blue", s=10, alpha=0.7, label="Nodes")
+    ax.scatter(xs, ys, c="red", s=1, alpha=0.7, label="Nodes")
     # 绘制边
     if unstr_grid.dim == 2:
         unstr_grid.calculate_edges()
@@ -214,7 +214,8 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
         ax.plot(x, y, c="red", alpha=0.5, lw=1.5)
 
     # 图形设置
-    ax.set_title("2D Unstructured Mesh Visualization")
+    if ax.get_title() == "":
+        ax.set_title("2D Unstructured Mesh Visualization")
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.axis("equal")
