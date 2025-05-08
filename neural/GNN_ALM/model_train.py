@@ -3,17 +3,10 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.nn import GATConv  
 from torch_geometric.data import Data
-import matplotlib.pyplot as plt
-import numpy as np
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
-
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent /"sample"))
-sys.path.append(str(Path(__file__).parent /"visualization"))
-import boundary_mesh_sample as bl_samp
-import visualization as vis
+import matplotlib.pyplot as plt
+from grid_sample import batch_process_files
 
 
 def add_edge_features(data):
@@ -179,7 +172,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.backends.cudnn.benchmark = True
     print(f"当前运行设备: {device}")
-    
+
     # 路径配置
     folder_path = './sample_grids/training'  # 原始数据目录
     model_save_path = './model/saved_model.pth'  # 模型保存路径
@@ -199,7 +192,7 @@ if __name__ == "__main__":
     # -------------------------- 数据准备 --------------------------
     # 批量处理边界采样数据
     try:
-        all_results = bl_samp.batch_process_files(folder_path)
+        all_results = batch_process_files(folder_path)
         print(f"成功加载 {len(all_results)} 个数据集")
     except Exception as e:
         print(f"数据加载失败: {str(e)}")
@@ -237,7 +230,7 @@ if __name__ == "__main__":
     ax.set_xlabel("Accumulated Epochs")
     ax.set_ylabel("Loss")
 
-    # -------------------------- 训练流程 --------------------------  
+    # -------------------------- 训练流程 --------------------------
     try:
         global_step = 0  # 新增全局步数计数器
         for epoch in range(config['total_epochs']):    
@@ -250,14 +243,14 @@ if __name__ == "__main__":
                 loss = criterion(out, batch_data.y)
                 loss.backward()
                 optimizer.step()
-                
+
                 # 更新损失记录和日志输出部分保持不变
                 train_losses.append(loss.item())
 
                 # 定期更新训练信息
                 if global_step % config['log_interval'] == 0:
                     print(f"当前步数[{global_step}] 轮次[{epoch+1}/{config['total_epochs']}] 损失: {loss.item():.4f}")
-                    
+
                     # 更新损失曲线
                     line.set_data(range(len(train_losses)), train_losses)
                     ax.relim()
@@ -277,7 +270,7 @@ if __name__ == "__main__":
                     avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
                     model.train()
                     print(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
-                
+
                 model.to(device)  # 确保模型回到正确设备
 
     except KeyboardInterrupt:
@@ -287,7 +280,7 @@ if __name__ == "__main__":
         # 最终保存模型
         torch.save(model.state_dict(), model_save_path)
         print(f"\n模型已保存至 {model_save_path}")
-        
+
     # 关闭交互式绘图
     plt.ioff()
     input("训练完成，按回车键退出...")

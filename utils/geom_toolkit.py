@@ -721,3 +721,19 @@ def centroid(polygon_points):
     x = np.mean(polygon_points[:, 0])
     y = np.mean(polygon_points[:, 1])
     return np.array([x, y])
+
+
+def unit_direction_vector(node1, node2):
+    """计算单位方向向量（增强版）"""
+    dim = len(node1)
+    if dim not in (2, 3) or len(node2) != dim:
+        raise ValueError("Nodes must be 2D or 3D with same dimension")
+
+    dx = node2[0] - node1[0]
+    dy = node2[1] - node1[1]
+    dz = (node2[2] - node1[2]) if dim == 3 else 0.0
+
+    length = (dx**2 + dy**2 + dz**2) ** 0.5
+    if length == 0:
+        return (0.0,) * dim
+    return (dx / length, dy / length, dz / length)[:dim]
