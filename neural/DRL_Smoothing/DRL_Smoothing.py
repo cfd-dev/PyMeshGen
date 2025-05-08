@@ -357,8 +357,7 @@ class DDPGAgent:
             mean=np.zeros(env.action_space.shape),
             sigma=0.3 * np.ones(env.action_space.shape),
             theta=0.15,
-            # dt=1e-2,
-            dt=1.0,  # 时间步长,
+            dt=1e-2,
         )
         self.current_sigma = param_obj["noise_sigma"]  # 初始sigma值
         self.sigma_decay = param_obj["noise_decay"]  # 衰减系数
@@ -366,9 +365,9 @@ class DDPGAgent:
 
         # GaussianNoise噪声：
         # self.noise = GaussianNoise(
-        #     mu=np.zeros(env.action_space.shape),
-        #     sigma=0.3,  # 初始标准差，可逐步衰减
-        #     action_dim=env.action_space.shape[0]
+        #     mu=np.zeros(env.action_space.shape),  # 初始均值
+        #     sigma=0.3,  # 初始标准差
+        #     action_dim=action_dim,
         # )
 
         self.replay_buffer = MeshReplayBuffer(buffer_size=1e6)
@@ -484,12 +483,12 @@ class MeshReplayBuffer:
 
 class GaussianNoise:
     def __init__(self, mu, sigma, action_dim):
-        self.mu = mu
-        self.sigma = sigma
+        self._mu = mu  # 均值
+        self._sigma = sigma  # 标准差
         self.action_dim = action_dim
 
     def __call__(self):
-        return np.random.normal(self.mu, self.sigma, self.action_dim)
+        return np.random.normal(self._mu, self._sigma, self.action_dim)
 
 
 def save_model(agent, current_dir, episode=None):
@@ -576,22 +575,22 @@ if __name__ == "__main__":
 
     # 参数
     param_obj = {
-        "max_ring_nodes": 8,
-        "node_perturb": False,
-        "viz_enabled": False,
-        "shape_coeff": 0.0,
-        "min_coeff": 1.0,
-        "max_episodes": 6500,
-        "save_interval": 10000,
-        "viz_history": False,
-        "actor_lr": 1e-5,
-        "critic_lr": 5e-4,
-        "batch_size": 64,
-        "gamma": 0.99,
-        "tau": 1e-3,
-        "noise_decay": 0.9999,
-        "min_noise": 0.0,
-        "noise_sigma": 0.3,
+        "max_ring_nodes": 8,  # 最大允许环节点数
+        "node_perturb": False,  # 是否对读入的网格扰动节点
+        "viz_enabled": False,  # 是否可视化训练过程
+        "shape_coeff": 0.0,  # 形状质量权重
+        "min_coeff": 1.0,  # 最小质量权重
+        "max_episodes": 6500,  # 最大训练轮数
+        "save_interval": 10000,  # 模型保存间隔
+        "viz_history": False,  # 是否可视化训练过程
+        "actor_lr": 1e-5,  # actor学习率
+        "critic_lr": 5e-4,  # critic学习率
+        "batch_size": 64,  # 批量大小
+        "gamma": 0.99,  # 折扣因子Discount factor
+        "tau": 1e-3,  # 目标网络软更新系数TargetSmoothFactor
+        "noise_decay": 0.9999,  # Decay rate of the standard deviation
+        "min_noise": 0.0,  # 最小噪声标准差StandardDeviationMin
+        "noise_sigma": 0.3,  # 初始噪声标准差StandardDeviation
     }
 
     visual_obj = Visualization(True)
