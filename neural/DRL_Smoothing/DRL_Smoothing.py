@@ -112,12 +112,13 @@ class DRLSmoothingEnv(gym.Env):
 
         self.state = normalized_coords.copy().reshape(-1)  # 展平成一维
 
-    def reset(self):
+    def reset(self, validation_flag=False):
         self.done = False
         self.current_node_id = 0
 
         # 恢复网格坐标到初始状态
-        self.initial_grid.node_coords = np.copy(self.original_node_coords)
+        if not validation_flag:
+            self.initial_grid.node_coords = np.copy(self.original_node_coords)
 
         # 初始化状态
         self.init_state()
@@ -180,7 +181,9 @@ class DRLSmoothingEnv(gym.Env):
 
         # 注意先更新坐标，再计算奖励
         new_point_denormalized = denormalize_point(action, self.local_range)  # 反归一化
-        self.initial_grid.node_coords[self.current_node_id] = new_point_denormalized
+        self.initial_grid.node_coords[self.current_node_id] = (
+            new_point_denormalized.tolist()
+        )
         # 更新与当前节点相关的单元的几何信息
         self.update_neighbor_cells(self.current_node_id)
 
