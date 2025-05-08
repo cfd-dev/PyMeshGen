@@ -201,7 +201,7 @@ class DRLSmoothingEnv(gym.Env):
             self.done = True
             center_point = centroid(self.normalized_ring_coords)
             dis = calculate_distance(new_point, center_point)
-            reward = -5.0 * dis  # 距离惩罚
+            reward = -1.0 * dis  # 距离惩罚
             return reward
 
         # 当前节点的邻居单元及其质量
@@ -278,7 +278,7 @@ class Critic(nn.Module):
             # nn.ReLU(),
             nn.Linear(hidden_dim // 4, 1),
         )
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -294,7 +294,7 @@ class Critic(nn.Module):
 
 class Actor(nn.Module):
 
-    def __init__(self, state_dim, action_dim, hidden_dim=16):
+    def __init__(self, state_dim, action_dim, hidden_dim=32):
         super(Actor, self).__init__()
         self.net = nn.Sequential(
             nn.Linear(state_dim, 2 * hidden_dim),
@@ -303,12 +303,12 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            # nn.Linear(hidden_dim, hidden_dim),
-            # nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, action_dim),
             # nn.Tanh(),
         )
-        self.apply(self._init_weights)
+        # self.apply(self._init_weights)
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
@@ -321,7 +321,7 @@ class Actor(nn.Module):
 
 class DDPGAgent:
 
-    def __init__(self, env):
+    def __init__(self, env, param_obj=None):
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.shape[0]
 
@@ -330,8 +330,12 @@ class DDPGAgent:
         self.target_actor = Actor(state_dim, action_dim)
         self.target_critic = Critic(state_dim, action_dim)
 
-        self.actor_optimizer = optim.Adam(self.actor.parameters(), lr=1e-5)
-        self.critic_optimizer = optim.Adam(self.critic.parameters(), lr=5e-4)
+        self.actor_optimizer = optim.Adam(
+            self.actor.parameters(), lr=param_obj["actor_lr"]
+        )
+        self.critic_optimizer = optim.Adam(
+            self.critic.parameters(), lr=param_obj["critic_lr"]
+        )
 
         # # 添加学习率调度器
         # self.actor_scheduler = optim.lr_scheduler.StepLR(
@@ -340,9 +344,9 @@ class DDPGAgent:
         # self.critic_scheduler = optim.lr_scheduler.StepLR(
         #     self.critic_optimizer, step_size=5000, gamma=0.95
         # )
-        self.batch_size = 64
-        self.gamma = 0.99  # 折扣因子，用于计算未来奖励的衰减系数
-        self.tau = 1e-3  # 目标网络软更新系数（滑动平均系数）
+        self.batch_size = param_obj["batch_size"]  # 批量大小
+        self.gamma = param_obj["gamma"]  # 折扣因子，用于计算未来奖励的衰减系数
+        self.tau = param_obj["tau"]  # 目标网络软更新系数（滑动平均系数）
 
         # 目标网络初始化
         self.target_actor.load_state_dict(self.actor.state_dict())
@@ -355,15 +359,15 @@ class DDPGAgent:
             theta=0.15,
             dt=1e-2,
         )
-        self.current_sigma = 0.3  # 初始sigma值
-        self.sigma_decay = 0.9999  # 衰减系数
-        self.min_sigma = 0.0  # 最小sigma值
+        self.current_sigma = param_obj["noise_sigma"]  # 初始sigma值
+        self.sigma_decay = param_obj["noise_decay"]  # 衰减系数
+        self.min_sigma = param_obj["min_noise"]  # 最小sigma值
 
         # GaussianNoise噪声：
         # self.noise = GaussianNoise(
-        #     mu=np.zeros(env.action_space.shape),
-        #     sigma=0.3,  # 初始标准差，可逐步衰减
-        #     action_dim=env.action_space.shape[0]
+        #     mu=np.zeros(env.action_space.shape),  # 初始均值
+        #     sigma=0.3,  # 初始标准差
+        #     action_dim=action_dim,
         # )
 
         self.replay_buffer = MeshReplayBuffer(buffer_size=1e6)
@@ -478,13 +482,47 @@ class MeshReplayBuffer:
 
 
 class GaussianNoise:
-    def __init__(self, mu, sigma, action_dim):
-        self.mu = mu
-        self.sigma = sigma
+
+    def __init__(self, mu=0.0, sigma=0.1, action_dim=1):
+        self._mu = mu  # 均值
+        self._sigma = sigma  # 标准差
         self.action_dim = action_dim
 
     def __call__(self):
-        return np.random.normal(self.mu, self.sigma, self.action_dim)
+        return np.random.normal(self._mu, self._sigma, self.action_dim)
+
+
+def save_model(agent, current_dir, episode=None):
+    if episode:
+        actor_path = current_dir / f"agent/actor_{episode}.pth"
+        critic_path = current_dir / f"agent/critic_{episode}.pth"
+    else:
+        actor_path = current_dir / "agent/actor_final.pth"
+        critic_path = current_dir / "agent/critic_final.pth"
+
+    torch.save(agent.actor.state_dict(), actor_path)
+    torch.save(agent.critic.state_dict(), critic_path)
+
+
+def train_one_episode(agent, env, max_steps):
+    state = env.reset()
+    episode_reward = 0
+
+    for step in range(max_steps):
+        action = agent.select_action(state)
+        next_state, reward, done = env.step(action)
+
+        agent.replay_buffer.add(state, next_state, action, reward, done)
+        agent.train_step()
+
+        state = next_state
+        episode_reward += reward
+
+        if done:
+            break
+
+    return episode_reward, step
+
 
 # FIXME: 训练无法收敛到最优解，待调试
 def train_drl(train_grid, visual_obj, param_obj):
@@ -493,7 +531,11 @@ def train_drl(train_grid, visual_obj, param_obj):
         visual_obj=visual_obj,
         param_obj=param_obj,
     )
-    agent = DDPGAgent(env)
+    agent = DDPGAgent(env, param_obj)
+
+    current_dir = Path(__file__).parent
+    if not (current_dir / "agent").exists():
+        (current_dir / "agent").mkdir(parents=True, exist_ok=True)
 
     max_episodes = param_obj["max_episodes"]
     max_steps = env.initial_grid.num_nodes
@@ -504,42 +546,27 @@ def train_drl(train_grid, visual_obj, param_obj):
         visualizer = TrainingVisualizer()
 
     for ep in range(max_episodes):
-        state = env.reset()
-        episode_reward = 0
-
-        for step in range(max_steps):
-            action = agent.select_action(state)
-            next_state, reward, done = env.step(action)
-
-            agent.replay_buffer.add(state, next_state, action, reward, done)
-            agent.train_step()
-
-            state = next_state
-            episode_reward += reward
-
-            if done:
-                break
+        episode_reward, step = train_one_episode(agent, env, max_steps)
 
         if viz_history:
             visualizer.update(ep + 1, episode_reward)
 
         if (ep + 1) % save_interval == 0:
-            torch.save(
-                agent.actor.state_dict(),
-                f"./neural/DRL_Smoothing/agent/actor_{ep+1}.pth",
-            )
-            torch.save(
-                agent.critic.state_dict(),
-                f"./neural/DRL_Smoothing/agent/critic_{ep+1}.pth",
-            )
+            save_model(agent, current_dir, ep + 1)
 
         print(
             f"Episode {ep+1}/{max_episodes} completed | Total Steps: {step+1} | Total Reward: {episode_reward:.2f}"
         )
 
+    # 在每个 episode 结束时衰减噪声
+    # agent.current_sigma = max(agent.sigma_decay * agent.current_sigma, agent.min_sigma)
+    # agent.noise._sigma = agent.current_sigma * np.ones(env.action_space.shape)
+
     if viz_history:
         # 训练结束后保存图表
-        visualizer.save("./neural/DRL_Smoothing/training_progress.png")
+        visualizer.save(current_dir / "training_progress.png")
+
+    save_model(agent, current_dir)
 
 
 if __name__ == "__main__":
@@ -549,14 +576,22 @@ if __name__ == "__main__":
 
     # 参数
     param_obj = {
-        "max_ring_nodes": 8,
-        "node_perturb": False,
-        "viz_enabled": False,
-        "shape_coeff": 0.0,
-        "min_coeff": 1.0,
-        "max_episodes": 20000,
-        "save_interval": 10000,
-        "viz_history": False,
+        "max_ring_nodes": 8,  # 最大允许环节点数
+        "node_perturb": False,  # 是否对读入的网格扰动节点
+        "viz_enabled": False,  # 是否可视化训练过程
+        "shape_coeff": 0.0,  # 形状质量权重
+        "min_coeff": 1.0,  # 最小质量权重
+        "max_episodes": 6500,  # 最大训练轮数
+        "save_interval": 10000,  # 模型保存间隔
+        "viz_history": False,  # 是否可视化训练过程
+        "actor_lr": 1e-5,  # actor学习率
+        "critic_lr": 5e-4,  # critic学习率
+        "batch_size": 64,  # 批量大小
+        "gamma": 0.99,  # 折扣因子Discount factor
+        "tau": 1e-3,  # 目标网络软更新系数TargetSmoothFactor
+        "noise_decay": 0.9999,  # Decay rate of the standard deviation
+        "min_noise": 0.0,  # 最小噪声标准差StandardDeviationMin
+        "noise_sigma": 0.3,  # 初始噪声标准差StandardDeviation
     }
 
     visual_obj = Visualization(True)
