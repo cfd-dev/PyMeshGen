@@ -20,6 +20,10 @@ An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA a
 - **Supported Elements**
   - Isotropic Triangular Meshes
   - Anisotropic Quadrilateral Boundary Layers
+- **Advanced Mesh Optimization**
+  - Neural Network-Based Mesh Smoothing(NN-Smoothing)
+  - Deep Reinforcement Learning-Based Mesh Smoothing(DRL-Smoothing)
+  - Mesh Optimization with Adam Optimizer(Adam-Smoothing)
 
 ## Quick Start
 ```bash
