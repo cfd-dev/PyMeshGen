@@ -581,7 +581,7 @@ if __name__ == "__main__":
         "viz_enabled": False,  # 是否可视化训练过程
         "shape_coeff": 0.0,  # 形状质量权重
         "min_coeff": 1.0,  # 最小质量权重
-        "max_episodes": 6500,  # 最大训练轮数
+        "max_episodes": 65000,  # 最大训练轮数
         "save_interval": 10000,  # 模型保存间隔
         "viz_history": False,  # 是否可视化训练过程
         "actor_lr": 1e-5,  # actor学习率
@@ -589,7 +589,7 @@ if __name__ == "__main__":
         "batch_size": 64,  # 批量大小
         "gamma": 0.99,  # 折扣因子Discount factor
         "tau": 1e-3,  # 目标网络软更新系数TargetSmoothFactor
-        "noise_decay": 0.9999,  # Decay rate of the standard deviation
+        "noise_decay": 1.0,  # Decay rate of the standard deviation
         "min_noise": 0.0,  # 最小噪声标准差StandardDeviationMin
         "noise_sigma": 0.3,  # 初始噪声标准差StandardDeviation
     }
