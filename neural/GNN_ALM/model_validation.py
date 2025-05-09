@@ -1,15 +1,11 @@
 import torch
-import torch.nn.functional as F
-from torch_geometric.data import Data
 import matplotlib.pyplot as plt
-from torch_geometric.nn import GCNConv
-
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent /"sample"))
-sys.path.append(str(Path(__file__).parent /"data_structure"))
-sys.path.append(str(Path(__file__).parent /"visualization"))
-import neural.GNN_ALM.boundary_mesh_sample as bl_samp
+
+root_dir = Path(__file__).parent.parent.parent
+sys.path.append(str(root_dir))
+from grid_sample import batch_process_files
 from model_train import build_graph_data, EnhancedGNN
 from visualization import visualize_predictions
 
@@ -35,7 +31,7 @@ def validate_model():
 
     # -------------------------- 加载验证数据 --------------------------
     try:
-        val_results = bl_samp.batch_process_files(config['validation_data_path'])
+        val_results = batch_process_files(config["validation_data_path"])
         print(f"加载到 {len(val_results)} 个验证数据集")
     except Exception as e:
         print(f"验证数据加载失败: {str(e)}")
@@ -44,23 +40,23 @@ def validate_model():
     # -------------------------- 执行验证 --------------------------
     total_loss = 0.0
     criterion = torch.nn.MSELoss()
-    
+
     with torch.no_grad():
         for idx, result in enumerate(val_results):
             # 数据准备
             data = build_graph_data(result['valid_wall_nodes'], 
                                   result['wall_faces']).to(device)
-            
+
             # 模型预测
             pred = model(data)
             loss = criterion(pred, data.y)
             total_loss += loss.item()
-            
+
             # 可视化最后一个样本的预测结果
             if idx == len(val_results) - 1:
                 visualize_predictions(data.cpu(), model.cpu())
                 plt.suptitle(f"验证样本 {idx+1} (Loss: {loss.item():.4f})")
-                
+
             print(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
 
     # -------------------------- 输出统计结果 --------------------------

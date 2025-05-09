@@ -7,7 +7,12 @@ from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
 import matplotlib.pyplot as plt
 from grid_sample import batch_process_files
+import sys
+from pathlib import Path
 
+root_dir = Path(__file__).parent.parent.parent
+sys.path.append(str(root_dir))
+from utils.message import info, warning, error, debug
 
 def add_edge_features(data):
     row, col = data.edge_index
@@ -171,11 +176,12 @@ if __name__ == "__main__":
     # 硬件设置
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     torch.backends.cudnn.benchmark = True
-    print(f"当前运行设备: {device}")
+    info(f"当前运行设备: {device}")
 
     # 路径配置
-    folder_path = './sample_grids/training'  # 原始数据目录
-    model_save_path = './model/saved_model.pth'  # 模型保存路径
+    current_dir = Path(__file__).parent
+    folder_path = current_dir / "sample_grids/training"  # 原始数据目录
+    model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
     test_single_sample = False
 
     # -------------------------- 超参数配置 --------------------------
@@ -193,9 +199,9 @@ if __name__ == "__main__":
     # 批量处理边界采样数据
     try:
         all_results = batch_process_files(folder_path)
-        print(f"成功加载 {len(all_results)} 个数据集")
+        info(f"成功加载 {len(all_results)} 个数据集")
     except Exception as e:
-        print(f"数据加载失败: {str(e)}")
+        error(f"数据加载失败: {str(e)}")
         exit(1)
 
     dataset = [build_graph_data(result['valid_wall_nodes'], result['wall_faces']) 
@@ -210,11 +216,11 @@ if __name__ == "__main__":
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
     model = EnhancedGNN(hidden_channels=config['hidden_channels']).to(device)
-    print("\n网络层详细信息：")
-    print(model)
+    info("\n网络层详细信息：")
+    info(model)
     # 新增参数数量统计
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"\n总可训练参数数量：{total_params:,}")
+    info(f"\n总可训练参数数量：{total_params:,}")
 
     # 优化器和损失函数配置
     optimizer = torch.optim.Adam(model.parameters(), lr=config['learning_rate'])
@@ -249,7 +255,9 @@ if __name__ == "__main__":
 
                 # 定期更新训练信息
                 if global_step % config['log_interval'] == 0:
-                    print(f"当前步数[{global_step}] 轮次[{epoch+1}/{config['total_epochs']}] 损失: {loss.item():.4f}")
+                    info(
+                        f"当前步数[{global_step}] 轮次[{epoch+1}/{config['total_epochs']}] 损失: {loss.item():.4f}"
+                    )
 
                     # 更新损失曲线
                     line.set_data(range(len(train_losses)), train_losses)
@@ -269,17 +277,17 @@ if __name__ == "__main__":
                             total_val_loss += val_loss.item() * val_data.num_graphs
                     avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
                     model.train()
-                    print(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
+                    info(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
 
                 model.to(device)  # 确保模型回到正确设备
 
     except KeyboardInterrupt:
-        print("\n训练被用户中断！")
+        error("\n训练被用户中断！")
     finally:
         # -------------------------- 收尾工作 --------------------------
         # 最终保存模型
         torch.save(model.state_dict(), model_save_path)
-        print(f"\n模型已保存至 {model_save_path}")
+        info(f"\n模型已保存至 {model_save_path}")
 
     # 关闭交互式绘图
     plt.ioff()

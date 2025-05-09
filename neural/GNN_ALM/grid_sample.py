@@ -9,7 +9,8 @@ from data_structure.mesh_reconstruction import get_adjacent_node
 from utils.geom_toolkit import unit_direction_vector
 from fileIO.read_cas import parse_fluent_msh
 from data_structure.mesh_reconstruction import preprocess_grid
-from grid_sample import get_march_vector
+from utils.message import info, warning, error, debug
+from visualization.mesh_visualization import visualize_wall_structure_2d
 
 
 def get_march_vector(grid, node_1based, current_face):
@@ -64,13 +65,13 @@ def process_single_file(file_path):
     返回:
     dict: 包含wall_faces, wall_nodes, valid_wall_nodes等信息
     """
-    print(f"Processing file: {file_path}")
+    info(f"Processing file: {file_path}")
 
     # 解析网格文件
     try:
         grid = parse_fluent_msh(file_path)
     except Exception as e:
-        print(f"Error parsing file {file_path}: {e}")
+        error(f"Error parsing file {file_path}: {e}")
         return None
 
     # 预处理网格
@@ -80,7 +81,7 @@ def process_single_file(file_path):
     # 获取所有节点坐标
     all_nodes = grid["nodes"]
     if not all_nodes:
-        print("No nodes found in grid.")
+        warning("No nodes found in grid.")
         return None
 
     # 计算各维度范围
@@ -93,21 +94,22 @@ def process_single_file(file_path):
     z_min, z_max = (min(zs), max(zs)) if zs else (0.0, 0.0)
 
     # 生成归一化后的坐标列表
-    normalized_nodes = []
-    for node in all_nodes:
-        # 处理每个坐标轴
-        x_range = x_max - x_min
-        norm_x = (node[0] - x_min) / x_range if x_range != 0 else 0.5
+    normalized_nodes = all_nodes
+    # normalized_nodes = []
+    # for node in all_nodes:
+    #     # 处理每个坐标轴
+    #     x_range = x_max - x_min
+    #     norm_x = (node[0] - x_min) / x_range if x_range != 0 else 0.5
 
-        y_range = y_max - y_min
-        norm_y = (node[1] - y_min) / y_range if y_range != 0 else 0.5
+    #     y_range = y_max - y_min
+    #     norm_y = (node[1] - y_min) / y_range if y_range != 0 else 0.5
 
-        if len(node) > 2 and zs:
-            z_range = z_max - z_min
-            norm_z = (node[2] - z_min) / z_range if z_range != 0 else 0.5
-            normalized_nodes.append((norm_x, norm_y, norm_z))
-        else:
-            normalized_nodes.append((norm_x, norm_y))
+    #     if len(node) > 2 and zs:
+    #         z_range = z_max - z_min
+    #         norm_z = (node[2] - z_min) / z_range if z_range != 0 else 0.5
+    #         normalized_nodes.append((norm_x, norm_y, norm_z))
+    #     else:
+    #         normalized_nodes.append((norm_x, norm_y))
 
     # 初始化存储结构
     wall_faces = []
@@ -149,17 +151,17 @@ def process_single_file(file_path):
             try:
                 node_info["march_vector"] = get_march_vector(grid, node_1based, face)
             except Exception as e:
-                print(f"Error calculating vector for node {node_1based}: {e}")
+                error(f"Error calculating vector for node {node_1based}: {e}")
 
     # 过滤无效向量
     valid_wall_nodes = [n for n in wall_nodes if n["march_vector"]]
 
     # 打印统计信息
-    print(f"File: {file_path}")
-    print(f"Total wall nodes: {len(wall_nodes)}")
-    print(f"Valid vectors: {len(valid_wall_nodes)}")
+    info(f"File: {file_path}")
+    info(f"Total wall nodes: {len(wall_nodes)}")
+    info(f"Valid vectors: {len(valid_wall_nodes)}")
 
-    # mesh_vis.visualize_mesh_2d(grid, valid_wall_nodes, vector_scale=0.3)
+    visualize_wall_structure_2d(grid, valid_wall_nodes)
 
     return {
         "file_path": file_path,
@@ -191,3 +193,12 @@ def batch_process_files(folder_path):
                 results.append(result)
 
     return results
+
+if __name__ == "__main__":
+    current_dir = Path(__file__).parent
+    # file_path = current_dir / "sample_grids/training/concav-90.cas"
+    # result = process_single_file(file_path)
+
+    folder_path = current_dir / "sample_grids/training"
+    results = batch_process_files(folder_path)
+    info(f"成功加载 {len(results)} 个数据集")

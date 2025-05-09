@@ -1,6 +1,6 @@
 import time
 from typing import Optional
-from message import (
+from utils.message import (
     info,
     debug,
     verbose,
