@@ -127,8 +127,10 @@ class NACA4DigitFoil:
 
 
 if __name__ == "__main__":
-    # 示例调用
-    naca_foil = NACA4DigitFoil(m=0.06, p=0.4, t=0.12, c=1.0, num_points=100)
+    # 示例调用1
+    # naca_foil = NACA4DigitFoil(m=0.06, p=0.4, t=0.12, c=1.0, num_points=100)
 
-    # naca_foil = NACA4DigitFoil("4412", num_points=100)
+    # 示例调用2
+    naca_foil = NACA4DigitFoil("6412", num_points=100)
+
     naca_foil.plot_foil()
