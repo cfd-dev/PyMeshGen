@@ -217,7 +217,9 @@ if __name__ == "__main__":
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
-    model = EnhancedGNN(hidden_channels=config['hidden_channels']).to(device)
+    model = EnhancedGNN(hidden_channels=config["hidden_channels"], num_gcn_layers=4).to(
+        device
+    )
     info("\n网络层详细信息：")
     info(model)
     # 新增参数数量统计
