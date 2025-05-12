@@ -40,7 +40,7 @@ def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     true = data.y.cpu().numpy()
     coords = data.x.cpu().numpy()
 
-    fig, ax = plt.subplots(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 10))
 
     # 绘制节点位置
     ax.scatter(coords[:, 0], coords[:, 1], c="black", s=20, label="Nodes")
@@ -51,18 +51,26 @@ def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
     x_range = x_max - x_min
     y_range = y_max - y_min
-    avg_range = (x_range + y_range) / 2
+    avg_range = np.sqrt(x_range**2 + y_range**2)
 
     # 自动计算参数（新增部分）
     if vector_scale is None:
-        vector_scale = 0.15 / avg_range if avg_range > 0 else 0.3
+        # vector_scale = 0.15 / avg_range if avg_range > 0 else 0.3
+        vector_scale = (
+            0.08 * avg_range / np.linalg.norm(true, axis=1).max()
+            if np.linalg.norm(true, axis=1).max() > 0
+            else 0.1
+        )
     if head_scale is None:
-        head_scale = 0.02 / avg_range if avg_range > 0 else 0.01
+        # head_scale = 0.02 / avg_range if avg_range > 0 else 0.01
+        head_scale = 0.015 * avg_range
 
     # 统一箭头尺寸参数（保持原有逻辑）
-    base_size = avg_range * head_scale
-    head_width = base_size * 2.5
-    head_length = base_size * 4
+    # base_size = avg_range * head_scale
+    # head_width = base_size * 2.5
+    # head_length = base_size * 4
+    head_width = head_scale
+    head_length = head_scale * 1.8
 
     # 修改箭头绘制部分（原117-136行）
     # 绘制真实向量（蓝色）
@@ -104,9 +112,10 @@ def visualize_predictions(data, model, vector_scale=None, head_scale=None):
     red_arrow = plt.Line2D([0], [0], color="red", lw=2, label="Predicted Vector")
     ax.legend(handles=[blue_arrow, red_arrow])
 
-    ax.set_title("March Vector Prediction vs Ground Truth")
+    # ax.set_title("March Vector Prediction vs Ground Truth")
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.axis("equal")
     plt.tight_layout()
-    plt.show(block=True)
+    # plt.show(block=True)
+    return fig, ax
