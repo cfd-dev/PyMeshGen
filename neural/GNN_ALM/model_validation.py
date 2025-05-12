@@ -7,16 +7,19 @@ root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
 from grid_sample import batch_process_files
 from model_train import build_graph_data, EnhancedGNN
-from visualization import visualize_predictions
+from visualization.visualization import visualize_predictions
 
 
 def validate_model():
+    current_dir = Path(__file__).parent
+    validation_data_path = current_dir / "sample_grids/validation"  # 原始数据目录
+    model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
     # -------------------------- 初始化配置 --------------------------
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
-        'hidden_channels': 64,
-        'model_path': './model/saved_model.pth',
-        'validation_data_path': './sample_grids/validation'
+        "hidden_channels": 64,
+        "model_path": model_save_path,
+        "validation_data_path": validation_data_path,
     }
 
     # -------------------------- 加载模型 --------------------------
@@ -54,9 +57,10 @@ def validate_model():
 
             # 可视化最后一个样本的预测结果
             if idx == len(val_results) - 1:
-                visualize_predictions(data.cpu(), model.cpu())
-                plt.suptitle(f"验证样本 {idx+1} (Loss: {loss.item():.4f})")
-
+                fig, ax = visualize_predictions(data.cpu(), model.cpu())
+                fig.suptitle(f"Case {idx+1} (Loss: {loss.item():.4f})")
+                ax.set_title("March Vector Prediction vs Ground Truth")
+                plt.show()
             print(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
 
     # -------------------------- 输出统计结果 --------------------------
@@ -64,7 +68,7 @@ def validate_model():
     print(f"\n验证完成 | 平均损失: {avg_loss:.4f}")
     plt.figure()
     plt.bar(['Validation Loss'], [avg_loss], color='steelblue')
-    plt.title("平均验证损失")
+    plt.title("Validation Loss")
     plt.ylabel("MSE Loss")
     plt.show()
 
