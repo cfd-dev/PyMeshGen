@@ -43,6 +43,7 @@ def validate_model():
     # -------------------------- 执行验证 --------------------------
     total_loss = 0.0
     criterion = torch.nn.MSELoss()
+    all_losses = []  # 用于保存每个样本的loss
 
     with torch.no_grad():
         for idx, result in enumerate(val_results):
@@ -54,6 +55,7 @@ def validate_model():
             pred = model(data)
             loss = criterion(pred, data.y)
             total_loss += loss.item()
+            all_losses.append(loss.item())
 
             # 可视化最后一个样本的预测结果
             if idx == len(val_results) - 1:
@@ -67,9 +69,11 @@ def validate_model():
     avg_loss = total_loss / len(val_results)
     print(f"\n验证完成 | 平均损失: {avg_loss:.4f}")
     plt.figure()
-    plt.bar(['Validation Loss'], [avg_loss], color='steelblue')
-    plt.title("Validation Loss")
+    plt.bar(range(1, len(all_losses) + 1), all_losses, color="steelblue")
+    plt.title("Validation Loss for Each Sample")
+    plt.xlabel("Sample Index")
     plt.ylabel("MSE Loss")
+    plt.tight_layout()
     plt.show()
 
 if __name__ == "__main__":
