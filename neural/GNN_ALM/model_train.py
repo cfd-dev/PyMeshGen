@@ -189,7 +189,7 @@ if __name__ == "__main__":
         "batch_size": 3,  # 批量大小
         "hidden_channels": 64,  # GNN隐藏层维度
         "learning_rate": 0.001,  # 学习率
-        "total_epochs": 20000,  # 总训练轮次
+        "total_epochs": 200000,  # 总训练轮次
         "log_interval": 50,
         "validation_interval": 200,  # 验证间隔
     }
