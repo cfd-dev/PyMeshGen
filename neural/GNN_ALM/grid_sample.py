@@ -44,6 +44,11 @@ def get_march_vector(grid, node_1based, current_face):
                 min_face = face
         adjacent_faces = [{"face": min_face}]
 
+    if len(adjacent_faces) == 0:
+        raise ValueError("No adjacent faces found")
+    if len(adjacent_faces) > 1:
+        raise ValueError("More than one adjacent face found")
+
     for adj_face in adjacent_faces:
         face = adj_face["face"]
         nodes = face["nodes"]
@@ -55,8 +60,6 @@ def get_march_vector(grid, node_1based, current_face):
         except ValueError:
             # 处理节点不在当前面的情况
             adj_node = None
-    else:
-        raise ValueError("No adjacent node found")
 
         # if nodes[0] == node_1based:
         #     adj_node = nodes[1]
@@ -71,7 +74,7 @@ def get_march_vector(grid, node_1based, current_face):
     return unit_direction_vector(node1_coord, node2_coord)
 
 
-def process_single_file(file_path):
+def process_single_file(file_path, visualize=False):
     """
     处理单个网格文件，提取wall节点和推进向量
 
@@ -110,7 +113,6 @@ def process_single_file(file_path):
     z_min, z_max = (min(zs), max(zs)) if zs else (0.0, 0.0)
 
     # 生成归一化后的坐标列表
-    # normalized_nodes = all_nodes
     normalized_nodes = []
     for node in all_nodes:
         # 处理每个坐标轴
@@ -126,6 +128,9 @@ def process_single_file(file_path):
             normalized_nodes.append((norm_x, norm_y, norm_z))
         else:
             normalized_nodes.append((norm_x, norm_y))
+
+    if visualize:  # 可视化时无需进行归一化，直接使用原始坐标
+        normalized_nodes = all_nodes
 
     # 初始化存储结构
     wall_faces = []
@@ -177,7 +182,8 @@ def process_single_file(file_path):
     info(f"Total wall nodes: {len(wall_nodes)}")
     info(f"Valid vectors: {len(valid_wall_nodes)}")
 
-    # visualize_wall_structure_2d(grid, valid_wall_nodes)
+    if visualize:
+        visualize_wall_structure_2d(grid, valid_wall_nodes)
 
     return {
         "file_path": file_path,
@@ -212,9 +218,9 @@ def batch_process_files(folder_path):
 
 if __name__ == "__main__":
     current_dir = Path(__file__).parent
-    # file_path = current_dir / "sample_grids/training/concav-90.cas"
-    # result = process_single_file(file_path)
+    file_path = current_dir / "sample_grids/training/NACA9640.cas"
+    result = process_single_file(file_path, visualize=True)
 
     folder_path = current_dir / "sample_grids/training"
-    results = batch_process_files(folder_path)
-    info(f"成功加载 {len(results)} 个数据集")
+    # results = batch_process_files(folder_path)
+    # info(f"成功加载 {len(results)} 个数据集")
