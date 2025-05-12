@@ -161,7 +161,7 @@ def process_single_file(file_path):
     info(f"Total wall nodes: {len(wall_nodes)}")
     info(f"Valid vectors: {len(valid_wall_nodes)}")
 
-    visualize_wall_structure_2d(grid, valid_wall_nodes)
+    # visualize_wall_structure_2d(grid, valid_wall_nodes)
 
     return {
         "file_path": file_path,

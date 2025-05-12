@@ -1,7 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
-from torch_geometric.nn import GATConv  
+from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch.utils.data import random_split
@@ -186,13 +185,13 @@ if __name__ == "__main__":
 
     # -------------------------- 超参数配置 --------------------------
     config = {
-        'train_ratio': 0.8,     # 训练集比例
-        'batch_size': 3,        # 批量大小
-        'hidden_channels': 64,  # GNN隐藏层维度
-        'learning_rate': 0.001,  # 学习率
-        'total_epochs': 20000,      # 总训练轮次
-        'log_interval': 50,
-        'validation_interval': 200 # 验证间隔
+        "train_ratio": 1.0,  # 训练集比例
+        "batch_size": 3,  # 批量大小
+        "hidden_channels": 64,  # GNN隐藏层维度
+        "learning_rate": 0.001,  # 学习率
+        "total_epochs": 20000,  # 总训练轮次
+        "log_interval": 50,
+        "validation_interval": 200,  # 验证间隔
     }
 
     # -------------------------- 数据准备 --------------------------
@@ -211,7 +210,10 @@ if __name__ == "__main__":
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     train_loader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
+    # val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
+    # -------------------------- 临时措施 --------------------------
+    val_loader = train_loader
+    val_dataset = train_dataset
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
