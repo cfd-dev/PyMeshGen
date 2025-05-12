@@ -2,6 +2,7 @@ import torch
 import matplotlib.pyplot as plt
 import sys
 from pathlib import Path
+import numpy as np
 
 root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
@@ -51,6 +52,11 @@ def validate_model():
             data = build_graph_data(result['valid_wall_nodes'], 
                                   result['wall_faces']).to(device)
 
+            # 计算wall_faces的平均长度
+            avg_length = compute_average_face_length(
+                result["wall_faces"], result["valid_wall_nodes"]
+            )
+
             # 模型预测
             pred = model(data)
             loss = criterion(pred, data.y)
@@ -59,7 +65,11 @@ def validate_model():
 
             # 可视化最后一个样本的预测结果
             if idx == len(val_results) - 1:
-                fig, ax = visualize_predictions(data.cpu(), model.cpu())
+                fig, ax = visualize_predictions(
+                    data.cpu(),
+                    model.cpu(),
+                    avg_length,
+                )
                 fig.suptitle(f"Case {idx+1} (Loss: {loss.item():.4f})")
                 ax.set_title("March Vector Prediction vs Ground Truth")
                 plt.show()
@@ -75,6 +85,30 @@ def validate_model():
     plt.ylabel("MSE Loss")
     plt.tight_layout()
     plt.show()
+
+
+def compute_average_face_length(wall_faces, wall_nodes):
+    """计算wall_faces的平均长度"""
+    total_length = 0.0
+    for face in wall_faces:
+        nodes = [n - 1 for n in face["nodes"]]
+        # 从wall_nodes中取出节点的坐标 当nodes中的编号等于original_indices时，取出其coords
+        for i in range(len(nodes)):
+            for j in range(len(wall_nodes)):
+                if nodes[i] == wall_nodes[j]["original_indices"]:
+                    nodes[i] = j
+                    break
+            else:
+                print(f"Warning: Node {nodes[i]} not found in wall_nodes")
+
+        # 从wall_nodes取出坐标计算长度
+        nodes = [wall_nodes[i]["coords"] for i in nodes]
+        dx = nodes[1][0] - nodes[0][0]
+        dy = nodes[1][1] - nodes[0][1]
+        length = np.hypot(dx, dy)
+        total_length += length
+    return total_length / len(wall_faces) if wall_faces else 0.0
+
 
 if __name__ == "__main__":
     validate_model()
