@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+import numpy as np
 
 root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
@@ -27,6 +28,21 @@ def get_march_vector(grid, node_1based, current_face):
     """
 
     adjacent_faces = get_adjacent_node(grid, node_1based, current_face)
+
+    if len(adjacent_faces) > 2:
+        # 处理翼型尾部的非四边形边界层
+        # 计算adjacent_faces的空间长短，取长度最小的面计算march_vector
+        min_length = float("inf")
+        for adj_face in adjacent_faces:
+            face = adj_face["face"]
+            nodes = face["nodes"]
+            node1_coord = grid["nodes"][nodes[0] - 1]
+            node2_coord = grid["nodes"][nodes[1] - 1]
+            length = np.linalg.norm(np.array(node1_coord) - np.array(node2_coord))
+            if length < min_length:
+                min_length = length
+                min_face = face
+        adjacent_faces = [{"face": min_face}]
 
     for adj_face in adjacent_faces:
         face = adj_face["face"]
