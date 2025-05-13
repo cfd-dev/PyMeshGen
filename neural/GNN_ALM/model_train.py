@@ -230,7 +230,7 @@ if __name__ == "__main__":
     # -------------------------- 超参数配置 --------------------------
     config = {
         "train_ratio": 1.0,  # 训练集比例
-        "batch_size": 1,  # 批量大小
+        "batch_size": 3,  # 批量大小
         "hidden_channels": 64,  # GNN隐藏层维度
         "learning_rate": 0.001,  # 学习率
         "total_epochs": 20000,  # 总训练轮次
