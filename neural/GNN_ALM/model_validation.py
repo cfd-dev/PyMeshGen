@@ -27,10 +27,10 @@ def validate_model():
     try:
         model = EnhancedGNN(
             hidden_channels=config["hidden_channels"],
-            num_gcn_layers=2,
+            num_gcn_layers=4,
             residual_switch=True,
-            dropout=0.0,
-            normalization="Batch",
+            dropout=0.3,
+            normalization="Layer",
         ).to(device)
         model.load_state_dict(torch.load(config['model_path']))
         model.eval()
