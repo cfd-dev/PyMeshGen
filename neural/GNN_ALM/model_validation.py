@@ -25,7 +25,13 @@ def validate_model():
 
     # -------------------------- 加载模型 --------------------------
     try:
-        model = EnhancedGNN(config['hidden_channels']).to(device)
+        model = EnhancedGNN(
+            hidden_channels=config["hidden_channels"],
+            num_gcn_layers=2,
+            residual_switch=True,
+            dropout=0.0,
+            normalization="Batch",
+        ).to(device)
         model.load_state_dict(torch.load(config['model_path']))
         model.eval()
         print("成功加载训练模型")
