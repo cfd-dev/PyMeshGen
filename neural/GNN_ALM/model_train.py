@@ -226,7 +226,6 @@ if __name__ == "__main__":
     current_dir = Path(__file__).parent
     folder_path = current_dir / "sample_grids/training"  # 原始数据目录
     model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
-    test_single_sample = False
 
     # -------------------------- 超参数配置 --------------------------
     config = {
@@ -275,7 +274,6 @@ if __name__ == "__main__":
     ).to(device)
     info("\n网络层详细信息：")
     info(model)
-    # 新增参数数量统计
     total_params = sum(p.numel() for p in model.parameters())
     info(f"\n总可训练参数数量：{total_params:,}")
 
@@ -287,8 +285,7 @@ if __name__ == "__main__":
     # 初始化实时损失曲线
     plt.ion()
     fig, ax = plt.subplots(figsize=(10, 5))
-    train_losses = []  # 全局损失记录
-    val_losses = []  # 验证损失记录
+    train_losses, val_losses = [], []
     (line_train,) = ax.plot([], [], "r-", label="Train Loss")
     (line_val,) = ax.plot([], [], "b-", label="Val Loss")
     ax.set_title("Training & Validation Loss Curve")
@@ -309,8 +306,6 @@ if __name__ == "__main__":
                 loss = criterion(out, batch_data.y)
                 loss.backward()
                 optimizer.step()
-
-                # 更新损失记录和日志输出部分保持不变
                 train_losses.append(loss.item())
 
                 # 定期更新训练信息
@@ -354,12 +349,8 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         error("\n训练被用户中断！")
     finally:
-        # -------------------------- 收尾工作 --------------------------
-        # 最终保存模型
         torch.save(model.state_dict(), model_save_path)
         info(f"\n模型已保存至 {model_save_path}")
-
-    # 关闭交互式绘图
-    plt.ioff()
-    input("训练完成，按回车键退出...")
-    plt.close()
+        plt.ioff()
+        input("训练完成，按回车键退出...")
+        plt.close()
