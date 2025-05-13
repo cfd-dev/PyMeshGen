@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -59,7 +60,7 @@ class NACA4DigitFoil:
 
         # 生成非均匀分布的 x 坐标
         for i in range(1, self.num_points):
-            exponent = 100 - i + 1
+            exponent = 100 - i
             x[i] = x[i - 1] + (1 - x[i - 1]) / (r**exponent)
 
         # 归一化处理
@@ -117,7 +118,7 @@ class NACA4DigitFoil:
         plt.plot(self.coords[:, 0], self.coords[:, 1], "b-")
         plt.xlim(np.min(self.coords[:, 0]), np.max(self.coords[:, 0]))
         plt.ylim(np.min(self.coords[:, 1]), np.max(self.coords[:, 1]))
-        title = f"NACA {int(100*self.m)}{int(self.p*10)}{int(self.t*100)} Airfoil"
+        title = f"NACA {self.number} Airfoil"
         plt.title(title)
         plt.xlabel("x")
         plt.ylabel("y")
@@ -125,12 +126,51 @@ class NACA4DigitFoil:
         plt.grid(True)
         plt.show()
 
+    def write_foil(self, filename):
+        """将翼型坐标写入文件"""
+        total_points = len(self.coords)
+        with open(filename, "w") as f:
+            f.write(f"# NACA {self.number} Airfoil\n")
+            f.write(f"# {total_points} points\n")
+            for x, y in self.coords:
+                f.write(f"{x} {y} 0\n")
+        print(f"翼型坐标已写入文件 {filename}")
+
+
+def generate_naca_serials(save_folder: str = "naca_serials"):
+    """
+    生成 NACA 翼型的所有可能序列
+    """
+    save_folder = Path(save_folder)  # 转为Path对象
+
+    if not save_folder.exists():
+        save_folder.mkdir(parents=True)
+        print(f"文件夹 {save_folder} 已创建")
+
+    # m 取值范围0.00-0.09，p取值范围0.3-0.6，t取值范围0.10-0.40
+    m_values = np.arange(0, 10, 1) / 100
+    p_values = np.arange(3, 7, 1) / 10
+    t_values = np.arange(10, 41, 10) / 100
+
+    count = 0
+    for m in m_values:
+        for p in p_values:
+            for t in t_values:
+                foil = NACA4DigitFoil(m=m, p=p, t=t, c=1.0, num_points=100)
+                file_name = save_folder / f"NACA{foil.number}.dat"
+                foil.write_foil(file_name)
+                count += 1
+
+    print(f"共生成 {count} 个翼型文件")
+
 
 if __name__ == "__main__":
     # 示例调用1
     # naca_foil = NACA4DigitFoil(m=0.06, p=0.4, t=0.12, c=1.0, num_points=100)
 
     # 示例调用2
-    naca_foil = NACA4DigitFoil("6412", num_points=100)
+    # naca_foil = NACA4DigitFoil("6412", num_points=100)
 
-    naca_foil.plot_foil()
+    # naca_foil.plot_foil()
+
+    generate_naca_serials()
