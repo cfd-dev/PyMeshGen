@@ -103,28 +103,46 @@ def process_single_file(file_path, visualize=False):
         warning("No nodes found in grid.")
         return None
 
-    # 计算各维度范围
-    xs = [n[0] for n in all_nodes]
-    ys = [n[1] for n in all_nodes]
-    zs = [n[2] for n in all_nodes] if len(all_nodes[0]) > 2 else []
+    # 以wall_faces的节点坐标范围进行归一化，取出所有wall面的节点
+    wall_nodes_1based = []
+    for zone in grid["zones"].values():
+        if zone["type"] == "faces" and zone.get("bc_type") == "wall":
+            for face in zone["data"]:
+                wall_nodes_1based.extend(face["nodes"])
+    wall_nodes_1based = list(set(wall_nodes_1based))
 
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
-    z_min, z_max = (min(zs), max(zs)) if zs else (0.0, 0.0)
+    # 计算wall_nodes_1based各维度范围
+    wall_nodes_coord = [grid["nodes"][n - 1] for n in wall_nodes_1based]
+    x_min, x_max = min(n[0] for n in wall_nodes_coord), max(
+        n[0] for n in wall_nodes_coord
+    )
+    y_min, y_max = min(n[1] for n in wall_nodes_coord), max(
+        n[1] for n in wall_nodes_coord
+    )
+    z_min, z_max = (
+        (
+            min(n[2] for n in wall_nodes_coord),
+            max(n[2] for n in wall_nodes_coord),
+        )
+        if len(wall_nodes_coord[0]) > 2
+        else (0, 0)
+    )
 
-    # 生成归一化后的坐标列表
+    x_range = x_max - x_min
+    y_range = y_max - y_min
+    z_range = z_max - z_min
+    ref_d = max(x_range, y_range, z_range) + 1e-8  # 防止除零
+
+    # 对坐标进行归一化处理
     normalized_nodes = []
     for node in all_nodes:
-        # 处理每个坐标轴
-        x_range = x_max - x_min
-        norm_x = (node[0] - x_min) / x_range if x_range != 0 else 0.5
+        norm_x = (node[0] - x_min) / ref_d
 
         y_range = y_max - y_min
-        norm_y = (node[1] - y_min) / y_range if y_range != 0 else 0.5
+        norm_y = (node[1] - y_min) / ref_d
 
-        if len(node) > 2 and zs:
-            z_range = z_max - z_min
-            norm_z = (node[2] - z_min) / z_range if z_range != 0 else 0.5
+        if len(node) > 2:
+            norm_z = (node[2] - z_min) / ref_d
             normalized_nodes.append((norm_x, norm_y, norm_z))
         else:
             normalized_nodes.append((norm_x, norm_y))
