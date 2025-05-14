@@ -324,15 +324,16 @@ if __name__ == "__main__":
 
     # -------------------------- 训练监控 --------------------------
     # 初始化实时损失曲线
-    plt.ion()
-    fig, ax = plt.subplots(figsize=(10, 5))
     train_losses, val_losses = [], []
-    (line_train,) = ax.plot([], [], "r-", label="Train Loss")
-    (line_val,) = ax.plot([], [], "b-", label="Val Loss")
-    ax.set_title("Training & Validation Loss Curve")
-    ax.set_xlabel("Accumulated Steps")
-    ax.set_ylabel("Loss")
-    ax.legend()
+    if TRAINING_CONFIG["visualize_training"]:
+        plt.ion()
+        fig, ax = plt.subplots(figsize=(10, 5))
+        (line_train,) = ax.plot([], [], "r-", label="Train Loss")
+        (line_val,) = ax.plot([], [], "b-", label="Val Loss")
+        ax.set_title("Training & Validation Loss Curve")
+        ax.set_xlabel("Accumulated Steps")
+        ax.set_ylabel("Loss")
+        ax.legend()
 
     # -------------------------- 训练流程 --------------------------
     try:
@@ -374,7 +375,10 @@ if __name__ == "__main__":
                     )
 
                 # 更新损失曲线
-                if global_step % TRAINING_CONFIG["log_interval"] == 0:
+                if (
+                    global_step % TRAINING_CONFIG["log_interval"] == 0
+                    and TRAINING_CONFIG["visualize_training"]
+                ):
                     line_train.set_data(range(len(train_losses)), train_losses)
                     line_val.set_data(
                         [
@@ -397,6 +401,6 @@ if __name__ == "__main__":
     finally:
         torch.save(model.state_dict(), model_save_path)
         info(f"\n模型已保存至 {model_save_path}")
-        plt.ioff()
         input("训练完成，按回车键退出...")
+        plt.ioff()
         plt.close()

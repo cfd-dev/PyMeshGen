@@ -128,21 +128,23 @@ def process_single_file(file_path, visualize=False):
         else (0, 0)
     )
 
-    x_range = x_max - x_min
-    y_range = y_max - y_min
-    z_range = z_max - z_min
-    ref_d = max(x_range, y_range, z_range) + 1e-8  # 防止除零
+    x_range = x_max - x_min + 1e-12
+    y_range = y_max - y_min + 1e-12
+    z_range = z_max - z_min + 1e-12
+    ref_d = max(x_range, y_range, z_range)
 
     # 对坐标进行归一化处理
     normalized_nodes = []
     for node in all_nodes:
-        norm_x = (node[0] - x_min) / ref_d
+        # norm_x = (node[0] - x_min) / ref_d
+        norm_x = (node[0] - x_min) / x_range
 
-        y_range = y_max - y_min
-        norm_y = (node[1] - y_min) / ref_d
+        # norm_y = (node[1] - y_min) / ref_d
+        norm_y = (node[1] - y_min) / y_range
 
         if len(node) > 2:
-            norm_z = (node[2] - z_min) / ref_d
+            # norm_z = (node[2] - z_min) / ref_d
+            norm_z = (node[2] - z_min) / z_range
             normalized_nodes.append((norm_x, norm_y, norm_z))
         else:
             normalized_nodes.append((norm_x, norm_y))
