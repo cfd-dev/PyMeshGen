@@ -29,7 +29,7 @@ def get_march_vector(grid, node_1based, current_face):
 
     adjacent_faces = get_adjacent_node(grid, node_1based, current_face)
 
-    if len(adjacent_faces) > 2:
+    if len(adjacent_faces) > 1:
         # 处理翼型尾部的非四边形边界层
         # 计算adjacent_faces的空间长短，取长度最小的面计算march_vector
         min_length = float("inf")
@@ -236,7 +236,7 @@ def batch_process_files(folder_path):
 
 if __name__ == "__main__":
     current_dir = Path(__file__).parent
-    file_path = current_dir / "sample_grids/training/NACA0310.cas"
+    file_path = current_dir / "sample_grids/training/convex-60.cas"
     result = process_single_file(file_path, visualize=True)
 
     folder_path = current_dir / "sample_grids/training"

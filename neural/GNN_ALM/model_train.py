@@ -12,7 +12,7 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
 from utils.message import info, warning, error, debug
-
+from config import MODEL_CONFIG, TRAINING_CONFIG
 
 def add_edge_features(data):
     row, col = data.edge_index
@@ -65,47 +65,88 @@ def build_graph_data(wall_nodes, wall_faces):
 
 
 class GATModel(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, heads=4):
+
+    def __init__(
+        self,
+        hidden_channels=64,
+        num_gat_layers=3,
+        residual_switch=True,
+        dropout=0.3,
+        normalization="None",
+        heads=4,
+    ):
         super().__init__()
-        self.conv1 = GATConv(
-            in_channels,
-            out_channels=hidden_channels,
-            heads=heads,
-            edge_dim=2,
-            dropout=0.2,
+        self.residual_switch = residual_switch
+        self.normalization = normalization
+        self.hidden_channels = hidden_channels
+        self.num_gat_layers = num_gat_layers
+        self.heads = heads
+
+        self.norm_layers = torch.nn.ModuleList(
+            [
+                torch.nn.LayerNorm(hidden_channels),
+                torch.nn.BatchNorm1d(hidden_channels),
+                torch.nn.InstanceNorm1d(hidden_channels),
+            ]
         )
-        self.conv2 = GATConv(
-            in_channels=hidden_channels * heads,
-            out_channels=hidden_channels,
-            heads=heads,
-            edge_dim=2,
-            dropout=0.2,
+
+        self.coord_encoder = torch.nn.Linear(2, hidden_channels)
+
+        self.gat_layers = torch.nn.ModuleList(
+            [
+                GATConv(
+                    in_channels=hidden_channels,
+                    out_channels=hidden_channels,
+                    heads=heads if i < num_gat_layers - 1 else 1,
+                    # concat=(i < num_gat_layers - 1),
+                    concat=False,
+                    edge_dim=2,
+                    dropout=dropout,
+                )
+                for i in range(num_gat_layers)
+            ]
         )
-        self.conv3 = GATConv(
-            in_channels=hidden_channels * heads,
-            out_channels=hidden_channels,
-            heads=1,
-            concat=False,
-            edge_dim=2,
-            dropout=0.2,
-        )
-        self.fc = torch.nn.Linear(hidden_channels, out_channels)
+
+        self.residual_adapter = torch.nn.Linear(hidden_channels, hidden_channels)
+        self.dropout = torch.nn.Dropout(dropout)
+        self.fc1 = torch.nn.Linear(hidden_channels, 32)
+        self.fc2 = torch.nn.Linear(32, 2)
+        self.tanh = torch.nn.Tanh()
+
+    def Normalization(self, x):
+        if self.normalization == "None":
+            return x
+        elif self.normalization == "LayerNorm":
+            x = self.norm_layers[0](x)
+        elif self.normalization == "BatchNorm":
+            x = self.norm_layers[1](x)
+        elif self.normalization == "InstanceNorm":
+            x = self.norm_layers[2](x)
+        return x
+
+    def _adjust_identity(self, identity, x):
+        if identity.size(1) != x.size(1):
+            # return self.residual_adapter(identity)
+            raise ValueError(
+                "残差连接的输入输出维度不一致，请确保hidden_channels一致！"
+            )
+        return identity
 
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        # 第一层：多头注意力 + 边特征
-        x = self.conv1(x, edge_index, edge_attr=edge_attr)
-        x = F.dropout(x, p=0.5, training=self.training)
-        x = F.relu(x)
-        # 第二层
-        x = self.conv2(x, edge_index, edge_attr=edge_attr)
-        x = F.dropout(x, p=0.5, training=self.training)
-        x = F.relu(x)
-        # 第三层（单头）
-        x = self.conv3(x, edge_index, edge_attr=edge_attr)
-        x = F.relu(x)
-        # 全连接输出
-        x = self.fc(x)
+        x = F.relu(self.coord_encoder(x))
+        x = self.Normalization(x)
+        for gat in self.gat_layers:
+            res = x
+            x = gat(x, edge_index, edge_attr=edge_attr)
+            x = F.relu(x)
+            if self.residual_switch:
+                res = self._adjust_identity(res, x)
+                x = x + res
+            x = self.Normalization(x)
+            x = self.dropout(x)
+        x = F.relu(self.fc1(x))
+        x = self.tanh(self.fc2(x))
         return x
 
 
@@ -162,19 +203,17 @@ class EnhancedGNN(torch.nn.Module):
     def Normalization(self, x):
         if self.normalization == "None":
             return x
-        elif self.normalization == "Layer":
+        elif self.normalization == "LayerNorm":
             x = self.norm_layers[0](x)  # 初始编码后使用LayerNorm
-        elif self.normalization == "Batch":
+        elif self.normalization == "BatchNorm":
             x = self.norm_layers[1](x)  # 初始编码后使用BatchNorm
-        elif self.normalization == "Instance":
+        elif self.normalization == "InstanceNorm":
             x = self.norm_layers[2](x)  # 初始编码后使用InstanceNorm
 
         return x
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
-
-        self.toggle_residual(self.residual_switch)
 
         # 编码坐标
         x = F.relu(self.coord_encoder(x))
@@ -198,15 +237,8 @@ class EnhancedGNN(torch.nn.Module):
         x = self.tanh(self.fc2(x))
         return x
 
-    def toggle_residual(self, mode: bool):
-        """残差连接开关"""
-        self.residual_switch = mode
-
     def _adjust_identity(self, identity, x):
         """维度适配器，当残差连接维度不匹配时进行线性变换"""
-        # if identity.size(1) != x.size(1):
-        #     return torch.nn.Linear(identity.size(1), x.size(1)).to(x.device)(identity)
-        # return identity
         if identity.size(1) != x.size(1):
             # return self.residual_adapter(identity)
             raise ValueError(
@@ -216,6 +248,7 @@ class EnhancedGNN(torch.nn.Module):
 
 
 if __name__ == "__main__":
+
     # -------------------------- 初始化配置 --------------------------
     # 硬件设置
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -226,17 +259,6 @@ if __name__ == "__main__":
     current_dir = Path(__file__).parent
     folder_path = current_dir / "sample_grids/training"  # 原始数据目录
     model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
-
-    # -------------------------- 超参数配置 --------------------------
-    config = {
-        "train_ratio": 1.0,  # 训练集比例
-        "batch_size": 3,  # 批量大小
-        "hidden_channels": 64,  # GNN隐藏层维度
-        "learning_rate": 0.001,  # 学习率
-        "total_epochs": 20000,  # 总训练轮次
-        "log_interval": 50,
-        "validation_interval": 200,  # 验证间隔
-    }
 
     # -------------------------- 数据准备 --------------------------
     # 批量处理边界采样数据
@@ -251,35 +273,52 @@ if __name__ == "__main__":
         build_graph_data(result["valid_wall_nodes"], result["wall_faces"])
         for result in all_results
     ]
-    train_size = int(config["train_ratio"] * len(dataset))
+    train_size = int(TRAINING_CONFIG["train_ratio"] * len(dataset))
     val_size = len(dataset) - train_size
     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], shuffle=True
+        train_dataset, batch_size=TRAINING_CONFIG["batch_size"], shuffle=True
     )
-    # val_loader = DataLoader(val_dataset, batch_size=config['batch_size'])
+    val_loader = DataLoader(val_dataset, batch_size=TRAINING_CONFIG["batch_size"])
     # -------------------------- 临时措施 --------------------------
     val_loader = train_loader
     val_dataset = train_dataset
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
-    model = EnhancedGNN(
-        hidden_channels=config["hidden_channels"],
-        num_gcn_layers=4,
-        residual_switch=True,
-        dropout=0.3,
-        normalization="Layer",
-    ).to(device)
+    if MODEL_CONFIG["model_name"] == "GCN":
+        model = EnhancedGNN(
+            hidden_channels=MODEL_CONFIG["hidden_channels"],
+            num_gcn_layers=MODEL_CONFIG["num_gcn_layers"],
+            residual_switch=MODEL_CONFIG["residual_switch"],
+            dropout=MODEL_CONFIG["dropout"],
+            normalization=MODEL_CONFIG["normalization"],
+        ).to(device)
+    elif MODEL_CONFIG["model_name"] == "GAT":
+        model = GATModel(
+            hidden_channels=MODEL_CONFIG["hidden_channels"],
+            num_gat_layers=MODEL_CONFIG["num_gcn_layers"],
+            residual_switch=MODEL_CONFIG["residual_switch"],
+            dropout=MODEL_CONFIG["dropout"],
+            normalization=MODEL_CONFIG["normalization"],
+        ).to(device)
+
     info("\n网络层详细信息：")
     info(model)
     total_params = sum(p.numel() for p in model.parameters())
     info(f"\n总可训练参数数量：{total_params:,}")
 
     # 优化器和损失函数配置
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=TRAINING_CONFIG["learning_rate"]
+    )
     criterion = torch.nn.MSELoss()
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=TRAINING_CONFIG["lr_stepsize"],
+        gamma=TRAINING_CONFIG["lr_gamma"],
+    )
 
     # -------------------------- 训练监控 --------------------------
     # 初始化实时损失曲线
@@ -295,8 +334,8 @@ if __name__ == "__main__":
 
     # -------------------------- 训练流程 --------------------------
     try:
-        global_step = 0  # 新增全局步数计数器
-        for epoch in range(config["total_epochs"]):
+        global_step = 0  # 全局步数计数器
+        for epoch in range(TRAINING_CONFIG["total_epochs"]):
             model.train()
             for batch_data in train_loader:
                 global_step += 1
@@ -308,14 +347,15 @@ if __name__ == "__main__":
                 optimizer.step()
                 train_losses.append(loss.item())
 
-                # 定期更新训练信息
-                if global_step % config["log_interval"] == 0:
+                # 输出训练信息
+                if global_step % TRAINING_CONFIG["log_interval"] == 0:
                     info(
-                        f"当前步数[{global_step}] 轮次[{epoch+1}/{config['total_epochs']}]"
+                        f"当前步数[{global_step}] 轮次[{epoch+1}/{TRAINING_CONFIG['total_epochs']}]"
                         f" 损失: {loss.item():.4f}"
                     )
 
-                if global_step % config["validation_interval"] == 0:
+                # 验证集loss计算
+                if global_step % TRAINING_CONFIG["validation_interval"] == 0:
                     model.eval()
                     total_val_loss = 0.0
                     with torch.no_grad():
@@ -330,11 +370,11 @@ if __name__ == "__main__":
                     info(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
 
                 # 更新损失曲线
-                if global_step % config["log_interval"] == 0:
+                if global_step % TRAINING_CONFIG["log_interval"] == 0:
                     line_train.set_data(range(len(train_losses)), train_losses)
                     line_val.set_data(
                         [
-                            i * config["validation_interval"]
+                            i * TRAINING_CONFIG["validation_interval"]
                             for i in range(len(val_losses))
                         ],
                         val_losses,
@@ -345,6 +385,8 @@ if __name__ == "__main__":
                     plt.pause(0.01)  # 维持图像响应
 
                 model.to(device)  # 确保模型回到正确设备
+            # 学习率调度
+            scheduler.step()
 
     except KeyboardInterrupt:
         error("\n训练被用户中断！")
