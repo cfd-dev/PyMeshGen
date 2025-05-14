@@ -14,7 +14,7 @@ from config import MODEL_CONFIG
 def validate_model():
     current_dir = Path(__file__).parent
     validation_data_path = current_dir / "sample_grids/validation"  # 原始数据目录
-    saved_model = current_dir / "model/saved_model.pth"  # 模型保存路径
+    saved_model = current_dir / f"model/saved_model_{MODEL_CONFIG['model_name']}.pth"
     # -------------------------- 加载模型 --------------------------
     try:
         if MODEL_CONFIG["model_name"] == "GCN":

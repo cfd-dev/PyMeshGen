@@ -236,7 +236,7 @@ def batch_process_files(folder_path):
 
 if __name__ == "__main__":
     current_dir = Path(__file__).parent
-    file_path = current_dir / "sample_grids/training/convex-60.cas"
+    file_path = current_dir / "sample_grids/training/anw-hybrid-sample.cas"
     result = process_single_file(file_path, visualize=True)
 
     folder_path = current_dir / "sample_grids/training"
