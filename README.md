@@ -3,7 +3,7 @@
 ![Mesh Example](./docs/images/demo_mesh.png)
 
 ## Project Overview
-An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA analysis, providing user-friendly 2D mesh generation solutions and study platform of widely used algorithms.
+An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA analysis, providing basic 2D mesh generation tools and study platform of widely used algorithms.
 
 ## Project：
 - Nianhua Wang，nianhuawong@qq.com
