@@ -1,5 +1,5 @@
 (1 "Exported from Pointwise V18.5R2")
-(0 "22:51:21  Mon Jan 15 2024")
+(0 "12:59:39  Tue May 13 2025")
 
 (0 "Dimension : 2")
 (2 2)
@@ -1117,7 +1117,7 @@
   6.999856348565743e+00  -1.990000000000000e+01
 ))
 
-(0 "Zone 2 1227 cells 1..1227, VC: Unspecified Fluid = 2147483647")
+(0 "Zone 2 1227 cells 1..1227, VC: vc-3 Solid = 2")
 (12 (2 1 4cb 1 0)(
  1 1 1 1 1 1 1 1 1
  1 1 1 1 1 1 1 1 1
@@ -1257,7 +1257,7 @@
  3 3 3 3 3 3 3 3 3
  3 3 3
 ))
-(45 (2 fluid unspecified)())
+(45 (2 solid vc-3)())
 
 (0 "Zone 3 2242 faces 1..2242, Interior")                                                                                       
 (13 (3 1 8c2 2 0)(                                
@@ -3504,10 +3504,10 @@
 2 448 447 4c9 4cb
 2 12 448 4ca 4cb
 ))
-(45 (3 interior interior-unspecified)())
+(45 (3 interior interior-vc-3)())
 
-(0 "Zone 4 80 faces 2243..2322, BC: bc-3 pressure-far-field = 9")                                                               
-(13 (4 8c3 912 9 0)(                              
+(0 "Zone 4 80 faces 2243..2322, BC: bc-2 wall = 3")                                                                             
+(13 (4 8c3 912 3 0)(                              
 2 1 2 383 0
 2 2 3 39a 0
 2 3 4 3b1 0
@@ -3589,4 +3589,4 @@
 2 4f 50 359 0
 2 50 1 36e 0
 ))
-(45 (4 pressure-far-field bc-3)())
+(45 (4 wall bc-2)())

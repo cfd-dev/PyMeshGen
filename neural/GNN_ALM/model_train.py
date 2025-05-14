@@ -37,7 +37,7 @@ def build_graph_data(wall_nodes, wall_faces):
             if i in index_map and j in index_map:
                 a, b = index_map[i], index_map[j]
                 edge_set.add((a, b))
-                edge_set.add((b, a))  # 无向图
+                # edge_set.add((b, a))  # 无向图
         else:  # 多边形面（三角形/四边形等）
             # 循环连接相邻节点
             for i in range(len(nodes_0based)):
@@ -46,7 +46,7 @@ def build_graph_data(wall_nodes, wall_faces):
                 if current in index_map and next_node in index_map:
                     a, b = index_map[current], index_map[next_node]
                     edge_set.add((a, b))
-                    edge_set.add((b, a))
+                    # edge_set.add((b, a))
 
     # 转换为tensor格式
     edge_index = torch.tensor(list(edge_set), dtype=torch.long).t().contiguous()
@@ -247,6 +247,45 @@ class EnhancedGNN(torch.nn.Module):
         return identity
 
 
+class LossPlotter:
+    def __init__(self, visualize=True):
+        self.visualize = visualize
+        self.train_losses = []
+        self.val_losses = []
+        if self.visualize:
+            plt.ion()
+            self.fig, self.ax = plt.subplots(figsize=(10, 5))
+            (self.line_train,) = self.ax.plot([], [], "r-", label="Train Loss")
+            (self.line_val,) = self.ax.plot([], [], "b-", label="Val Loss")
+            self.ax.set_title("Training & Validation Loss Curve")
+            self.ax.set_xlabel("Accumulated Steps")
+            self.ax.set_ylabel("Loss")
+            self.ax.legend()
+
+    def append_train(self, loss):
+        self.train_losses.append(loss)
+
+    def append_val(self, val_loss):
+        self.val_losses.append(val_loss)
+
+    def update(self, global_step, validation_interval, log_interval):
+        if self.visualize and global_step % log_interval == 0:
+            self.line_train.set_data(range(len(self.train_losses)), self.train_losses)
+            self.line_val.set_data(
+                [i * validation_interval for i in range(len(self.val_losses))],
+                self.val_losses,
+            )
+            self.ax.relim()
+            self.ax.autoscale_view()
+            plt.draw()
+            plt.pause(0.01)
+
+    def close(self):
+        if self.visualize:
+            plt.ioff()
+            plt.close()
+
+
 if __name__ == "__main__":
 
     # -------------------------- 初始化配置 --------------------------
@@ -323,17 +362,7 @@ if __name__ == "__main__":
     )
 
     # -------------------------- 训练监控 --------------------------
-    # 初始化实时损失曲线
-    train_losses, val_losses = [], []
-    if TRAINING_CONFIG["visualize_training"]:
-        plt.ion()
-        fig, ax = plt.subplots(figsize=(10, 5))
-        (line_train,) = ax.plot([], [], "r-", label="Train Loss")
-        (line_val,) = ax.plot([], [], "b-", label="Val Loss")
-        ax.set_title("Training & Validation Loss Curve")
-        ax.set_xlabel("Accumulated Steps")
-        ax.set_ylabel("Loss")
-        ax.legend()
+    loss_plotter = LossPlotter(visualize=TRAINING_CONFIG["visualize_training"])
 
     # -------------------------- 训练流程 --------------------------
     try:
@@ -348,7 +377,7 @@ if __name__ == "__main__":
                 loss = criterion(out, batch_data.y)
                 loss.backward()
                 optimizer.step()
-                train_losses.append(loss.item())
+                loss_plotter.append_train(loss.item())
 
                 # 输出训练信息
                 if global_step % TRAINING_CONFIG["log_interval"] == 0:
@@ -368,29 +397,18 @@ if __name__ == "__main__":
                             val_loss = criterion(val_out, val_data.y)
                             total_val_loss += val_loss.item() * val_data.num_graphs
                     avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
-                    val_losses.append(avg_val_loss)
+                    loss_plotter.append_val(avg_val_loss)
                     model.train()
                     info(
                         f"训练损失: {loss.item():.4f},  验证损失: {avg_val_loss:.4f}, 学习率：{scheduler.get_last_lr()[0]:.6f}"
                     )
 
                 # 更新损失曲线
-                if (
-                    global_step % TRAINING_CONFIG["log_interval"] == 0
-                    and TRAINING_CONFIG["visualize_training"]
-                ):
-                    line_train.set_data(range(len(train_losses)), train_losses)
-                    line_val.set_data(
-                        [
-                            i * TRAINING_CONFIG["validation_interval"]
-                            for i in range(len(val_losses))
-                        ],
-                        val_losses,
-                    )
-                    ax.relim()
-                    ax.autoscale_view()
-                    plt.draw()
-                    plt.pause(0.01)  # 维持图像响应
+                loss_plotter.update(
+                    global_step,
+                    TRAINING_CONFIG["validation_interval"],
+                    TRAINING_CONFIG["log_interval"],
+                )
 
                 model.to(device)  # 确保模型回到正确设备
             # 学习率调度
@@ -402,5 +420,4 @@ if __name__ == "__main__":
         torch.save(model.state_dict(), model_save_path)
         info(f"\n模型已保存至 {model_save_path}")
         input("训练完成，按回车键退出...")
-        plt.ioff()
-        plt.close()
+        loss_plotter.close()
