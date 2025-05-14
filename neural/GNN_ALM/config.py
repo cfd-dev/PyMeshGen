@@ -16,4 +16,5 @@ TRAINING_CONFIG = {
     "validation_interval": 200,  # 验证间隔
     "lr_stepsize": 2000,  # 学习率调整步长
     "lr_gamma": 0.9,  # 学习率调整因子
+    "visualize_training": False,  # 是否绘制训练历史
 }
