@@ -7,32 +7,33 @@ import numpy as np
 root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
 from grid_sample import batch_process_files
-from model_train import build_graph_data, EnhancedGNN
+from model_train import build_graph_data, EnhancedGNN, GATModel
 from visualization.visualization import visualize_predictions
-
+from config import MODEL_CONFIG
 
 def validate_model():
     current_dir = Path(__file__).parent
     validation_data_path = current_dir / "sample_grids/validation"  # 原始数据目录
-    model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
-    # -------------------------- 初始化配置 --------------------------
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    config = {
-        "hidden_channels": 64,
-        "model_path": model_save_path,
-        "validation_data_path": validation_data_path,
-    }
-
+    saved_model = current_dir / "model/saved_model.pth"  # 模型保存路径
     # -------------------------- 加载模型 --------------------------
     try:
-        model = EnhancedGNN(
-            hidden_channels=config["hidden_channels"],
-            num_gcn_layers=4,
-            residual_switch=True,
-            dropout=0.3,
-            normalization="Layer",
-        ).to(device)
-        model.load_state_dict(torch.load(config['model_path']))
+        if MODEL_CONFIG["model_name"] == "GCN":
+            model = EnhancedGNN(
+                hidden_channels=MODEL_CONFIG["hidden_channels"],
+                num_gcn_layers=MODEL_CONFIG["num_gcn_layers"],
+                residual_switch=MODEL_CONFIG["residual_switch"],
+                dropout=MODEL_CONFIG["dropout"],
+                normalization=MODEL_CONFIG["normalization"],
+            )
+        elif MODEL_CONFIG["model_name"] == "GAT":
+            model = GATModel(
+                hidden_channels=MODEL_CONFIG["hidden_channels"],
+                num_gat_layers=MODEL_CONFIG["num_gcn_layers"],
+                residual_switch=MODEL_CONFIG["residual_switch"],
+                dropout=MODEL_CONFIG["dropout"],
+                normalization=MODEL_CONFIG["normalization"],
+            )
+        model.load_state_dict(torch.load(saved_model))
         model.eval()
         print("成功加载训练模型")
     except Exception as e:
@@ -41,7 +42,7 @@ def validate_model():
 
     # -------------------------- 加载验证数据 --------------------------
     try:
-        val_results = batch_process_files(config["validation_data_path"])
+        val_results = batch_process_files(validation_data_path)
         print(f"加载到 {len(val_results)} 个验证数据集")
     except Exception as e:
         print(f"验证数据加载失败: {str(e)}")
@@ -55,8 +56,7 @@ def validate_model():
     with torch.no_grad():
         for idx, result in enumerate(val_results):
             # 数据准备
-            data = build_graph_data(result['valid_wall_nodes'], 
-                                  result['wall_faces']).to(device)
+            data = build_graph_data(result["valid_wall_nodes"], result["wall_faces"])
 
             # 计算wall_faces的平均长度
             avg_length = compute_average_face_length(
@@ -69,17 +69,18 @@ def validate_model():
             total_loss += loss.item()
             all_losses.append(loss.item())
 
+            print(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
+
             # 可视化最后一个样本的预测结果
-            if idx == len(val_results) - 1:
+            if idx == 0:
                 fig, ax = visualize_predictions(
-                    data.cpu(),
-                    model.cpu(),
+                    data,
+                    model,
                     avg_length,
                 )
                 fig.suptitle(f"Case {idx+1} (Loss: {loss.item():.4f})")
                 ax.set_title("March Vector Prediction vs Ground Truth")
                 plt.show()
-            print(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
 
     # -------------------------- 输出统计结果 --------------------------
     avg_loss = total_loss / len(val_results)
