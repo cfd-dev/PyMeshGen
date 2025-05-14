@@ -258,7 +258,9 @@ if __name__ == "__main__":
     # 路径配置
     current_dir = Path(__file__).parent
     folder_path = current_dir / "sample_grids/training"  # 原始数据目录
-    model_save_path = current_dir / "model/saved_model.pth"  # 模型保存路径
+    model_save_path = (
+        current_dir / f"model/saved_model_{MODEL_CONFIG['model_name']}.pth"
+    )
 
     # -------------------------- 数据准备 --------------------------
     # 批量处理边界采样数据
@@ -367,7 +369,9 @@ if __name__ == "__main__":
                     avg_val_loss = total_val_loss / len(val_dataset)  # 计算平均验证损失
                     val_losses.append(avg_val_loss)
                     model.train()
-                    info(f"训练损失: {loss.item():.4f} 验证损失: {avg_val_loss:.4f}")
+                    info(
+                        f"训练损失: {loss.item():.4f},  验证损失: {avg_val_loss:.4f}, 学习率：{scheduler.get_last_lr()[0]:.6f}"
+                    )
 
                 # 更新损失曲线
                 if global_step % TRAINING_CONFIG["log_interval"] == 0:
