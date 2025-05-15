@@ -211,6 +211,18 @@ def process_single_file(file_path, visualize=False):
         "wall_faces": wall_faces,
         "wall_nodes": wall_nodes,
         "valid_wall_nodes": valid_wall_nodes,
+        "normalize_coeff": {
+            "x_min": x_min,
+            "x_max": x_max,
+            "y_min": y_min,
+            "y_max": y_max,
+            "z_min": z_min,
+            "z_max": z_max,
+            "x_range": x_range,
+            "y_range": y_range,
+            "z_range": z_range,
+            "ref_d": ref_d,
+        },
     }
 
 
@@ -238,7 +250,7 @@ def batch_process_files(folder_path):
 
 if __name__ == "__main__":
     current_dir = Path(__file__).parent
-    file_path = current_dir / "sample_grids/training/anw-hybrid-sample.cas"
+    file_path = current_dir / "sample_grids/training/naca4digits/NACA0620.cas"
     result = process_single_file(file_path, visualize=True)
 
     folder_path = current_dir / "sample_grids/training"

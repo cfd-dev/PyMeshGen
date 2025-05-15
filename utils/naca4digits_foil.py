@@ -2,7 +2,6 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 class NACA4DigitFoil:
     def __init__(self, *args, **kwargs):
         """
@@ -124,7 +123,7 @@ class NACA4DigitFoil:
         plt.ylabel("y")
         plt.axis("equal")
         plt.grid(True)
-        plt.show()
+        plt.show(block=False)
 
     def write_foil(self, filename):
         """将翼型坐标写入文件"""
@@ -147,7 +146,7 @@ def generate_naca_serials(save_folder: str = "naca_serials"):
         save_folder.mkdir(parents=True)
         print(f"文件夹 {save_folder} 已创建")
 
-    # m 取值范围0.00-0.09，p取值范围0.3-0.6，t取值范围0.10-0.40
+    # m取值范围0.00-0.09，p取值范围0.3-0.6，t取值范围0.10-0.40
     m_values = np.arange(0, 10, 1) / 100
     p_values = np.arange(3, 7, 1) / 10
     t_values = np.arange(10, 41, 10) / 100
