@@ -292,8 +292,7 @@ class LossPlotter:
             plt.close()
 
 
-if __name__ == "__main__":
-
+def train_model():
     # -------------------------- 初始化配置 --------------------------
     # 硬件设置
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -466,5 +465,9 @@ if __name__ == "__main__":
         loss_curve_path = model_save_path.with_suffix(".png")
         loss_plotter.save(loss_curve_path)
         info(f"Loss曲线已保存至 {loss_curve_path}")
-        input("训练完成，按回车键退出...")
-        loss_plotter.close()
+        # loss_plotter.close()
+
+
+if __name__ == "__main__":
+    train_model()
+    input("训练完成，按回车键退出...")
