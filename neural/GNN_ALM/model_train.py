@@ -428,7 +428,7 @@ def train_model():
                     loss_plotter.append_val(avg_val_loss)
                     model.train()
                     info(
-                        f"训练损失: {loss.item():.4f},  验证损失: {avg_val_loss:.4f}, 学习率：{scheduler.get_last_lr()[0]:.6f}"
+                        f"训练损失: {loss.item():.4f},  验证损失: {avg_val_loss:.4f}, 学习率：{scheduler.get_last_lr()[0]:.2e}"
                     )
 
                 # 更新损失曲线

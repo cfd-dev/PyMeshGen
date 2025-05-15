@@ -122,7 +122,7 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
 - **visualization**: Contains visualization functions for the project.
 
 The module framework of PyMeshGen is shown in the following figure:
-![Module Framework](./docs/images/module_framework.png)
+![Module Framework](./images/module_framework.png)
 
 
 ## Chapter 4: Mesh Generation Algorithms

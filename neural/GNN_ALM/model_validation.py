@@ -17,7 +17,7 @@ def validate_model():
     saved_model = current_dir / f"model/saved_model_{MODEL_CONFIG['model_name']}.pth"
     # -------------------------- 加载模型 --------------------------
     try:
-        if MODEL_CONFIG["model_name"] == "GCN":
+        if MODEL_CONFIG["model_type"] == "GCN":
             model = EnhancedGNN(
                 hidden_channels=MODEL_CONFIG["hidden_channels"],
                 num_gcn_layers=MODEL_CONFIG["num_gcn_layers"],
@@ -25,7 +25,7 @@ def validate_model():
                 dropout=MODEL_CONFIG["dropout"],
                 normalization=MODEL_CONFIG["normalization"],
             )
-        elif MODEL_CONFIG["model_name"] == "GAT":
+        elif MODEL_CONFIG["model_type"] == "GAT":
             model = GATModel(
                 hidden_channels=MODEL_CONFIG["hidden_channels"],
                 num_gat_layers=MODEL_CONFIG["num_gcn_layers"],
