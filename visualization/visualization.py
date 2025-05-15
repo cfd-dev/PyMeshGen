@@ -25,7 +25,12 @@ def visualize_graph_structure(graph):
 
 
 def visualize_predictions(
-    data, model, avg_length=None, vector_scale=None, head_scale=None
+    data,
+    model,
+    avg_length=None,
+    normalize_coeff=None,
+    vector_scale=None,
+    head_scale=None,
 ):
     """
     可视化真实向量与预测向量对比
@@ -39,12 +44,46 @@ def visualize_predictions(
     model.eval()
     with torch.no_grad():
         pred = model(data).cpu().numpy()
-    true = data.y.cpu().numpy()
     coords = data.x.cpu().numpy()
+    true = data.y.cpu().numpy()
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    true_norm = np.linalg.norm(true, axis=1, keepdims=True)
+    assert np.allclose(true_norm, 1), "True vector length is not 1"
+
+    # 对预测向量进行归一化处理
+    pred_norm = np.linalg.norm(pred, axis=1, keepdims=True)
+    pred = np.divide(pred, pred_norm, out=np.zeros_like(pred), where=pred_norm != 0)
+
+    # 对坐标进行反归一化
+    if coords.shape[1] == 3:
+        coords = coords * np.array(
+            [
+                normalize_coeff["x_range"],
+                normalize_coeff["y_range"],
+                normalize_coeff["z_range"],
+            ]
+        ) + np.array(
+            [
+                normalize_coeff["x_min"],
+                normalize_coeff["y_min"],
+                normalize_coeff["z_min"],
+            ]
+        )
+    else:
+        coords = coords * np.array(
+            [
+                normalize_coeff["x_range"],
+                normalize_coeff["y_range"],
+            ]
+        ) + np.array(
+            [
+                normalize_coeff["x_min"],
+                normalize_coeff["y_min"],
+            ]
+        )
 
     # 绘制节点位置
+    fig, ax = plt.subplots(figsize=(12, 10))
     ax.scatter(coords[:, 0], coords[:, 1], c="black", s=20, label="Nodes")
 
     # 绘制连线

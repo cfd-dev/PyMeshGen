@@ -296,7 +296,7 @@ if __name__ == "__main__":
 
     # 路径配置
     current_dir = Path(__file__).parent
-    folder_path = current_dir / "sample_grids/training"  # 原始数据目录
+    folder_path = current_dir / "sample_grids/training/naca4digits"  # 原始数据目录
     model_save_path = (
         current_dir / f"model/saved_model_{MODEL_CONFIG['model_name']}.pth"
     )

@@ -74,24 +74,24 @@ def validate_model():
             # 可视化最后一个样本的预测结果
             if idx == 0:
                 fig, ax = visualize_predictions(
-                    data,
-                    model,
-                    avg_length,
+                    data, model, avg_length, result["normalize_coeff"]
                 )
-                fig.suptitle(f"Case {idx+1} (Loss: {loss.item():.4f})")
-                ax.set_title("March Vector Prediction vs Ground Truth")
-                plt.show()
+                ax.set_title(
+                    f"March Vector Prediction vs Ground Truth | Case {idx+1} (Loss: {loss.item():.4f})"
+                )
+                plt.tight_layout(rect=[0, 0, 1, 1])
+                plt.show(block=False)
 
     # -------------------------- 输出统计结果 --------------------------
     avg_loss = total_loss / len(val_results)
     print(f"\n验证完成 | 平均损失: {avg_loss:.4f}")
-    plt.figure()
-    plt.bar(range(1, len(all_losses) + 1), all_losses, color="steelblue")
-    plt.title("Validation Loss for Each Sample")
-    plt.xlabel("Sample Index")
-    plt.ylabel("MSE Loss")
-    plt.tight_layout()
-    plt.show()
+    # plt.figure()
+    # plt.bar(range(1, len(all_losses) + 1), all_losses, color="steelblue")
+    # plt.title("Validation Loss for Each Sample")
+    # plt.xlabel("Sample Index")
+    # plt.ylabel("MSE Loss")
+    # plt.tight_layout()
+    # plt.show(block=False)
 
 
 def compute_average_face_length(wall_faces, wall_nodes):
