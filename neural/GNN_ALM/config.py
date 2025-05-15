@@ -1,10 +1,11 @@
 MODEL_CONFIG = {
-    "model_name": "GCN",
+    "model_type": "GCN",
     "hidden_channels": 64,
     "num_gcn_layers": 6,
     "residual_switch": True,
     "dropout": 0.3,
-    "normalization": "InstanceNorm",
+    "normalization": "None",
+    "model_name": "GCN_6L",
 }
 
 TRAINING_CONFIG = {

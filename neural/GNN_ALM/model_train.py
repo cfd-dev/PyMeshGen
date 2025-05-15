@@ -333,7 +333,7 @@ def train_model():
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
-    if MODEL_CONFIG["model_name"] == "GCN":
+    if MODEL_CONFIG["model_type"] == "GCN":
         model = EnhancedGNN(
             hidden_channels=MODEL_CONFIG["hidden_channels"],
             num_gcn_layers=MODEL_CONFIG["num_gcn_layers"],
@@ -341,7 +341,7 @@ def train_model():
             dropout=MODEL_CONFIG["dropout"],
             normalization=MODEL_CONFIG["normalization"],
         ).to(device)
-    elif MODEL_CONFIG["model_name"] == "GAT":
+    elif MODEL_CONFIG["model_type"] == "GAT":
         model = GATModel(
             hidden_channels=MODEL_CONFIG["hidden_channels"],
             num_gat_layers=MODEL_CONFIG["num_gcn_layers"],
@@ -350,10 +350,10 @@ def train_model():
             normalization=MODEL_CONFIG["normalization"],
         ).to(device)
 
-    info("\n网络层详细信息：")
+    info("网络层详细信息：")
     info(model)
     total_params = sum(p.numel() for p in model.parameters())
-    info(f"\n总可训练参数数量：{total_params:,}")
+    info(f"总可训练参数数量：{total_params:,}")
 
     # 优化器和损失函数配置
     optimizer = torch.optim.Adam(

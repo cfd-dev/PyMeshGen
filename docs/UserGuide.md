@@ -11,20 +11,20 @@
 - Chapter 8: Troubleshooting
 
 ## Chapter 1: Introduction
-PyMeshGen is an open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA (Computational Fluid Dynamics/ Finite Element) analysis, providing basic 2D mesh generation tools and a study platform of widely used meshing algorithms.
-There are three main features of PyMeshGen:
+PyMeshGen is an open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA (Computational Fluid Dynamics/ Finite Element Analysis), providing basic 2D mesh generation tools, study platform of widely used meshing algorithms and AI-driven mesh generation.
+The three main features of PyMeshGen are illustrated as follows:
 1. Basic 2D mesh generation tools: 
    - CAD file import
-   - 1D curve meshes
+   - 1D curve meshes (TODO)
    - 2D Isotropic Triangular/Quadrilateral Meshes
    - 2D Anisotropic Quadrilateral Boundary Layers
    - CAE Mesh file export
 2. Study platform of widely used algorithms: 
-   - curve following method
+   - curve meshing method (TODO)
    - advancing front method
    - boundary layer advancing technique
    - quadtree background mesh sizing
-   - mesh optimization algorithms: laplace smoothing, adam optimizer
+   - mesh optimization algorithms
 3. Study platform for AI-driven Mesh Generation
    - Mesh Sampling and Dataset Construction
    - Neural Network-Based Mesh Smoothing(NN-Smoothing)
@@ -33,7 +33,12 @@ There are three main features of PyMeshGen:
 This guide will walk you through the installation, usage, and advanced features of PyMeshGen.
 
 ## Chapter 2: Getting Started
-To get started with PyMeshGen, you need to install the library. You can do this using pip:
+To get started with PyMeshGen, you need:
+- Download/clone the source code from the following repository:
+  - https://github.com/nianhuawong/PyMeshGen
+- install requirements
+- 
+- run script 
 ```bash
 pip install pymeshgen
 ```
