@@ -248,7 +248,8 @@ class EnhancedGNN(torch.nn.Module):
 
 
 class LossPlotter:
-    def __init__(self, visualize=True):
+
+    def __init__(self, model_name, visualize=True):
         self.visualize = visualize
         self.train_losses = []
         self.val_losses = []
@@ -257,7 +258,7 @@ class LossPlotter:
             self.fig, self.ax = plt.subplots(figsize=(10, 5))
             (self.line_train,) = self.ax.plot([], [], "r-", label="Train Loss")
             (self.line_val,) = self.ax.plot([], [], "b-", label="Val Loss")
-            self.ax.set_title("Training & Validation Loss Curve")
+            self.ax.set_title(f"Training & Validation Loss Curve({model_name})")
             self.ax.set_xlabel("Accumulated Steps")
             self.ax.set_ylabel("Loss")
             self.ax.legend()
@@ -367,12 +368,35 @@ if __name__ == "__main__":
     )
 
     # -------------------------- 训练监控 --------------------------
-    loss_plotter = LossPlotter(visualize=TRAINING_CONFIG["visualize_training"])
+    loss_plotter = LossPlotter(
+        MODEL_CONFIG["model_name"], visualize=TRAINING_CONFIG["visualize_training"]
+    )
+
+    # ----------- 加载已有模型参数或断点（如有） -----------
+    checkpoint_path = model_save_path.with_suffix(".ckpt")
+    global_step = 0
+    start_epoch = 0
+    if checkpoint_path.exists():
+        info(f"检测到训练断点，正在恢复：{checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state"])
+        optimizer.load_state_dict(checkpoint["optimizer_state"])
+        scheduler.load_state_dict(checkpoint["scheduler_state"])
+        global_step = checkpoint.get("global_step", 0)
+        start_epoch = checkpoint.get("epoch", 0) + 1
+        # 恢复loss曲线
+        loss_plotter.train_losses = checkpoint.get("train_losses", [])
+        loss_plotter.val_losses = checkpoint.get("val_losses", [])
+    elif model_save_path.exists():
+        info(f"检测到已存在模型文件，正在加载参数并继续训练：{model_save_path}")
+        model.load_state_dict(torch.load(model_save_path, map_location=device))
+    else:
+        info("未检测到已保存模型，将从头开始训练。")
 
     # -------------------------- 训练流程 --------------------------
+    epoch = start_epoch - 1  # try前初始化epoch，避免异常时finally块报错
     try:
-        global_step = 0  # 全局步数计数器
-        for epoch in range(TRAINING_CONFIG["total_epochs"]):
+        for epoch in range(start_epoch, TRAINING_CONFIG["total_epochs"]):
             model.train()
             for batch_data in train_loader:
                 global_step += 1
@@ -422,8 +446,23 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         error("\n训练被用户中断！")
     finally:
+        # 保存模型参数
         torch.save(model.state_dict(), model_save_path)
+        # 保存训练状态
+        checkpoint = {
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "scheduler_state": scheduler.state_dict(),
+            "global_step": global_step,
+            "epoch": epoch,
+            "train_losses": loss_plotter.train_losses,
+            "val_losses": loss_plotter.val_losses,
+        }
+        checkpoint_path = model_save_path.with_suffix(".ckpt")
+        torch.save(checkpoint, checkpoint_path)
         info(f"\n模型已保存至 {model_save_path}")
+        info(f"训练断点已保存至 {checkpoint_path}")
+        # 保存loss曲线
         loss_curve_path = model_save_path.with_suffix(".png")
         loss_plotter.save(loss_curve_path)
         info(f"Loss曲线已保存至 {loss_curve_path}")
