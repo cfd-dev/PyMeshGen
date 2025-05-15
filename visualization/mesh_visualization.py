@@ -153,16 +153,22 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
         if not vec:
             continue
 
+        vec_norm = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
+        assert np.allclose(vec_norm, 1), "march_vector length is not 1"
+
         faces = node_info.get("node_wall_faces", [])
         if not faces:
             continue
 
         # 计算平均面长
-        total_length = 0
-        for face in faces:
-            sorted_nodes = sorted(face["nodes"])
-            total_length += face_length.get(tuple(sorted_nodes), 0.0)
-        avg_length = total_length / len(faces)
+        # total_length = 0
+        # for face in faces:
+        #     sorted_nodes = sorted(face["nodes"])
+        #     total_length += face_length.get(tuple(sorted_nodes), 0.0)
+        # avg_length = total_length / len(faces)
+        xmin, xmax = min(wall_xs), max(wall_xs)
+        ymin, ymax = min(wall_ys), max(wall_ys)
+        avg_length = min(xmax - xmin, ymax - ymin)
 
         scale = vector_scale * avg_length
 
