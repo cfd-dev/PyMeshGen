@@ -1,5 +1,5 @@
 MODEL_CONFIG = {
-    "model_name": "GCN",
+    "model_name": "GAT",
     "hidden_channels": 64,
     "num_gcn_layers": 4,
     "residual_switch": True,
@@ -9,7 +9,7 @@ MODEL_CONFIG = {
 
 TRAINING_CONFIG = {
     "train_ratio": 1.0,  # 训练集比例
-    "batch_size": 6,  # 批量大小
+    "batch_size": 1,  # 批量大小
     "total_epochs": 200000,  # 总训练轮次
     "log_interval": 50,
     "learning_rate": 0.01,  # 学习率

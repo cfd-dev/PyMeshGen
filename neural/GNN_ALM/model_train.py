@@ -280,6 +280,11 @@ class LossPlotter:
             plt.draw()
             plt.pause(0.01)
 
+    def save(self, save_path):
+        """保存loss曲线图片"""
+        if self.visualize:
+            self.fig.savefig(save_path, dpi=200, bbox_inches="tight")
+
     def close(self):
         if self.visualize:
             plt.ioff()
@@ -419,5 +424,8 @@ if __name__ == "__main__":
     finally:
         torch.save(model.state_dict(), model_save_path)
         info(f"\n模型已保存至 {model_save_path}")
+        loss_curve_path = model_save_path.with_suffix(".png")
+        loss_plotter.save(loss_curve_path)
+        info(f"Loss曲线已保存至 {loss_curve_path}")
         input("训练完成，按回车键退出...")
         loss_plotter.close()
