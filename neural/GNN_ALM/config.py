@@ -1,16 +1,15 @@
 MODEL_CONFIG = {
     "model_type": "GCN",
-    "num_gcn_layers": 4,
-    "hidden_channels": 16,
+    "num_gcn_layers": 8,
+    "hidden_channels": 64,
     "residual_switch": True,
-    "dropout": 0.3,
-    "normalization": "None",
-    "model_name": "GCN_4L_H16_Res_Drop0.3_None",
+    "dropout": 0.0,
+    "normalization": "LayerNorm",
 }
 
 TRAINING_CONFIG = {
-    "train_ratio": 1.0,  # 训练集比例
-    "batch_size": 1,  # 批量大小
+    "train_ratio": 0.8,  # 训练集比例
+    "batch_size": 3,  # 批量大小
     "total_epochs": 200000,  # 总训练轮次
     "log_interval": 50,
     "learning_rate": 0.01,  # 学习率

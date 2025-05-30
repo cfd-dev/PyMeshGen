@@ -8,3 +8,5 @@ __pycache__/
 /out
 /unittests/test_files/2d_cases/test_outputs/
 /neural/GNN_ALM/sample_grids/training/naca4digits/
+/neural/GNN_ALM/model
+neural/GNN_ALM/sample_grids/validation

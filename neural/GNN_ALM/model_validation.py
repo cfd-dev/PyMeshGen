@@ -7,11 +7,13 @@ import numpy as np
 root_dir = Path(__file__).parent.parent.parent
 sys.path.append(str(root_dir))
 from grid_sample import batch_process_files
-from model_train import build_graph_data, EnhancedGNN, GATModel
+from model_train import build_graph_data, get_model_name, EnhancedGNN, GATModel
 from visualization.visualization import visualize_predictions
 from config import MODEL_CONFIG
+from utils.message import info, warning, error, debug
 
 def validate_model():
+    MODEL_CONFIG["model_name"] = get_model_name(MODEL_CONFIG)
     current_dir = Path(__file__).parent
     validation_data_path = current_dir / "sample_grids/validation"  # 原始数据目录
     saved_model = current_dir / f"model/saved_model_{MODEL_CONFIG['model_name']}.pth"
@@ -35,17 +37,17 @@ def validate_model():
             )
         model.load_state_dict(torch.load(saved_model))
         model.eval()
-        print("成功加载训练模型")
+        info(f"成功加载训练模型: {saved_model}")
     except Exception as e:
-        print(f"模型加载失败: {str(e)}")
+        info(f"模型加载失败: {str(e)}")
         return
 
     # -------------------------- 加载验证数据 --------------------------
     try:
         val_results = batch_process_files(validation_data_path)
-        print(f"加载到 {len(val_results)} 个验证数据集")
+        info(f"加载到 {len(val_results)} 个验证数据集")
     except Exception as e:
-        print(f"验证数据加载失败: {str(e)}")
+        info(f"验证数据加载失败: {str(e)}")
         return
 
     # -------------------------- 执行验证 --------------------------
@@ -69,7 +71,7 @@ def validate_model():
             total_loss += loss.item()
             all_losses.append(loss.item())
 
-            print(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
+            info(f"样本 {idx+1}/{len(val_results)} 验证损失: {loss.item():.4f}")
 
             # 可视化最后一个样本的预测结果
             if idx == 0:
@@ -84,7 +86,7 @@ def validate_model():
 
     # -------------------------- 输出统计结果 --------------------------
     avg_loss = total_loss / len(val_results)
-    print(f"\n验证完成 | 平均损失: {avg_loss:.4f}")
+    info(f"验证完成 | 平均损失: {avg_loss:.4f}")
     # plt.figure()
     # plt.bar(range(1, len(all_losses) + 1), all_losses, color="steelblue")
     # plt.title("Validation Loss for Each Sample")

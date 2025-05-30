@@ -14,6 +14,7 @@ sys.path.append(str(root_dir))
 from utils.message import info, warning, error, debug
 from config import MODEL_CONFIG, TRAINING_CONFIG
 
+
 def add_edge_features(data):
     row, col = data.edge_index
     edge_attr = data.x[col, :2] - data.x[row, :2]  # 相对坐标差
@@ -292,12 +293,24 @@ class LossPlotter:
             plt.close()
 
 
+def get_model_name(config):
+    """根据模型配置生成唯一的模型名称"""
+    # 根据MODEL_CONFIG自动生成以下形式的model_name："model_name": "GCN_L4_H64_Res_Drop0.3_None",
+    return (
+        f"{config['model_type']}_L{config['num_gcn_layers']}"
+        f"_H{config['hidden_channels']}_{'Res' if config['residual_switch'] else 'NoRes'}"
+        f"_Drop{config['dropout']}_{config['normalization']}"
+    )
+
+
 def train_model():
     # -------------------------- 初始化配置 --------------------------
     # 硬件设置
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
     info(f"当前运行设备: {device}")
+
+    MODEL_CONFIG["model_name"] = get_model_name(MODEL_CONFIG)
 
     # 路径配置
     current_dir = Path(__file__).parent
@@ -328,8 +341,8 @@ def train_model():
     )
     val_loader = DataLoader(val_dataset, batch_size=TRAINING_CONFIG["batch_size"])
     # -------------------------- 临时措施 --------------------------
-    val_loader = train_loader
-    val_dataset = train_dataset
+    # val_loader = train_loader
+    # val_dataset = train_dataset
 
     # -------------------------- 模型初始化 --------------------------
     # 创建模型实例并转移到指定设备
