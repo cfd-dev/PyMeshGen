@@ -127,43 +127,20 @@ The module framework of PyMeshGen is shown in the following figure:
 
 ## Chapter 4: Mesh Generation Algorithms
 PyMeshGen supports various mesh generation algorithms, including:
-- **Delaunay Triangulation**: Generates a Delaunay triangulation of a set of points.
-- **Quadrilateralization**: Generates a quadrilateral mesh from a set of points.
-- **Triangulation**: Generates a triangulation of a set of points.
-- **Voronoi Diagram**: Generates a Voronoi diagram from a set of points.
+TODO
 
 ## Chapter 5: Mesh Post-Processing
 PyMeshGen provides post-processing functions for refining and optimizing meshes. These include:
-- **MeshRefiner**: Refines a mesh by adding vertices and edges.
-- **MeshOptimizer**: Optimizes a mesh by removing redundant vertices and edges.
-- **MeshSimplifier**: Simplifies a mesh by removing vertices and edges.
+TODO
 
 ## Chapter 6: Advanced Features
-PyMeshGen also includes advanced features, such as:
-- **MeshSampler**: Samples a mesh at specified points.
-- **MeshValidator**: Validates a mesh for correctness.
-- **MeshQuality**: Provides quality metrics for evaluating mesh quality.
+TODO
 
 ## Chapter 7: Examples
 To illustrate the usage of PyMeshGen, we provide several examples:
-```python
-# Example 1: Generate a Delaunay triangulation
-points = [[0, 0], [1, 0], [0, 1], [1, 1]]
-mesh = pmg.MeshGenerator.delaunay_triangulation(points)
-```
-```python
-# Example 2: Refine a mesh
-mesh = pmg.MeshRefiner.refine(mesh)
-```
-```python
-# Example 3: Optimize a mesh
-mesh = pmg.MeshOptimizer.optimize(mesh)
-```
-```python
-# Example 4: Simplify a mesh
-mesh = pmg.MeshSimplifier.simplify(mesh)
+TODO
 ```
 
 ## Chapter 8: Troubleshooting
 If you encounter any issues while using PyMeshGen, please refer to the documentation or contact the developer for assistance.
-
+TODO
