@@ -6,7 +6,7 @@
 开源的python非结构网格生成工具，专注于为计算流体力学或有限元分析(CFD/FEA)提供易用的二维网格生成解决方案，同时集成了多种主流网格生成算法供研究学习。
 
 ## 项目发起人：
-- 王年华，nianhuawong@qq.com
+- cfd_dev，cfd_dev@126.com
   
 ## 主要特性
 - **输入输出**
@@ -35,4 +35,4 @@ python PyMeshGen.py --case "./config/30p30n.json"
 ```
 
 ## 开发团队
-- **项目发起人**: Nianhua Wang <nianhuawong@qq.com>
+- **项目发起人**: cfd_dev <cfd_dev@126.com>

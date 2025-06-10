@@ -6,7 +6,7 @@
 An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA analysis, providing basic 2D mesh generation tools and study platform of widely used algorithms.
 
 ## Project：
-- Nianhua Wang，nianhuawong@qq.com
+- cfd_dev，cfd_dev@126.com
 
 ## Key Features
 - **Input/Output**
@@ -35,5 +35,5 @@ python PyMeshGen.py --case "./config/30p30n.json"
 ```
 
 ## Contact
-- **Author**: Nianhua Wang <nianhuawong@qq.com>
-- **Maintainer**: [Nianhua Wang] <nianhuawong@qq.com>
+- **Author**: cfd_dev <cfd_dev@126.com>
+- **Maintainer**: cfd_dev <cfd_dev@126.com>

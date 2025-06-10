@@ -36,7 +36,7 @@ This guide will walk you through the installation, usage, and advanced features 
 ## Chapter 2: Getting Started
 To get started with PyMeshGen, you need:
 1. Download/clone the source code from the following repository:
-     - https://github.com/nianhuawong/PyMeshGen
+     - https://github.com/cfd-dev/PyMeshGen
 2. Install requirements
 ```bash
 # Install dependencies
