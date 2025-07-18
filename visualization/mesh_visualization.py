@@ -21,6 +21,11 @@ class Visualization:
 
         visualize_mesh_2d(mesh, self.ax, boundary_only)
 
+    def set_range(self, xmin, xmax, ymin, ymax):
+        if self.ax is None:
+            return
+        self.ax.set_xlim(xmin, xmax)
+        self.ax.set_ylim(ymin, ymax)
 
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     """可视化完整的2D网格结构"""
@@ -35,9 +40,9 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
 
     # 定义边界类型颜色映射
     bc_colors = {
-        "interior": "black",  # 内部面
+        "interior": "blue",  # 内部面
         "wall": "red",  # 壁面
-        "pressure-far-field": "blue",  # 压力入口
+        "pressure-far-field": "black",  # 压力入口
         "symmetry": "green",  # 压力出口
         "pressure-outlet": "purple",  # 对称面
         "pressure-inlet": "cyan",  # 速度入口
@@ -78,9 +83,9 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
                 x,
                 y,
                 color=color,
-                linewidth=1 if bc_type == "interior" else 2,
+                linewidth=0.5 if bc_type == "interior" else 2,
                 alpha=0.7 if bc_type == "interior" else 1.0,
-                marker=".",
+                marker="",
             )
 
     # 创建图例代理
