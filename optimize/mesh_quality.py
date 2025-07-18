@@ -22,9 +22,8 @@ def triangle_shape_quality(p1, p2, p3):
     #     return 0.0
     # r = 2.0 * area / denominator  # 内切圆半径
     # R = (a * b * c) / (4.0 * area) if area != 0 else 0  # 外接圆半径
-    # quality = 3.0 * r / R if R != 0 else 0
-    # lower_limit = 0.0
-    # upper_limit = 1.5
+    # quality = 2.0 * r / R if R != 0 else 0  #二维
+    # quality = 3.0 * r / R if R != 0 else 0  #三维
 
     # 方法2：面积与边长平方比（默认使用该方法）
     denominator = a**2 + b**2 + c**2

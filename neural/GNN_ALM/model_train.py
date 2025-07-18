@@ -88,6 +88,7 @@ class GATModel(torch.nn.Module):
                 torch.nn.LayerNorm(hidden_channels),
                 torch.nn.BatchNorm1d(hidden_channels),
                 torch.nn.InstanceNorm1d(hidden_channels),
+                torch.nn.GroupNorm(1, hidden_channels),  # 通道级标准化
             ]
         )
 
@@ -123,6 +124,8 @@ class GATModel(torch.nn.Module):
             x = self.norm_layers[1](x)
         elif self.normalization == "InstanceNorm":
             x = self.norm_layers[2](x)
+        elif self.normalization == "GroupNorm":
+            x = self.norm_layers[3](x)
         return x
 
     def _adjust_identity(self, identity, x):
@@ -172,6 +175,7 @@ class EnhancedGNN(torch.nn.Module):
                 torch.nn.LayerNorm(hidden_channels),  # 节点级标准化
                 torch.nn.BatchNorm1d(hidden_channels),  # 批量标准化
                 torch.nn.InstanceNorm1d(hidden_channels),  # 图级标准化
+                torch.nn.GroupNorm(1, hidden_channels),  # 通道级标准化
             ]
         )
 
@@ -210,7 +214,8 @@ class EnhancedGNN(torch.nn.Module):
             x = self.norm_layers[1](x)  # 初始编码后使用BatchNorm
         elif self.normalization == "InstanceNorm":
             x = self.norm_layers[2](x)  # 初始编码后使用InstanceNorm
-
+        elif self.normalization == "GroupNorm":
+            x = self.norm_layers[3](x)  # 初始编码后使用GroupNorm
         return x
 
     def forward(self, data):
