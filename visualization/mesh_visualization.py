@@ -11,7 +11,7 @@ class Visualization:
         if SWITCH:
             self.create_figure()
 
-    def create_figure(self, figsize=(10, 8)):
+    def create_figure(self, figsize=(16, 9)):
         self.fig, self.ax = plt.subplots(figsize=figsize)
         self.ax.axis("equal")
 
@@ -26,6 +26,17 @@ class Visualization:
             return
         self.ax.set_xlim(xmin, xmax)
         self.ax.set_ylim(ymin, ymax)
+
+    def save_png(self, filename, dpi=300, bbox_inches="tight"):
+        """
+        自动保存当前figure为PNG图片
+        参数:
+            filename: 保存文件名（含路径）
+            dpi: 分辨率
+            bbox_inches: 图像边界设置
+        """
+        if self.fig is not None:
+            self.fig.savefig(filename, dpi=dpi, bbox_inches=bbox_inches)
 
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     """可视化完整的2D网格结构"""

@@ -209,6 +209,8 @@ if __name__ == "__main__":
     visual_obj = Visualization(True)
     visual_obj.plot_mesh(initial_grid, boundary_only=False)
     visual_obj.set_range(-3, 1, -0.5, 0.5)
+    # input("按回车继续到下一个时刻...")
+    visual_obj.save_png(f"./out/t=0.jpg")
 
     # 提取节点坐标和物面节点索引
     xCoord = np.array([node[0] for node in initial_grid['nodes']])
@@ -222,12 +224,12 @@ if __name__ == "__main__":
     T = 2.0        # 周期
     t = 0          # 起始时间
     dt = 0.5       # 时间步长
-    r0 = 5.0      # RBF紧支半径
+    r0 = 2.0      # RBF紧支半径
     basis = "Wendland C2"  # RBF基函数类型Wendland C2，Volume Spline
     
     # 拷贝初始网格用于动态变形
     dynamic_grid = initial_grid.copy()
-
+    
     # 时间推进主循环
     while t < 10:
         t += dt
@@ -254,6 +256,7 @@ if __name__ == "__main__":
         visual_obj.ax.clear()
         visual_obj.plot_mesh(dynamic_grid, boundary_only=False)
         visual_obj.set_range(-3, 1, -0.5, 0.5)
+        visual_obj.save_png(f"./out/t={t}.jpg")
         plt.pause(0.1)
 
         # 6. 等待用户输入，进入下一步
