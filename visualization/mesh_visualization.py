@@ -32,16 +32,11 @@ class Visualization:
             return
 
         # 检查mesh对象的类型并调用相应的可视化函数
-        print(f"Debug: mesh type is {type(mesh)}")
-        print(f"Debug: Unstructured_Grid type is {Unstructured_Grid}")
-        print(f"Debug: isinstance check result: {isinstance(mesh, Unstructured_Grid)}")
         if isinstance(mesh, Unstructured_Grid):
             # 如果是Unstructured_Grid对象，调用专用的可视化函数
-            print("Debug: Calling visualize_unstr_grid_2d")
             visualize_unstr_grid_2d(mesh, self.ax)
         else:
             # 否则使用原来的函数处理字典格式的网格数据
-            print("Debug: Calling visualize_mesh_2d")
             visualize_mesh_2d(mesh, self.ax, boundary_only)
 
     def set_range(self, xmin, xmax, ymin, ymax):

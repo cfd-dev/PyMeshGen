@@ -60,6 +60,9 @@ class SimplifiedPyMeshGenGUI:
         self.root.title("PyMeshGen 网格生成器")
         self.root.geometry("1200x800")
         
+        # 设置窗口关闭事件处理
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         # 设置matplotlib中文字体支持
         self.setup_chinese_font()
         
@@ -565,7 +568,20 @@ class SimplifiedPyMeshGenGUI:
                 # 设置GUI实例
                 from PyMeshGen_mixed import set_gui_instance
                 set_gui_instance(self)
+                
+                # 保存当前的mesh_data引用，以便在网格生成后获取优化后的网格
+                old_mesh_data = self.mesh_data
                 PyMeshGen_mixed(self.params)
+                
+                # 尝试从全局变量获取优化后的网格
+                # 如果PyMeshGen_mixed没有设置全局变量，则从文件加载
+                if hasattr(self, 'mesh_data') and self.mesh_data is not None and self.mesh_data is not old_mesh_data:
+                    # mesh_data已被更新为优化后的网格
+                    pass
+                else:
+                    # 从文件加载优化后的网格
+                    self.load_mesh_from_output()
+                    
                 self.append_info_output("混合网格生成完成！")
             else:  # 三角形或直角三角形网格
                 self.append_info_output("开始生成三角形网格...")
@@ -573,11 +589,23 @@ class SimplifiedPyMeshGenGUI:
                 # 设置GUI实例
                 from PyMeshGen import set_gui_instance
                 set_gui_instance(self)
+                
+                # 保存当前的mesh_data引用，以便在网格生成后获取优化后的网格
+                old_mesh_data = self.mesh_data
                 PyMeshGen(self.params)
+                
+                # 尝试从全局变量获取优化后的网格
+                # 如果PyMeshGen没有设置全局变量，则从文件加载
+                if hasattr(self, 'mesh_data') and self.mesh_data is not None and self.mesh_data is not old_mesh_data:
+                    # mesh_data已被更新为优化后的网格
+                    pass
+                else:
+                    # 从文件加载优化后的网格
+                    self.load_mesh_from_output()
+                    
                 self.append_info_output("三角形网格生成完成！")
                 
-            # 网格生成完成后，加载并显示新生成的网格
-            self.load_mesh_from_output()
+            # 显示优化后的网格
             self.display_mesh()
                 
             messagebox.showinfo("成功", "网格生成完成！")
@@ -619,7 +647,15 @@ class SimplifiedPyMeshGenGUI:
                 
             if viz_enabled:
                 visual_obj = Visualization(viz_enabled, self.ax)
-                visual_obj.plot_mesh(self.mesh_data)
+                
+                # 直接使用内存中的网格对象进行可视化
+                if hasattr(self.mesh_data, 'visualize_unstr_grid_2d'):
+                    # 如果是UnstructuredGrid对象，直接调用其可视化方法
+                    self.mesh_data.visualize_unstr_grid_2d(visual_obj)
+                else:
+                    # 否则使用通用的plot_mesh方法
+                    visual_obj.plot_mesh(self.mesh_data)
+                    
                 self.canvas.draw()  # 更新画布
                 self.update_status("网格已显示")
                 self.append_info_output("网格已显示")
@@ -689,6 +725,21 @@ class SimplifiedPyMeshGenGUI:
         """更新状态栏"""
         self.status_var.set(message)
         self.root.update_idletasks()
+
+    def on_closing(self):
+        """处理窗口关闭事件"""
+        try:
+            # 关闭所有matplotlib图形
+            import matplotlib.pyplot as plt
+            plt.close('all')
+            
+            # 销毁GUI窗口
+            self.root.destroy()
+        except Exception as e:
+            print(f"关闭窗口时出错: {e}")
+            # 强制退出
+            import sys
+            sys.exit(0)
 
     def show_about(self):
         """显示关于信息"""

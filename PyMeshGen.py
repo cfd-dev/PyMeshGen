@@ -152,6 +152,9 @@ def PyMeshGen(parameters=None):
     # 输出信息到GUI
     if _global_gui_instance:
         _global_gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
+        
+        # 将优化后的网格对象设置到GUI实例中
+        _global_gui_instance.mesh_data = global_unstr_grid
 
     # 结束计时
     global_timer.show_to_console("程序运行正常退出.")
