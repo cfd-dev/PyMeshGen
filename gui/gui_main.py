@@ -273,9 +273,8 @@ class PyMeshGenGUI:
             self.progress.start()
             self.root.update()
             
-            # 这里需要调用实际的网格生成函数
-            # 暂时显示提示信息
-            messagebox.showinfo("提示", "网格生成功能将在后续版本中实现")
+            # 调用实际的网格生成函数
+            self.run_mesh_generation()
             
             # 停止进度条
             self.progress.stop()
@@ -283,6 +282,21 @@ class PyMeshGenGUI:
         except Exception as e:
             self.progress.stop()
             messagebox.showerror("错误", f"网格生成失败: {str(e)}")
+            
+    def run_mesh_generation(self):
+        """运行网格生成算法"""
+        try:
+            # 根据网格类型选择合适的生成函数
+            if self.params.mesh_type == 3:  # 混合网格
+                from PyMeshGen_mixed import PyMeshGen_mixed
+                PyMeshGen_mixed(self.params)
+            else:  # 三角形或直角三角形网格
+                from PyMeshGen import PyMeshGen
+                PyMeshGen(self.params)
+                
+            messagebox.showinfo("成功", "网格生成完成！")
+        except Exception as e:
+            raise Exception(f"网格生成过程中出现错误: {str(e)}")
             
     def display_mesh(self):
         """显示网格"""

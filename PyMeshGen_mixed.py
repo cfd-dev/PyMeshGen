@@ -63,6 +63,7 @@ def PyMeshGen_mixed(parameters=None):
         param_obj=parameters,
         visual_obj=visual_obj,
     )
+    # Adlayers2的generate_elements总是返回两个值
     boundary_grid, front_heap = adlayers.generate_elements()
     unstr_grid_list.append(boundary_grid)
 
@@ -75,6 +76,7 @@ def PyMeshGen_mixed(parameters=None):
             param_obj=parameters,
             visual_obj=visual_obj,
         )
+        triangular_grid = adfront2.generate_elements()
     elif parameters.mesh_type == 3:
         adfront2 = Adfront2Hybrid(
             boundary_front=front_heap,
@@ -83,15 +85,16 @@ def PyMeshGen_mixed(parameters=None):
             param_obj=parameters,
             visual_obj=visual_obj,
         )
-
-    triangular_grid = adfront2.generate_elements()
+        triangular_grid = adfront2.generate_elements()
 
     # 网格质量优化
-    triangular_grid = edge_swap(triangular_grid)
     if parameters.mesh_type <= 2:
+        # 仅对纯三角形网格进行边交换优化
+        triangular_grid = edge_swap(triangular_grid)
         triangular_grid = laplacian_smooth(triangular_grid, 3)
         unstr_grid_list.append(triangular_grid)
     elif parameters.mesh_type == 3:
+        # 混合网格不需要边交换优化，直接进行混合网格优化
         hybrid_grid = merge_elements(triangular_grid)
         # hybrid_grid = hybrid_smooth(hybrid_grid, 3)
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)

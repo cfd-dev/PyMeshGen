@@ -1,6 +1,20 @@
 import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
+import sys
+import os
+
+# 添加必要的路径
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
+fileio_dir = os.path.join(parent_dir, 'fileIO')
+utils_dir = os.path.join(parent_dir, 'utils')
+optimize_dir = os.path.join(parent_dir, 'optimize')
+
+sys.path.append(fileio_dir)
+sys.path.append(utils_dir)
+sys.path.append(optimize_dir)
+
 from vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
 from geom_toolkit import (
     calculate_distance,
