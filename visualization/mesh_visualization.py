@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
+from data_structure.basic_elements import Unstructured_Grid
 
 
 class Visualization:
@@ -22,7 +23,6 @@ class Visualization:
             return
 
         # 检查mesh对象的类型并调用相应的可视化函数
-        from data_structure.basic_elements import Unstructured_Grid
         print(f"Debug: mesh type is {type(mesh)}")
         print(f"Debug: Unstructured_Grid type is {Unstructured_Grid}")
         print(f"Debug: isinstance check result: {isinstance(mesh, Unstructured_Grid)}")
@@ -152,7 +152,6 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
 
 def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     # 检查grid对象的类型
-    from data_structure.basic_elements import Unstructured_Grid
     if isinstance(grid, Unstructured_Grid):
         # 如果是Unstructured_Grid对象，暂时使用简单的可视化方法
         if ax is None:
