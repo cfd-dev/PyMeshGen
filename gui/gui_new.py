@@ -34,6 +34,9 @@ except ImportError:
 # 导入matplotlib相关模块
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontManager
+import matplotlib
 
 # 导入消息模块并设置GUI实例
 from utils.message import set_gui_instance
@@ -47,6 +50,9 @@ class SimplifiedPyMeshGenGUI:
         self.root = root
         self.root.title("PyMeshGen 网格生成器")
         self.root.geometry("1200x800")
+        
+        # 设置matplotlib中文字体支持
+        self.setup_chinese_font()
         
         # 当前参数对象
         self.params = None
@@ -173,6 +179,76 @@ class SimplifiedPyMeshGenGUI:
         self.xpress = None
         self.ypress = None
     
+    def setup_chinese_font(self):
+        """设置matplotlib中文字体支持"""
+        # 尝试设置中文字体
+        chinese_fonts = ["Microsoft YaHei", "SimHei", "KaiTi", "SimSun", "FangSong"]
+        found_font = None
+        
+        for font in chinese_fonts:
+            try:
+                # 检查字体是否可用
+                font_manager = FontManager()
+                available_fonts = [f.name for f in font_manager.ttflist]
+                if font in available_fonts:
+                    found_font = font
+                    break
+            except:
+                continue
+        
+        if found_font:
+            matplotlib.rcParams['font.sans-serif'] = [found_font]
+            matplotlib.rcParams['axes.unicode_minus'] = False
+        else:
+            # 如果没有找到中文字体，使用默认字体但关闭unicode minus
+            matplotlib.rcParams['axes.unicode_minus'] = False
+
+    def create_mesh_display_area(self, parent):
+        """创建网格显示区域"""
+        # 创建网格显示框架
+        mesh_frame = ttk.LabelFrame(parent, text="网格显示区")
+        mesh_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建matplotlib图形和轴
+        # 创建matplotlib图形对象
+        self.fig = Figure(figsize=(8, 6), dpi=100)
+        self.ax = self.fig.add_subplot(111)
+        self.ax.set_title("网格显示区域")
+        self.ax.set_xlabel("X坐标")
+        self.ax.set_ylabel("Y坐标")
+        # 初始状态不显示坐标轴
+        self.ax.set_axis_off()
+        
+        # 创建画布
+        self.canvas = FigureCanvasTkAgg(self.fig, mesh_frame)
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # 设置窗口标题为空字符串，避免显示"Figure 1"
+        if hasattr(self.canvas, 'manager') and self.canvas.manager is not None:
+            self.canvas.manager.set_window_title('')
+        
+        # 添加导航工具栏
+        self.toolbar = NavigationToolbar2Tk(self.canvas, mesh_frame)
+        self.toolbar.update()
+        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # 确保鼠标事件被正确连接
+        self.canvas.mpl_connect('scroll_event', self.on_mouse_wheel)
+        self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
+        self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+        
+        # 初始化鼠标交互状态
+        self.press = None
+        self.cur_xlim = None
+        self.cur_ylim = None
+        self.x0 = None
+        self.y0 = None
+        self.x1 = None
+        self.y1 = None
+        self.xpress = None
+        self.ypress = None
+
     def create_info_output_area(self, parent):
         """创建信息输出窗口"""
         # 创建信息输出框架
@@ -319,13 +395,54 @@ class SimplifiedPyMeshGenGUI:
         if not self.params:
             return {}
             
+        # 将Part对象转换为可序列化的字典格式
+        parts_data = []
+        for part in self.params.part_params:
+            # 将Part对象转换为字典
+            part_dict = {
+                "part_name": part.part_name,
+                "part_params": {
+                    "part_name": part.part_params.part_name,
+                    "max_size": part.part_params.max_size,
+                    "PRISM_SWITCH": part.part_params.PRISM_SWITCH,
+                    "first_height": part.part_params.first_height,
+                    "growth_rate": part.part_params.growth_rate,
+                    "growth_method": part.part_params.growth_method,
+                    "max_layers": part.part_params.max_layers,
+                    "full_layers": part.part_params.full_layers,
+                    "multi_direction": part.part_params.multi_direction
+                },
+                "connectors": []
+            }
+            
+            # 处理connectors
+            for connector in part.connectors:
+                connector_dict = {
+                    "part_name": connector.part_name,
+                    "curve_name": connector.curve_name,
+                    "param": {
+                        "part_name": connector.param.part_name,
+                        "max_size": connector.param.max_size,
+                        "PRISM_SWITCH": connector.param.PRISM_SWITCH,
+                        "first_height": connector.param.first_height,
+                        "growth_rate": connector.param.growth_rate,
+                        "growth_method": connector.param.growth_method,
+                        "max_layers": connector.param.max_layers,
+                        "full_layers": connector.param.full_layers,
+                        "multi_direction": connector.param.multi_direction
+                    }
+                }
+                part_dict["connectors"].append(connector_dict)
+                
+            parts_data.append(part_dict)
+            
         return {
             "debug_level": self.params.debug_level,
             "input_file": self.params.input_file,
             "output_file": self.params.output_file,
             "viz_enabled": self.params.viz_enabled,
             "mesh_type": self.params.mesh_type,
-            "parts": self.params.parts
+            "parts": parts_data
         }
 
     def edit_config(self):
@@ -345,6 +462,23 @@ class SimplifiedPyMeshGenGUI:
             # 从更新的配置创建参数对象
             self.create_params_from_config(updated_config)
             self.update_status("配置已更新")
+            
+    def create_params_from_config(self, config):
+        """从配置创建参数对象"""
+        # 注意：这个方法需要根据实际需求来实现
+        # 目前我们只是更新配置中的基本参数，parts部分需要更复杂的处理
+        if not self.params:
+            return
+            
+        # 更新基本参数
+        self.params.debug_level = config.get("debug_level", self.params.debug_level)
+        self.params.input_file = config.get("input_file", self.params.input_file)
+        self.params.output_file = config.get("output_file", self.params.output_file)
+        self.params.viz_enabled = config.get("viz_enabled", self.params.viz_enabled)
+        self.params.mesh_type = config.get("mesh_type", self.params.mesh_type)
+        
+        # parts部分的处理比较复杂，需要根据具体需求来实现
+        # 这里我们暂时只处理基本参数的更新
 
     def import_mesh_file(self):
         """导入网格文件"""
@@ -466,6 +600,8 @@ class SimplifiedPyMeshGenGUI:
             self.ax.set_xlabel("X坐标")
             self.ax.set_ylabel("Y坐标")
             self.ax.axis("equal")
+            # 确保坐标轴可见
+            self.ax.set_axis_on()
             
             # 创建可视化对象，使用GUI中的绘图区域
             if self.params and hasattr(self.params, 'viz_enabled'):
@@ -661,9 +797,10 @@ class ConfigDialog:
     def __init__(self, parent, config):
         self.top = tk.Toplevel(parent)
         self.top.title("编辑配置")
-        self.top.geometry("500x400")
+        self.top.geometry("700x600")
         
         self.result = None
+        self.config = config.copy()  # 复制配置以避免修改原始配置
         
         # 创建变量
         self.debug_level_var = tk.StringVar(value=str(config.get("debug_level", 0)))
@@ -691,15 +828,14 @@ class ConfigDialog:
                                         values=["0", "1", "2"], width=10)
         debug_level_combo.grid(row=0, column=1, sticky=tk.W, padx=5, pady=2)
         
-        # 输入文件
+        # 输入文件（只读）
         ttk.Label(main_frame, text="输入文件:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
-        input_file_entry = ttk.Entry(main_frame, textvariable=self.input_file_var, width=40)
+        input_file_entry = ttk.Entry(main_frame, textvariable=self.input_file_var, width=50, state="readonly")
         input_file_entry.grid(row=1, column=1, padx=5, pady=2)
-        ttk.Button(main_frame, text="浏览", command=self.browse_input_file).grid(row=1, column=2, padx=5, pady=2)
         
         # 输出文件
         ttk.Label(main_frame, text="输出文件:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
-        output_file_entry = ttk.Entry(main_frame, textvariable=self.output_file_var, width=40)
+        output_file_entry = ttk.Entry(main_frame, textvariable=self.output_file_var, width=50)
         output_file_entry.grid(row=2, column=1, padx=5, pady=2)
         ttk.Button(main_frame, text="浏览", command=self.browse_output_file).grid(row=2, column=2, padx=5, pady=2)
         
@@ -718,18 +854,48 @@ class ConfigDialog:
         viz_check = ttk.Checkbutton(main_frame, text="启用可视化", variable=self.viz_enabled_var)
         viz_check.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=5, pady=2)
         
-        # 部件配置（简化处理）
+        # 部件配置（使用表格形式显示）
         ttk.Label(main_frame, text="部件配置:").grid(row=5, column=0, sticky=tk.NW, padx=5, pady=2)
-        self.parts_text = tk.Text(main_frame, height=10, width=50)
-        parts_scrollbar = ttk.Scrollbar(main_frame, orient=tk.VERTICAL, command=self.parts_text.yview)
-        self.parts_text.configure(yscrollcommand=parts_scrollbar.set)
         
-        # 将部件配置转换为JSON格式显示
-        parts_json = json.dumps(config.get("parts", []), indent=2, ensure_ascii=False)
-        self.parts_text.insert(tk.END, parts_json)
+        # 创建部件配置的表格框架
+        parts_frame = ttk.Frame(main_frame)
+        parts_frame.grid(row=5, column=1, columnspan=2, padx=5, pady=2, sticky=tk.NSEW)
         
-        self.parts_text.grid(row=5, column=1, padx=5, pady=2)
-        parts_scrollbar.grid(row=5, column=2, sticky=tk.NS, pady=2)
+        # 创建Treeview来显示部件配置
+        columns = ("部件名称", "最大尺寸", "第一层高度", "增长率", "最大层数")
+        self.parts_tree = ttk.Treeview(parts_frame, columns=columns, show="headings", height=8)
+        
+        # 设置列标题
+        for col in columns:
+            self.parts_tree.heading(col, text=col)
+            self.parts_tree.column(col, width=100)
+        
+        # 添加滚动条
+        parts_scrollbar_y = ttk.Scrollbar(parts_frame, orient=tk.VERTICAL, command=self.parts_tree.yview)
+        parts_scrollbar_x = ttk.Scrollbar(parts_frame, orient=tk.HORIZONTAL, command=self.parts_tree.xview)
+        self.parts_tree.configure(yscrollcommand=parts_scrollbar_y.set, xscrollcommand=parts_scrollbar_x.set)
+        
+        # 布局
+        self.parts_tree.grid(row=0, column=0, sticky=tk.NSEW)
+        parts_scrollbar_y.grid(row=0, column=1, sticky=tk.NS)
+        parts_scrollbar_x.grid(row=1, column=0, sticky=tk.EW)
+        
+        parts_frame.rowconfigure(0, weight=1)
+        parts_frame.columnconfigure(0, weight=1)
+        
+        # 填充部件数据
+        self.populate_parts_tree(config.get("parts", []))
+        
+        # 绑定双击事件以编辑单元格
+        self.parts_tree.bind("<Double-1>", self.on_part_double_click)
+        
+        # 添加部件按钮
+        add_part_button = ttk.Button(parts_frame, text="添加部件", command=self.add_part)
+        add_part_button.grid(row=2, column=0, sticky=tk.W, pady=5)
+        
+        # 删除部件按钮
+        remove_part_button = ttk.Button(parts_frame, text="删除部件", command=self.remove_part)
+        remove_part_button.grid(row=2, column=0, sticky=tk.W, padx=80, pady=5)
         
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
@@ -738,14 +904,147 @@ class ConfigDialog:
         ttk.Button(button_frame, text="确定", command=self.ok).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.LEFT, padx=5)
     
-    def browse_input_file(self):
-        """浏览输入文件"""
-        file_path = filedialog.askopenfilename(
-            title="选择输入网格文件",
-            filetypes=[("CAS文件", "*.cas"), ("所有文件", "*.*")]
-        )
-        if file_path:
-            self.input_file_var.set(file_path)
+    def populate_parts_tree(self, parts):
+        """填充部件配置树形视图"""
+        # 清空现有项
+        for item in self.parts_tree.get_children():
+            self.parts_tree.delete(item)
+        
+        # 添加部件项
+        for i, part in enumerate(parts):
+            # 获取部件参数
+            part_params = part.get("part_params", {})
+            part_name = part.get("part_name", f"部件{i+1}")
+            max_size = part_params.get("max_size", 1.0)
+            first_height = part_params.get("first_height", 0.1)
+            growth_rate = part_params.get("growth_rate", 1.2)
+            max_layers = part_params.get("max_layers", 3)
+            
+            # 插入到树形视图
+            self.parts_tree.insert("", "end", values=(part_name, max_size, first_height, growth_rate, max_layers), 
+                                  tags=(i,))  # 使用tags存储部件索引
+    
+    def on_part_double_click(self, event):
+        """处理部件配置的双击事件以编辑参数"""
+        # 获取选中的项
+        selected = self.parts_tree.selection()
+        if not selected:
+            return
+            
+        # 获取点击的列
+        column = self.parts_tree.identify_column(event.x, event.y)
+        column_index = int(column.replace('#', '')) - 1
+        
+        # 获取选中项的值和索引
+        item = selected[0]
+        values = self.parts_tree.item(item, "values")
+        part_index = int(self.parts_tree.item(item, "tags")[0])
+        
+        # 创建编辑窗口
+        self.create_edit_window(item, column_index, values, part_index)
+    
+    def create_edit_window(self, item, column_index, values, part_index):
+        """创建编辑窗口以修改部件参数"""
+        # 获取当前值
+        current_value = values[column_index]
+        
+        # 创建顶层窗口
+        edit_window = tk.Toplevel(self.top)
+        edit_window.title("编辑参数")
+        edit_window.geometry("300x100")
+        edit_window.transient(self.top)
+        edit_window.grab_set()
+        
+        # 居中显示
+        edit_window.geometry("+%d+%d" % (self.top.winfo_rootx()+200, self.top.winfo_rooty()+200))
+        
+        # 创建输入框
+        ttk.Label(edit_window, text="请输入新值:").pack(pady=5)
+        entry_var = tk.StringVar(value=str(current_value))
+        entry = ttk.Entry(edit_window, textvariable=entry_var, width=30)
+        entry.pack(pady=5)
+        entry.focus()
+        
+        # 确定按钮回调
+        def save_edit():
+            new_value = entry_var.get()
+            # 更新显示值
+            new_values = list(values)
+            new_values[column_index] = new_value
+            self.parts_tree.item(item, values=new_values)
+            
+            # 更新配置数据
+            if part_index < len(self.config.get("parts", [])):
+                part = self.config["parts"][part_index]
+                if "part_params" not in part:
+                    part["part_params"] = {}
+                    
+                # 根据列索引更新对应的参数
+                if column_index == 0:  # 部件名称
+                    part["part_name"] = new_value
+                elif column_index == 1:  # 最大尺寸
+                    part["part_params"]["max_size"] = float(new_value) if new_value else 1.0
+                elif column_index == 2:  # 第一层高度
+                    part["part_params"]["first_height"] = float(new_value) if new_value else 0.1
+                elif column_index == 3:  # 增长率
+                    part["part_params"]["growth_rate"] = float(new_value) if new_value else 1.2
+                elif column_index == 4:  # 最大层数
+                    part["part_params"]["max_layers"] = int(new_value) if new_value else 3
+            
+            edit_window.destroy()
+        
+        # 创建按钮框架
+        button_frame = ttk.Frame(edit_window)
+        button_frame.pack(pady=5)
+        
+        ttk.Button(button_frame, text="确定", command=save_edit).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="取消", command=edit_window.destroy).pack(side=tk.LEFT, padx=5)
+        
+        # 绑定回车键
+        entry.bind("<Return>", lambda e: save_edit())
+        entry.bind("<Escape>", lambda e: edit_window.destroy())
+    
+    def add_part(self):
+        """添加新部件"""
+        # 获取当前部件数量
+        parts_count = len(self.config.get("parts", []))
+        
+        # 创建默认部件配置
+        new_part = {
+            "part_name": f"部件{parts_count+1}",
+            "part_params": {
+                "max_size": 1.0,
+                "first_height": 0.1,
+                "growth_rate": 1.2,
+                "max_layers": 3
+            }
+        }
+        
+        # 添加到配置中
+        if "parts" not in self.config:
+            self.config["parts"] = []
+        self.config["parts"].append(new_part)
+        
+        # 更新显示
+        self.populate_parts_tree(self.config["parts"])
+    
+    def remove_part(self):
+        """删除选中的部件"""
+        selected = self.parts_tree.selection()
+        if not selected:
+            messagebox.showwarning("警告", "请先选择要删除的部件")
+            return
+            
+        # 获取选中项的索引
+        item = selected[0]
+        part_index = int(self.parts_tree.item(item, "tags")[0])
+        
+        # 从配置中删除
+        if "parts" in self.config and 0 <= part_index < len(self.config["parts"]):
+            self.config["parts"].pop(part_index)
+            
+            # 更新显示
+            self.populate_parts_tree(self.config["parts"])
     
     def browse_output_file(self):
         """浏览输出文件"""
@@ -760,16 +1059,13 @@ class ConfigDialog:
     def ok(self):
         """确定按钮回调"""
         try:
-            # 解析部件配置
-            parts_config = json.loads(self.parts_text.get("1.0", tk.END))
-            
             self.result = {
                 "debug_level": int(self.debug_level_var.get()),
                 "input_file": self.input_file_var.get(),
                 "output_file": self.output_file_var.get(),
                 "viz_enabled": self.viz_enabled_var.get(),
                 "mesh_type": int(self.mesh_type_var.get()),
-                "parts": parts_config
+                "parts": self.config.get("parts", [])  # 使用修改后的部件配置
             }
             self.top.destroy()
         except Exception as e:
