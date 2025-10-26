@@ -39,7 +39,12 @@ def PyMeshGen(parameters=None):
     #     parameters = Parameters("FROM_MAIN_JSON")
 
     # 建立可视化对象
-    visual_obj = Visualization(parameters.viz_enabled)
+    if _global_gui_instance:
+        # 在GUI模式下，传入GUI的绘图区域
+        visual_obj = Visualization(parameters.viz_enabled, _global_gui_instance.ax)
+    else:
+        # 在命令行模式下，不传入ax参数
+        visual_obj = Visualization(parameters.viz_enabled)
     
     # 输出信息到GUI
     if _global_gui_instance:
@@ -123,6 +128,10 @@ def PyMeshGen(parameters=None):
 
     # 可视化
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
+    
+    # 在GUI模式下更新画布
+    if _global_gui_instance:
+        _global_gui_instance.canvas.draw()
 
     # 输出网格信息
     global_unstr_grid.summary()

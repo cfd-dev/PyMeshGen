@@ -8,6 +8,8 @@ class Visualization:
         self.ax = ax
         self.fig = None
 
+        # 如果启用了可视化但没有提供ax，则创建新的图形窗口
+        # 但如果是在GUI中使用，应该传入ax参数
         if SWITCH and ax is None:
             self.create_figure()
 
@@ -41,7 +43,12 @@ class Visualization:
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     """可视化完整的2D网格结构"""
     if ax is None:
-        return
+        # 如果没有提供ax，则创建新的图形窗口
+        fig, ax = plt.subplots(figsize=(12, 8))
+        show_plot = True
+    else:
+        # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
+        show_plot = False
 
     if not BoundaryOnly:
         # 绘制所有网格节点（半透明显示）
@@ -124,12 +131,20 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
     ax.legend(handles=legend_elements, loc="upper right")
     ax.axis("equal")
     plt.tight_layout()
-    plt.show(block=False)
+    
+    # 只有在创建了新图形时才显示
+    if show_plot:
+        plt.show(block=False)
 
 
 def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     if ax is None:
+        # 如果没有提供ax，则创建新的图形窗口
         fig, ax = plt.subplots(figsize=(12, 8))
+        show_plot = True
+    else:
+        # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
+        show_plot = False
 
     # 预处理：计算每个wall面的边长（排序节点避免重复）
     face_length = {}
@@ -214,13 +229,21 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     ax.set_ylabel("Y Coordinate")
     ax.legend()
     ax.axis("equal")
-    plt.show()
+    
+    # 只有在创建了新图形时才显示
+    if show_plot:
+        plt.show()
 
 
 def visualize_unstr_grid_2d(unstr_grid, ax=None):
     """可视化非结构化网格"""
     if ax is None:
+        # 如果没有提供ax，则创建新的图形窗口
         fig, ax = plt.subplots(figsize=(10, 8))
+        show_plot = True
+    else:
+        # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
+        show_plot = False
 
     # 绘制节点
     xs = [n[0] for n in unstr_grid.node_coords]
@@ -241,7 +264,10 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
     ax.set_xlabel("X Coordinate")
     ax.set_ylabel("Y Coordinate")
     ax.axis("equal")
-    plt.show(block=False)
+    
+    # 只有在创建了新图形时才显示
+    if show_plot:
+        plt.show(block=False)
 
 def plot_polygon(polygon_coords, ax, color="blue", alpha=0.5):
     # 绘制多边形

@@ -149,6 +149,10 @@ def PyMeshGen_mixed(parameters=None):
 
     # 可视化
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
+    
+    # 在GUI模式下更新画布
+    if _global_gui_instance:
+        _global_gui_instance.canvas.draw()
 
     # 输出网格信息
     global_unstr_grid.summary()

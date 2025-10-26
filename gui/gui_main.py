@@ -403,6 +403,8 @@ class PyMeshGenGUI:
                 messagebox.showwarning("警告", "请先启用可视化功能")
         except Exception as e:
             messagebox.showerror("错误", f"显示网格失败: {str(e)}")
+            import traceback
+            traceback.print_exc()  # 添加错误追踪信息
             
     def clear_display(self):
         """清除显示"""
