@@ -900,7 +900,11 @@ class ConfigDialog:
         # 按钮框架
         button_frame = ttk.Frame(main_frame)
         button_frame.grid(row=6, column=0, columnspan=3, pady=10)
-        
+
+        # 添加配置文件操作按钮
+        ttk.Button(button_frame, text="生成配置文件", command=self.generate_config_file).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="打开配置文件", command=self.open_config_file_dialog).pack(side=tk.LEFT, padx=5)
+
         ttk.Button(button_frame, text="确定", command=self.ok).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="取消", command=self.cancel).pack(side=tk.LEFT, padx=5)
     
@@ -932,7 +936,7 @@ class ConfigDialog:
             return
             
         # 获取点击的列
-        column = self.parts_tree.identify_column(event.x, event.y)
+        column = self.parts_tree.identify_column(event.x)
         column_index = int(column.replace('#', '')) - 1
         
         # 获取选中项的值和索引
@@ -942,6 +946,65 @@ class ConfigDialog:
         
         # 创建编辑窗口
         self.create_edit_window(item, column_index, values, part_index)
+    
+    def generate_config_file(self):
+        """生成配置文件"""
+        try:
+            # 从当前配置创建配置数据
+            config_data = {
+                "debug_level": int(self.debug_level_var.get()),
+                "input_file": self.input_file_var.get(),
+                "output_file": self.output_file_var.get(),
+                "viz_enabled": self.viz_enabled_var.get(),
+                "mesh_type": int(self.mesh_type_var.get()),
+                "parts": self.config.get("parts", [])
+            }
+            
+            # 选择保存路径
+            file_path = filedialog.asksaveasfilename(
+                title="保存配置文件",
+                defaultextension=".json",
+                filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+            )
+            
+            if file_path:
+                # 保存到文件
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(config_data, f, indent=4, ensure_ascii=False)
+                messagebox.showinfo("成功", f"配置文件已保存到: {file_path}")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存配置文件失败: {str(e)}")
+    
+    def open_config_file_dialog(self):
+        """打开配置文件对话框"""
+        try:
+            # 选择配置文件
+            file_path = filedialog.askopenfilename(
+                title="选择配置文件",
+                filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+            )
+            
+            if file_path:
+                # 读取配置文件
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                # 更新界面显示
+                self.debug_level_var.set(str(config.get("debug_level", 0)))
+                self.input_file_var.set(config.get("input_file", ""))
+                self.output_file_var.set(config.get("output_file", ""))
+                self.viz_enabled_var.set(config.get("viz_enabled", True))
+                self.mesh_type_var.set(str(config.get("mesh_type", 1)))
+                
+                # 更新配置数据
+                self.config = config.copy()
+                
+                # 更新部件配置显示
+                self.populate_parts_tree(config.get("parts", []))
+                
+                messagebox.showinfo("成功", f"已加载配置文件: {file_path}")
+        except Exception as e:
+            messagebox.showerror("错误", f"加载配置文件失败: {str(e)}")
     
     def create_edit_window(self, item, column_index, values, part_index):
         """创建编辑窗口以修改部件参数"""
