@@ -367,6 +367,7 @@ class SimplifiedPyMeshGenGUI:
                 self.config_file_path = file_path
                 # 从当前参数创建配置
                 config = self.create_config_from_params()
+                
                 # 保存到文件
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(config, f, indent=4, ensure_ascii=False)
@@ -374,21 +375,6 @@ class SimplifiedPyMeshGenGUI:
                 self.append_info_output(f"配置已保存到: {file_path}")
             except Exception as e:
                 messagebox.showerror("错误", f"保存配置文件失败: {str(e)}")
-
-    def create_params_from_config(self, config):
-        """从配置创建参数对象"""
-        try:
-            # 创建临时JSON文件来初始化参数
-            temp_config_path = os.path.join(project_root, "temp_config.json")
-            with open(temp_config_path, 'w', encoding='utf-8') as f:
-                json.dump(config, f, indent=4, ensure_ascii=False)
-            
-            self.params = Parameters("FROM_CASE_JSON", temp_config_path)
-            
-            # 删除临时文件
-            os.remove(temp_config_path)
-        except Exception as e:
-            messagebox.showerror("错误", f"从配置创建参数失败: {str(e)}")
 
     def create_config_from_params(self):
         """从参数对象创建配置"""
@@ -465,20 +451,18 @@ class SimplifiedPyMeshGenGUI:
             
     def create_params_from_config(self, config):
         """从配置创建参数对象"""
-        # 注意：这个方法需要根据实际需求来实现
-        # 目前我们只是更新配置中的基本参数，parts部分需要更复杂的处理
-        if not self.params:
-            return
+        try:
+            # 创建临时JSON文件来初始化参数
+            temp_config_path = os.path.join(project_root, "temp_config.json")
+            with open(temp_config_path, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=4, ensure_ascii=False)
             
-        # 更新基本参数
-        self.params.debug_level = config.get("debug_level", self.params.debug_level)
-        self.params.input_file = config.get("input_file", self.params.input_file)
-        self.params.output_file = config.get("output_file", self.params.output_file)
-        self.params.viz_enabled = config.get("viz_enabled", self.params.viz_enabled)
-        self.params.mesh_type = config.get("mesh_type", self.params.mesh_type)
-        
-        # parts部分的处理比较复杂，需要根据具体需求来实现
-        # 这里我们暂时只处理基本参数的更新
+            self.params = Parameters("FROM_CASE_JSON", temp_config_path)
+            
+            # 删除临时文件
+            os.remove(temp_config_path)
+        except Exception as e:
+            messagebox.showerror("错误", f"从配置创建参数失败: {str(e)}")
 
     def import_mesh_file(self):
         """导入网格文件"""
@@ -491,6 +475,11 @@ class SimplifiedPyMeshGenGUI:
                 self.mesh_data = parse_fluent_msh(file_path)
                 self.update_status(f"已导入网格文件: {file_path}")
                 self.append_info_output(f"已导入网格文件: {file_path}")
+                
+                # 更新参数中的输入文件路径
+                if self.params:
+                    self.params.input_file = file_path
+                
                 # 显示网格
                 self.display_mesh()
             except Exception as e:
