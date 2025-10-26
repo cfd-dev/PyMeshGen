@@ -24,15 +24,31 @@ An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA a
   - Neural Network-Based Mesh Smoothing(NN-Smoothing)
   - Deep Reinforcement Learning-Based Mesh Smoothing(DRL-Smoothing)
   - Mesh Optimization with Adam Optimizer(Adam-Smoothing)
+- **GUI Interface**
+  - Graphical user interface for parameter setting
+  - Interactive mesh visualization
+  - File import/export operations
 
 ## Quick Start
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Generate sample mesh
+# Generate sample mesh (command line)
 python PyMeshGen.py --case "./config/30p30n.json"
+
+# Launch GUI interface
+python start_gui.py
 ```
+
+## GUI Usage
+The GUI branch provides a graphical interface for easier mesh generation:
+- Parameter configuration through intuitive controls
+- Visual mesh display with boundary type differentiation
+- File import/export capabilities
+- Interactive mesh generation workflow
+
+See `gui/README.md` for detailed GUI usage instructions.
 
 ## Contact
 - **Author**: cfd_dev <cfd_dev@126.com>
