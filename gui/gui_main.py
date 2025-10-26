@@ -232,13 +232,13 @@ class PyMeshGenGUI:
         """创建信息输出窗口"""
         # 创建信息输出框架
         info_frame = ttk.LabelFrame(parent, text="信息输出")
-        info_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=5, pady=5)
+        info_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建文本框和滚动条
         text_frame = ttk.Frame(info_frame)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=10)
+        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=15)
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.info_text.yview)
         self.info_text.configure(yscrollcommand=scrollbar.set)
         
@@ -273,8 +273,14 @@ class PyMeshGenGUI:
             self.mesh_type_var.set(str(self.params.mesh_type))
             self.viz_enabled_var.set(self.params.viz_enabled)
             self.update_status("参数已初始化")
+            
+            # 添加欢迎信息到信息输出窗口
+            self.append_info_output("欢迎使用PyMeshGen网格生成器!")
+            self.append_info_output("请设置参数并点击'生成网格'按钮开始生成网格。")
+            self.append_info_output("-" * 50)
         except Exception as e:
             self.update_status(f"初始化参数失败: {str(e)}")
+            self.append_info_output(f"初始化参数失败: {str(e)}")
 
     def browse_input_file(self):
         """浏览输入文件"""
