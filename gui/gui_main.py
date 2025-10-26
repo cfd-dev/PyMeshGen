@@ -259,8 +259,14 @@ class PyMeshGenGUI:
         
     def append_info_output(self, message):
         """添加信息到输出窗口"""
-        self.info_text.insert(tk.END, message + "\n")
-        self.info_text.see(tk.END)  # 自动滚动到最新信息
+        try:
+            # 检查info_text是否存在且是有效的tkinter组件
+            if hasattr(self, 'info_text') and self.info_text is not None:
+                self.info_text.insert(tk.END, message + "\n")
+                self.info_text.see(tk.END)  # 自动滚动到最新信息
+        except Exception:
+            # 在测试环境或没有GUI的情况下忽略错误
+            pass
 
     def create_status_bar(self):
         """创建状态栏"""

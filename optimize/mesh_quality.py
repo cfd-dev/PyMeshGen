@@ -1,6 +1,6 @@
 import numpy as np
 from math import sqrt, isnan, isinf
-from geom_toolkit import (
+from utils.geom_toolkit import (
     calculate_distance,
     triangle_area,
     calculate_angle,
@@ -126,7 +126,7 @@ def quadrilateral_quality2(p1, p2, p3, p4):
 
 def quadrilateral_shape_quality(p1, p2, p3, p4):
     """计算四边形质量（基于子三角形质量的最小组合）"""
-    from basic_elements import LineSegment
+    from data_structure.basic_elements import LineSegment
 
     # 检查四边形有效性
     if not is_valid_quadrilateral(p1, p2, p3, p4):

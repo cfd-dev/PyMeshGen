@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 # 添加项目根目录到Python路径
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent  # 现在在unittests目录下，需要指向上一级目录
 sys.path.insert(0, str(project_root))
 
 # 添加子模块路径

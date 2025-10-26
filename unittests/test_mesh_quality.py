@@ -2,14 +2,14 @@ import sys
 from pathlib import Path
 import unittest
 import numpy as np
-from mesh_quality import (
+from optimize.mesh_quality import (
     triangle_shape_quality,
     triangle_skewness,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
     quadrilateral_shape_quality,
 )
-from stl_io import parse_stl_msh
+from fileIO.stl_io import parse_stl_msh
 
 
 class TestMeshQuality(unittest.TestCase):

@@ -1,5 +1,5 @@
-from vtk_io import VTK_ELEMENT_TYPE
-from basic_elements import Unstructured_Grid, NodeElement, Triangle
+from .vtk_io import VTK_ELEMENT_TYPE
+from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle
 
 
 def read_stl(filename):
