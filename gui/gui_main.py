@@ -35,6 +35,8 @@ except ImportError:
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+# 导入消息模块并设置GUI实例
+from utils.message import set_gui_instance
 from parameters import Parameters
 from read_cas import parse_fluent_msh
 from mesh_visualization import Visualization
@@ -55,6 +57,9 @@ class PyMeshGenGUI:
         
         # 初始化参数
         self.init_default_params()
+        
+        # 设置消息模块的GUI实例引用
+        set_gui_instance(self)
 
     def create_widgets(self):
         """创建GUI界面组件"""
@@ -187,7 +192,7 @@ class PyMeshGenGUI:
         """创建网格显示区域"""
         # 创建网格显示框架
         mesh_frame = ttk.LabelFrame(parent, text="网格显示区")
-        mesh_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        mesh_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建matplotlib图形和轴
         self.fig = Figure(figsize=(8, 6), dpi=100)
@@ -227,7 +232,7 @@ class PyMeshGenGUI:
         """创建信息输出窗口"""
         # 创建信息输出框架
         info_frame = ttk.LabelFrame(parent, text="信息输出")
-        info_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        info_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=False, padx=5, pady=5)
         
         # 创建文本框和滚动条
         text_frame = ttk.Frame(info_frame)
@@ -366,6 +371,12 @@ class PyMeshGenGUI:
         try:
             # 更新参数
             self.update_params_from_gui()
+            
+            # 检查输入文件是否存在
+            input_file = self.params.input_file
+            if not input_file or not os.path.exists(input_file):
+                messagebox.showerror("错误", f"输入文件不存在: {input_file}\n请检查文件路径或选择有效的输入文件。")
+                return
             
             # 清除之前的信息输出
             self.clear_info_output()
