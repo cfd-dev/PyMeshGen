@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
-from data_structure.basic_elements import Unstructured_Grid
+from basic_elements import Unstructured_Grid
 
 
 class Visualization:
@@ -53,7 +53,13 @@ class Visualization:
             self.fig.savefig(filename, dpi=dpi, bbox_inches=bbox_inches)
 
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
-    """可视化完整的2D网格结构（仅用于字典格式的网格数据）"""
+    """可视化完整的2D网格结构（支持字典格式和Unstructured_Grid对象）"""
+    # 检查grid对象的类型
+    if isinstance(grid, Unstructured_Grid):
+        # 如果是Unstructured_Grid对象，调用专用的可视化函数
+        visualize_unstr_grid_2d(grid, ax)
+        return
+    
     # 处理字典格式网格数据的代码
     if ax is None:
         # 如果没有提供ax，则创建新的图形窗口
