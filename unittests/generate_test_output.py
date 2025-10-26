@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 
 # 添加项目根目录到Python路径
-project_root = Path(__file__).parent
+project_root = Path(__file__).parent.parent  # 调整路径以适应新的文件位置
 sys.path.insert(0, str(project_root))
 
 # 导入消息模块
