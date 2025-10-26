@@ -14,8 +14,8 @@ sys.path.insert(0, str(project_root))
 
 if __name__ == "__main__":
     try:
-        # 导入并运行GUI主程序
-        from gui.gui_main import main
+        # 导入并运行新的简化版GUI主程序
+        from gui.gui_new import main
         main()
     except Exception as e:
         print(f"启动GUI失败: {e}")
