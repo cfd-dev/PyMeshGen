@@ -21,7 +21,9 @@ def optimize_hybrid_grid(hybrid_grid):
     subprocess.run(cmd, check=True, capture_output=True, text=True)
     debug(f'Optimized VTK mesh written to: {tmp_file.replace(".vtk", "_opt.vtk")}')
     
-    optimized_grid = hybrid_grid.load_from_vtkfile(tmp_file.replace(".vtk", "_opt.vtk"))
+    # 从优化后的VTK文件加载网格
+    from fileIO.vtk_io import parse_vtk_msh
+    optimized_grid = parse_vtk_msh(tmp_file.replace(".vtk", "_opt.vtk"))
     
     # 如果需要，删除临时文件
     if not __debug__:

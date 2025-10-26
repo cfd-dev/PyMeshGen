@@ -52,6 +52,11 @@ def PyMeshGen(parameters=None):
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
+    
+    # 在GUI模式下清除之前的绘图内容
+    if _global_gui_instance and hasattr(_global_gui_instance, 'ax') and _global_gui_instance.ax:
+        _global_gui_instance.ax.clear()
+        
     visual_obj.plot_mesh(input_grid, boundary_only=True)
     
     # 输出信息到GUI

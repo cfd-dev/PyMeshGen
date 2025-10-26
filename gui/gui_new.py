@@ -42,7 +42,7 @@ import matplotlib
 from utils.message import set_gui_instance
 from parameters import Parameters
 from read_cas import parse_fluent_msh
-from mesh_visualization import Visualization
+from visualization.mesh_visualization import Visualization
 
 
 class SimplifiedPyMeshGenGUI:
@@ -561,6 +561,10 @@ class SimplifiedPyMeshGenGUI:
                 PyMeshGen(self.params)
                 self.append_info_output("三角形网格生成完成！")
                 
+            # 网格生成完成后，加载并显示新生成的网格
+            self.load_mesh_from_output()
+            self.display_mesh()
+                
             messagebox.showinfo("成功", "网格生成完成！")
         except Exception as e:
             self.append_info_output(f"网格生成过程中出现错误: {str(e)}")
@@ -572,8 +576,8 @@ class SimplifiedPyMeshGenGUI:
             # 尝试从输出文件加载网格数据
             if self.params and self.params.output_file and os.path.exists(self.params.output_file):
                 try:
-                    from data_structure.basic_elements import Unstructured_Grid
-                    self.mesh_data = Unstructured_Grid.from_vtkfile(self.params.output_file)
+                    from fileIO.vtk_io import parse_vtk_msh
+                    self.mesh_data = parse_vtk_msh(self.params.output_file)
                     self.append_info_output(f"已从输出文件加载网格数据: {self.params.output_file}")
                 except Exception as e:
                     messagebox.showwarning("警告", f"无法从输出文件加载网格数据: {str(e)}")
@@ -610,6 +614,18 @@ class SimplifiedPyMeshGenGUI:
             messagebox.showerror("错误", f"显示网格失败: {str(e)}")
             import traceback
             traceback.print_exc()  # 添加错误追踪信息
+
+    def load_mesh_from_output(self):
+        """从输出文件加载网格数据"""
+        if self.params and self.params.output_file and os.path.exists(self.params.output_file):
+            try:
+                from fileIO.vtk_io import parse_vtk_msh
+                self.mesh_data = parse_vtk_msh(self.params.output_file)
+                self.append_info_output(f"已从输出文件加载网格数据: {self.params.output_file}")
+            except Exception as e:
+                messagebox.showwarning("警告", f"无法从输出文件加载网格数据: {str(e)}")
+        else:
+            messagebox.showwarning("警告", "输出文件不存在或未设置")
 
     def clear_display(self):
         """清除显示"""

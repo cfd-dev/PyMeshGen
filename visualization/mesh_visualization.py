@@ -21,7 +21,14 @@ class Visualization:
         if self.ax is None:
             return
 
-        visualize_mesh_2d(mesh, self.ax, boundary_only)
+        # 检查mesh对象的类型并调用相应的可视化函数
+        from data_structure.basic_elements import Unstructured_Grid
+        if isinstance(mesh, Unstructured_Grid):
+            # 如果是Unstructured_Grid对象，调用专用的可视化函数
+            visualize_unstr_grid_2d(mesh, self.ax)
+        else:
+            # 否则使用原来的函数处理字典格式的网格数据
+            visualize_mesh_2d(mesh, self.ax, boundary_only)
 
     def set_range(self, xmin, xmax, ymin, ymax):
         if self.ax is None:

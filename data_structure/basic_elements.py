@@ -567,10 +567,11 @@ class Unstructured_Grid:
         if not hasattr(visual_obj, 'fig') or visual_obj.fig != fig:
             plt.show(block=False)
 
-    def load_from_vtkfile(self, file_path):
+    @classmethod
+    def load_from_vtkfile(cls, file_path):
         """从VTK文件加载网格"""
-        cls = parse_vtk_msh(file_path)
-        return cls
+        from fileIO.vtk_io import parse_vtk_msh
+        return parse_vtk_msh(file_path)
 
     def save_to_vtkfile(self, file_path):
         """将网格保存到VTK文件"""
