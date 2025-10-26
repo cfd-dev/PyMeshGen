@@ -57,6 +57,33 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
         # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
         show_plot = False
 
+    # 检查grid对象的类型
+    from data_structure.basic_elements import Unstructured_Grid
+    if isinstance(grid, Unstructured_Grid):
+        # 如果是Unstructured_Grid对象，使用专门的方法处理
+        if not BoundaryOnly:
+            # 绘制所有网格节点（半透明显示）
+            xs = [n[0] for n in grid.node_coords]
+            ys = [n[1] for n in grid.node_coords]
+            ax.scatter(xs, ys, c="gray", s=8, alpha=0.3, label="All Nodes")
+        
+        # 对于Unstructured_Grid对象，我们暂时只绘制节点，不绘制边界
+        # 这里可以扩展以支持边界绘制
+        
+        # 图形设置
+        ax.set_title("2D Mesh Structure Visualization")
+        ax.set_xlabel("X Coordinate (m)")
+        ax.set_ylabel("Y Coordinate (m)")
+        ax.axis("equal")
+        plt.tight_layout()
+        
+        # 只有在创建了新图形时才显示
+        if show_plot:
+            plt.show(block=False)
+            
+        return
+    
+    # 原来的处理字典格式网格数据的代码
     if not BoundaryOnly:
         # 绘制所有网格节点（半透明显示）
         xs = [n[0] for n in grid["nodes"]]
@@ -152,6 +179,34 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     else:
         # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
         show_plot = False
+
+    # 检查grid对象的类型
+    from data_structure.basic_elements import Unstructured_Grid
+    if isinstance(grid, Unstructured_Grid):
+        # 如果是Unstructured_Grid对象，暂时使用简单的可视化方法
+        # 绘制所有节点
+        xs = [n[0] for n in grid.node_coords]
+        ys = [n[1] for n in grid.node_coords]
+        ax.scatter(xs, ys, c="gray", s=10, alpha=0.3, label="All Nodes")
+
+        # 绘制Wall节点（如果wall_nodes提供）
+        if wall_nodes:
+            wall_xs = [n["coords"][0] for n in wall_nodes]
+            wall_ys = [n["coords"][1] for n in wall_nodes]
+            ax.scatter(wall_xs, wall_ys, c="red", s=20, label="Wall Nodes")
+
+        # 图形设置
+        ax.set_title("2D Mesh Visualization with March Vectors")
+        ax.set_xlabel("X Coordinate")
+        ax.set_ylabel("Y Coordinate")
+        ax.legend()
+        ax.axis("equal")
+        
+        # 只有在创建了新图形时才显示
+        if show_plot:
+            plt.show()
+            
+        return
 
     # 预处理：计算每个wall面的边长（排序节点避免重复）
     face_length = {}
