@@ -23,11 +23,16 @@ class Visualization:
 
         # 检查mesh对象的类型并调用相应的可视化函数
         from data_structure.basic_elements import Unstructured_Grid
+        print(f"Debug: mesh type is {type(mesh)}")
+        print(f"Debug: Unstructured_Grid type is {Unstructured_Grid}")
+        print(f"Debug: isinstance check result: {isinstance(mesh, Unstructured_Grid)}")
         if isinstance(mesh, Unstructured_Grid):
             # 如果是Unstructured_Grid对象，调用专用的可视化函数
+            print("Debug: Calling visualize_unstr_grid_2d")
             visualize_unstr_grid_2d(mesh, self.ax)
         else:
             # 否则使用原来的函数处理字典格式的网格数据
+            print("Debug: Calling visualize_mesh_2d")
             visualize_mesh_2d(mesh, self.ax, boundary_only)
 
     def set_range(self, xmin, xmax, ymin, ymax):
@@ -48,7 +53,8 @@ class Visualization:
             self.fig.savefig(filename, dpi=dpi, bbox_inches=bbox_inches)
 
 def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
-    """可视化完整的2D网格结构"""
+    """可视化完整的2D网格结构（仅用于字典格式的网格数据）"""
+    # 处理字典格式网格数据的代码
     if ax is None:
         # 如果没有提供ax，则创建新的图形窗口
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -57,33 +63,6 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
         # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
         show_plot = False
 
-    # 检查grid对象的类型
-    from data_structure.basic_elements import Unstructured_Grid
-    if isinstance(grid, Unstructured_Grid):
-        # 如果是Unstructured_Grid对象，使用专门的方法处理
-        if not BoundaryOnly:
-            # 绘制所有网格节点（半透明显示）
-            xs = [n[0] for n in grid.node_coords]
-            ys = [n[1] for n in grid.node_coords]
-            ax.scatter(xs, ys, c="gray", s=8, alpha=0.3, label="All Nodes")
-        
-        # 对于Unstructured_Grid对象，我们暂时只绘制节点，不绘制边界
-        # 这里可以扩展以支持边界绘制
-        
-        # 图形设置
-        ax.set_title("2D Mesh Structure Visualization")
-        ax.set_xlabel("X Coordinate (m)")
-        ax.set_ylabel("Y Coordinate (m)")
-        ax.axis("equal")
-        plt.tight_layout()
-        
-        # 只有在创建了新图形时才显示
-        if show_plot:
-            plt.show(block=False)
-            
-        return
-    
-    # 原来的处理字典格式网格数据的代码
     if not BoundaryOnly:
         # 绘制所有网格节点（半透明显示）
         xs = [n[0] for n in grid["nodes"]]
@@ -172,18 +151,18 @@ def visualize_mesh_2d(grid, ax=None, BoundaryOnly=False):
 
 
 def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
-    if ax is None:
-        # 如果没有提供ax，则创建新的图形窗口
-        fig, ax = plt.subplots(figsize=(12, 8))
-        show_plot = True
-    else:
-        # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
-        show_plot = False
-
     # 检查grid对象的类型
     from data_structure.basic_elements import Unstructured_Grid
     if isinstance(grid, Unstructured_Grid):
         # 如果是Unstructured_Grid对象，暂时使用简单的可视化方法
+        if ax is None:
+            # 如果没有提供ax，则创建新的图形窗口
+            fig, ax = plt.subplots(figsize=(12, 8))
+            show_plot = True
+        else:
+            # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
+            show_plot = False
+            
         # 绘制所有节点
         xs = [n[0] for n in grid.node_coords]
         ys = [n[1] for n in grid.node_coords]
@@ -191,8 +170,15 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
 
         # 绘制Wall节点（如果wall_nodes提供）
         if wall_nodes:
-            wall_xs = [n["coords"][0] for n in wall_nodes]
-            wall_ys = [n["coords"][1] for n in wall_nodes]
+            # 检查wall_nodes的数据结构
+            if isinstance(wall_nodes[0], dict) and "coords" in wall_nodes[0]:
+                # 字典格式
+                wall_xs = [n["coords"][0] for n in wall_nodes]
+                wall_ys = [n["coords"][1] for n in wall_nodes]
+            else:
+                # 直接是坐标格式
+                wall_xs = [n[0] for n in wall_nodes]
+                wall_ys = [n[1] for n in wall_nodes]
             ax.scatter(wall_xs, wall_ys, c="red", s=20, label="Wall Nodes")
 
         # 图形设置
@@ -207,6 +193,15 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
             plt.show()
             
         return
+
+    # 处理字典格式网格数据的代码
+    if ax is None:
+        # 如果没有提供ax，则创建新的图形窗口
+        fig, ax = plt.subplots(figsize=(12, 8))
+        show_plot = True
+    else:
+        # 如果提供了ax，则使用现有的绘图区域，不显示新窗口
+        show_plot = False
 
     # 预处理：计算每个wall面的边长（排序节点避免重复）
     face_length = {}
@@ -226,8 +221,15 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     ax.scatter(xs, ys, c="gray", s=10, alpha=0.3, label="All Nodes")
 
     # 绘制Wall节点
-    wall_xs = [n["coords"][0] for n in wall_nodes]
-    wall_ys = [n["coords"][1] for n in wall_nodes]
+    # 检查wall_nodes的数据结构
+    if isinstance(wall_nodes[0], dict) and "coords" in wall_nodes[0]:
+        # 字典格式
+        wall_xs = [n["coords"][0] for n in wall_nodes]
+        wall_ys = [n["coords"][1] for n in wall_nodes]
+    else:
+        # 直接是坐标格式
+        wall_xs = [n[0] for n in wall_nodes]
+        wall_ys = [n[1] for n in wall_nodes]
     ax.scatter(wall_xs, wall_ys, c="red", s=20, label="Wall Nodes")
 
     # 绘制Wall面结构
@@ -242,33 +244,39 @@ def visualize_wall_structure_2d(grid, wall_nodes, ax=None, vector_scale=0.3):
     # 绘制推进向量（使用quiver优化性能）
     x, y, u, v = [], [], [], []
     for node_info in wall_nodes:
-        vec = node_info.get("march_vector")
-        if not vec:
+        # 检查node_info的数据结构
+        if isinstance(node_info, dict):
+            # 字典格式
+            vec = node_info.get("march_vector")
+            if not vec:
+                continue
+
+            vec_norm = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
+            assert np.allclose(vec_norm, 1), "march_vector length is not 1"
+
+            faces = node_info.get("node_wall_faces", [])
+            if not faces:
+                continue
+
+            # 计算平均面长
+            # total_length = 0
+            # for face in faces:
+            #     sorted_nodes = sorted(face["nodes"])
+            #     total_length += face_length.get(tuple(sorted_nodes), 0.0)
+            # avg_length = total_length / len(faces)
+            xmin, xmax = min(wall_xs), max(wall_xs)
+            ymin, ymax = min(wall_ys), max(wall_ys)
+            avg_length = min(xmax - xmin, ymax - ymin)
+
+            scale = vector_scale * avg_length
+
+            x.append(node_info["coords"][0])
+            y.append(node_info["coords"][1])
+            u.append(vec[0] * scale)
+            v.append(vec[1] * scale)
+        else:
+            # 假设是坐标格式，跳过向量绘制
             continue
-
-        vec_norm = np.sqrt(vec[0] ** 2 + vec[1] ** 2)
-        assert np.allclose(vec_norm, 1), "march_vector length is not 1"
-
-        faces = node_info.get("node_wall_faces", [])
-        if not faces:
-            continue
-
-        # 计算平均面长
-        # total_length = 0
-        # for face in faces:
-        #     sorted_nodes = sorted(face["nodes"])
-        #     total_length += face_length.get(tuple(sorted_nodes), 0.0)
-        # avg_length = total_length / len(faces)
-        xmin, xmax = min(wall_xs), max(wall_xs)
-        ymin, ymax = min(wall_ys), max(wall_ys)
-        avg_length = min(xmax - xmin, ymax - ymin)
-
-        scale = vector_scale * avg_length
-
-        x.append(node_info["coords"][0])
-        y.append(node_info["coords"][1])
-        u.append(vec[0] * scale)
-        v.append(vec[1] * scale)
 
     ax.quiver(
         x,
