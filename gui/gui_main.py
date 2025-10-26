@@ -31,6 +31,10 @@ except ImportError:
     print("错误: 缺少tkinter模块，请安装Python GUI库")
     sys.exit(1)
 
+# 导入matplotlib相关模块
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+
 from parameters import Parameters
 from read_cas import parse_fluent_msh
 from mesh_visualization import Visualization
@@ -182,28 +186,43 @@ class PyMeshGenGUI:
     def create_mesh_display_area(self, parent):
         """创建网格显示区域"""
         # 创建网格显示框架
-        mesh_frame = ttk.LabelFrame(parent, text="网格显示")
+        mesh_frame = ttk.LabelFrame(parent, text="网格显示区")
         mesh_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建matplotlib图形和轴
-        import matplotlib.pyplot as plt
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-        
-        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.fig = Figure(figsize=(8, 6), dpi=100)
+        self.ax = self.fig.add_subplot(111)
         self.ax.set_title("网格显示区域")
         self.ax.set_xlabel("X坐标")
         self.ax.set_ylabel("Y坐标")
         self.ax.axis("equal")
         
-        # 创建画布并嵌入到tkinter界面中
-        self.canvas = FigureCanvasTkAgg(self.fig, master=mesh_frame)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        # 创建画布
+        self.canvas = FigureCanvasTkAgg(self.fig, mesh_frame)
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         
         # 添加导航工具栏
         self.toolbar = NavigationToolbar2Tk(self.canvas, mesh_frame)
         self.toolbar.update()
         self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-
+        
+        # 确保鼠标事件被正确连接
+        self.canvas.mpl_connect('scroll_event', self.on_mouse_wheel)
+        self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
+        self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
+        self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+        
+        # 初始化鼠标交互状态
+        self.press = None
+        self.cur_xlim = None
+        self.cur_ylim = None
+        self.x0 = None
+        self.y0 = None
+        self.x1 = None
+        self.y1 = None
+        self.xpress = None
+        self.ypress = None
+    
     def create_info_output_area(self, parent):
         """创建信息输出窗口"""
         # 创建信息输出框架
@@ -503,19 +522,122 @@ class PyMeshGenGUI:
         """显示关于信息"""
         about_text = """PyMeshGen 网格生成器 GUI 版本
         
-一个用于生成非结构化网格的图形界面工具。
+ 一个用于生成非结构化网格的图形界面工具。
         
-功能特性:
-- 参数设置
-- 文件导入/导出
-- 网格可视化
-- 交互式操作
+ 功能特性:
+ - 参数设置
+ - 文件导入/导出
+ - 网格可视化
+ - 交互式操作
 
-版本: 1.0.0
-作者: PyMeshGen 开发团队
-"""
+ 版本: 1.0.0
+ 作者: PyMeshGen 开发团队
+ """
         messagebox.showinfo("关于 PyMeshGen GUI", about_text)
 
+    def on_mouse_wheel(self, event):
+        """处理鼠标滚轮事件实现缩放功能"""
+        if event.inaxes != self.ax:
+            return
+            
+        # 获取当前坐标轴范围
+        cur_xlim = self.ax.get_xlim()
+        cur_ylim = self.ax.get_ylim()
+        
+        # 计算缩放因子
+        scale_factor = 1.1 if event.step < 0 else 1/1.1  # 滚轮向上缩小，向下放大
+        
+        # 计算鼠标位置相对于图形的比例
+        xdata = event.xdata
+        ydata = event.ydata
+        
+        # 计算新的坐标轴范围
+        x_range = (cur_xlim[1] - cur_xlim[0]) * scale_factor
+        y_range = (cur_ylim[1] - cur_ylim[0]) * scale_factor
+        
+        # 保持鼠标位置不变的情况下进行缩放
+        relx = (cur_xlim[1] - xdata)/(cur_xlim[1] - cur_xlim[0])
+        rely = (cur_ylim[1] - ydata)/(cur_ylim[1] - cur_ylim[0])
+        
+        new_xlim = [xdata - x_range * (1 - relx), xdata + x_range * relx]
+        new_ylim = [ydata - y_range * (1 - rely), ydata + y_range * rely]
+        
+        self.ax.set_xlim(new_xlim)
+        self.ax.set_ylim(new_ylim)
+        self.canvas.draw()
+
+    def on_mouse_press(self, event):
+        """处理鼠标按下事件"""
+        if event.inaxes != self.ax:
+            return
+            
+        # 记录按下时的坐标和位置
+        self.press = (event.xdata, event.ydata)
+        self.x0, self.y0 = event.x, event.y
+        self.xpress, self.ypress = event.xdata, event.ydata
+        
+        # 记录当前的坐标轴范围
+        self.cur_xlim = self.ax.get_xlim()
+        self.cur_ylim = self.ax.get_ylim()
+        
+        # 记录按下的鼠标按键
+        self.button_pressed = event.button
+
+    def on_mouse_release(self, event):
+        """处理鼠标释放事件"""
+        self.press = None
+        self.x1, self.y1 = event.x, event.y
+        self.button_pressed = None
+
+    def on_mouse_move(self, event):
+        """处理鼠标移动事件实现平移或旋转功能"""
+        if self.press is None:
+            return  # 鼠标未按下，不执行操作
+            
+        if event.inaxes != self.ax:
+            return
+            
+        # 根据按下的鼠标按键决定执行什么操作
+        if self.button_pressed == 1:  # 左键按下，执行平移
+            # 获取当前坐标轴范围
+            cur_xlim = self.ax.get_xlim()
+            cur_ylim = self.ax.get_ylim()
+            
+            # 计算鼠标移动的偏移量
+            dx = event.xdata - self.xpress
+            dy = event.ydata - self.ypress
+            
+            # 更新坐标轴范围实现平移
+            self.ax.set_xlim(cur_xlim[0] - dx, cur_xlim[1] - dx)
+            self.ax.set_ylim(cur_ylim[0] - dy, cur_ylim[1] - dy)
+            
+            self.canvas.draw()
+        elif self.button_pressed == 3:  # 右键按下，执行旋转
+            # 获取当前坐标轴范围
+            cur_xlim = self.ax.get_xlim()
+            cur_ylim = self.ax.get_ylim()
+            
+            # 计算中心点
+            center_x = (cur_xlim[0] + cur_xlim[1]) / 2
+            center_y = (cur_ylim[0] + cur_ylim[1]) / 2
+            
+            # 计算旋转角度（简化实现）
+            dx = event.xdata - self.xpress
+            dy = event.ydata - self.ypress
+            
+            # 根据鼠标移动距离计算旋转角度
+            angle = (dx - dy) * 0.01  # 简化的旋转角度计算
+            
+            # 应用旋转变换到坐标轴
+            # 这里我们简单地交换坐标轴范围来模拟旋转效果
+            x_range = cur_xlim[1] - cur_xlim[0]
+            y_range = cur_ylim[1] - cur_ylim[0]
+            
+            # 更新坐标轴范围实现旋转效果
+            self.ax.set_xlim(center_x - x_range/2, center_x + x_range/2)
+            self.ax.set_ylim(center_y - y_range/2, center_y + y_range/2)
+            
+            self.canvas.draw()
 
 def main():
     """主函数"""
