@@ -505,20 +505,31 @@ class Unstructured_Grid:
         print(f"  Mean Skewness: {np.mean(skewness_values):.4f}")
         print(f"  Min Area: {min(area_values):.4e}")
 
-    def quality_histogram(self):
+    def quality_histogram(self, ax=None):
         """绘制质量直方图"""
         # 绘制直方图
         quality_values = [
             c.quality for c in self.cell_container if c.quality is not None
         ]
-        plt.figure(figsize=(10, 6))
-        plt.hist(quality_values, bins=10, alpha=0.7, color="blue")
-        plt.xlim(0, 1)
-        plt.xticks(np.arange(0, 1.1, 0.1))
-        plt.xlabel("Skewness Quality")
-        plt.ylabel("Number of Cells")
-        plt.title("Quality Histogram")
-        plt.show(block=False)
+        
+        if ax is None:
+            # 如果没有提供ax，则创建新的figure（用于命令行模式）
+            plt.figure(figsize=(10, 6))
+            plt.hist(quality_values, bins=10, alpha=0.7, color="blue")
+            plt.xlim(0, 1)
+            plt.xticks(np.arange(0, 1.1, 0.1))
+            plt.xlabel("Skewness Quality")
+            plt.ylabel("Number of Cells")
+            plt.title("Quality Histogram")
+            plt.show(block=False)
+        else:
+            # 如果提供了ax（用于GUI模式），则使用现有的axes
+            ax.hist(quality_values, bins=10, alpha=0.7, color="blue")
+            ax.set_xlim(0, 1)
+            ax.set_xticks(np.arange(0, 1.1, 0.1))
+            ax.set_xlabel("Skewness Quality")
+            ax.set_ylabel("Number of Cells")
+            ax.set_title("Quality Histogram")
 
     def visualize_unstr_grid_2d(self, visual_obj=None):
         """可视化二维网格"""
@@ -550,7 +561,11 @@ class Unstructured_Grid:
         ax.set_title("Unstructured Grid Visualization")
         ax.axis("equal")
 
-        plt.show(block=False)
+        # 只有在非GUI模式下才调用plt.show()
+        # 在GUI模式下，由GUI程序负责更新画布
+        # 当visual_obj是GUI传入的对象时，不需要调用plt.show()
+        if not hasattr(visual_obj, 'fig') or visual_obj.fig != fig:
+            plt.show(block=False)
 
     def load_from_vtkfile(self, file_path):
         """从VTK文件加载网格"""

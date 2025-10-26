@@ -195,6 +195,7 @@ class PyMeshGenGUI:
         mesh_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建matplotlib图形和轴
+        # 创建matplotlib图形对象
         self.fig = Figure(figsize=(8, 6), dpi=100)
         self.ax = self.fig.add_subplot(111)
         self.ax.set_title("网格显示区域")
@@ -205,6 +206,10 @@ class PyMeshGenGUI:
         # 创建画布
         self.canvas = FigureCanvasTkAgg(self.fig, mesh_frame)
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        
+        # 设置窗口标题为空字符串，避免显示"Figure 1"
+        if hasattr(self.canvas, 'manager') and self.canvas.manager is not None:
+            self.canvas.manager.set_window_title('')
         
         # 添加导航工具栏
         self.toolbar = NavigationToolbar2Tk(self.canvas, mesh_frame)

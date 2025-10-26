@@ -156,7 +156,7 @@ def PyMeshGen_mixed(parameters=None):
 
     # 输出网格信息
     global_unstr_grid.summary()
-    # global_unstr_grid.quality_histogram()
+    # global_unstr_grid.quality_histogram(_global_gui_instance.ax if _global_gui_instance else None)
     
     # 输出信息到GUI
     if _global_gui_instance:
