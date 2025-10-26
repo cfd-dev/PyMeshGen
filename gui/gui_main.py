@@ -51,7 +51,7 @@ class PyMeshGenGUI:
         
         # 初始化参数
         self.init_default_params()
-        
+
     def create_widgets(self):
         """创建GUI界面组件"""
         # 创建菜单栏
@@ -72,7 +72,7 @@ class PyMeshGenGUI:
         
         # 创建状态栏
         self.create_status_bar()
-        
+
     def create_menu(self):
         """创建菜单栏"""
         menubar = tk.Menu(self.root)
@@ -94,12 +94,16 @@ class PyMeshGenGUI:
         menubar.add_cascade(label="视图", menu=view_menu)
         view_menu.add_command(label="显示网格", command=self.display_mesh)
         view_menu.add_command(label="清除显示", command=self.clear_display)
+        view_menu.add_separator()
+        view_menu.add_command(label="放大", command=self.zoom_in)
+        view_menu.add_command(label="缩小", command=self.zoom_out)
+        view_menu.add_command(label="原始大小", command=self.reset_view)
         
         # 帮助菜单
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="帮助", menu=help_menu)
         help_menu.add_command(label="关于", command=self.show_about)
-        
+
     def create_param_frame(self, parent):
         """创建参数设置区域"""
         param_frame = ttk.LabelFrame(parent, text="参数设置")
@@ -143,7 +147,7 @@ class PyMeshGenGUI:
         self.viz_enabled_var = tk.BooleanVar(value=True)
         viz_check = ttk.Checkbutton(param_frame, text="启用可视化", variable=self.viz_enabled_var)
         viz_check.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=5, pady=2)
-        
+
     def create_control_frame(self, parent):
         """创建控制按钮区域"""
         control_frame = ttk.Frame(parent)
@@ -162,7 +166,7 @@ class PyMeshGenGUI:
         # 创建进度条
         self.progress = ttk.Progressbar(control_frame, mode='indeterminate')
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=5)
-        
+
     def create_main_content_area(self, parent):
         """创建主内容区域（网格显示和信息输出）"""
         # 创建主内容框架
@@ -174,7 +178,7 @@ class PyMeshGenGUI:
         
         # 创建信息输出窗口
         self.create_info_output_area(content_frame)
-        
+
     def create_mesh_display_area(self, parent):
         """创建网格显示区域"""
         # 创建网格显示框架
@@ -183,7 +187,7 @@ class PyMeshGenGUI:
         
         # 创建matplotlib图形和轴
         import matplotlib.pyplot as plt
-        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
         
         self.fig, self.ax = plt.subplots(figsize=(8, 6))
         self.ax.set_title("网格显示区域")
@@ -195,6 +199,11 @@ class PyMeshGenGUI:
         self.canvas = FigureCanvasTkAgg(self.fig, master=mesh_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         
+        # 添加导航工具栏
+        self.toolbar = NavigationToolbar2Tk(self.canvas, mesh_frame)
+        self.toolbar.update()
+        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+
     def create_info_output_area(self, parent):
         """创建信息输出窗口"""
         # 创建信息输出框架
@@ -214,7 +223,7 @@ class PyMeshGenGUI:
         
         # 添加清除按钮
         ttk.Button(info_frame, text="清除信息", command=self.clear_info_output).pack(pady=5)
-        
+
     def clear_info_output(self):
         """清除信息输出"""
         self.info_text.delete(1.0, tk.END)
@@ -223,13 +232,13 @@ class PyMeshGenGUI:
         """添加信息到输出窗口"""
         self.info_text.insert(tk.END, message + "\n")
         self.info_text.see(tk.END)  # 自动滚动到最新信息
-        
+
     def create_status_bar(self):
         """创建状态栏"""
         self.status_var = tk.StringVar(value="就绪")
         status_bar = ttk.Label(self.root, textvariable=self.status_var, relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
+
     def init_default_params(self):
         """初始化默认参数"""
         try:
@@ -242,7 +251,7 @@ class PyMeshGenGUI:
             self.update_status("参数已初始化")
         except Exception as e:
             self.update_status(f"初始化参数失败: {str(e)}")
-            
+
     def browse_input_file(self):
         """浏览输入文件"""
         file_path = filedialog.askopenfilename(
@@ -251,7 +260,7 @@ class PyMeshGenGUI:
         )
         if file_path:
             self.input_file_var.set(file_path)
-            
+
     def browse_output_file(self):
         """浏览输出文件"""
         file_path = filedialog.asksaveasfilename(
@@ -261,7 +270,7 @@ class PyMeshGenGUI:
         )
         if file_path:
             self.output_file_var.set(file_path)
-            
+
     def open_config_file(self):
         """打开配置文件"""
         file_path = filedialog.askopenfilename(
@@ -275,7 +284,7 @@ class PyMeshGenGUI:
                 self.update_status(f"已加载配置文件: {file_path}")
             except Exception as e:
                 messagebox.showerror("错误", f"加载配置文件失败: {str(e)}")
-                
+
     def save_config_file(self):
         """保存配置文件"""
         file_path = filedialog.asksaveasfilename(
@@ -285,13 +294,15 @@ class PyMeshGenGUI:
         )
         if file_path:
             try:
-                config_data = self.get_config_from_gui()
+                # 从GUI获取当前配置
+                config = self.get_config_from_gui()
+                # 保存到文件
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(config_data, f, indent=4, ensure_ascii=False)
-                self.update_status(f"配置文件已保存: {file_path}")
+                    json.dump(config, f, indent=4, ensure_ascii=False)
+                self.update_status(f"配置已保存到: {file_path}")
             except Exception as e:
                 messagebox.showerror("错误", f"保存配置文件失败: {str(e)}")
-                
+
     def import_mesh_file(self):
         """导入网格文件"""
         file_path = filedialog.askopenfilename(
@@ -306,7 +317,7 @@ class PyMeshGenGUI:
                 self.display_mesh()
             except Exception as e:
                 messagebox.showerror("错误", f"导入网格文件失败: {str(e)}")
-                
+
     def export_mesh_file(self):
         """导出网格文件"""
         if not self.mesh_data:
@@ -320,13 +331,17 @@ class PyMeshGenGUI:
         )
         if file_path:
             try:
-                # 这里需要实现实际的导出逻辑
-                # 暂时显示提示信息
-                messagebox.showinfo("提示", f"网格将导出到: {file_path}")
-                self.update_status(f"网格已导出: {file_path}")
+                # 实际导出网格数据
+                from data_structure.basic_elements import Unstructured_Grid
+                if isinstance(self.mesh_data, Unstructured_Grid):
+                    self.mesh_data.save_to_vtkfile(file_path)
+                    self.update_status(f"网格已导出: {file_path}")
+                    messagebox.showinfo("成功", f"网格已成功导出到: {file_path}")
+                else:
+                    messagebox.showwarning("警告", "网格数据格式不支持导出")
             except Exception as e:
                 messagebox.showerror("错误", f"导出网格文件失败: {str(e)}")
-                
+
     def generate_mesh(self):
         """生成网格"""
         try:
@@ -351,7 +366,7 @@ class PyMeshGenGUI:
             self.progress.stop()
             self.append_info_output(f"网格生成失败: {str(e)}")
             messagebox.showerror("错误", f"网格生成失败: {str(e)}")
-            
+
     def run_mesh_generation(self):
         """运行网格生成算法"""
         try:
@@ -377,7 +392,7 @@ class PyMeshGenGUI:
         except Exception as e:
             self.append_info_output(f"网格生成过程中出现错误: {str(e)}")
             raise Exception(f"网格生成过程中出现错误: {str(e)}")
-            
+
     def display_mesh(self):
         """显示网格"""
         if not self.mesh_data:
@@ -405,7 +420,7 @@ class PyMeshGenGUI:
             messagebox.showerror("错误", f"显示网格失败: {str(e)}")
             import traceback
             traceback.print_exc()  # 添加错误追踪信息
-            
+
     def clear_display(self):
         """清除显示"""
         try:
@@ -415,7 +430,39 @@ class PyMeshGenGUI:
             self.update_status("显示已清除")
         except Exception as e:
             messagebox.showerror("错误", f"清除显示失败: {str(e)}")
-            
+
+    def zoom_in(self):
+        """放大视图"""
+        if self.ax:
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            x_range = (xlim[1] - xlim[0]) * 0.8
+            y_range = (ylim[1] - ylim[0]) * 0.8
+            x_center = (xlim[1] + xlim[0]) / 2
+            y_center = (ylim[1] + ylim[0]) / 2
+            self.ax.set_xlim(x_center - x_range/2, x_center + x_range/2)
+            self.ax.set_ylim(y_center - y_range/2, y_center + y_range/2)
+            self.canvas.draw()
+
+    def zoom_out(self):
+        """缩小视图"""
+        if self.ax:
+            xlim = self.ax.get_xlim()
+            ylim = self.ax.get_ylim()
+            x_range = (xlim[1] - xlim[0]) * 1.2
+            y_range = (ylim[1] - ylim[0]) * 1.2
+            x_center = (xlim[1] + xlim[0]) / 2
+            y_center = (ylim[1] + ylim[0]) / 2
+            self.ax.set_xlim(x_center - x_range/2, x_center + x_range/2)
+            self.ax.set_ylim(y_center - y_range/2, y_center + y_range/2)
+            self.canvas.draw()
+
+    def reset_view(self):
+        """重置视图到原始大小"""
+        if self.ax:
+            self.ax.autoscale()
+            self.canvas.draw()
+
     def update_gui_from_params(self):
         """从参数对象更新GUI"""
         if self.params:
@@ -424,7 +471,7 @@ class PyMeshGenGUI:
             self.output_file_var.set(self.params.output_file)
             self.mesh_type_var.set(str(self.params.mesh_type))
             self.viz_enabled_var.set(self.params.viz_enabled)
-            
+
     def update_params_from_gui(self):
         """从GUI更新参数对象"""
         if not self.params:
@@ -435,7 +482,7 @@ class PyMeshGenGUI:
         self.params.output_file = self.output_file_var.get()
         self.params.mesh_type = int(self.mesh_type_var.get())
         self.params.viz_enabled = self.viz_enabled_var.get()
-        
+
     def get_config_from_gui(self):
         """从GUI获取配置数据"""
         return {
@@ -446,12 +493,12 @@ class PyMeshGenGUI:
             "viz_enabled": self.viz_enabled_var.get(),
             "parts": []  # 部件参数需要进一步实现
         }
-        
+
     def update_status(self, message):
         """更新状态栏"""
         self.status_var.set(message)
         self.root.update_idletasks()
-        
+
     def show_about(self):
         """显示关于信息"""
         about_text = """PyMeshGen 网格生成器 GUI 版本
