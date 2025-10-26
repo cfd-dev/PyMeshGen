@@ -4,11 +4,11 @@ import numpy as np
 
 
 class Visualization:
-    def __init__(self, SWITCH=False):
-        self.ax = None
+    def __init__(self, SWITCH=False, ax=None):
+        self.ax = ax
         self.fig = None
 
-        if SWITCH:
+        if SWITCH and ax is None:
             self.create_figure()
 
     def create_figure(self, figsize=(16, 9)):

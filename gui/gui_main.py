@@ -67,6 +67,9 @@ class PyMeshGenGUI:
         # 创建控制按钮区域
         self.create_control_frame(main_frame)
         
+        # 创建主内容区域（网格显示和信息输出）
+        self.create_main_content_area(main_frame)
+        
         # 创建状态栏
         self.create_status_bar()
         
@@ -159,6 +162,67 @@ class PyMeshGenGUI:
         # 创建进度条
         self.progress = ttk.Progressbar(control_frame, mode='indeterminate')
         self.progress.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=5)
+        
+    def create_main_content_area(self, parent):
+        """创建主内容区域（网格显示和信息输出）"""
+        # 创建主内容框架
+        content_frame = ttk.Frame(parent)
+        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建网格显示区域
+        self.create_mesh_display_area(content_frame)
+        
+        # 创建信息输出窗口
+        self.create_info_output_area(content_frame)
+        
+    def create_mesh_display_area(self, parent):
+        """创建网格显示区域"""
+        # 创建网格显示框架
+        mesh_frame = ttk.LabelFrame(parent, text="网格显示")
+        mesh_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建matplotlib图形和轴
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+        
+        self.fig, self.ax = plt.subplots(figsize=(8, 6))
+        self.ax.set_title("网格显示区域")
+        self.ax.set_xlabel("X坐标")
+        self.ax.set_ylabel("Y坐标")
+        self.ax.axis("equal")
+        
+        # 创建画布并嵌入到tkinter界面中
+        self.canvas = FigureCanvasTkAgg(self.fig, master=mesh_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+    def create_info_output_area(self, parent):
+        """创建信息输出窗口"""
+        # 创建信息输出框架
+        info_frame = ttk.LabelFrame(parent, text="信息输出")
+        info_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建文本框和滚动条
+        text_frame = ttk.Frame(info_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=10)
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.info_text.yview)
+        self.info_text.configure(yscrollcommand=scrollbar.set)
+        
+        self.info_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 添加清除按钮
+        ttk.Button(info_frame, text="清除信息", command=self.clear_info_output).pack(pady=5)
+        
+    def clear_info_output(self):
+        """清除信息输出"""
+        self.info_text.delete(1.0, tk.END)
+        
+    def append_info_output(self, message):
+        """添加信息到输出窗口"""
+        self.info_text.insert(tk.END, message + "\n")
+        self.info_text.see(tk.END)  # 自动滚动到最新信息
         
     def create_status_bar(self):
         """创建状态栏"""
@@ -269,6 +333,9 @@ class PyMeshGenGUI:
             # 更新参数
             self.update_params_from_gui()
             
+            # 清除之前的信息输出
+            self.clear_info_output()
+            
             # 显示进度条
             self.progress.start()
             self.root.update()
@@ -279,8 +346,10 @@ class PyMeshGenGUI:
             # 停止进度条
             self.progress.stop()
             self.update_status("网格生成完成")
+            self.append_info_output("网格生成完成")
         except Exception as e:
             self.progress.stop()
+            self.append_info_output(f"网格生成失败: {str(e)}")
             messagebox.showerror("错误", f"网格生成失败: {str(e)}")
             
     def run_mesh_generation(self):
@@ -288,14 +357,25 @@ class PyMeshGenGUI:
         try:
             # 根据网格类型选择合适的生成函数
             if self.params.mesh_type == 3:  # 混合网格
+                self.append_info_output("开始生成混合网格...")
                 from PyMeshGen_mixed import PyMeshGen_mixed
+                # 设置GUI实例
+                from PyMeshGen_mixed import set_gui_instance
+                set_gui_instance(self)
                 PyMeshGen_mixed(self.params)
+                self.append_info_output("混合网格生成完成！")
             else:  # 三角形或直角三角形网格
+                self.append_info_output("开始生成三角形网格...")
                 from PyMeshGen import PyMeshGen
+                # 设置GUI实例
+                from PyMeshGen import set_gui_instance
+                set_gui_instance(self)
                 PyMeshGen(self.params)
+                self.append_info_output("三角形网格生成完成！")
                 
             messagebox.showinfo("成功", "网格生成完成！")
         except Exception as e:
+            self.append_info_output(f"网格生成过程中出现错误: {str(e)}")
             raise Exception(f"网格生成过程中出现错误: {str(e)}")
             
     def display_mesh(self):
@@ -305,11 +385,19 @@ class PyMeshGenGUI:
             return
             
         try:
-            # 创建可视化对象
+            # 清除之前的绘图
+            self.ax.clear()
+            self.ax.set_title("网格显示区域")
+            self.ax.set_xlabel("X坐标")
+            self.ax.set_ylabel("Y坐标")
+            self.ax.axis("equal")
+            
+            # 创建可视化对象，使用GUI中的绘图区域
             viz_enabled = self.viz_enabled_var.get()
             if viz_enabled:
-                visual_obj = Visualization(viz_enabled)
+                visual_obj = Visualization(viz_enabled, self.ax)
                 visual_obj.plot_mesh(self.mesh_data)
+                self.canvas.draw()  # 更新画布
                 self.update_status("网格已显示")
             else:
                 messagebox.showwarning("警告", "请先启用可视化功能")

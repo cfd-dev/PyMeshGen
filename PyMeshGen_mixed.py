@@ -25,6 +25,16 @@ from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters
 from utils.timer import TimeSpan
+from utils.message import info
+
+# 全局GUI引用
+_global_gui_instance = None
+
+
+def set_gui_instance(gui_instance):
+    """设置全局GUI实例"""
+    global _global_gui_instance
+    _global_gui_instance = gui_instance
 
 
 def PyMeshGen_mixed(parameters=None):
@@ -37,13 +47,25 @@ def PyMeshGen_mixed(parameters=None):
 
     # 建立可视化对象
     visual_obj = Visualization(parameters.viz_enabled)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("开始生成混合网格...")
 
     # 读入边界网格
     input_grid = parse_fluent_msh(parameters.input_file)
     visual_obj.plot_mesh(input_grid, boundary_only=True)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output(f"已读取输入网格文件: {parameters.input_file}")
 
     # 构造初始阵面
     front_heap = construct_initial_front(input_grid)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("初始阵面构造完成")
 
     # 计算网格尺寸场
     sizing_system = QuadtreeSizing(
@@ -54,6 +76,10 @@ def PyMeshGen_mixed(parameters=None):
         visual_obj=visual_obj,
     )
     # sizing_system.draw_bgmesh()
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("网格尺寸场计算完成")
 
     unstr_grid_list = []
     # 推进生成边界层网格
@@ -66,6 +92,10 @@ def PyMeshGen_mixed(parameters=None):
     # Adlayers2的generate_elements总是返回两个值
     boundary_grid, front_heap = adlayers.generate_elements()
     unstr_grid_list.append(boundary_grid)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("边界层网格生成完成")
 
     # 推进生成网格
     if parameters.mesh_type <= 2:
@@ -86,6 +116,10 @@ def PyMeshGen_mixed(parameters=None):
             visual_obj=visual_obj,
         )
         triangular_grid = adfront2.generate_elements()
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("网格生成完成")
 
     # 网格质量优化
     if parameters.mesh_type <= 2:
@@ -99,11 +133,19 @@ def PyMeshGen_mixed(parameters=None):
         # hybrid_grid = hybrid_smooth(hybrid_grid, 3)
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)
         unstr_grid_list.append(hybrid_grid)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("网格质量优化完成")
 
     # 合并各向同性网格和边界层网格
     global_unstr_grid = unstr_grid_list[0]
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("网格合并完成")
 
     # 可视化
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
@@ -111,12 +153,24 @@ def PyMeshGen_mixed(parameters=None):
     # 输出网格信息
     global_unstr_grid.summary()
     # global_unstr_grid.quality_histogram()
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("网格信息输出完成")
 
     # 输出网格文件
     global_unstr_grid.save_to_vtkfile(parameters.output_file)
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
 
     # 结束计时
     global_timer.show_to_console("程序运行正常退出.")
+    
+    # 输出信息到GUI
+    if _global_gui_instance:
+        _global_gui_instance.append_info_output("程序运行正常退出")
 
 
 if __name__ == "__main__":
