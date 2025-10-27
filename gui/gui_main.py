@@ -480,9 +480,12 @@ class SimplifiedPyMeshGenGUI:
             "新建配置": self.new_config,
             "打开配置": self.open_config,
             "保存配置": self.save_config,
+            "另存为": self.save_config_as,
             "---": None,
             "导入网格": self.import_mesh,
             "导出网格": self.export_mesh,
+            "---": None,
+            "最近文件": self.show_recent_files,
             "---": None,
             "退出": self.on_closing
         }
@@ -495,16 +498,29 @@ class SimplifiedPyMeshGenGUI:
             "---": None,
             "放大": self.zoom_in,
             "缩小": self.zoom_out,
+            "平移": self.pan_view,
+            "旋转": self.rotate_view,
             "---": None,
             "显示工具栏": self.toggle_toolbar,
-            "显示状态栏": self.toggle_statusbar
+            "显示状态栏": self.toggle_statusbar,
+            "显示部件列表": self.toggle_parts_list,
+            "显示属性面板": self.toggle_properties_panel,
+            "---": None,
+            "全屏显示": self.toggle_fullscreen
         }
         self.menu_bar.create_view_menu(view_commands)
         
         # 配置菜单
         config_commands = {
             "参数设置": self.edit_params,
-            "清空网格": self.clear_mesh
+            "网格参数": self.edit_mesh_params,
+            "边界条件": self.edit_boundary_conditions,
+            "---": None,
+            "导入配置": self.import_config,
+            "导出配置": self.export_config,
+            "---": None,
+            "清空网格": self.clear_mesh,
+            "重置配置": self.reset_config
         }
         self.menu_bar.create_config_menu(config_commands)
         
@@ -512,15 +528,23 @@ class SimplifiedPyMeshGenGUI:
         mesh_commands = {
             "生成网格": self.generate_mesh,
             "显示网格": self.display_mesh,
+            "网格质量": self.check_mesh_quality,
             "---": None,
-            "重置视图": self.reset_view,
-            "适应视图": self.fit_view
+            "平滑网格": self.smooth_mesh,
+            "优化网格": self.optimize_mesh,
+            "---": None,
+            "网格统计": self.show_mesh_statistics,
+            "导出报告": self.export_mesh_report
         }
         self.menu_bar.create_mesh_menu(mesh_commands)
         
         # 帮助菜单
         help_commands = {
             "用户手册": self.show_user_manual,
+            "快速入门": self.show_quick_start,
+            "---": None,
+            "快捷键": self.show_shortcuts,
+            "检查更新": self.check_for_updates,
             "---": None,
             "关于": self.show_about
         }
@@ -1163,6 +1187,113 @@ class SimplifiedPyMeshGenGUI:
                 self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
                 self.log_info("状态栏和信息输出已显示")
     
+    def save_config_as(self):
+        """配置另存为"""
+        messagebox.showinfo("信息", "配置另存为功能")
+        
+    def show_recent_files(self):
+        """显示最近文件"""
+        messagebox.showinfo("信息", "最近文件功能")
+        
+    def pan_view(self):
+        """平移视图"""
+        if hasattr(self, 'mesh_display'):
+            self.mesh_display.pan_view()
+            self.update_status("视图平移模式")
+            
+    def rotate_view(self):
+        """旋转视图"""
+        if hasattr(self, 'mesh_display'):
+            self.mesh_display.rotate_view()
+            self.update_status("视图旋转模式")
+            
+    def toggle_parts_list(self):
+        """切换部件列表显示"""
+        if hasattr(self, 'left_panel'):
+            if self.left_panel.winfo_viewable():
+                self.left_panel.pack_forget()
+                self.update_status("部件列表已隐藏")
+            else:
+                self.paned_window.add(self.left_panel, weight=3)
+                self.update_status("部件列表已显示")
+                
+    def toggle_properties_panel(self):
+        """切换属性面板显示"""
+        messagebox.showinfo("信息", "切换属性面板显示")
+        
+    def toggle_fullscreen(self):
+        """切换全屏显示"""
+        if self.root.attributes('-fullscreen'):
+            self.root.attributes('-fullscreen', False)
+            self.update_status("退出全屏模式")
+        else:
+            self.root.attributes('-fullscreen', True)
+            self.update_status("进入全屏模式")
+            
+    def edit_mesh_params(self):
+        """编辑网格参数"""
+        messagebox.showinfo("信息", "编辑网格参数功能")
+        
+    def edit_boundary_conditions(self):
+        """编辑边界条件"""
+        messagebox.showinfo("信息", "编辑边界条件功能")
+        
+    def import_config(self):
+        """导入配置"""
+        messagebox.showinfo("信息", "导入配置功能")
+        
+    def export_config(self):
+        """导出配置"""
+        messagebox.showinfo("信息", "导出配置功能")
+        
+    def reset_config(self):
+        """重置配置"""
+        messagebox.showinfo("信息", "重置配置功能")
+        
+    def check_mesh_quality(self):
+        """检查网格质量"""
+        messagebox.showinfo("信息", "检查网格质量功能")
+        
+    def smooth_mesh(self):
+        """平滑网格"""
+        messagebox.showinfo("信息", "平滑网格功能")
+        
+    def optimize_mesh(self):
+        """优化网格"""
+        messagebox.showinfo("信息", "优化网格功能")
+        
+    def show_mesh_statistics(self):
+        """显示网格统计"""
+        messagebox.showinfo("信息", "显示网格统计功能")
+        
+    def export_mesh_report(self):
+        """导出网格报告"""
+        messagebox.showinfo("信息", "导出网格报告功能")
+        
+    def show_quick_start(self):
+        """显示快速入门"""
+        messagebox.showinfo("信息", "快速入门功能")
+        
+    def show_shortcuts(self):
+        """显示快捷键"""
+        shortcuts_text = """常用快捷键：
+
+Ctrl+N: 新建配置
+Ctrl+O: 打开配置
+Ctrl+S: 保存配置
+Ctrl+I: 导入网格
+Ctrl+E: 导出网格
+F5: 生成网格
+F6: 显示网格
+F11: 全屏显示
+Esc: 退出全屏
+"""
+        messagebox.showinfo("快捷键", shortcuts_text)
+        
+    def check_for_updates(self):
+        """检查更新"""
+        messagebox.showinfo("信息", "检查更新功能")
+
     def on_closing(self):
         """窗口关闭事件"""
         if messagebox.askokcancel("退出", "确定要退出吗?"):
