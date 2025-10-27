@@ -23,6 +23,49 @@ class FileOperations:
         self.supported_import_formats = [".vtk", ".stl", ".obj", ".ply", ".cas"]
         self.supported_export_formats = [".vtk", ".stl", ".obj", ".ply"]
     
+    def extract_parts_from_cas(self, mesh_data):
+        """从cas文件导入的网格数据中提取部件信息"""
+        parts_info = []
+        
+        # 检查是否是cas文件导入的数据
+        if isinstance(mesh_data, dict) and mesh_data.get('type') == 'cas' and 'unstr_grid' in mesh_data:
+            unstr_grid = mesh_data['unstr_grid']
+            
+            # 检查是否有边界信息
+            if hasattr(unstr_grid, 'boundary_info') and unstr_grid.boundary_info:
+                # 从边界信息中提取部件
+                for part_name, part_data in unstr_grid.boundary_info.items():
+                    # 创建部件信息字典
+                    part_info = {
+                        'part_name': part_name,
+                        'bc_type': part_data.get('type', 'unknown'),
+                        'face_count': len(part_data.get('faces', [])),
+                        'nodes': set(),
+                        'cells': set()
+                    }
+                    
+                    # 收集部件中的节点和单元
+                    for face in part_data.get('faces', []):
+                        # 添加节点
+                        for node_idx in face.get('nodes', []):
+                            part_info['nodes'].add(node_idx - 1)  # 转换为0基索引
+                        
+                        # 添加单元
+                        left_cell = face.get('left_cell', 0)
+                        right_cell = face.get('right_cell', 0)
+                        if left_cell > 0:
+                            part_info['cells'].add(left_cell - 1)  # 转换为0基索引
+                        if right_cell > 0:
+                            part_info['cells'].add(right_cell - 1)  # 转换为0基索引
+                    
+                    # 转换set为list以便序列化
+                    part_info['nodes'] = list(part_info['nodes'])
+                    part_info['cells'] = list(part_info['cells'])
+                    
+                    parts_info.append(part_info)
+        
+        return parts_info
+    
     def import_mesh(self, file_path):
         """导入网格文件"""
         try:
@@ -257,6 +300,12 @@ class FileOperations:
                         'num_cells': len(cells),
                         'unstr_grid': unstr_grid  # 保留原始Unstructured_Grid对象以备后用
                     }
+                    
+                    # 提取部件信息
+                    parts_info = self.extract_parts_from_cas(mesh_data)
+                    if parts_info:
+                        mesh_data['parts_info'] = parts_info
+                    
                     return mesh_data
                 else:
                     raise ValueError("导入的CAS文件为空或无效")

@@ -890,6 +890,10 @@ class SimplifiedPyMeshGenGUI:
                     node_count = self.current_mesh.get('num_points', 0)
                     element_count = self.current_mesh.get('num_cells', 0)
                     self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                    
+                    # 如果是cas文件，提取部件信息
+                    if self.current_mesh.get('type') == 'cas' and 'parts_info' in self.current_mesh:
+                        self.update_parts_list_from_cas(self.current_mesh['parts_info'])
                 elif hasattr(self.current_mesh, 'num_points') and hasattr(self.current_mesh, 'num_cells'):
                     node_count = self.current_mesh.num_points
                     element_count = self.current_mesh.num_cells
@@ -1047,6 +1051,19 @@ class SimplifiedPyMeshGenGUI:
             for part in self.params.part_params:
                 self.parts_listbox.insert(tk.END, part.part_name)
     
+    def update_parts_list_from_cas(self, parts_info):
+        """从cas文件的部件信息更新部件列表"""
+        # 更新选项卡中的部件列表
+        self.parts_listbox.delete(0, tk.END)
+        
+        # 存储cas部件信息以便在选择时显示
+        self.cas_parts_info = parts_info
+        
+        # 添加部件到列表
+        for part_info in parts_info:
+            part_name = part_info.get('part_name', '未知部件')
+            self.parts_listbox.insert(tk.END, part_name)
+    
     def show_about(self):
         """显示关于对话框"""
         about_text = """PyMeshGen v1.0
@@ -1130,6 +1147,36 @@ class SimplifiedPyMeshGenGUI:
             
         # 获取选中的部件索引
         index = selection[0]
+        
+        # 检查是否是cas文件的部件
+        if hasattr(self, 'cas_parts_info') and self.cas_parts_info and index < len(self.cas_parts_info):
+            # 显示cas部件的属性
+            part_info = self.cas_parts_info[index]
+            
+            # 清空属性文本框
+            self.props_text.config(state=tk.NORMAL)
+            self.props_text.delete(1.0, tk.END)
+            
+            # 添加标题
+            self.props_text.insert(tk.END, f"=== CAS部件属性 ===\n\n")
+            
+            # 显示部件属性
+            self.props_text.insert(tk.END, f"部件名称: {part_info.get('part_name', '未知')}\n")
+            self.props_text.insert(tk.END, f"边界条件类型: {part_info.get('bc_type', '未知')}\n")
+            self.props_text.insert(tk.END, f"面数量: {part_info.get('face_count', 0)}\n")
+            self.props_text.insert(tk.END, f"节点数量: {len(part_info.get('nodes', []))}\n")
+            self.props_text.insert(tk.END, f"单元数量: {len(part_info.get('cells', []))}\n")
+            
+            # 添加状态信息
+            self.props_text.insert(tk.END, f"\n=== 状态信息 ===\n")
+            self.props_text.insert(tk.END, f"选择时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            self.props_text.insert(tk.END, f"部件索引: {index}\n")
+            self.props_text.insert(tk.END, f"总部件数: {len(self.cas_parts_info)}\n")
+            self.props_text.insert(tk.END, f"数据来源: CAS文件\n")
+            
+            self.props_text.config(state=tk.DISABLED)
+            self.update_status(f"已选中CAS部件: {part_info.get('part_name', f'部件{index}')}")
+            return
         
         # 如果有参数对象，显示选中部件的属性
         if hasattr(self, 'params') and self.params:
