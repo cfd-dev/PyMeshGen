@@ -668,11 +668,11 @@ class SimplifiedPyMeshGenGUI:
         self.status_output_paned.pack(fill=tk.BOTH, expand=True)
         # 左侧状态显示区域（4/10宽度）
         self.status_panel = ttk.Frame(self.status_output_paned, width=1)
-        self.status_output_paned.add(self.status_panel, weight=4)
+        self.status_output_paned.add(self.status_panel, weight=2)
         self.create_status_panel()
         # 右侧信息输出区域（6/10宽度）
         self.output_panel = ttk.Frame(self.status_output_paned, width=1)
-        self.status_output_paned.add(self.output_panel, weight=6)
+        self.status_output_paned.add(self.output_panel, weight=8)
         self.create_output_panel()
     
     def create_status_panel(self):

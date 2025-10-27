@@ -8,6 +8,7 @@
 """
 
 import os
+import time
 import tkinter as tk
 from tkinter import ttk
 import vtk
@@ -241,64 +242,47 @@ class MeshDisplayArea(BaseFrame):
             print(f"渲染回调错误: {str(e)}")
     
     def force_render_update(self):
-        """强制更新渲染，防止网格消失"""
+        """强制更新渲染，防止网格消失（优化版本，减少渲染频率）"""
         try:
             if self.render_window and self.renderer:
-                # 强制更新渲染窗口
-                self.render_window.Render()
+                # 添加一个标志，避免过于频繁的渲染更新
+                current_time = time.time()
+                should_render = False
                 
-                # 如果网格演员存在，确保它仍然在渲染器中
+                # 检查网格演员是否仍在渲染器中（简化检查）
                 if self.mesh_actor:
-                    # 检查演员是否仍在渲染器中
                     actors = self.renderer.GetActors()
-                    found = False
                     actors.InitTraversal()
-                    for i in range(actors.GetNumberOfItems()):
+                    found = False
+                    for i in range(min(actors.GetNumberOfItems(), 10)):  # 只检查前10个演员
                         actor = actors.GetNextActor()
                         if actor == self.mesh_actor:
                             found = True
                             break
-                    
-                    # 如果演员不在渲染器中，重新添加
                     if not found:
                         self.renderer.AddActor(self.mesh_actor)
-                        self.render_window.Render()
+                        should_render = True
                 
-                # 如果坐标轴演员存在，确保它仍然在渲染器中
+                # 检查坐标轴演员是否仍在渲染器中（简化检查）
                 if hasattr(self, 'axes_actor') and self.axes_actor:
-                    # 检查演员是否仍在渲染器中
                     actors = self.renderer.GetActors()
-                    found = False
                     actors.InitTraversal()
-                    for i in range(actors.GetNumberOfItems()):
+                    found = False
+                    for i in range(min(actors.GetNumberOfItems(), 10)):  # 只检查前10个演员
                         actor = actors.GetNextActor()
                         if actor == self.axes_actor:
                             found = True
                             break
-                    
-                    # 如果演员不在渲染器中，重新添加
                     if not found:
                         self.renderer.AddActor(self.axes_actor)
-                        self.render_window.Render()
+                        should_render = True
                 
-                # 检查边界演员
-                for actor in self.boundary_actors:
-                    actors = self.renderer.GetActors()
-                    found = False
-                    actors.InitTraversal()
-                    for i in range(actors.GetNumberOfItems()):
-                        a = actors.GetNextActor()
-                        if a == actor:
-                            found = True
-                            break
-                    
-                    # 如果演员不在渲染器中，重新添加
-                    if not found:
-                        self.renderer.AddActor(actor)
-                        self.render_window.Render()
-                        
-                # 每隔一段时间再次强制更新，确保网格不会消失
-                self.vtk_frame.after(500, self.force_render_update)
+                # 只有在演员缺失时才渲染
+                if should_render:
+                    self.render_window.Render()
+                
+                # 安排下一次更新，但间隔更长（2秒而不是500毫秒）
+                self.vtk_frame.after(2000, self.force_render_update)
         except Exception as e:
             print(f"强制渲染更新错误: {str(e)}")
         
@@ -365,7 +349,7 @@ class MeshDisplayArea(BaseFrame):
                     self.mesh_actor.SetMapper(mapper)
                     
                     # 设置属性
-                    self.mesh_actor.GetProperty().SetColor(0.8, 0.8, 0.8)  # 浅灰色
+                    self.mesh_actor.GetProperty().SetColor(0.0, 0.0, 0.0)  # 黑色
                     self.mesh_actor.GetProperty().SetLineWidth(2.0)  # 增加线宽使线框更明显
                     
                     # 根据wireframe_var设置显示模式
@@ -598,7 +582,7 @@ class MeshDisplayArea(BaseFrame):
             
             # 为每个边界区域创建演员
             for zone_name, zone_data in boundary_info.items():
-                bc_type = zone_data.get("bc_type", "unspecified")
+                bc_type = zone_data.get("type", zone_data.get("bc_type", "unspecified"))
                 faces = zone_data.get("faces", [])
                 
                 if not faces:
@@ -612,15 +596,20 @@ class MeshDisplayArea(BaseFrame):
                 # 添加面
                 for face in faces:
                     # 确保面是有效的
-                    if len(face) < 2:
+                    if not isinstance(face, dict) or "nodes" not in face:
+                        continue
+                        
+                    # 获取节点列表
+                    nodes = face["nodes"]
+                    if not nodes or len(nodes) < 2:
                         continue
                         
                     # 创建多边形
                     polygon = vtk.vtkPolygon()
-                    polygon.GetPointIds().SetNumberOfIds(len(face))
+                    polygon.GetPointIds().SetNumberOfIds(len(nodes))
                     
                     # 添加点并设置多边形顶点
-                    for i, node_id in enumerate(face):
+                    for i, node_id in enumerate(nodes):
                         if node_id not in point_map:
                             # 添加新点
                             coord = None
@@ -632,25 +621,28 @@ class MeshDisplayArea(BaseFrame):
                                 print(f"无效的节点ID: {node_id}")
                                 continue
                             
+                            # 转换为0基索引（从1基索引转换为0基索引）
+                            node_id_0 = node_id_int - 1
+                            
                             # 尝试从不同结构中获取节点坐标
                             if isinstance(self.mesh_data, dict):
                                 if 'unstr_grid' in self.mesh_data:
                                     unstr_grid = self.mesh_data['unstr_grid']
                                     if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
-                                        # 确保node_id_int是有效的索引
-                                        if 0 <= node_id_int < len(unstr_grid.node_coords):
-                                            coord = unstr_grid.node_coords[node_id_int]
+                                        # 确保node_id_0是有效的索引
+                                        if 0 <= node_id_0 < len(unstr_grid.node_coords):
+                                            coord = unstr_grid.node_coords[node_id_0]
                                 elif 'node_coords' in self.mesh_data and isinstance(self.mesh_data['node_coords'], list):
-                                    if 0 <= node_id_int < len(self.mesh_data['node_coords']):
-                                        coord = self.mesh_data['node_coords'][node_id_int]
+                                    if 0 <= node_id_0 < len(self.mesh_data['node_coords']):
+                                        coord = self.mesh_data['node_coords'][node_id_0]
                             elif hasattr(self.mesh_data, 'node_coords') and isinstance(self.mesh_data.node_coords, list):
-                                if 0 <= node_id_int < len(self.mesh_data.node_coords):
-                                    coord = self.mesh_data.node_coords[node_id_int]
+                                if 0 <= node_id_0 < len(self.mesh_data.node_coords):
+                                    coord = self.mesh_data.node_coords[node_id_0]
                             elif hasattr(self.mesh_data, 'unstr_grid'):
                                 unstr_grid = self.mesh_data.unstr_grid
                                 if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
-                                    if 0 <= node_id_int < len(unstr_grid.node_coords):
-                                        coord = unstr_grid.node_coords[node_id_int]
+                                    if 0 <= node_id_0 < len(unstr_grid.node_coords):
+                                        coord = unstr_grid.node_coords[node_id_0]
                             
                             if coord is None:
                                 print(f"无法获取节点坐标: {node_id}")
@@ -702,6 +694,11 @@ class MeshDisplayArea(BaseFrame):
             
             # 设置坐标轴大小
             axes.SetTotalLength(1.0, 1.0, 1.0)
+            
+            # 设置坐标轴标签字号
+            axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
+            axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
+            axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
             
             # 创建坐标轴变换，将坐标轴放置在左下角
             transform = vtk.vtkTransform()
