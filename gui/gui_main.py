@@ -243,11 +243,45 @@ class SimplifiedPyMeshGenGUI:
         self.info_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 添加清除按钮
-        button_frame = ttk.Frame(info_frame)
-        button_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        # 创建右键菜单
+        self.create_info_context_menu()
         
-        ttk.Button(button_frame, text="清除信息", command=self.clear_info_output).pack(side=tk.RIGHT)
+        # 绑定右键事件
+        self.info_text.bind("<Button-3>", self.show_info_context_menu)
+
+    def create_info_context_menu(self):
+        """创建信息输出窗口的右键菜单"""
+        self.info_context_menu = tk.Menu(self.root, tearoff=0)
+        self.info_context_menu.add_command(label="清除信息", command=self.clear_info_output)
+        self.info_context_menu.add_separator()
+        self.info_context_menu.add_command(label="全选", command=self.select_all_info)
+        self.info_context_menu.add_command(label="复制", command=self.copy_info)
+        
+    def show_info_context_menu(self, event):
+        """显示信息输出窗口的右键菜单"""
+        try:
+            self.info_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.info_context_menu.grab_release()
+            
+    def select_all_info(self):
+        """全选信息输出窗口的内容"""
+        self.info_text.tag_add(tk.SEL, "1.0", tk.END)
+        self.info_text.mark_set(tk.INSERT, "1.0")
+        self.info_text.see(tk.INSERT)
+        return "break"
+        
+    def copy_info(self):
+        """复制选中的信息"""
+        try:
+            selected_text = self.info_text.get(tk.SEL_FIRST, tk.SEL_LAST)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected_text)
+        except tk.TclError:
+            # 如果没有选中文本，则复制全部内容
+            all_text = self.info_text.get("1.0", tk.END)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(all_text)
 
     def clear_info_output(self):
         """清除信息输出"""
