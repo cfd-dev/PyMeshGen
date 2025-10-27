@@ -110,14 +110,14 @@ class InfoOutput:
     def create_info_output_area(self):
         """创建信息输出窗口"""
         # 创建信息输出框架
-        info_frame = ttk.LabelFrame(self.parent, text="信息输出")
-        info_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.frame = ttk.LabelFrame(self.parent, text="信息输出")
+        self.frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建文本框和滚动条
-        text_frame = ttk.Frame(info_frame)
+        text_frame = ttk.Frame(self.frame)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=10)
+        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=8)
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.info_text.yview)
         self.info_text.configure(yscrollcommand=scrollbar.set)
         
@@ -127,15 +127,23 @@ class InfoOutput:
         # 绑定右键事件
         self.info_text.bind("<Button-3>", self.show_info_context_menu)
         
-        return info_frame
+        return self.frame
     
     def create_info_context_menu(self):
         """创建信息输出窗口的右键菜单"""
         self.info_context_menu = tk.Menu(self.parent, tearoff=0)
-        self.info_context_menu.add_command(label="清除信息", command=self.clear_info_output)
+        self.info_context_menu.add_command(label="清除", command=self.clear_info_output, accelerator="Ctrl+D")
         self.info_context_menu.add_separator()
-        self.info_context_menu.add_command(label="全选", command=self.select_all_info)
-        self.info_context_menu.add_command(label="复制", command=self.copy_info)
+        self.info_context_menu.add_command(label="全选", command=self.select_all_info, accelerator="Ctrl+A")
+        self.info_context_menu.add_command(label="复制", command=self.copy_info, accelerator="Ctrl+C")
+        
+        # 添加键盘快捷键绑定
+        self.info_text.bind("<Control-a>", lambda e: self.select_all_info())
+        self.info_text.bind("<Control-A>", lambda e: self.select_all_info())
+        self.info_text.bind("<Control-c>", lambda e: self.copy_info())
+        self.info_text.bind("<Control-C>", lambda e: self.copy_info())
+        self.info_text.bind("<Control-d>", lambda e: self.clear_info_output())
+        self.info_text.bind("<Control-D>", lambda e: self.clear_info_output())
         
     def show_info_context_menu(self, event):
         """显示信息输出窗口的右键菜单"""
@@ -149,11 +157,17 @@ class InfoOutput:
         self.info_text.tag_add(tk.SEL, "1.0", tk.END)
         self.info_text.mark_set(tk.INSERT, "1.0")
         self.info_text.see(tk.INSERT)
+        
+        # 给出全选成功的反馈
+        if hasattr(self.parent, 'status_bar') and hasattr(self.parent.status_bar, 'update_status'):
+            self.parent.status_bar.update_status("已全选信息")
+            
         return "break"
         
     def copy_info(self):
         """复制选中的信息"""
         try:
+            # 尝试获取选中的文本
             selected_text = self.info_text.get(tk.SEL_FIRST, tk.SEL_LAST)
             self.parent.clipboard_clear()
             self.parent.clipboard_append(selected_text)
@@ -162,10 +176,18 @@ class InfoOutput:
             all_text = self.info_text.get("1.0", tk.END)
             self.parent.clipboard_clear()
             self.parent.clipboard_append(all_text)
+            
+        # 给出复制成功的反馈
+        if hasattr(self.parent, 'status_bar') and hasattr(self.parent.status_bar, 'update_status'):
+            self.parent.status_bar.update_status("已复制到剪贴板")
 
     def clear_info_output(self):
         """清除信息输出"""
         self.info_text.delete(1.0, tk.END)
+        
+        # 给出清除成功的反馈
+        if hasattr(self.parent, 'status_bar') and hasattr(self.parent.status_bar, 'update_status'):
+            self.parent.status_bar.update_status("已清除信息输出")
         
     def append_info_output(self, message):
         """添加信息到输出窗口"""

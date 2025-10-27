@@ -85,11 +85,11 @@ class SimplifiedPyMeshGenGUI:
         # 创建右侧面板（参数设置和部件管理）
         self.create_right_panel()
         
-        # 创建信息输出窗口（位于底部）
-        self.create_output_panel()
-        
-        # 创建状态栏
+        # 创建状态栏（在底部创建，确保位于最底部）
         self.status_bar = StatusBar(self.root)
+        
+        # 创建信息输出窗口（位于状态栏上方）
+        self.create_output_panel()
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -595,8 +595,16 @@ class SimplifiedPyMeshGenGUI:
     
     def create_output_panel(self):
         """创建信息输出面板"""
+        # 创建底部面板框架
+        self.bottom_panel = ttk.Frame(self.root, height=150)
+        self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.bottom_panel.pack_propagate(False)  # 防止框架被内容压缩
+        
         # 创建信息输出区域
-        self.info_output = InfoOutput(self.root)
+        self.info_output = InfoOutput(self.bottom_panel)
+        
+        # 确保InfoOutput的框架被正确布局
+        self.info_output.frame.pack(fill=tk.BOTH, expand=True)
     
     def update_status(self, message):
         """更新状态栏"""

@@ -18,8 +18,8 @@ try:
     # 导入并运行GUI
     from gui.gui_main import main
     
-    if __name__ == "__main__":
-        main()
+    # 直接调用main函数
+    main()
 except ImportError as e:
     print(f"导入GUI模块失败: {e}")
     sys.exit(1)
