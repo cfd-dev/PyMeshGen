@@ -136,15 +136,25 @@ class SimplifiedPyMeshGenGUI:
 
     def create_main_content_area(self, parent):
         """创建主内容区域（网格显示和信息输出）"""
-        # 创建主内容框架
-        content_frame = ttk.Frame(parent)
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # 创建可调整大小的分隔窗口
+        paned_window = ttk.PanedWindow(parent, orient=tk.VERTICAL)
+        paned_window.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建网格显示区域框架
+        mesh_frame = ttk.Frame(paned_window)
+        
+        # 创建信息输出窗口框架
+        info_frame = ttk.Frame(paned_window)
+        
+        # 将两个框架添加到PanedWindow中
+        paned_window.add(mesh_frame, weight=3)  # 网格显示区占更多空间
+        paned_window.add(info_frame, weight=1)  # 信息输出区占较少空间
         
         # 创建网格显示区域
-        self.create_mesh_display_area(content_frame)
+        self.create_mesh_display_area(mesh_frame)
         
         # 创建信息输出窗口
-        self.create_info_output_area(content_frame)
+        self.create_info_output_area(info_frame)
 
     def create_mesh_display_area(self, parent):
         """创建网格显示区域"""
@@ -159,7 +169,8 @@ class SimplifiedPyMeshGenGUI:
         self.ax.set_title("网格显示区域")
         self.ax.set_xlabel("X坐标")
         self.ax.set_ylabel("Y坐标")
-        self.ax.axis("equal")
+        # 初始状态不显示坐标轴
+        self.ax.set_axis_off()
         
         # 创建画布
         self.canvas = FigureCanvasTkAgg(self.fig, mesh_frame)
@@ -215,63 +226,17 @@ class SimplifiedPyMeshGenGUI:
             # 如果没有找到中文字体，使用默认字体但关闭unicode minus
             matplotlib.rcParams['axes.unicode_minus'] = False
 
-    def create_mesh_display_area(self, parent):
-        """创建网格显示区域"""
-        # 创建网格显示框架
-        mesh_frame = ttk.LabelFrame(parent, text="网格显示区")
-        mesh_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建matplotlib图形和轴
-        # 创建matplotlib图形对象
-        self.fig = Figure(figsize=(8, 6), dpi=100)
-        self.ax = self.fig.add_subplot(111)
-        self.ax.set_title("网格显示区域")
-        self.ax.set_xlabel("X坐标")
-        self.ax.set_ylabel("Y坐标")
-        # 初始状态不显示坐标轴
-        self.ax.set_axis_off()
-        
-        # 创建画布
-        self.canvas = FigureCanvasTkAgg(self.fig, mesh_frame)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        
-        # 设置窗口标题为空字符串，避免显示"Figure 1"
-        if hasattr(self.canvas, 'manager') and self.canvas.manager is not None:
-            self.canvas.manager.set_window_title('')
-        
-        # 添加导航工具栏
-        self.toolbar = NavigationToolbar2Tk(self.canvas, mesh_frame)
-        self.toolbar.update()
-        self.toolbar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        # 确保鼠标事件被正确连接
-        self.canvas.mpl_connect('scroll_event', self.on_mouse_wheel)
-        self.canvas.mpl_connect('button_press_event', self.on_mouse_press)
-        self.canvas.mpl_connect('button_release_event', self.on_mouse_release)
-        self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
-        
-        # 初始化鼠标交互状态
-        self.press = None
-        self.cur_xlim = None
-        self.cur_ylim = None
-        self.x0 = None
-        self.y0 = None
-        self.x1 = None
-        self.y1 = None
-        self.xpress = None
-        self.ypress = None
-
     def create_info_output_area(self, parent):
         """创建信息输出窗口"""
         # 创建信息输出框架
         info_frame = ttk.LabelFrame(parent, text="信息输出")
-        info_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        info_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建文本框和滚动条
         text_frame = ttk.Frame(info_frame)
         text_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=15)
+        self.info_text = tk.Text(text_frame, wrap=tk.WORD, height=10)
         scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.info_text.yview)
         self.info_text.configure(yscrollcommand=scrollbar.set)
         
@@ -279,7 +244,10 @@ class SimplifiedPyMeshGenGUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # 添加清除按钮
-        ttk.Button(info_frame, text="清除信息", command=self.clear_info_output).pack(pady=5)
+        button_frame = ttk.Frame(info_frame)
+        button_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        
+        ttk.Button(button_frame, text="清除信息", command=self.clear_info_output).pack(side=tk.RIGHT)
 
     def clear_info_output(self):
         """清除信息输出"""
