@@ -170,7 +170,7 @@ def read_vtk(filename):
 def reconstruct_mesh_from_vtk(
     node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
 ):
-    from basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
+    from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
 
     num_nodes = len(node_coords)
     num_cells = len(cell_idx_container)

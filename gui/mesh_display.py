@@ -116,9 +116,9 @@ class MeshDisplayArea(BaseFrame):
                 visual_obj = Visualization(viz_enabled, self.ax)
                 
                 # 直接使用内存中的网格对象进行可视化
-                if hasattr(self.mesh_data, 'visualize_unstr_grid_2d'):
-                    # 如果是UnstructuredGrid对象，直接调用其可视化方法
-                    self.mesh_data.visualize_unstr_grid_2d(visual_obj)
+                if hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
+                    # 如果是UnstructuredGrid对象，使用Visualization类的plot_mesh方法
+                    visual_obj.plot_mesh(self.mesh_data)
                 else:
                     # 否则使用通用的plot_mesh方法
                     visual_obj.plot_mesh(self.mesh_data)

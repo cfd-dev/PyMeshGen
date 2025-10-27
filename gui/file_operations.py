@@ -20,7 +20,7 @@ class FileOperations:
     
     def __init__(self, project_root):
         self.project_root = project_root
-        self.supported_import_formats = [".vtk", ".stl", ".obj", ".ply"]
+        self.supported_import_formats = [".vtk", ".stl", ".obj", ".ply", ".cas"]
         self.supported_export_formats = [".vtk", ".stl", ".obj", ".ply"]
     
     def import_mesh(self, file_path):
@@ -31,19 +31,36 @@ class FileOperations:
             
             if file_ext == ".vtk":
                 reader = vtk.vtkPolyDataReader()
+                reader.SetFileName(file_path)
+                reader.Update()
+                poly_data = reader.GetOutput()
             elif file_ext == ".stl":
                 reader = vtk.vtkSTLReader()
+                reader.SetFileName(file_path)
+                reader.Update()
+                poly_data = reader.GetOutput()
             elif file_ext == ".obj":
                 reader = vtk.vtkOBJReader()
+                reader.SetFileName(file_path)
+                reader.Update()
+                poly_data = reader.GetOutput()
             elif file_ext == ".ply":
                 reader = vtk.vtkPLYReader()
+                reader.SetFileName(file_path)
+                reader.Update()
+                poly_data = reader.GetOutput()
+            elif file_ext == ".cas":
+                # 对于cas文件，使用专门的解析器
+                import sys
+                sys.path.append(os.path.join(self.project_root, 'fileIO'))
+                from read_cas import parse_cas_to_unstr_grid
+                
+                # 解析cas文件并转换为Unstructured_Grid对象
+                unstr_grid = parse_cas_to_unstr_grid(file_path)
+                return unstr_grid
             else:
                 raise ValueError(f"不支持的文件格式: {file_ext}")
             
-            reader.SetFileName(file_path)
-            reader.Update()
-            
-            poly_data = reader.GetOutput()
             if not poly_data or poly_data.GetNumberOfPoints() == 0:
                 raise ValueError("导入的网格文件为空或无效")
             
@@ -81,32 +98,70 @@ class FileOperations:
         except Exception as e:
             raise Exception(f"导出网格文件失败: {str(e)}")
     
-    def get_mesh_info(self, poly_data):
+    def get_mesh_info(self, mesh_data):
         """获取网格信息"""
-        if not poly_data:
+        if not mesh_data:
             return None
+        
+        # 检查是否是Unstructured_Grid对象（cas文件导入的结果）
+        if hasattr(mesh_data, 'node_coords') and hasattr(mesh_data, 'cell_container'):
+            # 处理Unstructured_Grid对象
+            num_points = len(mesh_data.node_coords)
+            num_cells = len(mesh_data.cell_container)
             
-        num_points = poly_data.GetNumberOfPoints()
-        num_cells = poly_data.GetNumberOfCells()
-        
-        # 计算边界框
-        bounds = poly_data.GetBounds()
-        min_x, max_x, min_y, max_y, min_z, max_z = bounds
-        
-        # 计算尺寸
-        size_x = max_x - min_x
-        size_y = max_y - min_y
-        size_z = max_z - min_z
-        
-        return {
-            "num_points": num_points,
-            "num_cells": num_cells,
-            "bounds": bounds,
-            "min_point": (min_x, min_y, min_z),
-            "max_point": (max_x, max_y, max_z),
-            "size": (size_x, size_y, size_z),
-            "center": ((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
-        }
+            # 计算边界框
+            if num_points > 0:
+                coords = np.array(mesh_data.node_coords)
+                min_x, min_y, min_z = np.min(coords, axis=0)
+                max_x, max_y, max_z = np.max(coords, axis=0)
+                
+                # 计算尺寸
+                size_x = max_x - min_x
+                size_y = max_y - min_y
+                size_z = max_z - min_z
+                
+                return {
+                    "num_points": num_points,
+                    "num_cells": num_cells,
+                    "bounds": (min_x, max_x, min_y, max_y, min_z, max_z),
+                    "min_point": (min_x, min_y, min_z),
+                    "max_point": (max_x, max_y, max_z),
+                    "size": (size_x, size_y, size_z),
+                    "center": ((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
+                }
+            else:
+                return {
+                    "num_points": 0,
+                    "num_cells": 0,
+                    "bounds": (0, 0, 0, 0, 0, 0),
+                    "min_point": (0, 0, 0),
+                    "max_point": (0, 0, 0),
+                    "size": (0, 0, 0),
+                    "center": (0, 0, 0)
+                }
+        else:
+            # 处理VTK PolyData对象
+            num_points = mesh_data.GetNumberOfPoints()
+            num_cells = mesh_data.GetNumberOfCells()
+            
+            # 计算边界框
+            bounds = mesh_data.GetBounds()
+            min_x, max_x, min_y, max_y, min_z, max_z = bounds
+            
+            # 计算尺寸
+            size_x = max_x - min_x
+            size_y = max_y - min_y
+            size_z = max_z - min_z
+            
+            return {
+                "num_points": num_points,
+                "num_cells": num_cells,
+                "bounds": bounds,
+                "min_point": (min_x, min_y, min_z),
+                "max_point": (max_x, max_y, max_z),
+                "size": (size_x, size_y, size_z),
+                "center": ((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
+            }
 
 
 class ImportDialog(DialogBase):
@@ -170,11 +225,12 @@ class ImportDialog(DialogBase):
         file_path = filedialog.askopenfilename(
             title="选择网格文件",
             filetypes=[
-                ("所有支持的文件", "*.vtk *.stl *.obj *.ply"),
+                ("所有支持的文件", "*.vtk *.stl *.obj *.ply *.cas"),
                 ("VTK文件", "*.vtk"),
                 ("STL文件", "*.stl"),
                 ("OBJ文件", "*.obj"),
                 ("PLY文件", "*.ply"),
+                ("CAS文件", "*.cas"),
                 ("所有文件", "*.*")
             ]
         )
@@ -244,13 +300,13 @@ class ImportDialog(DialogBase):
 class ExportDialog(DialogBase):
     """导出网格文件对话框"""
     
-    def __init__(self, parent, file_operations, poly_data):
+    def __init__(self, parent, file_operations, mesh_data):
         super().__init__(parent, "导出网格文件", "600x400")
         self.file_operations = file_operations
-        self.poly_data = poly_data
+        self.mesh_data = mesh_data
         
         # 获取网格信息
-        self.mesh_info = file_operations.get_mesh_info(poly_data) if poly_data else None
+        self.mesh_info = file_operations.get_mesh_info(mesh_data) if mesh_data else None
         
         self.create_widgets()
     
@@ -357,7 +413,7 @@ class ExportDialog(DialogBase):
     
     def ok(self):
         """确定按钮回调"""
-        if not self.poly_data:
+        if not self.mesh_data:
             messagebox.showwarning("警告", "没有可导出的网格数据")
             return
             
@@ -367,8 +423,14 @@ class ExportDialog(DialogBase):
             return
             
         try:
-            # 导出网格文件
-            self.file_operations.export_mesh(self.poly_data, file_path)
+            # 检查是否是Unstructured_Grid对象（cas文件导入的结果）
+            if hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
+                # 对于Unstructured_Grid对象，使用save_to_vtkfile方法
+                self.mesh_data.save_to_vtkfile(file_path)
+            else:
+                # 对于VTK PolyData对象，使用file_operations的export_mesh方法
+                self.file_operations.export_mesh(self.mesh_data, file_path)
+                
             self.result = {
                 "file_path": file_path,
                 "success": True

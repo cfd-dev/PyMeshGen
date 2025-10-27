@@ -250,3 +250,131 @@ def parse_fluent_msh(file_path):
 
     timer.show_to_console("解析fluent .cas网格..., Done.")
     return data
+
+
+def reconstruct_mesh_from_cas(cas_data):
+    """
+    将cas文件解析后的数据转换为Unstructured_Grid对象
+    
+    Args:
+        cas_data (dict): parse_fluent_msh函数返回的数据结构
+        
+    Returns:
+        Unstructured_Grid: 转换后的非结构化网格对象
+    """
+    from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
+    
+    # 提取节点坐标
+    node_coords = cas_data["nodes"]
+    num_nodes = len(node_coords)
+    
+    # 创建节点对象
+    node_container = [NodeElement(node_coords[idx], idx) for idx in range(num_nodes)]
+    
+    # 从面数据构建单元
+    cell_container = []
+    cell_type_container = []
+    
+    # 收集所有单元的面连接关系
+    cell_faces = {}  # {cell_id: [face_data]}
+    
+    for face in cas_data["faces"]:
+        left_cell = face["left_cell"]
+        right_cell = face["right_cell"]
+        
+        # 添加到左侧单元的面列表
+        if left_cell > 0:  # 0表示没有单元
+            if left_cell not in cell_faces:
+                cell_faces[left_cell] = []
+            cell_faces[left_cell].append(face)
+            
+        # 添加到右侧单元的面列表
+        if right_cell > 0:  # 0表示没有单元
+            if right_cell not in cell_faces:
+                cell_faces[right_cell] = []
+            cell_faces[right_cell].append(face)
+    
+    # 根据面连接关系构建单元
+    for cell_id, faces in cell_faces.items():
+        # 收集单元的所有节点
+        cell_nodes = set()
+        for face in faces:
+            for node_idx in face["nodes"]:
+                cell_nodes.add(node_idx - 1)  # 转换为0基索引
+        
+        # 转换为列表
+        cell_nodes = list(cell_nodes)
+        
+        # 根据节点数量确定单元类型
+        if len(cell_nodes) == 3:
+            # 三角形单元
+            node1 = node_container[cell_nodes[0]]
+            node2 = node_container[cell_nodes[1]]
+            node3 = node_container[cell_nodes[2]]
+            cell = Triangle(node1, node2, node3, idx=len(cell_container))
+            cell_container.append(cell)
+            cell_type_container.append(5)  # VTK_TRIANGLE
+        elif len(cell_nodes) == 4:
+            # 四边形单元
+            node1 = node_container[cell_nodes[0]]
+            node2 = node_container[cell_nodes[1]]
+            node3 = node_container[cell_nodes[2]]
+            node4 = node_container[cell_nodes[3]]
+            cell = Quadrilateral(node1, node2, node3, node4, idx=len(cell_container))
+            cell_container.append(cell)
+            cell_type_container.append(9)  # VTK_QUAD
+        else:
+            # 其他类型暂时不支持
+            print(f"Warning: Unsupported cell with {len(cell_nodes)} nodes, skipping")
+            continue
+    
+    # 确定边界节点
+    boundary_nodes_idx = set()
+    
+    # 遍历所有面，找出边界节点
+    for face in cas_data["faces"]:
+        # 如果面的左侧或右侧没有单元，则这是边界
+        if face["left_cell"] == 0 or face["right_cell"] == 0:
+            for node_idx in face["nodes"]:
+                boundary_nodes_idx.add(node_idx - 1)  # 转换为0基索引
+    
+    # 创建边界节点对象
+    boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx]
+    
+    # 设置边界节点的边界类型
+    for face in cas_data["faces"]:
+        if face["left_cell"] == 0 or face["right_cell"] == 0:
+            bc_type = face.get("bc_type", "unspecified")
+            part_name = face.get("part_name", "unspecified")
+            
+            for node_idx in face["nodes"]:
+                node_idx_0 = node_idx - 1  # 转换为0基索引
+                if node_idx_0 < len(node_container):
+                    node_container[node_idx_0].bc_type = bc_type
+                    node_container[node_idx_0].part_name = part_name
+    
+    # 创建Unstructured_Grid对象
+    unstr_grid = Unstructured_Grid(
+        cell_container, node_coords, boundary_nodes
+    )
+    
+    return unstr_grid
+
+
+def parse_cas_to_unstr_grid(cas_file_path):
+    """
+    将cas文件直接转换为Unstructured_Grid对象
+    
+    Args:
+        cas_file_path (str): cas文件路径
+        
+    Returns:
+        Unstructured_Grid: 转换后的非结构化网格对象
+    """
+    # 首先解析cas文件
+    cas_data = parse_fluent_msh(cas_file_path)
+    
+    # 然后将解析后的数据转换为Unstructured_Grid对象
+    unstr_grid = reconstruct_mesh_from_cas(cas_data)
+    
+    return unstr_grid

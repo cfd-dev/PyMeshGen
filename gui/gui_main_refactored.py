@@ -377,6 +377,9 @@ class SimplifiedPyMeshGenGUI:
             try:
                 self.current_mesh = self.file_operations.import_mesh(dialog.result["file_path"])
                 
+                # 更新网格显示区域的网格数据
+                self.mesh_display.mesh_data = self.current_mesh
+                
                 if dialog.result["preview"]:
                     self.display_mesh()
                 
