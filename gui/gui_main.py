@@ -790,7 +790,12 @@ class SimplifiedPyMeshGenGUI:
                 self.mesh_status_label.config(text="状态: 已导入")
                 
                 # 获取网格信息
-                if hasattr(self.current_mesh, 'num_points') and hasattr(self.current_mesh, 'num_cells'):
+                if isinstance(self.current_mesh, dict):
+                    # 处理字典类型的网格数据
+                    node_count = self.current_mesh.get('num_points', 0)
+                    element_count = self.current_mesh.get('num_cells', 0)
+                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                elif hasattr(self.current_mesh, 'num_points') and hasattr(self.current_mesh, 'num_cells'):
                     node_count = self.current_mesh.num_points
                     element_count = self.current_mesh.num_cells
                     self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")

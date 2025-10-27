@@ -30,10 +30,24 @@ class FileOperations:
             file_ext = os.path.splitext(file_path)[1].lower()
             
             if file_ext == ".vtk":
-                reader = vtk.vtkPolyDataReader()
+                # 尝试使用vtkUnstructuredGridReader读取非结构化网格
+                reader = vtk.vtkUnstructuredGridReader()
                 reader.SetFileName(file_path)
                 reader.Update()
-                poly_data = reader.GetOutput()
+                unstructured_grid = reader.GetOutput()
+                
+                # 如果读取失败，尝试使用vtkPolyDataReader
+                if not unstructured_grid or unstructured_grid.GetNumberOfPoints() == 0:
+                    reader = vtk.vtkPolyDataReader()
+                    reader.SetFileName(file_path)
+                    reader.Update()
+                    poly_data = reader.GetOutput()
+                else:
+                    # 将非结构化网格转换为多边形数据
+                    geometry_filter = vtk.vtkGeometryFilter()
+                    geometry_filter.SetInputData(unstructured_grid)
+                    geometry_filter.Update()
+                    poly_data = geometry_filter.GetOutput()
                 
                 # 将vtkPolyData转换为统一的数据结构
                 if poly_data and poly_data.GetNumberOfPoints() > 0:
@@ -43,7 +57,7 @@ class FileOperations:
                     node_coords = []
                     for i in range(num_points):
                         x, y, z = points.GetPoint(i)
-                        node_coords.append([x, y])  # 只取x,y坐标
+                        node_coords.append([x, y, z])  # 保存x,y,z坐标
                     
                     # 获取单元信息
                     num_cells = poly_data.GetNumberOfCells()
@@ -90,7 +104,7 @@ class FileOperations:
                     node_coords = []
                     for i in range(num_points):
                         x, y, z = points.GetPoint(i)
-                        node_coords.append([x, y])  # 只取x,y坐标
+                        node_coords.append([x, y, z])  # 保存x,y,z坐标
                     
                     # 获取单元信息
                     num_cells = poly_data.GetNumberOfCells()
@@ -131,7 +145,7 @@ class FileOperations:
                     node_coords = []
                     for i in range(num_points):
                         x, y, z = points.GetPoint(i)
-                        node_coords.append([x, y])  # 只取x,y坐标
+                        node_coords.append([x, y, z])  # 保存x,y,z坐标
                     
                     # 获取单元信息
                     num_cells = poly_data.GetNumberOfCells()
@@ -178,7 +192,7 @@ class FileOperations:
                     node_coords = []
                     for i in range(num_points):
                         x, y, z = points.GetPoint(i)
-                        node_coords.append([x, y])  # 只取x,y坐标
+                        node_coords.append([x, y, z])  # 保存x,y,z坐标
                     
                     # 获取单元信息
                     num_cells = poly_data.GetNumberOfCells()
@@ -287,8 +301,60 @@ class FileOperations:
         if not mesh_data:
             return None
         
+        # 检查是否是字典类型（VTK/STL/OBJ/PLY文件导入的结果）
+        if isinstance(mesh_data, dict) and 'node_coords' in mesh_data and 'cells' in mesh_data:
+            # 处理字典类型的网格数据
+            node_coords = mesh_data['node_coords']
+            cells = mesh_data['cells']
+            
+            num_points = len(node_coords)
+            num_cells = len(cells)
+            
+            # 计算边界框
+            if num_points > 0:
+                coords = np.array(node_coords)
+                
+                # 检查坐标维度
+                if coords.shape[1] >= 3:
+                    # 三维坐标
+                    min_x, min_y, min_z = np.min(coords, axis=0)
+                    max_x, max_y, max_z = np.max(coords, axis=0)
+                elif coords.shape[1] == 2:
+                    # 二维坐标，添加z=0
+                    min_x, min_y = np.min(coords, axis=0)
+                    max_x, max_y = np.max(coords, axis=0)
+                    min_z = max_z = 0.0
+                else:
+                    # 其他情况，使用默认值
+                    min_x = min_y = min_z = 0.0
+                    max_x = max_y = max_z = 1.0
+                
+                # 计算尺寸
+                size_x = max_x - min_x
+                size_y = max_y - min_y
+                size_z = max_z - min_z
+                
+                return {
+                    "num_points": num_points,
+                    "num_cells": num_cells,
+                    "bounds": (min_x, max_x, min_y, max_y, min_z, max_z),
+                    "min_point": (min_x, min_y, min_z),
+                    "max_point": (max_x, max_y, max_z),
+                    "size": (size_x, size_y, size_z),
+                    "center": ((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
+                }
+            else:
+                return {
+                    "num_points": 0,
+                    "num_cells": 0,
+                    "bounds": (0, 0, 0, 0, 0, 0),
+                    "min_point": (0, 0, 0),
+                    "max_point": (0, 0, 0),
+                    "size": (0, 0, 0),
+                    "center": (0, 0, 0)
+                }
         # 检查是否是Unstructured_Grid对象（cas文件导入的结果）
-        if hasattr(mesh_data, 'node_coords') and hasattr(mesh_data, 'cell_container'):
+        elif hasattr(mesh_data, 'node_coords') and hasattr(mesh_data, 'cell_container'):
             # 处理Unstructured_Grid对象
             num_points = len(mesh_data.node_coords)
             num_cells = len(mesh_data.cell_container)
@@ -427,10 +493,54 @@ class ImportDialog(DialogBase):
         """加载网格信息"""
         try:
             # 导入网格文件
-            poly_data = self.file_operations.import_mesh(file_path)
+            mesh_data = self.file_operations.import_mesh(file_path)
             
-            # 获取网格信息
-            self.mesh_info = self.file_operations.get_mesh_info(poly_data)
+            # 检查返回的数据类型
+            if isinstance(mesh_data, dict):
+                # 如果是字典，直接使用其中的信息
+                if 'node_coords' in mesh_data and 'cells' in mesh_data:
+                    # 从字典中提取网格信息
+                    node_coords = mesh_data['node_coords']
+                    cells = mesh_data['cells']
+                    
+                    num_points = len(node_coords)
+                    num_cells = len(cells)
+                    
+                    # 计算边界框
+                    if num_points > 0:
+                        coords = np.array(node_coords)
+                        min_x, min_y, min_z = np.min(coords, axis=0)
+                        max_x, max_y, max_z = np.max(coords, axis=0)
+                        
+                        # 计算尺寸
+                        size_x = max_x - min_x
+                        size_y = max_y - min_y
+                        size_z = max_z - min_z
+                        
+                        self.mesh_info = {
+                            "num_points": num_points,
+                            "num_cells": num_cells,
+                            "bounds": (min_x, max_x, min_y, max_y, min_z, max_z),
+                            "min_point": (min_x, min_y, min_z),
+                            "max_point": (max_x, max_y, max_z),
+                            "size": (size_x, size_y, size_z),
+                            "center": ((min_x + max_x) / 2, (min_y + max_y) / 2, (min_z + max_z) / 2)
+                        }
+                    else:
+                        self.mesh_info = {
+                            "num_points": 0,
+                            "num_cells": 0,
+                            "bounds": (0, 0, 0, 0, 0, 0),
+                            "min_point": (0, 0, 0),
+                            "max_point": (0, 0, 0),
+                            "size": (0, 0, 0),
+                            "center": (0, 0, 0)
+                        }
+                else:
+                    self.mesh_info = None
+            else:
+                # 如果是VTK对象或Unstructured_Grid对象，使用get_mesh_info方法
+                self.mesh_info = self.file_operations.get_mesh_info(mesh_data)
             
             # 更新信息显示
             self.update_info_display()

@@ -81,8 +81,12 @@ class MeshDisplayArea(BaseFrame):
         """设置参数对象"""
         self.params = params
         
-    def display_mesh(self):
+    def display_mesh(self, mesh_data=None):
         """显示网格"""
+        # 如果提供了mesh_data参数，则更新self.mesh_data
+        if mesh_data is not None:
+            self.mesh_data = mesh_data
+            
         if not self.mesh_data:
             # 尝试从输出文件加载网格数据
             if self.params and self.params.output_file and os.path.exists(self.params.output_file):
@@ -116,7 +120,29 @@ class MeshDisplayArea(BaseFrame):
                 visual_obj = Visualization(viz_enabled, self.ax)
                 
                 # 检查网格数据类型并使用适当的显示方法
-                if hasattr(self.mesh_data, 'type') and self.mesh_data.type in ['vtk', 'stl', 'obj', 'ply', 'cas']:
+                if isinstance(self.mesh_data, dict) and 'type' in self.mesh_data and self.mesh_data['type'] in ['vtk', 'stl', 'obj', 'ply']:
+                    # 使用统一的数据结构显示网格
+                    node_coords = self.mesh_data['node_coords']
+                    cells = self.mesh_data['cells']
+                    
+                    # 直接绘制节点和单元
+                    for cell in cells:
+                        if len(cell) == 3:  # 三角形
+                            triangle = [node_coords[i] for i in cell]
+                            triangle = list(zip(*triangle))  # 转置为x,y坐标列表
+                            self.ax.fill(triangle[0], triangle[1], edgecolor='black', fill=False)
+                        elif len(cell) == 4:  # 四边形
+                            quad = [node_coords[i] for i in cell]
+                            quad = list(zip(*quad))  # 转置为x,y坐标列表
+                            self.ax.fill(quad[0], quad[1], edgecolor='black', fill=False)
+                    
+                    # 设置坐标轴范围
+                    if node_coords:
+                        x_coords = [coord[0] for coord in node_coords]
+                        y_coords = [coord[1] for coord in node_coords]
+                        self.ax.set_xlim(min(x_coords) - 0.1, max(x_coords) + 0.1)
+                        self.ax.set_ylim(min(y_coords) - 0.1, max(y_coords) + 0.1)
+                elif hasattr(self.mesh_data, 'type') and self.mesh_data.type in ['vtk', 'stl', 'obj', 'ply', 'cas']:
                     # 使用统一的数据结构显示网格
                     node_coords = self.mesh_data.node_coords
                     cells = self.mesh_data.cells

@@ -103,7 +103,10 @@ def read_vtk(filename):
             node_coords = []
             for _ in range(nNodes):
                 i += 1
-                coords = list(map(float, lines[i].split()))[:2]  # 只取前2个坐标
+                coords = list(map(float, lines[i].split()))
+                # 如果只有两个坐标，添加z=0
+                if len(coords) == 2:
+                    coords.append(0.0)
                 node_coords.append(coords)
         elif line.startswith("CELLS"):
             _, nCells, dataLength = line.split()
