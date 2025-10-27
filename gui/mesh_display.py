@@ -115,8 +115,30 @@ class MeshDisplayArea(BaseFrame):
                 from visualization.mesh_visualization import Visualization
                 visual_obj = Visualization(viz_enabled, self.ax)
                 
-                # 直接使用内存中的网格对象进行可视化
-                if hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
+                # 检查网格数据类型并使用适当的显示方法
+                if hasattr(self.mesh_data, 'type') and self.mesh_data.type in ['vtk', 'stl', 'obj', 'ply', 'cas']:
+                    # 使用统一的数据结构显示网格
+                    node_coords = self.mesh_data.node_coords
+                    cells = self.mesh_data.cells
+                    
+                    # 直接绘制节点和单元
+                    for cell in cells:
+                        if len(cell) == 3:  # 三角形
+                            triangle = [node_coords[i] for i in cell]
+                            triangle = list(zip(*triangle))  # 转置为x,y坐标列表
+                            self.ax.fill(triangle[0], triangle[1], edgecolor='black', fill=False)
+                        elif len(cell) == 4:  # 四边形
+                            quad = [node_coords[i] for i in cell]
+                            quad = list(zip(*quad))  # 转置为x,y坐标列表
+                            self.ax.fill(quad[0], quad[1], edgecolor='black', fill=False)
+                    
+                    # 设置坐标轴范围
+                    if node_coords:
+                        x_coords = [coord[0] for coord in node_coords]
+                        y_coords = [coord[1] for coord in node_coords]
+                        self.ax.set_xlim(min(x_coords) - 0.1, max(x_coords) + 0.1)
+                        self.ax.set_ylim(min(y_coords) - 0.1, max(y_coords) + 0.1)
+                elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
                     # 如果是UnstructuredGrid对象，使用Visualization类的plot_mesh方法
                     visual_obj.plot_mesh(self.mesh_data)
                 else:

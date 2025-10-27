@@ -34,21 +34,183 @@ class FileOperations:
                 reader.SetFileName(file_path)
                 reader.Update()
                 poly_data = reader.GetOutput()
+                
+                # 将vtkPolyData转换为统一的数据结构
+                if poly_data and poly_data.GetNumberOfPoints() > 0:
+                    # 获取节点坐标
+                    points = poly_data.GetPoints()
+                    num_points = points.GetNumberOfPoints()
+                    node_coords = []
+                    for i in range(num_points):
+                        x, y, z = points.GetPoint(i)
+                        node_coords.append([x, y])  # 只取x,y坐标
+                    
+                    # 获取单元信息
+                    num_cells = poly_data.GetNumberOfCells()
+                    cells = []
+                    for i in range(num_cells):
+                        cell = poly_data.GetCell(i)
+                        if cell.GetCellType() == vtk.VTK_TRIANGLE:
+                            # 三角形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                        elif cell.GetCellType() == vtk.VTK_QUAD:
+                            # 四边形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                    
+                    # 创建统一的数据结构
+                    mesh_data = {
+                        'type': 'vtk',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': num_points,
+                        'num_cells': len(cells),
+                        'vtk_poly_data': poly_data  # 保留原始VTK数据以备后用
+                    }
+                    return mesh_data
+                else:
+                    raise ValueError("导入的VTK文件为空或无效")
+                    
             elif file_ext == ".stl":
                 reader = vtk.vtkSTLReader()
                 reader.SetFileName(file_path)
                 reader.Update()
                 poly_data = reader.GetOutput()
+                
+                # 将vtkPolyData转换为统一的数据结构
+                if poly_data and poly_data.GetNumberOfPoints() > 0:
+                    # 获取节点坐标
+                    points = poly_data.GetPoints()
+                    num_points = points.GetNumberOfPoints()
+                    node_coords = []
+                    for i in range(num_points):
+                        x, y, z = points.GetPoint(i)
+                        node_coords.append([x, y])  # 只取x,y坐标
+                    
+                    # 获取单元信息
+                    num_cells = poly_data.GetNumberOfCells()
+                    cells = []
+                    for i in range(num_cells):
+                        cell = poly_data.GetCell(i)
+                        if cell.GetCellType() == vtk.VTK_TRIANGLE:
+                            # 三角形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                    
+                    # 创建统一的数据结构
+                    mesh_data = {
+                        'type': 'stl',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': num_points,
+                        'num_cells': len(cells),
+                        'vtk_poly_data': poly_data  # 保留原始VTK数据以备后用
+                    }
+                    return mesh_data
+                else:
+                    raise ValueError("导入的STL文件为空或无效")
+                    
             elif file_ext == ".obj":
                 reader = vtk.vtkOBJReader()
                 reader.SetFileName(file_path)
                 reader.Update()
                 poly_data = reader.GetOutput()
+                
+                # 将vtkPolyData转换为统一的数据结构
+                if poly_data and poly_data.GetNumberOfPoints() > 0:
+                    # 获取节点坐标
+                    points = poly_data.GetPoints()
+                    num_points = points.GetNumberOfPoints()
+                    node_coords = []
+                    for i in range(num_points):
+                        x, y, z = points.GetPoint(i)
+                        node_coords.append([x, y])  # 只取x,y坐标
+                    
+                    # 获取单元信息
+                    num_cells = poly_data.GetNumberOfCells()
+                    cells = []
+                    for i in range(num_cells):
+                        cell = poly_data.GetCell(i)
+                        if cell.GetCellType() == vtk.VTK_TRIANGLE:
+                            # 三角形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                        elif cell.GetCellType() == vtk.VTK_QUAD:
+                            # 四边形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                    
+                    # 创建统一的数据结构
+                    mesh_data = {
+                        'type': 'obj',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': num_points,
+                        'num_cells': len(cells),
+                        'vtk_poly_data': poly_data  # 保留原始VTK数据以备后用
+                    }
+                    return mesh_data
+                else:
+                    raise ValueError("导入的OBJ文件为空或无效")
+                    
             elif file_ext == ".ply":
                 reader = vtk.vtkPLYReader()
                 reader.SetFileName(file_path)
                 reader.Update()
                 poly_data = reader.GetOutput()
+                
+                # 将vtkPolyData转换为统一的数据结构
+                if poly_data and poly_data.GetNumberOfPoints() > 0:
+                    # 获取节点坐标
+                    points = poly_data.GetPoints()
+                    num_points = points.GetNumberOfPoints()
+                    node_coords = []
+                    for i in range(num_points):
+                        x, y, z = points.GetPoint(i)
+                        node_coords.append([x, y])  # 只取x,y坐标
+                    
+                    # 获取单元信息
+                    num_cells = poly_data.GetNumberOfCells()
+                    cells = []
+                    for i in range(num_cells):
+                        cell = poly_data.GetCell(i)
+                        if cell.GetCellType() == vtk.VTK_TRIANGLE:
+                            # 三角形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                        elif cell.GetCellType() == vtk.VTK_QUAD:
+                            # 四边形单元
+                            point_ids = []
+                            for j in range(cell.GetNumberOfPoints()):
+                                point_ids.append(cell.GetPointId(j))
+                            cells.append(point_ids)
+                    
+                    # 创建统一的数据结构
+                    mesh_data = {
+                        'type': 'ply',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': num_points,
+                        'num_cells': len(cells),
+                        'vtk_poly_data': poly_data  # 保留原始VTK数据以备后用
+                    }
+                    return mesh_data
+                else:
+                    raise ValueError("导入的PLY文件为空或无效")
+                    
             elif file_ext == ".cas":
                 # 对于cas文件，使用专门的解析器
                 import sys
@@ -57,14 +219,36 @@ class FileOperations:
                 
                 # 解析cas文件并转换为Unstructured_Grid对象
                 unstr_grid = parse_cas_to_unstr_grid(file_path)
-                return unstr_grid
+                
+                # 将Unstructured_Grid转换为统一的数据结构
+                if unstr_grid and hasattr(unstr_grid, 'node_coords') and hasattr(unstr_grid, 'cell_container'):
+                    # 获取节点坐标
+                    node_coords = unstr_grid.node_coords
+                    
+                    # 获取单元信息
+                    cells = []
+                    for cell in unstr_grid.cell_container:
+                        if hasattr(cell, 'nodes'):
+                            point_ids = []
+                            for node in cell.nodes:
+                                point_ids.append(node.idx)
+                            cells.append(point_ids)
+                    
+                    # 创建统一的数据结构
+                    mesh_data = {
+                        'type': 'cas',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': len(node_coords),
+                        'num_cells': len(cells),
+                        'unstr_grid': unstr_grid  # 保留原始Unstructured_Grid对象以备后用
+                    }
+                    return mesh_data
+                else:
+                    raise ValueError("导入的CAS文件为空或无效")
             else:
                 raise ValueError(f"不支持的文件格式: {file_ext}")
             
-            if not poly_data or poly_data.GetNumberOfPoints() == 0:
-                raise ValueError("导入的网格文件为空或无效")
-            
-            return poly_data
         except Exception as e:
             raise Exception(f"导入网格文件失败: {str(e)}")
     

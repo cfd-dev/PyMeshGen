@@ -119,17 +119,17 @@ class SimplifiedPyMeshGenGUI:
         # 添加文件操作按钮
         new_btn = ttk.Button(self.toolbar_frame, text="新建", image=new_icon, compound=tk.TOP, command=self.new_config)
         new_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(new_btn, "创建新的网格配置")
+        self.create_tooltip(new_btn, "创建新的网格配置\n快捷键: Ctrl+N")
         self.toolbar_buttons["new"] = new_btn
         
         open_btn = ttk.Button(self.toolbar_frame, text="打开", image=open_icon, compound=tk.TOP, command=self.open_config)
         open_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(open_btn, "打开已保存的网格配置文件")
+        self.create_tooltip(open_btn, "打开已保存的网格配置文件\n支持格式: .json, .cfg\n快捷键: Ctrl+O")
         self.toolbar_buttons["open"] = open_btn
         
         save_btn = ttk.Button(self.toolbar_frame, text="保存", image=save_icon, compound=tk.TOP, command=self.save_config)
         save_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(save_btn, "保存当前网格配置到文件")
+        self.create_tooltip(save_btn, "保存当前网格配置到文件\n格式: .json\n快捷键: Ctrl+S")
         self.toolbar_buttons["save"] = save_btn
         
         # 添加分隔符
@@ -137,12 +137,12 @@ class SimplifiedPyMeshGenGUI:
         
         import_btn = ttk.Button(self.toolbar_frame, text="导入", image=import_icon, compound=tk.TOP, command=self.import_mesh)
         import_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(import_btn, "从外部文件导入网格数据")
+        self.create_tooltip(import_btn, "从外部文件导入网格数据\n支持格式: .vtk, .cas, .msh\n快捷键: Ctrl+I")
         self.toolbar_buttons["import"] = import_btn
         
         export_btn = ttk.Button(self.toolbar_frame, text="导出", image=export_icon, compound=tk.TOP, command=self.export_mesh)
         export_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(export_btn, "将当前网格导出到文件")
+        self.create_tooltip(export_btn, "将当前网格导出到文件\n支持格式: .vtk, .obj, .stl\n快捷键: Ctrl+E")
         self.toolbar_buttons["export"] = export_btn
         
         # 添加分隔符
@@ -158,17 +158,17 @@ class SimplifiedPyMeshGenGUI:
         
         generate_btn = ttk.Button(self.toolbar_frame, text="生成", image=generate_icon, compound=tk.TOP, command=self.generate_mesh)
         generate_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(generate_btn, "根据当前配置生成网格")
+        self.create_tooltip(generate_btn, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
         self.toolbar_buttons["generate"] = generate_btn
         
         display_btn = ttk.Button(self.toolbar_frame, text="显示", image=display_icon, compound=tk.TOP, command=self.display_mesh)
         display_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(display_btn, "在显示区域显示当前网格")
+        self.create_tooltip(display_btn, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
         self.toolbar_buttons["display"] = display_btn
         
         clear_btn = ttk.Button(self.toolbar_frame, text="清空", image=clear_icon, compound=tk.TOP, command=self.clear_mesh)
         clear_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(clear_btn, "清空当前网格数据")
+        self.create_tooltip(clear_btn, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
         self.toolbar_buttons["clear"] = clear_btn
         
         # 保存图标引用（防止被垃圾回收）
@@ -181,26 +181,69 @@ class SimplifiedPyMeshGenGUI:
         self.display_icon = display_icon
         self.clear_icon = clear_icon
     
-    def create_tooltip(self, widget, text):
-        """为控件创建提示信息"""
-        def on_enter(event):
+    def create_tooltip(self, widget, text, delay=500):
+        """为控件创建提示信息
+        
+        Args:
+            widget: 要添加提示的控件
+            text: 提示文本内容
+            delay: 鼠标悬停后显示提示的延迟时间(毫秒)，默认500ms
+        """
+        tooltip = None
+        timer_id = None
+        
+        def show_tooltip(event):
+            nonlocal tooltip
+            if tooltip is not None:
+                return
+                
             tooltip = tk.Toplevel()
-            tooltip.wm_overrideredirect(True)
-            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            tooltip.wm_overrideredirect(True)  # 无边框窗口
+            tooltip.wm_geometry(f"+{event.x_root+15}+{event.y_root+15}")  # 位置偏移15像素
             
-            label = tk.Label(tooltip, text=text, background="lightyellow", 
-                           relief=tk.SOLID, borderwidth=1, font=("Arial", "9"))
+            # 创建样式化的标签
+            label = tk.Label(
+                tooltip, 
+                text=text, 
+                background="#FFFFE0",  # 浅黄色背景
+                foreground="#333333",  # 深灰色文字
+                relief=tk.SOLID, 
+                borderwidth=1,
+                font=("Microsoft YaHei UI", 9),
+                padx=8,
+                pady=4,
+                justify=tk.LEFT
+            )
             label.pack()
+            
+            # 添加阴影效果
+            tooltip.attributes("-topmost", True)  # 置于顶层
             
             widget.tooltip = tooltip
         
-        def on_leave(event):
-            if hasattr(widget, 'tooltip'):
-                widget.tooltip.destroy()
-                del widget.tooltip
+        def hide_tooltip(event):
+            nonlocal tooltip, timer_id
+            if timer_id is not None:
+                widget.after_cancel(timer_id)
+                timer_id = None
+                
+            if tooltip is not None:
+                tooltip.destroy()
+                tooltip = None
+                if hasattr(widget, 'tooltip'):
+                    del widget.tooltip
         
-        widget.bind("<Enter>", on_enter)
-        widget.bind("<Leave>", on_leave)
+        def schedule_tooltip(event):
+            nonlocal timer_id
+            if timer_id is not None:
+                widget.after_cancel(timer_id)
+                
+            timer_id = widget.after(delay, lambda: show_tooltip(event))
+        
+        # 绑定事件
+        widget.bind("<Enter>", schedule_tooltip)
+        widget.bind("<Leave>", hide_tooltip)
+        widget.bind("<Motion>", hide_tooltip)  # 鼠标移动时隐藏，避免遮挡
     
     def create_file_tab(self, icon_dir):
         """创建文件操作选项卡"""
@@ -747,7 +790,15 @@ class SimplifiedPyMeshGenGUI:
                 self.mesh_status_label.config(text="状态: 已导入")
                 
                 # 获取网格信息
-                if hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
+                if hasattr(self.current_mesh, 'num_points') and hasattr(self.current_mesh, 'num_cells'):
+                    node_count = self.current_mesh.num_points
+                    element_count = self.current_mesh.num_cells
+                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                elif hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cells'):
+                    node_count = len(self.current_mesh.node_coords)
+                    element_count = len(self.current_mesh.cells)
+                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                elif hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
                     node_count = len(self.current_mesh.nodes)
                     element_count = len(self.current_mesh.elements)
                     self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
