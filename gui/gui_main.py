@@ -420,14 +420,6 @@ class SimplifiedPyMeshGenGUI:
         clear_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
         self.create_tooltip(clear_mesh_btn, "清空当前网格数据")
         
-        reset_view_btn = ttk.Button(button_frame, text="重置视图", command=self.reset_view)
-        reset_view_btn.pack(fill=tk.X, padx=5, pady=2)
-        self.create_tooltip(reset_view_btn, "重置视图到初始状态")
-        
-        fit_view_btn = ttk.Button(button_frame, text="适应视图", command=self.fit_view)
-        fit_view_btn.pack(fill=tk.X, padx=5, pady=2)
-        self.create_tooltip(fit_view_btn, "调整视图以适应网格大小")
-        
         # 保存图标引用（防止被垃圾回收）
         self.mesh_icon = mesh_icon
     
@@ -587,16 +579,6 @@ class SimplifiedPyMeshGenGUI:
         self.create_tooltip(self.props_text, "显示选中部件的详细属性")
         self.parts_listbox.bind('<<ListboxSelect>>', self.on_part_select)
     
-    def create_center_panel(self):
-        """创建中间面板（网格显示区域）"""
-        # 中间面板框架
-        self.center_panel = ttk.Frame(self.main_frame)
-        self.center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建网格显示区域
-        self.mesh_display = MeshDisplayArea(self.center_panel)
-        self.mesh_display.pack(fill=tk.BOTH, expand=True)
-    
     def create_right_panel(self):
         """创建右侧网格视图交互区域（含交互提示）"""
         # 网格信息框架
@@ -610,6 +592,9 @@ class SimplifiedPyMeshGenGUI:
         # 创建网格显示区域
         self.mesh_display = MeshDisplayArea(self.right_panel)
         self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        
+        # 存储对网格显示区域的引用，以便其他方法使用
+        self.main_mesh_display = self.mesh_display
         
         # 视图控制工具栏
         view_toolbar_frame = ttk.Frame(self.right_panel)

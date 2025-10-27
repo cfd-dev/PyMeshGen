@@ -32,6 +32,10 @@ class MeshDisplayArea(BaseFrame):
         self.mesh_actor = None
         self.boundary_actors = []
         
+        # 显示控制变量
+        self.show_boundary_var = tk.BooleanVar(value=True)
+        self.wireframe_var = tk.BooleanVar(value=False)
+        
         # 创建网格显示区域
         self.create_mesh_display_area()
         
@@ -41,64 +45,166 @@ class MeshDisplayArea(BaseFrame):
         main_frame = ttk.Frame(self.frame)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 创建VTK渲染窗口和交互器
+        # 创建VTK渲染器
         self.renderer = vtk.vtkRenderer()
+        self.renderer.SetBackground(0.9, 0.9, 0.9)
+        
+        # 创建VTK渲染窗口
         self.render_window = vtk.vtkRenderWindow()
         self.render_window.AddRenderer(self.renderer)
-        
-        # 创建VTK交互器
-        self.interactor = vtk.vtkRenderWindowInteractor()
-        self.interactor.SetRenderWindow(self.render_window)
+        self.render_window.SetSize(800, 600)
         
         # 创建一个Tkinter框架来容纳VTK窗口
         self.vtk_frame = ttk.Frame(main_frame)
         self.vtk_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 使用GetRenderWindowId来获取窗口ID，然后在Tkinter中嵌入
-        self.render_window.SetSize(800, 600)
-        self.render_window.SetOffScreenRendering(0)  # 确保不是离屏渲染
+        # 创建VTK交互器
+        self.interactor = vtk.vtkRenderWindowInteractor()
+        self.interactor.SetRenderWindow(self.render_window)
         
         # 初始化交互器
         self.interactor.Initialize()
-        self.interactor.CreateRepeatingTimer(100)  # 100ms定时器，用于更新
         
-        # 设置背景色
-        self.renderer.SetBackground(0.9, 0.9, 0.9)
+        # 延迟嵌入VTK窗口，确保框架已经完全创建
+        self.vtk_frame.after(100, self.embed_vtk_window)
+        
+        # 重置相机
         self.renderer.ResetCamera()
         
         # 初始化网格演员列表
         self.mesh_actor = None
         self.boundary_actors = []
-        
-        # 创建工具栏
-        self.create_toolbar(main_frame)
-        
-    def create_toolbar(self, parent):
-        """创建工具栏"""
-        toolbar_frame = ttk.Frame(parent)
-        toolbar_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
-        
-        # 重置视图按钮
-        reset_btn = ttk.Button(toolbar_frame, text="重置视图", command=self.reset_view)
-        reset_btn.pack(side=tk.LEFT, padx=5)
-        
-        # 适应视图按钮
-        fit_btn = ttk.Button(toolbar_frame, text="适应视图", command=self.fit_view)
-        fit_btn.pack(side=tk.LEFT, padx=5)
-        
-        # 显示边界按钮
-        self.show_boundary_var = tk.BooleanVar(value=True)
-        boundary_btn = ttk.Checkbutton(toolbar_frame, text="显示边界", 
-                                      variable=self.show_boundary_var,
-                                      command=self.toggle_boundary_display)
-        boundary_btn.pack(side=tk.LEFT, padx=5)
-        
-        # 线框/实体模式切换
-        self.wireframe_var = tk.BooleanVar(value=False)
-        wireframe_btn = ttk.Checkbutton(toolbar_frame, text="线框模式", 
-                                       variable=self.wireframe_var,
-                                       command=self.toggle_wireframe)
-        wireframe_btn.pack(side=tk.LEFT, padx=5)
+    
+    def embed_vtk_window(self):
+        """将VTK窗口嵌入到Tkinter框架中，支持多种平台"""
+        try:
+            # 检测操作系统
+            import platform
+            system = platform.system()
+            
+            # 方法1：尝试使用vtkTkRenderWindowInteractor（推荐方法）
+            try:
+                from vtk.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
+                
+                # 确保框架已经更新
+                self.vtk_frame.update_idletasks()
+                
+                # 创建嵌入的VTK窗口
+                if system == "Darwin":  # macOS特殊处理
+                    # macOS可能需要特殊处理
+                    self.render_window_interactor = vtkTkRenderWindowInteractor(
+                        self.vtk_frame, 
+                        rw=self.render_window,
+                        width=800, 
+                        height=600
+                    )
+                else:
+                    # Windows和Linux的标准处理
+                    self.render_window_interactor = vtkTkRenderWindowInteractor(
+                        self.vtk_frame, 
+                        rw=self.render_window
+                    )
+                
+                self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
+                
+                # 更新交互器引用
+                self.interactor = self.render_window_interactor
+                
+                # 初始化交互器
+                self.interactor.Initialize()
+                
+                # 对于非macOS系统，启动交互器
+                if system != "Darwin":
+                    self.interactor.Start()
+                
+                # 标记嵌入成功
+                self.embedded = True
+                print(f"使用vtkTkRenderWindowInteractor在{system}上成功嵌入VTK窗口")
+                return True
+                
+            except Exception as e:
+                print(f"vtkTkRenderWindowInteractor方法失败: {str(e)}")
+                
+                # 方法2：使用GetRenderWindow()方法（备用方法）
+                try:
+                    # 创建一个简单的Frame
+                    self.vtk_embed_frame = tk.Frame(self.vtk_frame, bg='black')
+                    self.vtk_embed_frame.pack(fill=tk.BOTH, expand=True)
+                    
+                    # 确保VTK窗口已经创建
+                    if not self.render_window:
+                        self.render_window = vtk.vtkRenderWindow()
+                        self.render_window.AddRenderer(self.renderer)
+                    
+                    # 设置窗口大小
+                    self.vtk_embed_frame.update_idletasks()
+                    width = self.vtk_embed_frame.winfo_width()
+                    height = self.vtk_embed_frame.winfo_height()
+                    if width <= 1 or height <= 1:
+                        width, height = 800, 600
+                    
+                    self.render_window.SetSize(width, height)
+                    
+                    # 创建嵌入的VTK窗口
+                    if system == "Darwin":  # macOS特殊处理
+                        self.render_window_interactor = vtkTkRenderWindowInteractor(
+                            self.vtk_embed_frame,
+                            width=width,
+                            height=height
+                        )
+                    else:
+                        self.render_window_interactor = vtkTkRenderWindowInteractor(self.vtk_embed_frame)
+                    
+                    self.render_window_interactor.GetRenderWindow().AddRenderer(self.renderer)
+                    self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
+                    
+                    # 更新交互器引用
+                    self.interactor = self.render_window_interactor
+                    
+                    # 初始化交互器
+                    self.interactor.Initialize()
+                    
+                    # 标记嵌入成功
+                    self.embedded = True
+                    print(f"使用备用方法在{system}上成功嵌入VTK窗口")
+                    return True
+                    
+                except Exception as e2:
+                    print(f"备用嵌入方法也失败: {str(e2)}")
+                    
+                    # 方法3：最后的尝试，使用直接窗口ID（仅适用于Windows和Linux）
+                    if system != "Darwin":  # 不适用于macOS
+                        try:
+                            # 获取窗口ID
+                            self.vtk_frame.update_idletasks()
+                            window_id = self.vtk_frame.winfo_id()
+                            
+                            if window_id:
+                                # 设置窗口ID
+                                self.render_window.SetWindowInfo(str(window_id))
+                                
+                                # 创建交互器
+                                self.interactor = vtk.vtkRenderWindowInteractor()
+                                self.interactor.SetRenderWindow(self.render_window)
+                                self.interactor.Initialize()
+                                
+                                # 标记嵌入成功
+                                self.embedded = True
+                                print(f"使用窗口ID方法在{system}上成功嵌入VTK窗口")
+                                return True
+                        except Exception as e3:
+                            print(f"窗口ID方法失败: {str(e3)}")
+                    
+                    # 所有方法都失败
+                    import traceback
+                    traceback.print_exc()
+                    
+        except Exception as e:
+            print(f"VTK窗口嵌入失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.embedded = False
+            return False
         
     def set_mesh_data(self, mesh_data):
         """设置网格数据"""
@@ -172,29 +278,26 @@ class MeshDisplayArea(BaseFrame):
                     # 更新渲染窗口
                     self.render_window.Render()
                     
+                    # 检测操作系统
+                    import platform
+                    system = platform.system()
+                    
                     # 如果交互器没有启动，则启动它
                     if not self.interactor.GetInitialized():
                         self.interactor.Initialize()
                     
-                    # 确保VTK窗口嵌入到Tkinter中
-                    if hasattr(self.render_window, 'GetGenericWindowId'):
-                        # 获取VTK窗口ID
-                        vtk_window_id = self.render_window.GetGenericWindowId()
+                    # 对于macOS，可能需要特殊的渲染处理
+                    if system == "Darwin":
+                        # 强制更新窗口
+                        self.vtk_frame.update_idletasks()
+                        self.render_window.Render()
                         
-                        # 在Tkinter中创建一个Frame来容纳VTK窗口
-                        if not hasattr(self, 'vtk_embed_frame'):
-                            import tkinter as tk
-                            self.vtk_embed_frame = tk.Frame(self.vtk_frame, width=800, height=600)
-                            self.vtk_embed_frame.pack(fill=tk.BOTH, expand=True)
-                        
-                        # 设置窗口父级
-                        if hasattr(tk, '_default_root'):
-                            tk_root = tk._default_root
-                            if tk_root:
-                                self.render_window.SetWindowInfo(str(tk_root.winfo_id()))
-                        
-                        # 显示窗口
-                        self.render_window.Start()
+                        # 如果窗口仍然没有显示，尝试重新初始化
+                        if hasattr(self, 'render_window_interactor'):
+                            try:
+                                self.render_window_interactor.Render()
+                            except:
+                                pass
                     
                     return True
                 else:
