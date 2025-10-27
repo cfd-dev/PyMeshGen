@@ -68,6 +68,20 @@ def test_cas_import():
             print(f"  单元数一致: {cells_match}")
             print(f"  边界节点数一致: {boundary_match}")
             
+            # 检查节点坐标维度
+            print(f"\n坐标维度检查:")
+            all_3d = True
+            for i in range(min(5, len(unstr_grid.node_coords))):
+                coords = unstr_grid.node_coords[i]
+                print(f"  节点{i}: {coords} (维度: {len(coords)})")
+                if len(coords) != 3:
+                    all_3d = False
+            
+            if all_3d:
+                print("  ✓ 所有节点坐标都是3D的")
+            else:
+                print("  ✗ 部分节点坐标不是3D的")
+            
             # 测试保存为VTK文件
             vtk_file = test_file.replace('.cas', '_test.vtk')
             unstr_grid.save_to_vtkfile(vtk_file)

@@ -268,6 +268,17 @@ def reconstruct_mesh_from_cas(cas_data):
     node_coords = cas_data["nodes"]
     num_nodes = len(node_coords)
     
+    # 确保所有节点都有3个坐标值(x,y,z)
+    # 如果是2D网格，添加z=0.0坐标
+    for i in range(num_nodes):
+        if len(node_coords[i]) == 2:
+            # 2D坐标，添加z=0.0
+            node_coords[i] = [node_coords[i][0], node_coords[i][1], 0.0]
+        elif len(node_coords[i]) < 2:
+            # 异常情况，至少需要x,y坐标
+            print(f"Warning: Node {i} has only {len(node_coords[i])} coordinates, skipping")
+            continue
+    
     # 创建节点对象
     node_container = [NodeElement(node_coords[idx], idx) for idx in range(num_nodes)]
     
@@ -353,10 +364,37 @@ def reconstruct_mesh_from_cas(cas_data):
                     node_container[node_idx_0].bc_type = bc_type
                     node_container[node_idx_0].part_name = part_name
     
+    # 创建边界信息字典，用于可视化
+    boundary_info = {}
+    
+    # 按边界类型和区域名称组织边界信息
+    for zone_id, zone in cas_data["zones"].items():
+        if zone["type"] == "faces":
+            bc_type = zone.get("bc_type", "unspecified")
+            part_name = zone.get("part_name", f"zone_{zone_id}")
+            
+            # 收集该边界的所有面
+            boundary_faces = []
+            for face in zone["data"]:
+                boundary_faces.append({
+                    "nodes": face["nodes"],
+                    "left_cell": face["left_cell"],
+                    "right_cell": face["right_cell"]
+                })
+            
+            # 添加到边界信息
+            boundary_info[part_name] = {
+                "type": bc_type,
+                "faces": boundary_faces
+            }
+    
     # 创建Unstructured_Grid对象
     unstr_grid = Unstructured_Grid(
         cell_container, node_coords, boundary_nodes
     )
+    
+    # 设置边界信息
+    unstr_grid.boundary_info = boundary_info
     
     return unstr_grid
 

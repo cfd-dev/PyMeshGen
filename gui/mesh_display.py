@@ -117,7 +117,6 @@ class MeshDisplayArea(BaseFrame):
                 
             if viz_enabled:
                 from visualization.mesh_visualization import Visualization
-                visual_obj = Visualization(viz_enabled, self.ax)
                 
                 # 检查网格数据类型并使用适当的显示方法
                 if isinstance(self.mesh_data, dict) and 'type' in self.mesh_data and self.mesh_data['type'] in ['vtk', 'stl', 'obj', 'ply']:
@@ -142,6 +141,26 @@ class MeshDisplayArea(BaseFrame):
                         y_coords = [coord[1] for coord in node_coords]
                         self.ax.set_xlim(min(x_coords) - 0.1, max(x_coords) + 0.1)
                         self.ax.set_ylim(min(y_coords) - 0.1, max(y_coords) + 0.1)
+                elif isinstance(self.mesh_data, dict) and 'type' in self.mesh_data and self.mesh_data['type'] == 'cas':
+                    # 对于.cas文件，需要构造符合plot_mesh期望的字典格式
+                    grid_dict = {
+                        "nodes": self.mesh_data['node_coords'],
+                        "zones": {}
+                    }
+                    
+                    # 如果有Unstructured_Grid对象，从中获取边界信息
+                    if 'unstr_grid' in self.mesh_data and hasattr(self.mesh_data['unstr_grid'], 'boundary_info'):
+                        boundary_info = self.mesh_data['unstr_grid'].boundary_info
+                        for zone_name, zone_data in boundary_info.items():
+                            grid_dict["zones"][zone_name] = {
+                                "type": "faces",
+                                "bc_type": zone_data.get("bc_type", "unspecified"),
+                                "data": zone_data.get("faces", [])
+                            }
+                    
+                    # 使用构造的字典调用plot_mesh
+                    visual_obj = Visualization(ax=self.ax)
+                    visual_obj.plot_mesh(grid_dict)
                 elif hasattr(self.mesh_data, 'type') and self.mesh_data.type in ['vtk', 'stl', 'obj', 'ply', 'cas']:
                     # 使用统一的数据结构显示网格
                     node_coords = self.mesh_data.node_coords
@@ -165,10 +184,40 @@ class MeshDisplayArea(BaseFrame):
                         self.ax.set_xlim(min(x_coords) - 0.1, max(x_coords) + 0.1)
                         self.ax.set_ylim(min(y_coords) - 0.1, max(y_coords) + 0.1)
                 elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
-                    # 如果是UnstructuredGrid对象，使用Visualization类的plot_mesh方法
-                    visual_obj.plot_mesh(self.mesh_data)
+                    # 如果是Unstructured_Grid对象，需要转换为字典格式
+                    if hasattr(self.mesh_data, 'type') and self.mesh_data.type == 'cas':
+                        # 对于.cas文件，需要构造符合plot_mesh期望的字典格式
+                        grid_dict = {
+                            "nodes": self.mesh_data.node_coords,
+                            "zones": {}
+                        }
+                        
+                        # 如果有边界信息，添加到zones中
+                        if hasattr(self.mesh_data, 'boundary_info') and self.mesh_data.boundary_info:
+                            for zone_name, zone_data in self.mesh_data.boundary_info.items():
+                                grid_dict["zones"][zone_name] = {
+                                    "type": "faces",
+                                    "bc_type": zone_data.get("type", "unspecified"),
+                                    "data": zone_data.get("faces", [])
+                                }
+                        
+                        # 使用构造的字典调用plot_mesh
+                        visual_obj = Visualization(ax=self.ax)
+                        visual_obj.plot_mesh(grid_dict)
+                    else:
+                        # 其他类型的Unstructured_Grid对象，直接使用Visualization类的plot_mesh方法
+                        visual_obj = Visualization(ax=self.ax)
+                        visual_obj.plot_mesh(self.mesh_data)
                 else:
+                    # 添加调试信息
+                    print(f"调试信息: mesh_data类型: {type(self.mesh_data)}")
+                    if hasattr(self.mesh_data, '__dict__'):
+                        print(f"调试信息: mesh_data属性: {self.mesh_data.__dict__.keys()}")
+                    if isinstance(self.mesh_data, dict):
+                        print(f"调试信息: mesh_data键: {self.mesh_data.keys()}")
+                    
                     # 否则使用通用的plot_mesh方法
+                    visual_obj = Visualization(ax=self.ax)
                     visual_obj.plot_mesh(self.mesh_data)
                     
                 self.canvas.draw()  # 更新画布
