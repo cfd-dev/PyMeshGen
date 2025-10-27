@@ -69,6 +69,9 @@ class SimplifiedPyMeshGenGUI:
         self.menu_bar = MenuBar(self.root)
         self.create_menu()
         
+        # 创建工具栏（位于菜单栏下方）
+        self.create_toolbar()
+        
         # 创建主框架
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
@@ -76,14 +79,320 @@ class SimplifiedPyMeshGenGUI:
         # 创建左侧面板
         self.create_left_panel()
         
-        # 创建右侧面板
+        # 创建中间面板（网格显示区域）
+        self.create_center_panel()
+        
+        # 创建右侧面板（参数设置和部件管理）
         self.create_right_panel()
+        
+        # 创建信息输出窗口（位于底部）
+        self.create_output_panel()
         
         # 创建状态栏
         self.status_bar = StatusBar(self.root)
         
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    def create_toolbar(self):
+        """创建工具栏"""
+        # 工具栏框架
+        self.toolbar_frame = ttk.Frame(self.root)
+        self.toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+        
+        # 获取图标路径
+        icon_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+        
+        # 创建工具栏按钮
+        self.toolbar_buttons = {}
+        
+        # 文件操作按钮
+        try:
+            new_icon = tk.PhotoImage(file=os.path.join(icon_dir, "new.png"))
+            open_icon = tk.PhotoImage(file=os.path.join(icon_dir, "open.png"))
+            save_icon = tk.PhotoImage(file=os.path.join(icon_dir, "save.png"))
+            import_icon = tk.PhotoImage(file=os.path.join(icon_dir, "import.png"))
+            export_icon = tk.PhotoImage(file=os.path.join(icon_dir, "export.png"))
+        except:
+            new_icon = open_icon = save_icon = import_icon = export_icon = None
+        
+        # 添加文件操作按钮
+        new_btn = ttk.Button(self.toolbar_frame, text="新建", image=new_icon, compound=tk.TOP, command=self.new_config)
+        new_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(new_btn, "创建新的网格配置")
+        self.toolbar_buttons["new"] = new_btn
+        
+        open_btn = ttk.Button(self.toolbar_frame, text="打开", image=open_icon, compound=tk.TOP, command=self.open_config)
+        open_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(open_btn, "打开已保存的网格配置文件")
+        self.toolbar_buttons["open"] = open_btn
+        
+        save_btn = ttk.Button(self.toolbar_frame, text="保存", image=save_icon, compound=tk.TOP, command=self.save_config)
+        save_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(save_btn, "保存当前网格配置到文件")
+        self.toolbar_buttons["save"] = save_btn
+        
+        # 添加分隔符
+        ttk.Separator(self.toolbar_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
+        import_btn = ttk.Button(self.toolbar_frame, text="导入", image=import_icon, compound=tk.TOP, command=self.import_mesh)
+        import_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(import_btn, "从外部文件导入网格数据")
+        self.toolbar_buttons["import"] = import_btn
+        
+        export_btn = ttk.Button(self.toolbar_frame, text="导出", image=export_icon, compound=tk.TOP, command=self.export_mesh)
+        export_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(export_btn, "将当前网格导出到文件")
+        self.toolbar_buttons["export"] = export_btn
+        
+        # 添加分隔符
+        ttk.Separator(self.toolbar_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
+        # 网格操作按钮
+        try:
+            generate_icon = tk.PhotoImage(file=os.path.join(icon_dir, "generate.png"))
+            display_icon = tk.PhotoImage(file=os.path.join(icon_dir, "display.png"))
+            clear_icon = tk.PhotoImage(file=os.path.join(icon_dir, "clear.png"))
+        except:
+            generate_icon = display_icon = clear_icon = None
+        
+        generate_btn = ttk.Button(self.toolbar_frame, text="生成", image=generate_icon, compound=tk.TOP, command=self.generate_mesh)
+        generate_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(generate_btn, "根据当前配置生成网格")
+        self.toolbar_buttons["generate"] = generate_btn
+        
+        display_btn = ttk.Button(self.toolbar_frame, text="显示", image=display_icon, compound=tk.TOP, command=self.display_mesh)
+        display_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(display_btn, "在显示区域显示当前网格")
+        self.toolbar_buttons["display"] = display_btn
+        
+        clear_btn = ttk.Button(self.toolbar_frame, text="清空", image=clear_icon, compound=tk.TOP, command=self.clear_mesh)
+        clear_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(clear_btn, "清空当前网格数据")
+        self.toolbar_buttons["clear"] = clear_btn
+        
+        # 保存图标引用（防止被垃圾回收）
+        self.new_icon = new_icon
+        self.open_icon = open_icon
+        self.save_icon = save_icon
+        self.import_icon = import_icon
+        self.export_icon = export_icon
+        self.generate_icon = generate_icon
+        self.display_icon = display_icon
+        self.clear_icon = clear_icon
+    
+    def create_tooltip(self, widget, text):
+        """为控件创建提示信息"""
+        def on_enter(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            
+            label = tk.Label(tooltip, text=text, background="lightyellow", 
+                           relief=tk.SOLID, borderwidth=1, font=("Arial", "9"))
+            label.pack()
+            
+            widget.tooltip = tooltip
+        
+        def on_leave(event):
+            if hasattr(widget, 'tooltip'):
+                widget.tooltip.destroy()
+                del widget.tooltip
+        
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
+    
+    def create_file_tab(self, icon_dir):
+        """创建文件操作选项卡"""
+        # 创建选项卡框架
+        file_tab = ttk.Frame(self.notebook)
+        
+        # 加载图标
+        try:
+            file_icon = tk.PhotoImage(file=os.path.join(icon_dir, "file.png"))
+            folder_icon = tk.PhotoImage(file=os.path.join(icon_dir, "folder.png"))
+        except:
+            file_icon = None
+            folder_icon = None
+        
+        # 添加选项卡
+        self.notebook.add(file_tab, text="文件操作", image=file_icon, compound=tk.LEFT)
+        
+        # 创建按钮框架
+        button_frame = ttk.Frame(file_tab)
+        button_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建按钮并添加提示信息
+        new_config_btn = ttk.Button(button_frame, text="新建配置", command=self.new_config)
+        new_config_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(new_config_btn, "创建新的网格配置")
+        
+        open_config_btn = ttk.Button(button_frame, text="打开配置", command=self.open_config)
+        open_config_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(open_config_btn, "打开已保存的网格配置文件")
+        
+        save_config_btn = ttk.Button(button_frame, text="保存配置", command=self.save_config)
+        save_config_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(save_config_btn, "保存当前网格配置到文件")
+        
+        import_mesh_btn = ttk.Button(button_frame, text="导入网格", command=self.import_mesh)
+        import_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(import_mesh_btn, "从外部文件导入网格数据")
+        
+        export_mesh_btn = ttk.Button(button_frame, text="导出网格", command=self.export_mesh)
+        export_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(export_mesh_btn, "将当前网格导出到文件")
+        
+        # 保存图标引用（防止被垃圾回收）
+        self.file_icon = file_icon
+        self.folder_icon = folder_icon
+    
+    def create_config_tab(self, icon_dir):
+        """创建配置选项卡"""
+        # 创建选项卡框架
+        config_tab = ttk.Frame(self.notebook)
+        
+        # 加载图标
+        try:
+            config_icon = tk.PhotoImage(file=os.path.join(icon_dir, "config.png"))
+        except:
+            config_icon = None
+        
+        # 添加选项卡
+        self.notebook.add(config_tab, text="参数配置", image=config_icon, compound=tk.LEFT)
+        
+        # 创建参数设置框架
+        params_frame = ttk.Frame(config_tab)
+        params_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 调试级别
+        ttk.Label(params_frame, text="调试级别:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
+        self.debug_level_var = tk.StringVar(value="0")
+        debug_level_combo = ttk.Combobox(params_frame, textvariable=self.debug_level_var, 
+                                        values=["0", "1", "2"], width=10)
+        debug_level_combo.grid(row=0, column=1, padx=5, pady=2)
+        
+        # 输入文件
+        ttk.Label(params_frame, text="输入文件:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        self.input_file_var = tk.StringVar()
+        input_file_entry = ttk.Entry(params_frame, textvariable=self.input_file_var, width=20)
+        input_file_entry.grid(row=1, column=1, padx=5, pady=2)
+        
+        # 输出文件
+        ttk.Label(params_frame, text="输出文件:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
+        self.output_file_var = tk.StringVar()
+        output_file_entry = ttk.Entry(params_frame, textvariable=self.output_file_var, width=20)
+        output_file_entry.grid(row=2, column=1, padx=5, pady=2)
+        
+        # 网格类型
+        ttk.Label(params_frame, text="网格类型:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
+        mesh_type_frame = ttk.Frame(params_frame)
+        mesh_type_frame.grid(row=3, column=1, padx=5, pady=2)
+        self.mesh_type_var = tk.StringVar(value="1")
+        ttk.Radiobutton(mesh_type_frame, text="三角形", variable=self.mesh_type_var, 
+                       value="1").pack(side=tk.LEFT)
+        ttk.Radiobutton(mesh_type_frame, text="直角三角形", variable=self.mesh_type_var, 
+                       value="2").pack(side=tk.LEFT)
+        ttk.Radiobutton(mesh_type_frame, text="混合网格", variable=self.mesh_type_var, 
+                       value="3").pack(side=tk.LEFT)
+        
+        # 可视化开关
+        self.viz_enabled_var = tk.BooleanVar(value=True)
+        viz_check = ttk.Checkbutton(params_frame, text="启用可视化", variable=self.viz_enabled_var)
+        viz_check.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=5, pady=2)
+        self.create_tooltip(viz_check, "是否启用网格可视化功能")
+        
+        # 操作按钮
+        params_btn = ttk.Button(params_frame, text="参数设置", command=self.edit_params)
+        params_btn.grid(row=5, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=5)
+        self.create_tooltip(params_btn, "打开高级参数设置对话框")
+        
+        # 保存图标引用（防止被垃圾回收）
+        self.config_icon = config_icon
+    
+    def create_mesh_tab(self, icon_dir):
+        """创建网格操作选项卡"""
+        # 创建选项卡框架
+        mesh_tab = ttk.Frame(self.notebook)
+        
+        # 加载图标
+        try:
+            mesh_icon = tk.PhotoImage(file=os.path.join(icon_dir, "mesh.png"))
+        except:
+            mesh_icon = None
+        
+        # 添加选项卡
+        self.notebook.add(mesh_tab, text="网格操作", image=mesh_icon, compound=tk.LEFT)
+        
+        # 创建按钮框架
+        button_frame = ttk.Frame(mesh_tab)
+        button_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建按钮并添加提示信息
+        generate_mesh_btn = ttk.Button(button_frame, text="生成网格", command=self.generate_mesh)
+        generate_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(generate_mesh_btn, "根据当前配置生成网格")
+        
+        display_mesh_btn = ttk.Button(button_frame, text="显示网格", command=self.display_mesh)
+        display_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(display_mesh_btn, "在显示区域显示当前网格")
+        
+        clear_mesh_btn = ttk.Button(button_frame, text="清空网格", command=self.clear_mesh)
+        clear_mesh_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(clear_mesh_btn, "清空当前网格数据")
+        
+        reset_view_btn = ttk.Button(button_frame, text="重置视图", command=self.reset_view)
+        reset_view_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(reset_view_btn, "重置视图到初始状态")
+        
+        fit_view_btn = ttk.Button(button_frame, text="适应视图", command=self.fit_view)
+        fit_view_btn.pack(fill=tk.X, padx=5, pady=2)
+        self.create_tooltip(fit_view_btn, "调整视图以适应网格大小")
+        
+        # 保存图标引用（防止被垃圾回收）
+        self.mesh_icon = mesh_icon
+    
+    def create_part_tab(self, icon_dir):
+        """创建部件管理选项卡"""
+        # 创建选项卡框架
+        part_tab = ttk.Frame(self.notebook)
+        
+        # 加载图标
+        try:
+            part_icon = tk.PhotoImage(file=os.path.join(icon_dir, "part.png"))
+        except:
+            part_icon = None
+        
+        # 添加选项卡
+        self.notebook.add(part_tab, text="部件管理", image=part_icon, compound=tk.LEFT)
+        
+        # 创建部件列表框架
+        list_frame = ttk.Frame(part_tab)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建部件列表
+        self.parts_listbox = tk.Listbox(list_frame, height=6)
+        self.parts_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.create_tooltip(self.parts_listbox, "显示当前配置中的所有部件")
+        
+        # 部件操作按钮
+        parts_button_frame = ttk.Frame(list_frame)
+        parts_button_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        add_part_btn = ttk.Button(parts_button_frame, text="添加部件", command=self.add_part)
+        add_part_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(add_part_btn, "添加新的部件到配置中")
+        
+        remove_part_btn = ttk.Button(parts_button_frame, text="删除部件", command=self.remove_part)
+        remove_part_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(remove_part_btn, "删除选中的部件")
+        
+        edit_part_btn = ttk.Button(parts_button_frame, text="编辑部件", command=self.edit_part)
+        edit_part_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(edit_part_btn, "编辑选中的部件属性")
+        
+        # 保存图标引用（防止被垃圾回收）
+        self.part_icon = part_icon
     
     def create_menu(self):
         """创建菜单"""
@@ -126,12 +435,58 @@ class SimplifiedPyMeshGenGUI:
     def create_left_panel(self):
         """创建左侧面板"""
         # 左侧面板框架
-        self.left_panel = ttk.Frame(self.main_frame, width=300)
+        self.left_panel = ttk.Frame(self.main_frame, width=200)
         self.left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
         self.left_panel.pack_propagate(False)
         
-        # 参数设置区域
-        params_frame = ttk.LabelFrame(self.left_panel, text="参数设置")
+        # 创建项目信息面板
+        info_frame = ttk.LabelFrame(self.left_panel, text="项目信息")
+        info_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # 显示当前配置信息
+        ttk.Label(info_frame, text="当前配置: 未加载").pack(anchor=tk.W, padx=5, pady=2)
+        self.config_label = ttk.Label(info_frame, text="网格类型: 未设置")
+        self.config_label.pack(anchor=tk.W, padx=5, pady=2)
+        
+        # 显示网格状态
+        mesh_frame = ttk.LabelFrame(self.left_panel, text="网格状态")
+        mesh_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.mesh_status_label = ttk.Label(mesh_frame, text="状态: 未生成")
+        self.mesh_status_label.pack(anchor=tk.W, padx=5, pady=2)
+        
+        self.mesh_info_label = ttk.Label(mesh_frame, text="节点数: 0\n单元数: 0")
+        self.mesh_info_label.pack(anchor=tk.W, padx=5, pady=2)
+        
+        # 创建视图控制面板
+        view_frame = ttk.LabelFrame(self.left_panel, text="视图控制")
+        view_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        reset_view_btn = ttk.Button(view_frame, text="重置视图", command=self.reset_view)
+        reset_view_btn.pack(fill=tk.X, padx=5, pady=2)
+        
+        fit_view_btn = ttk.Button(view_frame, text="适应视图", command=self.fit_view)
+        fit_view_btn.pack(fill=tk.X, padx=5, pady=2)
+    
+    def create_center_panel(self):
+        """创建中间面板（网格显示区域）"""
+        # 中间面板框架
+        self.center_panel = ttk.Frame(self.main_frame)
+        self.center_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # 创建网格显示区域
+        self.mesh_display = MeshDisplayArea(self.center_panel)
+        self.mesh_display.pack(fill=tk.BOTH, expand=True)
+    
+    def create_right_panel(self):
+        """创建右侧面板（参数设置和部件管理）"""
+        # 右侧面板框架
+        self.right_panel = ttk.Frame(self.main_frame, width=250)
+        self.right_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
+        self.right_panel.pack_propagate(False)
+        
+        # 创建参数设置面板
+        params_frame = ttk.LabelFrame(self.right_panel, text="参数设置")
         params_frame.pack(fill=tk.X, padx=5, pady=5)
         
         # 调试级别
@@ -144,13 +499,13 @@ class SimplifiedPyMeshGenGUI:
         # 输入文件
         ttk.Label(params_frame, text="输入文件:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
         self.input_file_var = tk.StringVar()
-        input_file_entry = ttk.Entry(params_frame, textvariable=self.input_file_var, width=20)
+        input_file_entry = ttk.Entry(params_frame, textvariable=self.input_file_var, width=15)
         input_file_entry.grid(row=1, column=1, padx=5, pady=2)
         
         # 输出文件
         ttk.Label(params_frame, text="输出文件:").grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
         self.output_file_var = tk.StringVar()
-        output_file_entry = ttk.Entry(params_frame, textvariable=self.output_file_var, width=20)
+        output_file_entry = ttk.Entry(params_frame, textvariable=self.output_file_var, width=15)
         output_file_entry.grid(row=2, column=1, padx=5, pady=2)
         
         # 网格类型
@@ -162,7 +517,7 @@ class SimplifiedPyMeshGenGUI:
                        value="1").pack(side=tk.LEFT)
         ttk.Radiobutton(mesh_type_frame, text="直角三角形", variable=self.mesh_type_var, 
                        value="2").pack(side=tk.LEFT)
-        ttk.Radiobutton(mesh_type_frame, text="混合网格", variable=self.mesh_type_var, 
+        ttk.Radiobutton(mesh_type_frame, text="混合", variable=self.mesh_type_var, 
                        value="3").pack(side=tk.LEFT)
         
         # 可视化开关
@@ -170,47 +525,35 @@ class SimplifiedPyMeshGenGUI:
         viz_check = ttk.Checkbutton(params_frame, text="启用可视化", variable=self.viz_enabled_var)
         viz_check.grid(row=4, column=0, columnspan=2, sticky=tk.W, padx=5, pady=2)
         
-        # 操作按钮区域
-        button_frame = ttk.LabelFrame(self.left_panel, text="操作")
-        button_frame.pack(fill=tk.X, padx=5, pady=5)
+        # 参数设置按钮
+        params_btn = ttk.Button(params_frame, text="高级参数设置", command=self.edit_params)
+        params_btn.grid(row=5, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=5)
         
-        ttk.Button(button_frame, text="新建配置", command=self.new_config).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="打开配置", command=self.open_config).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="保存配置", command=self.save_config).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="参数设置", command=self.edit_params).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="生成网格", command=self.generate_mesh).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="显示网格", command=self.display_mesh).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="导入网格", command=self.import_mesh).pack(fill=tk.X, padx=5, pady=2)
-        ttk.Button(button_frame, text="导出网格", command=self.export_mesh).pack(fill=tk.X, padx=5, pady=2)
-        
-        # 部件管理区域
-        parts_frame = ttk.LabelFrame(self.left_panel, text="部件管理")
+        # 创建部件管理面板
+        parts_frame = ttk.LabelFrame(self.right_panel, text="部件管理")
         parts_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建部件列表
-        self.parts_listbox = tk.Listbox(parts_frame, height=6)
+        self.parts_listbox = tk.Listbox(parts_frame, height=8)
         self.parts_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 部件操作按钮
         parts_button_frame = ttk.Frame(parts_frame)
         parts_button_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(parts_button_frame, text="添加部件", command=self.add_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(parts_button_frame, text="删除部件", command=self.remove_part).pack(side=tk.LEFT, padx=2)
-        ttk.Button(parts_button_frame, text="编辑部件", command=self.edit_part).pack(side=tk.LEFT, padx=2)
+        add_part_btn = ttk.Button(parts_button_frame, text="添加", command=self.add_part)
+        add_part_btn.pack(side=tk.LEFT, padx=2)
+        
+        remove_part_btn = ttk.Button(parts_button_frame, text="删除", command=self.remove_part)
+        remove_part_btn.pack(side=tk.LEFT, padx=2)
+        
+        edit_part_btn = ttk.Button(parts_button_frame, text="编辑", command=self.edit_part)
+        edit_part_btn.pack(side=tk.LEFT, padx=2)
     
-    def create_right_panel(self):
-        """创建右侧面板"""
-        # 右侧面板框架
-        self.right_panel = ttk.Frame(self.main_frame)
-        self.right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建网格显示区域
-        self.mesh_display = MeshDisplayArea(self.right_panel)
-        self.mesh_display.pack(fill=tk.BOTH, expand=True)
-        
+    def create_output_panel(self):
+        """创建信息输出面板"""
         # 创建信息输出区域
-        self.info_output = InfoOutput(self.right_panel)
+        self.info_output = InfoOutput(self.root)
     
     def update_status(self, message):
         """更新状态栏"""
@@ -332,11 +675,23 @@ class SimplifiedPyMeshGenGUI:
             self.update_status("正在生成网格...")
             self.log_info("开始生成网格")
             
+            # 更新网格状态
+            self.mesh_status_label.config(text="状态: 正在生成...")
+            
             # 创建网格生成器
             self.mesh_generator = MeshGenerator(self.params)
             
             # 生成网格
             self.current_mesh = self.mesh_generator.generate()
+            
+            # 更新网格状态
+            self.mesh_status_label.config(text="状态: 已生成")
+            
+            # 获取网格信息
+            if hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
+                node_count = len(self.current_mesh.nodes)
+                element_count = len(self.current_mesh.elements)
+                self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
             
             self.log_info("网格生成完成")
             self.update_status("网格生成完成")
@@ -344,6 +699,7 @@ class SimplifiedPyMeshGenGUI:
             # 显示网格
             self.display_mesh()
         except Exception as e:
+            self.mesh_status_label.config(text="状态: 生成失败")
             messagebox.showerror("错误", f"生成网格失败: {str(e)}")
             self.log_error(f"生成网格失败: {str(e)}")
             self.update_status("生成网格失败")
@@ -351,19 +707,26 @@ class SimplifiedPyMeshGenGUI:
     def display_mesh(self):
         """显示网格"""
         if not self.current_mesh:
-            messagebox.showwarning("警告", "没有可显示的网格")
+            messagebox.showwarning("警告", "请先生成网格")
             return
             
         try:
             self.update_status("正在显示网格...")
             self.log_info("开始显示网格")
             
+            # 更新网格状态
+            self.mesh_status_label.config(text="状态: 正在显示...")
+            
             # 显示网格
             self.mesh_display.display_mesh(self.current_mesh)
+            
+            # 更新网格状态
+            self.mesh_status_label.config(text="状态: 已显示")
             
             self.log_info("网格显示完成")
             self.update_status("网格显示完成")
         except Exception as e:
+            self.mesh_status_label.config(text="状态: 显示失败")
             messagebox.showerror("错误", f"显示网格失败: {str(e)}")
             self.log_error(f"显示网格失败: {str(e)}")
             self.update_status("显示网格失败")
@@ -380,12 +743,22 @@ class SimplifiedPyMeshGenGUI:
                 # 更新网格显示区域的网格数据
                 self.mesh_display.mesh_data = self.current_mesh
                 
+                # 更新网格状态
+                self.mesh_status_label.config(text="状态: 已导入")
+                
+                # 获取网格信息
+                if hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
+                    node_count = len(self.current_mesh.nodes)
+                    element_count = len(self.current_mesh.elements)
+                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                
                 if dialog.result["preview"]:
                     self.display_mesh()
                 
                 self.log_info(f"已导入网格文件: {dialog.result['file_path']}")
                 self.update_status("已导入网格文件")
             except Exception as e:
+                self.mesh_status_label.config(text="状态: 导入失败")
                 messagebox.showerror("错误", f"导入网格失败: {str(e)}")
                 self.log_error(f"导入网格失败: {str(e)}")
                 self.update_status("导入网格失败")
@@ -407,6 +780,11 @@ class SimplifiedPyMeshGenGUI:
         """清空网格"""
         self.current_mesh = None
         self.mesh_display.clear()
+        
+        # 更新网格状态
+        self.mesh_status_label.config(text="状态: 未生成")
+        self.mesh_info_label.config(text="节点数: 0\n单元数: 0")
+        
         self.log_info("已清空网格")
         self.update_status("已清空网格")
     
@@ -434,7 +812,12 @@ class SimplifiedPyMeshGenGUI:
         part = Part(part_name)
         self.params.part_params.append(part)
         
+        # 更新部件列表
         self.update_parts_list()
+        
+        # 切换到部件选项卡
+        self.notebook.select(self.part_tab)
+        
         self.log_info(f"已添加部件: {part_name}")
         self.update_status("已添加部件")
     
@@ -454,7 +837,9 @@ class SimplifiedPyMeshGenGUI:
             part_name = self.params.part_params[index].part_name
             self.params.part_params.pop(index)
             
+            # 更新部件列表
             self.update_parts_list()
+            
             self.log_info(f"已删除部件: {part_name}")
             self.update_status("已删除部件")
     
@@ -481,16 +866,30 @@ class SimplifiedPyMeshGenGUI:
         if not self.params:
             return
             
+        # 更新选项卡中的参数显示
         self.debug_level_var.set(str(self.params.debug_level))
         self.input_file_var.set(self.params.input_file or "")
         self.output_file_var.set(self.params.output_file or "")
         self.viz_enabled_var.set(self.params.viz_enabled)
         self.mesh_type_var.set(str(self.params.mesh_type))
         
+        # 更新左侧面板的配置信息
+        mesh_type_text = "未设置"
+        if self.params.mesh_type == 1:
+            mesh_type_text = "三角形"
+        elif self.params.mesh_type == 2:
+            mesh_type_text = "直角三角形"
+        elif self.params.mesh_type == 3:
+            mesh_type_text = "混合网格"
+        
+        self.config_label.config(text=f"网格类型: {mesh_type_text}")
+        
+        # 更新部件列表
         self.update_parts_list()
     
     def update_parts_list(self):
         """更新部件列表"""
+        # 更新选项卡中的部件列表
         self.parts_listbox.delete(0, tk.END)
         
         if self.params:
