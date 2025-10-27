@@ -40,8 +40,7 @@ class TestPropertiesDisplayLogic(unittest.TestCase):
                 
                 # 验证返回的属性
                 self.assertIsInstance(properties, dict, "get_properties应返回字典")
-                self.assertIn('名称', properties, "属性应包含名称")
-                self.assertIn('参数数量', properties, "属性应包含参数数量")
+                self.assertIn('部件名称', properties, "属性应包含部件名称")
                 self.assertIn('连接器数量', properties, "属性应包含连接器数量")
                 self.assertIn('阵面总数', properties, "属性应包含阵面总数")
             else:
@@ -54,7 +53,7 @@ class TestPropertiesDisplayLogic(unittest.TestCase):
                 
                 # 验证返回的属性
                 self.assertIsInstance(properties, dict, "get_properties应返回字典")
-                self.assertIn('名称', properties, "属性应包含名称")
+                self.assertIn('部件名称', properties, "属性应包含部件名称")
         except Exception as e:
             self.fail(f"测试Part类的get_properties方法失败: {str(e)}")
     

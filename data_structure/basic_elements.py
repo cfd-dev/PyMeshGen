@@ -578,6 +578,9 @@ class Unstructured_Grid:
         cell_idx_container = []
         cell_type_container = []
         for cell in self.cell_container:
+            # 跳过None单元格
+            if cell is None:
+                continue
             cell_idx_container.append(cell.node_ids)
             if isinstance(cell, Quadrilateral):
                 vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value

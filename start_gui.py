@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
 PyMeshGen GUI启动脚本
-使用重构后的GUI模块
+用于启动修复后的PyMeshGen图形用户界面
 """
 
-import os
 import sys
+import os
 
 # 添加项目根目录到Python路径
 project_root = os.path.dirname(os.path.abspath(__file__))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+sys.path.insert(0, project_root)
 
 try:
-    # 导入并运行GUI
     from gui.gui_main import main
     
-    # 直接调用main函数
+    print("正在启动PyMeshGen图形用户界面...")
+    print("注意：属性面板显示功能已修复，现在可以正常显示部件信息。")
+    print("=" * 50)
+    
+    # 启动GUI主程序
     main()
+    
 except ImportError as e:
-    print(f"导入GUI模块失败: {e}")
+    print(f"导入错误: {e}")
+    print("请确保所有必要的模块都已安装。")
     sys.exit(1)
 except Exception as e:
-    print(f"运行GUI失败: {e}")
+    print(f"运行错误: {e}")
+    print("请检查错误信息并尝试解决问题。")
     sys.exit(1)

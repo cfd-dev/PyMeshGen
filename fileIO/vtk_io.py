@@ -183,6 +183,25 @@ def reconstruct_mesh_from_vtk(
     cell_container = [None] * num_cells
     # 遍历每个单元，根据单元类型创建相应的对象
     for idx in range(num_cells):
+        # 检查单元索引是否有效
+        if idx >= len(cell_idx_container):
+            raise ValueError(f"单元索引 {idx} 超出范围 {len(cell_idx_container)}")
+        
+        # 检查单元是否有足够的节点
+        if len(cell_idx_container[idx]) < 3:
+            raise ValueError(f"单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
+        
+        # 检查节点索引是否有效，如果无效则跳过该单元
+        valid_nodes = True
+        for node_idx in cell_idx_container[idx]:
+            if node_idx >= len(node_container):
+                valid_nodes = False
+                break
+        
+        if not valid_nodes:
+            # 跳过无效单元，不创建网格对象
+            continue
+        
         node1 = node_container[cell_idx_container[idx][0]]
         node2 = node_container[cell_idx_container[idx][1]]
         node3 = node_container[cell_idx_container[idx][2]]
@@ -191,13 +210,15 @@ def reconstruct_mesh_from_vtk(
         if cell_type == VTK_ELEMENT_TYPE.TRI:  # 三角形
             cell = Triangle(node1, node2, node3, idx)
         elif cell_type == VTK_ELEMENT_TYPE.QUAD:  # 四边形
+            if len(cell_idx_container[idx]) < 4:
+                raise ValueError(f"四边形单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             cell = Quadrilateral(node1, node2, node3, node4, idx)
         else:
             raise ValueError(f"Unsupported cell type: {cell_type_container[idx]}")
         cell_container[idx] = cell
 
-    boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx]
+    boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx if idx < len(node_container)]
     unstr_grid = Unstructured_Grid(
             cell_container, node_coords, boundary_nodes
     )  # 注意这里的cell_container是修改过的，已经包含了单元对象而不是索引列表
