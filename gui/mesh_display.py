@@ -237,9 +237,16 @@ class MeshDisplayArea(BaseFrame):
         try:
             # 如果渲染窗口存在，强制更新
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
         except Exception as e:
             print(f"渲染回调错误: {str(e)}")
+            # 确保在出错时重置标志
+            if hasattr(self, '_render_in_progress'):
+                self._render_in_progress = False
     
     def force_render_update(self):
         """强制更新渲染，防止网格消失（优化版本，减少渲染频率）"""
@@ -281,10 +288,20 @@ class MeshDisplayArea(BaseFrame):
                 if should_render:
                     self.render_window.Render()
                 
-                # 安排下一次更新，但间隔更长（2秒而不是500毫秒）
-                self.vtk_frame.after(2000, self.force_render_update)
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_update_scheduled'):
+                    self._render_update_scheduled = True
+                    # 安排下一次更新，但间隔更长（2秒而不是500毫秒）
+                    self.vtk_frame.after(2000, self._scheduled_render_update)
         except Exception as e:
             print(f"强制渲染更新错误: {str(e)}")
+    
+    def _scheduled_render_update(self):
+        """计划渲染更新，防止递归"""
+        # 重置标志
+        self._render_update_scheduled = False
+        # 调用实际更新函数
+        self.force_render_update()
         
     def set_mesh_data(self, mesh_data):
         """设置网格数据"""
@@ -377,7 +394,10 @@ class MeshDisplayArea(BaseFrame):
                     self.render_window.Render()
                     
                     # 添加额外的渲染更新，确保网格不会消失
-                    self.vtk_frame.after(100, self.force_render_update)
+                    # 防止递归调用，使用标志检查
+                    if not hasattr(self, '_render_update_scheduled'):
+                        self._render_update_scheduled = True
+                        self.vtk_frame.after(100, self._scheduled_render_update)
                     
                     # 检测操作系统
                     import platform
@@ -773,9 +793,16 @@ class MeshDisplayArea(BaseFrame):
             
             # 更新渲染窗口
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
         except Exception as e:
             print(f"清除显示失败: {str(e)}")
+            # 确保在出错时重置标志
+            if hasattr(self, '_render_in_progress'):
+                self._render_in_progress = False
             
     def clear(self):
         """清除显示（别名方法，与clear_display功能相同）"""
@@ -799,7 +826,11 @@ class MeshDisplayArea(BaseFrame):
         
         # 更新渲染窗口
         if self.render_window:
-            self.render_window.Render()
+            # 防止递归调用，使用标志检查
+            if not hasattr(self, '_render_in_progress'):
+                self._render_in_progress = True
+                self.render_window.Render()
+                self._render_in_progress = False
     
     def toggle_points(self, show_points=True):
         """切换点云显示模式"""
@@ -813,21 +844,33 @@ class MeshDisplayArea(BaseFrame):
             
             # 更新渲染窗口
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
     
     def reset_view(self):
         """重置视图到原始大小"""
         if self.renderer:
             self.renderer.ResetCamera()
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
     
     def reset_camera(self):
         """重置相机以适应整个网格"""
         if self.renderer:
             self.renderer.ResetCamera()
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
     
     def zoom_in(self):
         """放大视图"""
@@ -835,7 +878,11 @@ class MeshDisplayArea(BaseFrame):
             camera = self.renderer.GetActiveCamera()
             camera.Zoom(1.2)
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
     
     def zoom_out(self):
         """缩小视图"""
@@ -843,13 +890,21 @@ class MeshDisplayArea(BaseFrame):
             camera = self.renderer.GetActiveCamera()
             camera.Zoom(0.8)
             if self.render_window:
-                self.render_window.Render()
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
             
     def fit_view(self):
         """适应视图以显示所有内容"""
         if self.renderer:
             self.renderer.ResetCamera()
-            self.render_window.Render()
+            # 防止递归调用，使用标志检查
+            if self.render_window and not hasattr(self, '_render_in_progress'):
+                self._render_in_progress = True
+                self.render_window.Render()
+                self._render_in_progress = False
             
     def toggle_boundary_display(self):
         """切换边界显示"""
@@ -878,7 +933,13 @@ class MeshDisplayArea(BaseFrame):
                 self.mesh_actor.GetProperty().SetRepresentationToSurface()
                 self.mesh_actor.GetProperty().EdgeVisibilityOff()  # 关闭边缘可见性
             
-            self.render_window.Render()
+            # 更新渲染窗口
+            if self.render_window:
+                # 防止递归调用，使用标志检查
+                if not hasattr(self, '_render_in_progress'):
+                    self._render_in_progress = True
+                    self.render_window.Render()
+                    self._render_in_progress = False
             
     def pan_view(self):
         """平移视图"""
