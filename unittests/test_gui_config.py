@@ -16,8 +16,8 @@ sys.path.insert(0, str(project_root / 'utils'))
 sys.path.insert(0, str(project_root / 'gui'))
 
 try:
-    from gui.gui_new import SimplifiedPyMeshGenGUI
-    # 使用与gui_new.py相同的导入方式
+    from gui.gui_main import SimplifiedPyMeshGenGUI
+    # 使用与gui_main.py相同的导入方式
     try:
         # 尝试相对导入（在包中运行时）
         from parameters import Parameters
@@ -76,32 +76,31 @@ try:
         
         def test_create_params_from_config(self):
             """测试从配置创建参数对象"""
-            # 调用方法创建参数对象
-            self.gui.create_params_from_config(self.default_config)
+            # 使用config_manager创建参数对象
+            params = self.gui.config_manager.create_params_from_config(self.default_config)
             
             # 验证参数对象创建成功
-            self.assertIsNotNone(self.gui.params)
-            self.assertIsInstance(self.gui.params, Parameters)
+            self.assertIsNotNone(params)
+            self.assertIsInstance(params, Parameters)
             
             # 验证参数值
-            self.assertEqual(self.gui.params.debug_level, self.default_config["debug_level"])
-            self.assertEqual(self.gui.params.input_file, self.default_config["input_file"])
-            self.assertEqual(self.gui.params.mesh_type, self.default_config["mesh_type"])
+            self.assertEqual(params.debug_level, self.default_config["debug_level"])
+            self.assertEqual(params.input_file, self.default_config["input_file"])
+            self.assertEqual(params.mesh_type, self.default_config["mesh_type"])
             
             # 验证部件参数
             if self.default_config["parts"]:
-                self.assertGreater(len(self.gui.params.part_params), 0)
-                self.assertEqual(self.gui.params.part_params[0].part_name, 
+                self.assertGreater(len(params.part_params), 0)
+                self.assertEqual(params.part_params[0].part_name, 
                                 self.default_config["parts"][0]["part_name"])
         
         def test_create_config_from_params(self):
             """测试从参数对象创建配置"""
             # 先创建参数对象
-            self.gui.create_params_from_config(self.default_config)
-            self.assertIsNotNone(self.gui.params)
+            params = self.gui.config_manager.create_params_from_config(self.default_config)
             
-            # 调用方法创建配置
-            config = self.gui.create_config_from_params()
+            # 使用config_manager从参数对象创建配置
+            config = self.gui.config_manager.create_config_from_params(params)
             
             # 验证配置创建成功
             self.assertIsNotNone(config)

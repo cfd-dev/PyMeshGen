@@ -91,14 +91,14 @@ class TestVTKSimple(unittest.TestCase):
     def test_cell_structure(self):
         """测试单元结构"""
         # 验证第一个三角形
-        self.assertEqual(self.cells[0].nodes[0], self.nodes[0], "第一个三角形的第一个节点应该是nodes[0]")
-        self.assertEqual(self.cells[0].nodes[1], self.nodes[1], "第一个三角形的第二个节点应该是nodes[1]")
-        self.assertEqual(self.cells[0].nodes[2], self.nodes[2], "第一个三角形的第三个节点应该是nodes[2]")
+        self.assertEqual(self.cells[0].p1, self.nodes[0].coords, "第一个三角形的第一个节点坐标应该是nodes[0]的坐标")
+        self.assertEqual(self.cells[0].p2, self.nodes[1].coords, "第一个三角形的第二个节点坐标应该是nodes[1]的坐标")
+        self.assertEqual(self.cells[0].p3, self.nodes[2].coords, "第一个三角形的第三个节点坐标应该是nodes[2]的坐标")
         
         # 验证第二个三角形
-        self.assertEqual(self.cells[1].nodes[0], self.nodes[0], "第二个三角形的第一个节点应该是nodes[0]")
-        self.assertEqual(self.cells[1].nodes[1], self.nodes[2], "第二个三角形的第二个节点应该是nodes[2]")
-        self.assertEqual(self.cells[1].nodes[2], self.nodes[3], "第二个三角形的第三个节点应该是nodes[3]")
+        self.assertEqual(self.cells[1].p1, self.nodes[0].coords, "第二个三角形的第一个节点坐标应该是nodes[0]的坐标")
+        self.assertEqual(self.cells[1].p2, self.nodes[2].coords, "第二个三角形的第二个节点坐标应该是nodes[2]的坐标")
+        self.assertEqual(self.cells[1].p3, self.nodes[3].coords, "第二个三角形的第三个节点坐标应该是nodes[3]的坐标")
 
 
 if __name__ == "__main__":

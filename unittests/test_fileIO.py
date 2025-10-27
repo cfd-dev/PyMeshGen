@@ -14,7 +14,7 @@ sys.path.append(str(Path(__file__).parent.parent / "utils"))
 
 from read_cas import parse_fluent_msh
 from vtk_io import parse_vtk_msh
-from basic_elements import Unstructured_Grid, Triangle, Quadrilateral
+from data_structure.basic_elements import Unstructured_Grid, Triangle, Quadrilateral
 
 
 class TestCASParser(unittest.TestCase):
