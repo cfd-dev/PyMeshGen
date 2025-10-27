@@ -873,3 +873,24 @@ class Part:
         self.front_list = []
         for conn in self.connectors:
             self.front_list.extend(conn.front_list)
+    
+    def get_properties(self):
+        """获取部件属性，用于在属性面板中显示"""
+        properties = {}
+        properties["部件名称"] = self.part_name
+        
+        # 显示部件参数信息
+        if self.part_params:
+            properties["部件参数"] = str(self.part_params)
+        
+        # 显示连接器信息
+        properties["连接器数量"] = len(self.connectors)
+        for i, conn in enumerate(self.connectors):
+            properties[f"连接器{i+1}名称"] = conn.curve_name
+            properties[f"连接器{i+1}参数"] = str(conn.param)
+            properties[f"连接器{i+1}阵面数"] = len(conn.front_list)
+        
+        # 显示阵面信息
+        properties["阵面总数"] = len(self.front_list)
+        
+        return properties

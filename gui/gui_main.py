@@ -8,6 +8,7 @@
 
 import os
 import sys
+import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
@@ -1119,6 +1120,12 @@ class SimplifiedPyMeshGenGUI:
         # 获取选中的部件索引
         selection = self.parts_listbox.curselection()
         if not selection:
+            # 清空属性面板
+            self.props_text.config(state=tk.NORMAL)
+            self.props_text.delete(1.0, tk.END)
+            self.props_text.insert(tk.END, "未选择任何部件\n请从左侧列表中选择一个部件以查看其属性")
+            self.props_text.config(state=tk.DISABLED)
+            self.update_status("未选择部件")
             return
             
         # 获取选中的部件索引
@@ -1127,14 +1134,17 @@ class SimplifiedPyMeshGenGUI:
         # 如果有参数对象，显示选中部件的属性
         if hasattr(self, 'params') and self.params:
             try:
-                # 获取部件列表
-                parts = self.params.get_parts()
+                # 修复：直接使用self.params.part_params获取部件列表，而不是调用不存在的get_parts()方法
+                parts = self.params.part_params
                 if index < len(parts):
                     part = parts[index]
                     
                     # 清空属性文本框
                     self.props_text.config(state=tk.NORMAL)
                     self.props_text.delete(1.0, tk.END)
+                    
+                    # 添加标题
+                    self.props_text.insert(tk.END, f"=== 部件属性 ===\n\n")
                     
                     # 显示部件属性
                     if hasattr(part, 'get_properties'):
@@ -1144,15 +1154,35 @@ class SimplifiedPyMeshGenGUI:
                     else:
                         # 如果部件没有get_properties方法，显示基本信息
                         self.props_text.insert(tk.END, f"部件类型: {type(part).__name__}\n")
+                        if hasattr(part, 'part_name'):
+                            self.props_text.insert(tk.END, f"名称: {part.part_name}\n")
                         if hasattr(part, 'name'):
                             self.props_text.insert(tk.END, f"名称: {part.name}\n")
                         if hasattr(part, 'id'):
                             self.props_text.insert(tk.END, f"ID: {part.id}\n")
+                        # 显示部件的其他属性
+                        if hasattr(part, 'params'):
+                            self.props_text.insert(tk.END, f"参数: {part.params}\n")
+                        if hasattr(part, 'connectors'):
+                            self.props_text.insert(tk.END, f"连接器数量: {len(part.connectors)}\n")
+                    
+                    # 添加状态信息
+                    self.props_text.insert(tk.END, f"\n=== 状态信息 ===\n")
+                    self.props_text.insert(tk.END, f"选择时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    self.props_text.insert(tk.END, f"部件索引: {index}\n")
+                    self.props_text.insert(tk.END, f"总部件数: {len(parts)}\n")
                     
                     self.props_text.config(state=tk.DISABLED)
-                    self.update_status(f"已选中部件: {index}")
+                    self.update_status(f"已选中部件: {part.part_name if hasattr(part, 'part_name') else f'部件{index}'}")
             except Exception as e:
                 self.log_error(f"显示部件属性时出错: {str(e)}")
+                # 在属性面板中显示错误信息
+                self.props_text.config(state=tk.NORMAL)
+                self.props_text.delete(1.0, tk.END)
+                self.props_text.insert(tk.END, f"=== 错误信息 ===\n\n")
+                self.props_text.insert(tk.END, f"显示部件属性时出错:\n{str(e)}\n")
+                self.props_text.insert(tk.END, f"\n请检查部件数据是否正确\n")
+                self.props_text.config(state=tk.DISABLED)
     
     def toggle_statusbar(self):
         """切换状态栏显示"""
@@ -1196,7 +1226,13 @@ class SimplifiedPyMeshGenGUI:
                 
     def toggle_properties_panel(self):
         """切换属性面板显示"""
-        messagebox.showinfo("信息", "切换属性面板显示")
+        if hasattr(self, 'props_frame'):
+            if self.props_frame.winfo_viewable():
+                self.props_frame.pack_forget()
+                self.update_status("属性面板已隐藏")
+            else:
+                self.props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                self.update_status("属性面板已显示")
         
     def toggle_fullscreen(self):
         """切换全屏显示"""
