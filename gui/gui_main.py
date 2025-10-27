@@ -58,7 +58,10 @@ class SimplifiedPyMeshGenGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("PyMeshGen 网格生成器")
-        self.root.geometry("1200x800")
+        
+        # 适配1080p显示器，设置初始大小并全屏显示
+        self.root.geometry("1920x1080")  # 1080p分辨率
+        self.root.state('zoomed')  # Windows下最大化窗口
         
         # 设置窗口关闭事件处理
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -163,8 +166,8 @@ class SimplifiedPyMeshGenGUI:
         mesh_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # 创建matplotlib图形和轴
-        # 创建matplotlib图形对象
-        self.fig = Figure(figsize=(8, 6), dpi=100)
+        # 创建matplotlib图形对象，适配全屏显示
+        self.fig = Figure(figsize=(16, 9), dpi=100)  # 16:9宽高比，适合1080p显示器
         self.ax = self.fig.add_subplot(111)
         self.ax.set_title("网格显示区域")
         self.ax.set_xlabel("X坐标")
