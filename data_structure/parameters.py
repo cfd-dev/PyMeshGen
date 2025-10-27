@@ -10,7 +10,7 @@ sys.path.append(parent_dir)
 sys.path.append(os.path.join(parent_dir, 'utils'))
 
 # 使用绝对导入
-from basic_elements import Connector, Part
+from data_structure.basic_elements import Connector, Part
 
 # 导入message模块
 from message import set_debug_level
