@@ -150,8 +150,8 @@ class SimplifiedPyMeshGenGUI:
         info_frame = ttk.Frame(paned_window)
         
         # 将两个框架添加到PanedWindow中
-        paned_window.add(mesh_frame, weight=3)  # 网格显示区占更多空间
-        paned_window.add(info_frame, weight=1)  # 信息输出区占较少空间
+        paned_window.add(mesh_frame, weight=1)  # 网格显示区占1/2空间
+        paned_window.add(info_frame, weight=1)  # 信息输出区占1/2空间
         
         # 创建网格显示区域
         self.create_mesh_display_area(mesh_frame)
