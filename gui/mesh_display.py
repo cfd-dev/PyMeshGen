@@ -252,8 +252,7 @@ class MeshDisplayArea(BaseFrame):
         """强制更新渲染，防止网格消失（优化版本，减少渲染频率）"""
         try:
             if self.render_window and self.renderer:
-                # 添加一个标志，避免过于频繁的渲染更新
-                current_time = time.time()
+                # 检查是否需要更新渲染
                 should_render = False
                 
                 # 检查网格演员是否仍在渲染器中（简化检查）
@@ -286,22 +285,16 @@ class MeshDisplayArea(BaseFrame):
                 
                 # 只有在演员缺失时才渲染
                 if should_render:
-                    self.render_window.Render()
+                    # 防止递归调用，使用标志检查
+                    if not hasattr(self, '_render_in_progress'):
+                        self._render_in_progress = True
+                        self.render_window.Render()
+                        self._render_in_progress = False
                 
-                # 防止递归调用，使用标志检查
-                if not hasattr(self, '_render_update_scheduled'):
-                    self._render_update_scheduled = True
-                    # 安排下一次更新，但间隔更长（2秒而不是500毫秒）
-                    self.vtk_frame.after(2000, self._scheduled_render_update)
+                # 减少渲染更新频率，避免画面闪烁
+                # 不再自动安排下一次更新，只在必要时更新
         except Exception as e:
             print(f"强制渲染更新错误: {str(e)}")
-    
-    def _scheduled_render_update(self):
-        """计划渲染更新，防止递归"""
-        # 重置标志
-        self._render_update_scheduled = False
-        # 调用实际更新函数
-        self.force_render_update()
         
     def set_mesh_data(self, mesh_data):
         """设置网格数据"""
@@ -393,11 +386,8 @@ class MeshDisplayArea(BaseFrame):
                     # 更新渲染窗口
                     self.render_window.Render()
                     
-                    # 添加额外的渲染更新，确保网格不会消失
-                    # 防止递归调用，使用标志检查
-                    if not hasattr(self, '_render_update_scheduled'):
-                        self._render_update_scheduled = True
-                        self.vtk_frame.after(100, self._scheduled_render_update)
+                    # 不再添加额外的渲染更新，避免画面清空
+                    # 只在必要时添加渲染更新
                     
                     # 检测操作系统
                     import platform
@@ -908,16 +898,17 @@ class MeshDisplayArea(BaseFrame):
             
     def toggle_boundary_display(self):
         """切换边界显示"""
-        if self.mesh_actor:
+        try:
             if self.show_boundary_var.get():
                 self.display_boundary()
             else:
-                # 清除边界演员
-                for actor in self.boundary_actors:
-                    self.renderer.RemoveActor(actor)
-                self.boundary_actors.clear()
+                self.clear_boundary_actors()
             
-            self.render_window.Render()
+            # 更新渲染
+            if self.render_window and self.renderer:
+                self.render_window.Render()
+        except Exception as e:
+            print(f"切换边界显示失败: {str(e)}")
             
     def toggle_wireframe(self, wireframe=None):
         """切换线框/实体模式"""
