@@ -617,6 +617,40 @@ class SimplifiedPyMeshGenGUI:
         select_btn = ttk.Button(view_toolbar_frame, text="选择", command=lambda: self.update_status("选择模式：左键框选/点选节点"))
         select_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(select_btn, "左键框选/点选节点进行选择")
+        
+        # 渲染控制工具栏
+        render_toolbar_frame = ttk.Frame(self.right_panel)
+        render_toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        # 创建渲染方式选择
+        ttk.Label(render_toolbar_frame, text="渲染方式:").pack(side=tk.LEFT, padx=5)
+        
+        # 创建渲染方式选择变量
+        self.render_mode_var = tk.StringVar(value="surface")
+        
+        # 创建渲染方式选择单选按钮
+        surface_rb = ttk.Radiobutton(render_toolbar_frame, text="表面", variable=self.render_mode_var, 
+                                    value="surface", command=self.change_render_mode)
+        surface_rb.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(surface_rb, "以表面模式显示网格")
+        
+        wireframe_rb = ttk.Radiobutton(render_toolbar_frame, text="线框", variable=self.render_mode_var, 
+                                      value="wireframe", command=self.change_render_mode)
+        wireframe_rb.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(wireframe_rb, "以线框模式显示网格")
+        
+        points_rb = ttk.Radiobutton(render_toolbar_frame, text="点云", variable=self.render_mode_var, 
+                                  value="points", command=self.change_render_mode)
+        points_rb.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(points_rb, "以点云模式显示网格")
+        
+        # 创建边界显示复选框
+        self.show_boundary_var = tk.BooleanVar(value=True)
+        boundary_cb = ttk.Checkbutton(render_toolbar_frame, text="显示边界", 
+                                    variable=self.show_boundary_var,
+                                    command=self.toggle_boundary_display)
+        boundary_cb.pack(side=tk.LEFT, padx=5)
+        self.create_tooltip(boundary_cb, "切换边界显示")
     
     def create_status_output_panel(self):
         """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
@@ -769,6 +803,37 @@ class SimplifiedPyMeshGenGUI:
             except Exception as e:
                 messagebox.showerror("错误", f"保存配置文件失败: {str(e)}")
                 self.log_error(f"保存配置文件失败: {str(e)}")
+    
+    def change_render_mode(self):
+        """改变网格渲染方式"""
+        if hasattr(self, 'mesh_display') and self.mesh_display:
+            render_mode = self.render_mode_var.get()
+            
+            if render_mode == "surface":
+                self.mesh_display.toggle_wireframe(False)
+                self.update_status("切换到表面渲染模式")
+            elif render_mode == "wireframe":
+                self.mesh_display.toggle_wireframe(True)
+                self.update_status("切换到线框渲染模式")
+            elif render_mode == "points":
+                # 点云模式需要特殊处理
+                if hasattr(self.mesh_display, 'toggle_points'):
+                    self.mesh_display.toggle_points(True)
+                    self.update_status("切换到点云渲染模式")
+                else:
+                    # 如果没有点云模式，则使用线框模式
+                    self.mesh_display.toggle_wireframe(True)
+                    self.update_status("切换到线框渲染模式（点云模式不可用）")
+    
+    def toggle_boundary_display(self):
+        """切换边界显示"""
+        if hasattr(self, 'mesh_display') and self.mesh_display:
+            show_boundary = self.show_boundary_var.get()
+            if hasattr(self.mesh_display, 'toggle_boundary_display'):
+                self.mesh_display.toggle_boundary_display(show_boundary)
+                self.update_status(f"边界显示: {'开启' if show_boundary else '关闭'}")
+            else:
+                self.update_status("边界显示功能不可用")
     
     def edit_params(self):
         """编辑参数"""

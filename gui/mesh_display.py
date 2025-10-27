@@ -58,12 +58,9 @@ class MeshDisplayArea(BaseFrame):
         self.vtk_frame = ttk.Frame(main_frame)
         self.vtk_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 创建VTK交互器
-        self.interactor = vtk.vtkRenderWindowInteractor()
-        self.interactor.SetRenderWindow(self.render_window)
-        
         # 初始化交互器
-        self.interactor.Initialize()
+        self.interactor = None
+        self.embedded = False
         
         # 延迟嵌入VTK窗口，确保框架已经完全创建
         self.vtk_frame.after(100, self.embed_vtk_window)
@@ -76,133 +73,133 @@ class MeshDisplayArea(BaseFrame):
         self.boundary_actors = []
     
     def embed_vtk_window(self):
-        """将VTK窗口嵌入到Tkinter框架中，支持多种平台"""
+        """将VTK窗口嵌入到Tkinter框架中"""
         try:
+            # 创建VTK交互器
+            self.interactor = vtk.vtkRenderWindowInteractor()
+            self.interactor.SetRenderWindow(self.render_window)
+            
             # 检测操作系统
             import platform
             system = platform.system()
             
-            # 方法1：尝试使用vtkTkRenderWindowInteractor（推荐方法）
-            try:
-                from vtk.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
-                
-                # 确保框架已经更新
-                self.vtk_frame.update_idletasks()
-                
-                # 创建嵌入的VTK窗口
-                if system == "Darwin":  # macOS特殊处理
-                    # macOS可能需要特殊处理
-                    self.render_window_interactor = vtkTkRenderWindowInteractor(
-                        self.vtk_frame, 
-                        rw=self.render_window,
-                        width=800, 
-                        height=600
-                    )
-                else:
-                    # Windows和Linux的标准处理
-                    self.render_window_interactor = vtkTkRenderWindowInteractor(
-                        self.vtk_frame, 
-                        rw=self.render_window
-                    )
-                
-                self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
-                
-                # 更新交互器引用
-                self.interactor = self.render_window_interactor
-                
-                # 初始化交互器
-                self.interactor.Initialize()
-                
-                # 对于非macOS系统，启动交互器
-                if system != "Darwin":
-                    self.interactor.Start()
-                
-                # 标记嵌入成功
-                self.embedded = True
-                print(f"使用vtkTkRenderWindowInteractor在{system}上成功嵌入VTK窗口")
-                return True
-                
-            except Exception as e:
-                print(f"vtkTkRenderWindowInteractor方法失败: {str(e)}")
-                
-                # 方法2：使用GetRenderWindow()方法（备用方法）
+            # Windows系统使用特殊处理
+            if system == "Windows":
                 try:
-                    # 创建一个简单的Frame
-                    self.vtk_embed_frame = tk.Frame(self.vtk_frame, bg='black')
-                    self.vtk_embed_frame.pack(fill=tk.BOTH, expand=True)
+                    # 获取窗口句柄
+                    window_id = self.vtk_frame.winfo_id()
                     
-                    # 确保VTK窗口已经创建
-                    if not self.render_window:
-                        self.render_window = vtk.vtkRenderWindow()
-                        self.render_window.AddRenderer(self.renderer)
-                    
-                    # 设置窗口大小
-                    self.vtk_embed_frame.update_idletasks()
-                    width = self.vtk_embed_frame.winfo_width()
-                    height = self.vtk_embed_frame.winfo_height()
-                    if width <= 1 or height <= 1:
-                        width, height = 800, 600
-                    
-                    self.render_window.SetSize(width, height)
-                    
-                    # 创建嵌入的VTK窗口
-                    if system == "Darwin":  # macOS特殊处理
-                        self.render_window_interactor = vtkTkRenderWindowInteractor(
-                            self.vtk_embed_frame,
-                            width=width,
-                            height=height
-                        )
-                    else:
-                        self.render_window_interactor = vtkTkRenderWindowInteractor(self.vtk_embed_frame)
-                    
-                    self.render_window_interactor.GetRenderWindow().AddRenderer(self.renderer)
-                    self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
-                    
-                    # 更新交互器引用
-                    self.interactor = self.render_window_interactor
+                    # 设置窗口信息
+                    self.render_window.SetWindowInfo(str(window_id))
                     
                     # 初始化交互器
                     self.interactor.Initialize()
                     
-                    # 标记嵌入成功
+                    # 设置窗口大小
+                    self.vtk_frame.update_idletasks()
+                    width = self.vtk_frame.winfo_width()
+                    height = self.vtk_frame.winfo_height()
+                    if width <= 1 or height <= 1:
+                        width, height = 800, 600
+                    self.render_window.SetSize(width, height)
+                    
+                    # 不要启动交互器，只初始化它
+                    # self.interactor.Start()  # 这行会导致GIL问题
+                    
+                    # 强制更新
+                    self.vtk_frame.update_idletasks()
+                    
+                    print("使用Windows窗口ID方法成功嵌入VTK窗口")
                     self.embedded = True
-                    print(f"使用备用方法在{system}上成功嵌入VTK窗口")
                     return True
                     
-                except Exception as e2:
-                    print(f"备用嵌入方法也失败: {str(e2)}")
+                except Exception as e:
+                    print(f"Windows窗口ID方法失败: {str(e)}")
                     
-                    # 方法3：最后的尝试，使用直接窗口ID（仅适用于Windows和Linux）
-                    if system != "Darwin":  # 不适用于macOS
-                        try:
-                            # 获取窗口ID
-                            self.vtk_frame.update_idletasks()
-                            window_id = self.vtk_frame.winfo_id()
-                            
-                            if window_id:
-                                # 设置窗口ID
-                                self.render_window.SetWindowInfo(str(window_id))
-                                
-                                # 创建交互器
-                                self.interactor = vtk.vtkRenderWindowInteractor()
-                                self.interactor.SetRenderWindow(self.render_window)
-                                self.interactor.Initialize()
-                                
-                                # 标记嵌入成功
-                                self.embedded = True
-                                print(f"使用窗口ID方法在{system}上成功嵌入VTK窗口")
-                                return True
-                        except Exception as e3:
-                            print(f"窗口ID方法失败: {str(e3)}")
-                    
-                    # 所有方法都失败
-                    import traceback
-                    traceback.print_exc()
-                    
+                    # 尝试备用方法
+                    try:
+                        # 直接创建一个简单的渲染窗口
+                        self.render_window.SetOffScreenRendering(0)
+                        self.interactor.Initialize()
+                        
+                        # 设置窗口大小
+                        self.vtk_frame.update_idletasks()
+                        width = self.vtk_frame.winfo_width()
+                        height = self.vtk_frame.winfo_height()
+                        if width <= 1 or height <= 1:
+                            width, height = 800, 600
+                        self.render_window.SetSize(width, height)
+                        
+                        # 不要启动交互器，只初始化它
+                        # self.interactor.Start()  # 这行会导致GIL问题
+                        
+                        # 强制更新
+                        self.vtk_frame.update_idletasks()
+                        
+                        print("使用Windows备用方法成功嵌入VTK窗口")
+                        self.embedded = True
+                        return True
+                        
+                    except Exception as e2:
+                        print(f"Windows备用方法也失败: {str(e2)}")
+            
+            # 尝试使用vtkTkRenderWindowInteractor
+            try:
+                # 导入vtkTkRenderWindowInteractor
+                from vtk.tk.vtkTkRenderWindowInteractor import vtkTkRenderWindowInteractor
+                
+                # 创建Tkinter渲染窗口交互器
+                self.render_window_interactor = vtkTkRenderWindowInteractor(
+                    self.vtk_frame, rw=self.render_window
+                )
+                self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
+                
+                # 设置交互器
+                self.interactor.SetRenderWindow(self.render_window)
+                
+                # 初始化交互器
+                self.interactor.Initialize()
+                
+                # 强制更新
+                self.vtk_frame.update_idletasks()
+                
+                print("使用vtkTkRenderWindowInteractor成功嵌入VTK窗口")
+                self.embedded = True
+                return True
+                
+            except ImportError:
+                print("vtkTkRenderWindowInteractor不可用，尝试其他方法")
+            except Exception as e:
+                print(f"vtkTkRenderWindowInteractor方法失败: {str(e)}")
+            
+            # 备用方法：直接使用GetRenderWindow()
+            try:
+                # 获取窗口ID
+                window_id = self.vtk_frame.winfo_id()
+                
+                # 设置窗口信息
+                self.render_window.SetWindowInfo(str(window_id))
+                
+                # 初始化交互器
+                self.interactor.Initialize()
+                
+                # 强制更新
+                self.vtk_frame.update_idletasks()
+                
+                print("使用GetRenderWindow()方法成功嵌入VTK窗口")
+                self.embedded = True
+                return True
+                
+            except Exception as e:
+                print(f"GetRenderWindow()方法失败: {str(e)}")
+            
+            # 所有方法都失败
+            print("无法嵌入VTK窗口")
+            self.embedded = False
+            return False
+            
         except Exception as e:
-            print(f"VTK窗口嵌入失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            print(f"嵌入VTK窗口时发生错误: {str(e)}")
             self.embedded = False
             return False
         
@@ -233,6 +230,19 @@ class MeshDisplayArea(BaseFrame):
                 return False
                 
         try:
+            # 确保VTK窗口已嵌入
+            if not self.embedded or not self.interactor:
+                print("VTK窗口未正确嵌入，尝试重新嵌入...")
+                self.embed_vtk_window()
+                # 等待嵌入完成
+                import time
+                time.sleep(0.5)
+                
+            # 如果仍然未嵌入，则返回失败
+            if not self.embedded or not self.interactor:
+                print("VTK窗口嵌入失败，无法显示网格")
+                return False
+                
             # 清除之前的网格
             self.clear_mesh_actors()
             
@@ -573,25 +583,69 @@ class MeshDisplayArea(BaseFrame):
         """清除显示（别名方法，与clear_display功能相同）"""
         self.clear_display()
             
+    def clear_boundary_actors(self):
+        """清除所有边界演员"""
+        for actor in self.boundary_actors:
+            self.renderer.RemoveActor(actor)
+        self.boundary_actors = []
+    
+    def toggle_boundary_display(self, show_boundary=None):
+        """切换边界显示"""
+        if show_boundary is not None:
+            self.show_boundary_var.set(show_boundary)
+        
+        if self.show_boundary_var.get():
+            self.display_boundary()
+        else:
+            self.clear_boundary_actors()
+        
+        # 更新渲染窗口
+        if self.render_window:
+            self.render_window.Render()
+    
+    def toggle_points(self, show_points=True):
+        """切换点云显示模式"""
+        if self.mesh_actor:
+            if show_points:
+                self.mesh_actor.GetProperty().SetRepresentationToPoints()
+                self.mesh_actor.GetProperty().SetPointSize(3.0)
+            else:
+                # 切换回表面模式
+                self.mesh_actor.GetProperty().SetRepresentationToSurface()
+            
+            # 更新渲染窗口
+            if self.render_window:
+                self.render_window.Render()
+    
+    def reset_view(self):
+        """重置视图到原始大小"""
+        if self.renderer:
+            self.renderer.ResetCamera()
+            if self.render_window:
+                self.render_window.Render()
+    
+    def reset_camera(self):
+        """重置相机以适应整个网格"""
+        if self.renderer:
+            self.renderer.ResetCamera()
+            if self.render_window:
+                self.render_window.Render()
+    
     def zoom_in(self):
         """放大视图"""
         if self.renderer:
             camera = self.renderer.GetActiveCamera()
             camera.Zoom(1.2)
-            self.render_window.Render()
-
+            if self.render_window:
+                self.render_window.Render()
+    
     def zoom_out(self):
         """缩小视图"""
         if self.renderer:
             camera = self.renderer.GetActiveCamera()
             camera.Zoom(0.8)
-            self.render_window.Render()
-
-    def reset_view(self):
-        """重置视图到原始大小"""
-        if self.renderer:
-            self.renderer.ResetCamera()
-            self.render_window.Render()
+            if self.render_window:
+                self.render_window.Render()
             
     def fit_view(self):
         """适应视图以显示所有内容"""
