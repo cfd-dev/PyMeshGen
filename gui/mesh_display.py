@@ -247,6 +247,10 @@ class MeshDisplayArea(BaseFrame):
         except Exception as e:
             print(f"清除显示失败: {str(e)}")
             
+    def clear(self):
+        """清除显示（别名方法，与clear_display功能相同）"""
+        self.clear_display()
+            
     def zoom_in(self):
         """放大视图"""
         if self.ax:
@@ -278,6 +282,47 @@ class MeshDisplayArea(BaseFrame):
         if self.ax:
             self.ax.autoscale()
             self.canvas.draw()
+            
+    def fit_view(self):
+        """适应视图以显示所有内容"""
+        if self.ax and self.mesh_data:
+            try:
+                # 获取网格数据的边界
+                if isinstance(self.mesh_data, dict) and 'node_coords' in self.mesh_data:
+                    node_coords = self.mesh_data['node_coords']
+                elif hasattr(self.mesh_data, 'node_coords'):
+                    node_coords = self.mesh_data.node_coords
+                else:
+                    # 如果没有节点坐标，则使用自动缩放
+                    self.ax.autoscale()
+                    self.canvas.draw()
+                    return
+                
+                if node_coords and len(node_coords) > 0:
+                    # 计算边界框
+                    x_coords = [coord[0] for coord in node_coords]
+                    y_coords = [coord[1] for coord in node_coords]
+                    
+                    # 添加10%的边距
+                    x_min, x_max = min(x_coords), max(x_coords)
+                    y_min, y_max = min(y_coords), max(y_coords)
+                    
+                    x_margin = (x_max - x_min) * 0.1
+                    y_margin = (y_max - y_min) * 0.1
+                    
+                    # 设置坐标轴范围
+                    self.ax.set_xlim(x_min - x_margin, x_max + x_margin)
+                    self.ax.set_ylim(y_min - y_margin, y_max + y_margin)
+                    
+                    # 保持纵横比
+                    self.ax.set_aspect('equal', adjustable='box')
+                    
+                    self.canvas.draw()
+            except Exception as e:
+                print(f"适应视图失败: {str(e)}")
+                # 出错时使用自动缩放
+                self.ax.autoscale()
+                self.canvas.draw()
             
     def on_mouse_wheel(self, event):
         """处理鼠标滚轮事件实现缩放功能"""
