@@ -599,9 +599,6 @@ class SimplifiedPyMeshGenGUI:
     
     def create_right_panel(self):
         """创建右侧网格视图交互区域（含交互提示）"""
-        # 网格显示区域
-        self.mesh_display = MeshDisplayArea(self.right_panel)
-        self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         # 网格信息框架
         mesh_info_frame = ttk.Frame(self.right_panel)
         mesh_info_frame.pack(fill=tk.X, padx=5, pady=2)
@@ -609,6 +606,11 @@ class SimplifiedPyMeshGenGUI:
         self.mesh_status_label.pack(side=tk.LEFT, padx=5)
         self.mesh_info_label = ttk.Label(mesh_info_frame, text="节点数: 0\n单元数: 0")
         self.mesh_info_label.pack(side=tk.RIGHT, padx=5)
+        
+        # 创建网格显示区域
+        self.mesh_display = MeshDisplayArea(self.right_panel)
+        self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        
         # 视图控制工具栏
         view_toolbar_frame = ttk.Frame(self.right_panel)
         view_toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
