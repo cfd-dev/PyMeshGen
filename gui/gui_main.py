@@ -101,32 +101,31 @@ class SimplifiedPyMeshGenGUI:
         # 创建菜单栏
         self.menu_bar = MenuBar(self.root)
         self.create_menu()
-        
+
         # 创建工具栏（位于菜单栏下方）
         self.create_toolbar()
-        
+
         # 创建主框架
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建左右两栏布局（3:7比例）
-        # 使用PanedWindow实现可调整大小的分隔
+
+        # 创建左右两栏布局（3:7比例，支持拖动）
         self.paned_window = ttk.PanedWindow(self.main_frame, orient=tk.HORIZONTAL)
         self.paned_window.pack(fill=tk.BOTH, expand=True)
-        
-        # 创建左侧部件信息区域（30%宽度）
-        self.left_panel = ttk.Frame(self.paned_window)
+
+        # 左侧部件信息区域（3/10宽度）
+        self.left_panel = ttk.Frame(self.paned_window, width=1)
         self.paned_window.add(self.left_panel, weight=3)
         self.create_left_panel()
-        
-        # 创建右侧网格视图交互区域（70%宽度）
-        self.right_panel = ttk.Frame(self.paned_window)
+
+        # 右侧网格视图交互区域（7/10宽度）
+        self.right_panel = ttk.Frame(self.paned_window, width=1)
         self.paned_window.add(self.right_panel, weight=7)
         self.create_right_panel()
-        
+
         # 创建状态栏和信息输出窗口区域（左右4:6布局）
         self.create_status_output_panel()
-        
+
         # 绑定窗口关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
@@ -551,47 +550,40 @@ class SimplifiedPyMeshGenGUI:
         self.menu_bar.create_help_menu(help_commands)
     
     def create_left_panel(self):
-        """创建左侧部件信息区域"""
-        # 创建部件列表
+        """创建左侧部件信息区域（分组更清晰，带滚动）"""
+        # 部件列表分组
         parts_frame = ttk.LabelFrame(self.left_panel, text="部件列表")
-        parts_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建部件列表
-        self.parts_listbox = tk.Listbox(parts_frame, height=10)
-        self.parts_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        parts_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(5, 2))
+        # 部件列表带滚动条
+        parts_list_frame = ttk.Frame(parts_frame)
+        parts_list_frame.pack(fill=tk.BOTH, expand=True)
+        self.parts_listbox = tk.Listbox(parts_list_frame, height=10)
+        parts_scrollbar = ttk.Scrollbar(parts_list_frame, orient=tk.VERTICAL, command=self.parts_listbox.yview)
+        self.parts_listbox.config(yscrollcommand=parts_scrollbar.set)
+        self.parts_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        parts_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.create_tooltip(self.parts_listbox, "显示当前配置中的所有部件")
-        
         # 部件操作按钮
         parts_button_frame = ttk.Frame(parts_frame)
-        parts_button_frame.pack(fill=tk.X, padx=5, pady=5)
-        
+        parts_button_frame.pack(fill=tk.X, padx=5, pady=2)
         add_part_btn = ttk.Button(parts_button_frame, text="添加", command=self.add_part)
         add_part_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(add_part_btn, "添加新的部件到配置中")
-        
         remove_part_btn = ttk.Button(parts_button_frame, text="删除", command=self.remove_part)
         remove_part_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(remove_part_btn, "删除选中的部件")
-        
         edit_part_btn = ttk.Button(parts_button_frame, text="编辑", command=self.edit_part)
         edit_part_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(edit_part_btn, "编辑选中的部件属性")
-        
-        # 创建属性面板
+        # 属性面板分组
         props_frame = ttk.LabelFrame(self.left_panel, text="属性面板")
-        props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建属性显示区域
-        self.props_text = tk.Text(props_frame, height=10, wrap=tk.WORD)
-        self.props_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.create_tooltip(self.props_text, "显示选中部件的详细属性")
-        
-        # 添加滚动条
+        props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(2, 5))
+        self.props_text = tk.Text(props_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
         props_scrollbar = ttk.Scrollbar(props_frame, orient=tk.VERTICAL, command=self.props_text.yview)
-        props_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.props_text.config(yscrollcommand=props_scrollbar.set)
-        
-        # 绑定部件列表选择事件
+        self.props_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        props_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.create_tooltip(self.props_text, "显示选中部件的详细属性")
         self.parts_listbox.bind('<<ListboxSelect>>', self.on_part_select)
     
     def create_center_panel(self):
@@ -605,74 +597,59 @@ class SimplifiedPyMeshGenGUI:
         self.mesh_display.pack(fill=tk.BOTH, expand=True)
     
     def create_right_panel(self):
-        """创建右侧网格视图交互区域"""
-        # 创建网格显示区域
+        """创建右侧网格视图交互区域（含交互提示）"""
+        # 网格显示区域
         self.mesh_display = MeshDisplayArea(self.right_panel)
         self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 创建网格信息框架
+        # 网格信息框架
         mesh_info_frame = ttk.Frame(self.right_panel)
         mesh_info_frame.pack(fill=tk.X, padx=5, pady=2)
-        
-        # 创建网格状态标签
         self.mesh_status_label = ttk.Label(mesh_info_frame, text="状态: 未生成")
         self.mesh_status_label.pack(side=tk.LEFT, padx=5)
-        
-        # 创建网格信息标签
         self.mesh_info_label = ttk.Label(mesh_info_frame, text="节点数: 0\n单元数: 0")
         self.mesh_info_label.pack(side=tk.RIGHT, padx=5)
-        
-        # 创建视图控制工具栏
+        # 视图控制工具栏
         view_toolbar_frame = ttk.Frame(self.right_panel)
         view_toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
-        
-        # 视图控制按钮
         reset_view_btn = ttk.Button(view_toolbar_frame, text="重置视图", command=self.reset_view)
         reset_view_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(reset_view_btn, "重置视图到初始状态")
-        
         fit_view_btn = ttk.Button(view_toolbar_frame, text="适应视图", command=self.fit_view)
         fit_view_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(fit_view_btn, "调整视图以适应网格大小")
-        
         zoom_in_btn = ttk.Button(view_toolbar_frame, text="放大", command=self.zoom_in)
         zoom_in_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(zoom_in_btn, "放大网格显示")
-        
+        self.create_tooltip(zoom_in_btn, "放大网格显示 (鼠标滚轮也可缩放)")
         zoom_out_btn = ttk.Button(view_toolbar_frame, text="缩小", command=self.zoom_out)
         zoom_out_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(zoom_out_btn, "缩小网格显示")
+        self.create_tooltip(zoom_out_btn, "缩小网格显示 (鼠标滚轮也可缩放)")
+        pan_btn = ttk.Button(view_toolbar_frame, text="平移", command=self.pan_view)
+        pan_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(pan_btn, "按住鼠标右键拖动可平移视图")
+        select_btn = ttk.Button(view_toolbar_frame, text="选择", command=lambda: self.update_status("选择模式：左键框选/点选节点"))
+        select_btn.pack(side=tk.LEFT, padx=2)
+        self.create_tooltip(select_btn, "左键框选/点选节点进行选择")
     
     def create_status_output_panel(self):
-        """创建状态栏和信息输出面板（左右4:6布局）"""
-        # 创建底部面板框架
-        # 根据屏幕高度设置底部面板高度
+        """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
         screen_height = self.root.winfo_screenheight()
         if screen_height >= 1080:
-            # 高分辨率屏幕
             panel_height = 180
         elif screen_height >= 768:
-            # 中等分辨率屏幕
             panel_height = 150
         else:
-            # 低分辨率屏幕
             panel_height = 120
-            
         self.bottom_panel = ttk.Frame(self.root, height=panel_height)
         self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
-        self.bottom_panel.pack_propagate(False)  # 防止框架被内容压缩
-        
-        # 使用PanedWindow实现可调整大小的分隔
+        self.bottom_panel.pack_propagate(False)
         self.status_output_paned = ttk.PanedWindow(self.bottom_panel, orient=tk.HORIZONTAL)
         self.status_output_paned.pack(fill=tk.BOTH, expand=True)
-        
-        # 创建左侧状态显示区域（40%宽度）
-        self.status_panel = ttk.Frame(self.status_output_paned)
+        # 左侧状态显示区域（4/10宽度）
+        self.status_panel = ttk.Frame(self.status_output_paned, width=1)
         self.status_output_paned.add(self.status_panel, weight=4)
         self.create_status_panel()
-        
-        # 创建右侧信息输出区域（60%宽度）
-        self.output_panel = ttk.Frame(self.status_output_paned)
+        # 右侧信息输出区域（6/10宽度）
+        self.output_panel = ttk.Frame(self.status_output_paned, width=1)
         self.status_output_paned.add(self.output_panel, weight=6)
         self.create_output_panel()
     
@@ -697,12 +674,12 @@ class SimplifiedPyMeshGenGUI:
         self.status_bar = StatusBar(status_frame)
     
     def create_output_panel(self):
-        """创建信息输出面板"""
-        # 创建信息输出区域
+        """创建信息输出面板（带清空按钮）"""
         self.info_output = InfoOutput(self.output_panel)
-        
-        # 确保InfoOutput的框架被正确布局
         self.info_output.frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        # 增加清空按钮
+        clear_btn = ttk.Button(self.output_panel, text="清空输出", command=self.info_output.clear)
+        clear_btn.pack(side=tk.BOTTOM, anchor=tk.E, padx=8, pady=2)
     
     def update_status(self, message):
         """更新状态栏和状态文本框"""

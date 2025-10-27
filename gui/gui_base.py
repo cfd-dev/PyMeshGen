@@ -219,6 +219,10 @@ class InfoOutput:
             # 在测试环境或没有GUI的情况下忽略错误
             pass
 
+    def clear(self):
+        """清空信息输出窗口（与clear_info_output一致，供主界面按钮调用）"""
+        self.clear_info_output()
+
 
 class FontManager:
     """字体管理器"""
