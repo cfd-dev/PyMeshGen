@@ -50,13 +50,29 @@ class MenuBar:
                 
         return file_menu
     
+    def create_view_menu(self, commands):
+        """创建视图菜单"""
+        view_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="视图", menu=view_menu)
+        
+        for label, command in commands.items():
+            if label == "---":
+                view_menu.add_separator()
+            else:
+                view_menu.add_command(label=label, command=command)
+                
+        return view_menu
+    
     def create_config_menu(self, commands):
         """创建配置菜单"""
         config_menu = tk.Menu(self.menubar, tearoff=0)
         self.menubar.add_cascade(label="配置", menu=config_menu)
         
         for label, command in commands.items():
-            config_menu.add_command(label=label, command=command)
+            if label == "---":
+                config_menu.add_separator()
+            else:
+                config_menu.add_command(label=label, command=command)
             
         return config_menu
     
@@ -79,7 +95,10 @@ class MenuBar:
         self.menubar.add_cascade(label="帮助", menu=help_menu)
         
         for label, command in commands.items():
-            help_menu.add_command(label=label, command=command)
+            if label == "---":
+                help_menu.add_separator()
+            else:
+                help_menu.add_command(label=label, command=command)
             
         return help_menu
 
