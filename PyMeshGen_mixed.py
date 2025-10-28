@@ -38,6 +38,7 @@ from mesh_visualization import Visualization
 from parameters import Parameters
 from utils.timer import TimeSpan
 from utils.message import info
+from meshsize import QuadtreeSizing
 
 # 全局GUI引用
 _global_gui_instance = None
