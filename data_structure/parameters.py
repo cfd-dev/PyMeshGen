@@ -3,14 +3,14 @@ from pathlib import Path
 import sys
 import os
 
-# 添加必要的路径
+# 添加必要的路径 (保持兼容性)
 current_dir = os.path.dirname(__file__)
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 sys.path.append(os.path.join(parent_dir, 'utils'))
 
 # 使用绝对导入
-from data_structure.basic_elements import Connector, Part
+from basic_elements import Connector, Part
 
 # 导入message模块
 from message import set_debug_level

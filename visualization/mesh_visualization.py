@@ -1,16 +1,21 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
+import sys
+import os
+
+# 添加必要的路径 (保持兼容性)
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go up two levels to project root
+data_structure_dir = os.path.join(parent_dir, 'data_structure')
+sys.path.append(data_structure_dir)
+
 try:
-    # 尝试相对导入（在包中运行时）
+    # Try direct import (when run as part of package)
     from basic_elements import Unstructured_Grid
 except ImportError:
-    # 尝试绝对导入（在测试环境中）
-    try:
-        from data_structure.basic_elements import Unstructured_Grid
-    except ImportError:
-        # 如果都失败了，设置为None以避免崩溃
-        Unstructured_Grid = None
+    # Fallback for standalone use
+    from data_structure.basic_elements import Unstructured_Grid
 
 
 class Visualization:

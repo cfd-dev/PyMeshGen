@@ -11,6 +11,18 @@ sys.path.append(str(Path(__file__).parent / "utils"))
 
 from read_cas import parse_fluent_msh
 from front2d import construct_initial_front
+
+# Add the project directories to Python path to allow imports
+sys.path.append(str(Path(__file__).parent / "fileIO"))
+from adlayers2 import Adlayers2
+from mesh_visualization import Visualization
+from parameters import Parameters
+sys.path.append(str(Path(__file__).parent / "adfront2"))
+sys.path.append(str(Path(__file__).parent / "optimize"))
+sys.path.append(str(Path(__file__).parent / "utils"))
+
+from read_cas import parse_fluent_msh
+from front2d import construct_initial_front
 from meshsize import QuadtreeSizing
 from adfront2 import Adfront2
 from optimize import edge_swap, laplacian_smooth

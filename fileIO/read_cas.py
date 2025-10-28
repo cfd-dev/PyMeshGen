@@ -1,5 +1,6 @@
 import re
-from utils.timer import TimeSpan
+
+from timer import TimeSpan
 
 # Fluent网格类型定义
 FACE_TYPES = {"MIXED": 0, "LINEAR": 2, "TRI": 3, "QUAD": 4}

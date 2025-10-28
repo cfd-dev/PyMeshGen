@@ -213,10 +213,15 @@ def is_convex(a, b, c, d, node_coords):
         cross_products.append(cross)
 
     # 检查所有叉积符号是否一致（全为正或全为负）
-    positive = all(cp > 0 for cp in cross_products)
-    negative = all(cp < 0 for cp in cross_products)
-
-    return positive or negative
+    if not cross_products:
+        return False
+    
+    # 获取第一个叉积的符号作为基准
+    first_sign = cross_products[0]
+    
+    # 使用更高效的方法检查所有叉积是否与第一个叉积符号相同
+    # 通过比较相邻元素的乘积是否为正来检查符号一致性
+    return all(cp * first_sign > 0 for cp in cross_products)
 
 
 def fast_distance_check(p0, p1, q0, q1, safe_distance_sq):

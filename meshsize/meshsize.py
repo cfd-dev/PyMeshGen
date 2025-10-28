@@ -1,7 +1,8 @@
 from math import log
 import math
 import matplotlib.pyplot as plt
-from utils.timer import TimeSpan
+
+from timer import TimeSpan
 from message import info, debug, verbose
 
 

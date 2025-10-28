@@ -2,8 +2,9 @@ import os
 import numpy as np
 import heapq
 from itertools import combinations
+
 import geom_toolkit as geom_tool
-from utils.timer import TimeSpan
+from timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from basic_elements import Triangle, Quadrilateral
 from mesh_quality import quadrilateral_quality2

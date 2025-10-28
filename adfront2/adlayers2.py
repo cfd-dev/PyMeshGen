@@ -1,6 +1,17 @@
 import numpy as np
 from math import pi, sqrt
 import heapq
+import sys
+import os
+
+# 添加必要的路径
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
+utils_dir = os.path.join(parent_dir, 'utils')
+data_structure_dir = os.path.join(parent_dir, 'data_structure')
+
+sys.path.append(utils_dir)
+sys.path.append(data_structure_dir)
 
 from geom_toolkit import (
     min_distance_between_segments,
@@ -17,7 +28,7 @@ from basic_elements import (
 )
 from front2d import Front
 from message import info, debug, verbose, warning
-from utils.timer import TimeSpan
+from timer import TimeSpan
 from rtree_space import (
     build_space_index_with_RTree,
     add_elems_to_space_index_with_RTree,

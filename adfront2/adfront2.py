@@ -1,5 +1,6 @@
 import heapq
 import matplotlib.pyplot as plt
+
 from geom_toolkit import (
     is_left2d,
     calculate_distance2,
@@ -13,7 +14,7 @@ from basic_elements import (
     Unstructured_Grid,
     LineSegment,
 )
-from utils.timer import TimeSpan
+from timer import TimeSpan
 from message import info, debug, verbose, warning, error
 from rtree_space import (
     build_space_index_with_RTree,

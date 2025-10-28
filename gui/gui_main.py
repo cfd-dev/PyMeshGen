@@ -22,6 +22,19 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+# 添加必要的子目录到路径 (for compatibility with main script approach)
+data_structure_dir = os.path.join(project_root, 'data_structure')
+fileio_dir = os.path.join(project_root, 'fileIO')
+meshsize_dir = os.path.join(project_root, 'meshsize')
+visualization_dir = os.path.join(project_root, 'visualization')
+adfront2_dir = os.path.join(project_root, 'adfront2')
+optimize_dir = os.path.join(project_root, 'optimize')
+utils_dir = os.path.join(project_root, 'utils')
+
+for dir_path in [data_structure_dir, fileio_dir, meshsize_dir, visualization_dir, adfront2_dir, optimize_dir, utils_dir]:
+    if dir_path not in sys.path:
+        sys.path.insert(0, dir_path)
+
 # 导入自定义模块
 from gui.gui_base import BaseFrame, MenuBar, StatusBar, InfoOutput, DialogBase
 from gui.mesh_display import MeshDisplayArea
@@ -30,9 +43,9 @@ from gui.file_operations import FileOperations, ImportDialog, ExportDialog
 
 # 导入项目模块
 try:
-    from data_structure.parameters import Parameters
+    from parameters import Parameters
     from PyMeshGen import PyMeshGen as MeshGenerator
-    from data_structure.basic_elements import NodeElement as Node
+    from basic_elements import NodeElement as Node
 except ImportError as e:
     print(f"导入项目模块失败: {e}")
     sys.exit(1)

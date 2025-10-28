@@ -1,6 +1,7 @@
 import numpy as np
 from enum import IntEnum
-from utils.message import info
+
+from message import info
 
 
 class VTK_ELEMENT_TYPE(IntEnum):
