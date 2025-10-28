@@ -219,9 +219,10 @@ def is_convex(a, b, c, d, node_coords):
     # 获取第一个叉积的符号作为基准
     first_sign = cross_products[0]
     
-    # 使用更高效的方法检查所有叉积是否与第一个叉积符号相同
-    # 通过比较相邻元素的乘积是否为正来检查符号一致性
-    return all(cp * first_sign > 0 for cp in cross_products)
+    # 检查所有叉积是否与第一个叉积符号相同
+    # 使用numpy的all方法处理数组比较
+    cross_products_array = np.array(cross_products)
+    return np.all(cross_products_array * first_sign > 0)
 
 
 def fast_distance_check(p0, p1, q0, q1, safe_distance_sq):

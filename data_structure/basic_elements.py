@@ -569,19 +569,38 @@ class Unstructured_Grid:
             if cell is None:
                 continue
             cell_idx_container.append(cell.node_ids)
-            if isinstance(cell, Quadrilateral):
+        
+            # 初始化vtk_cell_type为None，避免未定义错误
+            vtk_cell_type = None
+            # if isinstance(cell, Quadrilateral):
+            #     vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
+            # elif isinstance(cell, Triangle):
+            #     vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
+            # 使用类名字符串进行类型判断，避免导入问题
+            cell_class_name = cell.__class__.__name__
+        
+            if cell_class_name == 'Quadrilateral':
                 vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
-            elif isinstance(cell, Triangle):
+            elif cell_class_name == 'Triangle':
                 vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
+            else:
+                # 如果遇到未知类型的单元，可以选择跳过或抛出错误
+                warning(f"未知单元类型: {type(cell)}, 跳过保存")
+                continue            
+            
             cell_type_container.append(vtk_cell_type)
-
-        write_vtk(
+    
+        # 只有在有有效单元时才写入文件
+        if cell_idx_container and cell_type_container:
+            write_vtk(
             file_path,
             self.node_coords,
             cell_idx_container,
             self.boundary_nodes_list,
             cell_type_container,
-        )
+            )
+        else:
+            warning("没有有效的单元可以保存到VTK文件")
 
     def init_node2node(self):
         """初始化节点关联的节点列表"""

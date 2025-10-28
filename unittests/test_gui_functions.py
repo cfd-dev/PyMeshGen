@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root / 'utils'))
 sys.path.insert(0, str(project_root / 'gui'))
 
 try:
-    from gui.gui_new import SimplifiedPyMeshGenGUI
+    from gui.gui_main import SimplifiedPyMeshGenGUI
     # 使用与gui_new.py相同的导入方式
     try:
         # 尝试相对导入（在包中运行时）
