@@ -19,12 +19,13 @@ from .gui_base import BaseFrame, LabelFrameWrapper
 class MeshDisplayArea(BaseFrame):
     """网格显示区域类，使用VTK进行渲染"""
     
-    def __init__(self, parent, figsize=(16, 9), dpi=100):
+    def __init__(self, parent, figsize=(16, 9), dpi=100, offscreen=False):
         super().__init__(parent)
         self.figsize = figsize
         self.dpi = dpi
         self.mesh_data = None
         self.params = None
+        self.offscreen = offscreen  # 离屏渲染模式标志
         
         # VTK相关组件
         self.renderer = None
@@ -42,9 +43,10 @@ class MeshDisplayArea(BaseFrame):
         
     def create_mesh_display_area(self):
         """创建VTK网格显示区域"""
-        # 创建主框架
-        main_frame = ttk.Frame(self.frame)
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # 创建主框架（仅在非离屏模式下创建）
+        if not self.offscreen:
+            main_frame = ttk.Frame(self.frame)
+            main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 创建VTK渲染器
         self.renderer = vtk.vtkRenderer()
@@ -55,16 +57,21 @@ class MeshDisplayArea(BaseFrame):
         self.render_window.AddRenderer(self.renderer)
         self.render_window.SetSize(800, 600)
         
-        # 创建一个Tkinter框架来容纳VTK窗口
-        self.vtk_frame = ttk.Frame(main_frame)
-        self.vtk_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 初始化交互器
-        self.interactor = None
-        self.embedded = False
-        
-        # 延迟嵌入VTK窗口，确保框架已经完全创建
-        self.vtk_frame.after(100, self.embed_vtk_window)
+        # 离屏渲染模式下启用离屏渲染
+        if self.offscreen:
+            self.render_window.SetOffScreenRendering(1)
+            self.embedded = True  # 离屏模式下不需要嵌入
+        else:
+            # 创建一个Tkinter框架来容纳VTK窗口
+            self.vtk_frame = ttk.Frame(main_frame)
+            self.vtk_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # 初始化交互器
+            self.interactor = None
+            self.embedded = False
+            
+            # 延迟嵌入VTK窗口，确保框架已经完全创建
+            self.vtk_frame.after(100, self.embed_vtk_window)
         
         # 重置相机
         self.renderer.ResetCamera()
@@ -75,6 +82,10 @@ class MeshDisplayArea(BaseFrame):
     
     def embed_vtk_window(self):
         """将VTK窗口嵌入到Tkinter框架中"""
+        # 离屏渲染模式下不需要嵌入
+        if self.offscreen:
+            return True
+            
         try:
             # 创建VTK交互器
             self.interactor = vtk.vtkRenderWindowInteractor()
@@ -323,16 +334,16 @@ class MeshDisplayArea(BaseFrame):
                 return False
                 
         try:
-            # 确保VTK窗口已嵌入
-            if not self.embedded or not self.interactor:
+            # 确保VTK窗口已嵌入（离屏模式下不需要交互器）
+            if not self.offscreen and (not self.embedded or not self.interactor):
                 print("VTK窗口未正确嵌入，尝试重新嵌入...")
                 self.embed_vtk_window()
                 # 等待嵌入完成
                 import time
                 time.sleep(0.5)
                 
-            # 如果仍然未嵌入，则返回失败
-            if not self.embedded or not self.interactor:
+            # 如果仍然未嵌入，则返回失败（离屏模式下不需要交互器）
+            if not self.offscreen and (not self.embedded or not self.interactor):
                 print("VTK窗口嵌入失败，无法显示网格")
                 return False
                 
@@ -393,8 +404,8 @@ class MeshDisplayArea(BaseFrame):
                     import platform
                     system = platform.system()
                     
-                    # 如果交互器没有启动，则启动它
-                    if not self.interactor.GetInitialized():
+                    # 如果交互器没有启动，则启动它（离屏模式下跳过）
+                    if not self.offscreen and not self.interactor.GetInitialized():
                         self.interactor.Initialize()
                     
                     # 对于macOS，可能需要特殊的渲染处理

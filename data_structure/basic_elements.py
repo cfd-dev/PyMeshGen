@@ -2,8 +2,8 @@ import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
 
-from vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
-from geom_toolkit import (
+from fileIO.vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
+from utils.geom_toolkit import (
     calculate_distance,
     segments_intersect,
     triangle_area,
@@ -13,14 +13,14 @@ from geom_toolkit import (
     quad_intersects_triangle,
     quad_intersects_quad,
 )
-from mesh_quality import (
+from optimize.mesh_quality import (
     triangle_shape_quality,
     triangle_skewness,
     quadrilateral_shape_quality,
     quadrilateral_skewness,
     quadrilateral_aspect_ratio,
 )
-from message import info, debug, warning, verbose
+from utils.message import info, debug, warning, verbose
 
 
 class NodeElement:
