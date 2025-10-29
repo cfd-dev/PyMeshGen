@@ -386,7 +386,7 @@ class Adfront2:
             heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
             # self.debug_level = 1
 
-        if self.base_front.al > 20:
+        if self.base_front.al > 200:
             # 异常退出
             raise Exception("基准阵面搜索半径超过20，可能存在问题")
         
