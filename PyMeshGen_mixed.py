@@ -140,13 +140,11 @@ def PyMeshGen_mixed(parameters=None):
         _global_gui_instance.append_info_output("网格生成完成")
 
     # 网格质量优化
+    triangular_grid = edge_swap(triangular_grid)
     if parameters.mesh_type <= 2:
-        # 仅对纯三角形网格进行边交换优化
-        triangular_grid = edge_swap(triangular_grid)
         triangular_grid = laplacian_smooth(triangular_grid, 3)
         unstr_grid_list.append(triangular_grid)
     elif parameters.mesh_type == 3:
-        # 混合网格不需要边交换优化，直接进行混合网格优化
         hybrid_grid = merge_elements(triangular_grid)
         # hybrid_grid = hybrid_smooth(hybrid_grid, 3)
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)
