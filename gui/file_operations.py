@@ -272,7 +272,16 @@ class FileOperations:
                 # 对于cas文件，使用专门的解析器
                 import sys
                 sys.path.append(os.path.join(self.project_root, 'fileIO'))
-                from read_cas import parse_cas_to_unstr_grid
+                
+                # 尝试从多个可能的位置导入CAS解析器
+                try:
+                    from read_cas import parse_cas_to_unstr_grid
+                except ImportError:
+                    try:
+                        from fileIO.read_cas import parse_cas_to_unstr_grid
+                    except ImportError:
+                        # 如果无法找到解析器，返回错误
+                        raise ValueError("无法找到CAS文件解析器，请确保fileIO目录中包含read_cas模块")
                 
                 # 解析cas文件并转换为Unstructured_Grid对象
                 unstr_grid = parse_cas_to_unstr_grid(file_path)
@@ -288,7 +297,8 @@ class FileOperations:
                         if hasattr(cell, 'nodes'):
                             point_ids = []
                             for node in cell.nodes:
-                                point_ids.append(node.idx)
+                                if hasattr(node, 'idx'):
+                                    point_ids.append(node.idx)
                             cells.append(point_ids)
                     
                     # 创建统一的数据结构
@@ -766,10 +776,21 @@ class ExportDialog(DialogBase):
             return
             
         try:
+            # 检查文件扩展名是否匹配选择的格式
+            expected_ext = self.format_var.get()
+            if not file_path.lower().endswith(expected_ext):
+                file_path += expected_ext
+                
             # 检查是否是Unstructured_Grid对象（cas文件导入的结果）
             if hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
                 # 对于Unstructured_Grid对象，使用save_to_vtkfile方法
-                self.mesh_data.save_to_vtkfile(file_path)
+                # 检查是否有save_to_vtkfile方法
+                if hasattr(self.mesh_data, 'save_to_vtkfile'):
+                    self.mesh_data.save_to_vtkfile(file_path)
+                else:
+                    # 如果没有save_to_vtkfile方法，尝试其他方法
+                    messagebox.showwarning("警告", "当前网格格式不支持直接保存，请使用VTK格式")
+                    return
             else:
                 # 对于VTK PolyData对象，使用file_operations的export_mesh方法
                 self.file_operations.export_mesh(self.mesh_data, file_path)

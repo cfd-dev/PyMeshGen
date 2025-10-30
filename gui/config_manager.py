@@ -240,6 +240,33 @@ class ConfigDialog(DialogBase):
             self.parts_tree.insert("", "end", values=(part_name, max_size, first_height, growth_rate, max_layers), 
                                   tags=(i,))  # 使用tags存储部件索引
     
+    def browse_output_file(self):
+        """浏览输出文件"""
+        file_path = filedialog.asksaveasfilename(
+            title="保存网格文件",
+            defaultextension=".vtk",
+            filetypes=[("VTK文件", "*.vtk"), ("所有文件", "*.*")]
+        )
+        if file_path:
+            self.output_file_var.set(file_path)
+    
+    def ok(self):
+        """确定按钮回调"""
+        try:
+            self.result = {
+                "debug_level": int(self.debug_level_var.get()),
+                "input_file": self.input_file_var.get(),
+                "output_file": self.output_file_var.get(),
+                "viz_enabled": self.viz_enabled_var.get(),
+                "mesh_type": int(self.mesh_type_var.get()),
+                "parts": self.config.get("parts", [])  # 使用修改后的部件配置
+            }
+            self.top.destroy()
+        except ValueError:
+            messagebox.showerror("错误", "请确保所有数值字段都输入了有效的数字")
+        except Exception as e:
+            messagebox.showerror("错误", f"配置数据格式错误: {str(e)}")
+    
     def on_part_double_click(self, event):
         """处理部件配置的双击事件以编辑参数"""
         # 获取选中的项
@@ -443,5 +470,7 @@ class ConfigDialog(DialogBase):
                 "parts": self.config.get("parts", [])  # 使用修改后的部件配置
             }
             self.top.destroy()
+        except ValueError:
+            messagebox.showerror("错误", "请确保所有数值字段都输入了有效的数字")
         except Exception as e:
             messagebox.showerror("错误", f"配置数据格式错误: {str(e)}")

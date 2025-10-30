@@ -33,13 +33,63 @@ class MeshDisplayArea(BaseFrame):
         self.interactor = None
         self.mesh_actor = None
         self.boundary_actors = []
+        self.axes_actor = None  # 添加坐标轴演员引用
         
         # 显示控制变量
         self.show_boundary_var = tk.BooleanVar(value=True)
         self.wireframe_var = tk.BooleanVar(value=False)
         
+        # 渲染状态标志
+        self._render_in_progress = False
+        self.embedded = False
+        
         # 创建网格显示区域
         self.create_mesh_display_area()
+    
+    def __del__(self):
+        """清理资源"""
+        self.cleanup()
+    
+    def cleanup(self):
+        """清理VTK资源以避免内存泄漏"""
+        # 清除边界演员
+        if self.renderer and self.boundary_actors:
+            for actor in self.boundary_actors:
+                try:
+                    self.renderer.RemoveActor(actor)
+                except:
+                    pass
+            self.boundary_actors.clear()
+        
+        # 清除网格演员
+        if self.renderer and self.mesh_actor:
+            try:
+                self.renderer.RemoveActor(self.mesh_actor)
+            except:
+                pass
+            self.mesh_actor = None
+        
+        # 清除坐标轴演员
+        if self.renderer and self.axes_actor:
+            try:
+                self.renderer.RemoveActor(self.axes_actor)
+            except:
+                pass
+            self.axes_actor = None
+        
+        # 清除渲染器中的所有演员
+        if self.renderer:
+            try:
+                self.renderer.RemoveAllViewProps()
+            except:
+                pass
+        
+        # 停止交互器
+        if self.interactor:
+            try:
+                self.interactor.TerminateApp()
+            except:
+                pass
         
     def create_mesh_display_area(self):
         """创建VTK网格显示区域"""
@@ -773,17 +823,26 @@ class MeshDisplayArea(BaseFrame):
         """清除所有网格相关的演员"""
         # 清除主网格演员
         if self.mesh_actor:
-            self.renderer.RemoveActor(self.mesh_actor)
+            try:
+                self.renderer.RemoveActor(self.mesh_actor)
+            except:
+                pass  # 忽略移除演员时的错误
             self.mesh_actor = None
             
         # 清除坐标轴演员
         if hasattr(self, 'axes_actor') and self.axes_actor:
-            self.renderer.RemoveActor(self.axes_actor)
+            try:
+                self.renderer.RemoveActor(self.axes_actor)
+            except:
+                pass  # 忽略移除演员时的错误
             self.axes_actor = None
             
         # 清除边界演员
         for actor in self.boundary_actors:
-            self.renderer.RemoveActor(actor)
+            try:
+                self.renderer.RemoveActor(actor)
+            except:
+                pass  # 忽略移除演员时的错误
         self.boundary_actors.clear()
         
     def clear_display(self):
@@ -854,7 +913,12 @@ class MeshDisplayArea(BaseFrame):
     def reset_view(self):
         """重置视图到原始大小"""
         if self.renderer:
-            self.renderer.ResetCamera()
+            try:
+                self.renderer.ResetCamera()
+            except Exception as e:
+                print(f"重置视图失败: {str(e)}")
+                return
+            
             if self.render_window:
                 # 防止递归调用，使用标志检查
                 if not hasattr(self, '_render_in_progress'):
@@ -865,7 +929,12 @@ class MeshDisplayArea(BaseFrame):
     def reset_camera(self):
         """重置相机以适应整个网格"""
         if self.renderer:
-            self.renderer.ResetCamera()
+            try:
+                self.renderer.ResetCamera()
+            except Exception as e:
+                print(f"重置相机失败: {str(e)}")
+                return
+                
             if self.render_window:
                 # 防止递归调用，使用标志检查
                 if not hasattr(self, '_render_in_progress'):
@@ -876,8 +945,13 @@ class MeshDisplayArea(BaseFrame):
     def zoom_in(self):
         """放大视图"""
         if self.renderer:
-            camera = self.renderer.GetActiveCamera()
-            camera.Zoom(1.2)
+            try:
+                camera = self.renderer.GetActiveCamera()
+                camera.Zoom(1.2)
+            except Exception as e:
+                print(f"放大视图失败: {str(e)}")
+                return
+                
             if self.render_window:
                 # 防止递归调用，使用标志检查
                 if not hasattr(self, '_render_in_progress'):
@@ -888,8 +962,13 @@ class MeshDisplayArea(BaseFrame):
     def zoom_out(self):
         """缩小视图"""
         if self.renderer:
-            camera = self.renderer.GetActiveCamera()
-            camera.Zoom(0.8)
+            try:
+                camera = self.renderer.GetActiveCamera()
+                camera.Zoom(0.8)
+            except Exception as e:
+                print(f"缩小视图失败: {str(e)}")
+                return
+                
             if self.render_window:
                 # 防止递归调用，使用标志检查
                 if not hasattr(self, '_render_in_progress'):
@@ -900,26 +979,17 @@ class MeshDisplayArea(BaseFrame):
     def fit_view(self):
         """适应视图以显示所有内容"""
         if self.renderer:
-            self.renderer.ResetCamera()
+            try:
+                self.renderer.ResetCamera()
+            except Exception as e:
+                print(f"适应视图失败: {str(e)}")
+                return
+                
             # 防止递归调用，使用标志检查
             if self.render_window and not hasattr(self, '_render_in_progress'):
                 self._render_in_progress = True
                 self.render_window.Render()
                 self._render_in_progress = False
-            
-    def toggle_boundary_display(self):
-        """切换边界显示"""
-        try:
-            if self.show_boundary_var.get():
-                self.display_boundary()
-            else:
-                self.clear_boundary_actors()
-            
-            # 更新渲染
-            if self.render_window and self.renderer:
-                self.render_window.Render()
-        except Exception as e:
-            print(f"切换边界显示失败: {str(e)}")
             
     def toggle_wireframe(self, wireframe=None):
         """切换线框/实体模式"""
@@ -942,7 +1012,7 @@ class MeshDisplayArea(BaseFrame):
                     self._render_in_progress = True
                     self.render_window.Render()
                     self._render_in_progress = False
-            
+    
     def pan_view(self):
         """平移视图"""
         # VTK的交互器默认支持鼠标左键旋转，右键平移，滚轮缩放

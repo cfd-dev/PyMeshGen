@@ -10,7 +10,7 @@ import os
 import sys
 import time
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, font
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from mpl_toolkits.mplot3d import Axes3D
@@ -56,9 +56,18 @@ class SimplifiedPyMeshGenGUI:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("PyMeshGen - 简化网格生成工具")
-        
-        # 获取屏幕尺寸并设置合适的窗口大小
+        self.root.title("PyMeshGen - 高性能网格生成工具")
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.setup_window_size()
+        self.setup_fonts()
+        self.setup_styles()
+        self.initialize_modules()
+        self.initialize_data()
+        self.create_widgets()
+        self.update_status("就绪")
+    
+    def setup_window_size(self):
+        """设置窗口大小和位置"""
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         
@@ -91,24 +100,41 @@ class SimplifiedPyMeshGenGUI:
         
         # 设置最小窗口大小
         self.root.minsize(min_width, min_height)
+    
+    def setup_fonts(self):
+        """设置字体"""
+        # 设置默认字体大小
+        default_font = font.nametofont("TkDefaultFont")
+        default_font.configure(size=10)
+        text_font = font.nametofont("TkTextFont")
+        text_font.configure(size=10)
+        fixed_font = font.nametofont("TkFixedFont")
+        fixed_font.configure(size=10)
+    
+    def setup_styles(self):
+        """设置样式"""
+        style = ttk.Style()
+        style.theme_use('clam')  # 使用现代化主题
         
-        # 初始化项目根目录
-        self.project_root = project_root
-        
-        # 初始化各个模块
+        # 配置自定义样式
+        style.configure("Bold.TLabel", font=("Microsoft YaHei UI", 10, "bold"))
+        style.configure("Title.TLabel", font=("Microsoft YaHei UI", 12, "bold"))
+        style.configure("Status.TLabel", font=("Microsoft YaHei UI", 9))
+    
+    def initialize_modules(self):
+        """初始化模块"""
+        self.project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.config_manager = ConfigManager(self.project_root)
         self.file_operations = FileOperations(self.project_root)
-        
-        # 初始化数据
+    
+    def initialize_data(self):
+        """初始化数据"""
         self.params = None
         self.mesh_generator = None
         self.current_mesh = None
-        
-        # 创建UI
-        self.create_widgets()
-        
-        # 初始化状态
-        self.update_status("就绪")
+        self.cas_parts_info = None  # 初始化cas_parts_info属性
+        self.render_mode_var = tk.StringVar(value="surface")
+        self.show_boundary_var = tk.BooleanVar(value=True)
     
     def create_widgets(self):
         """创建UI组件"""
@@ -139,9 +165,6 @@ class SimplifiedPyMeshGenGUI:
 
         # 创建状态栏和信息输出窗口区域（左右4:6布局）
         self.create_status_output_panel()
-
-        # 绑定窗口关闭事件
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
     
     def create_toolbar(self):
         """创建工具栏"""
@@ -582,10 +605,10 @@ class SimplifiedPyMeshGenGUI:
         edit_part_btn.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(edit_part_btn, "编辑选中的部件属性")
         # 属性面板分组
-        props_frame = ttk.LabelFrame(self.left_panel, text="属性面板")
-        props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(2, 5))
-        self.props_text = tk.Text(props_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
-        props_scrollbar = ttk.Scrollbar(props_frame, orient=tk.VERTICAL, command=self.props_text.yview)
+        self.props_frame = ttk.LabelFrame(self.left_panel, text="属性面板")
+        self.props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=(2, 5))
+        self.props_text = tk.Text(self.props_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
+        props_scrollbar = ttk.Scrollbar(self.props_frame, orient=tk.VERTICAL, command=self.props_text.yview)
         self.props_text.config(yscrollcommand=props_scrollbar.set)
         self.props_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         props_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -847,6 +870,26 @@ class SimplifiedPyMeshGenGUI:
                 self.update_status(f"边界显示: {'开启' if show_boundary else '关闭'}")
             else:
                 self.update_status("边界显示功能不可用")
+    
+    def toggle_parts_list(self):
+        """切换部件列表显示"""
+        if hasattr(self, 'left_panel'):
+            if self.left_panel.winfo_viewable():
+                self.left_panel.pack_forget()
+                self.update_status("部件列表已隐藏")
+            else:
+                self.paned_window.add(self.left_panel, weight=3)
+                self.update_status("部件列表已显示")
+                
+    def toggle_properties_panel(self):
+        """切换属性面板显示"""
+        if hasattr(self, 'props_frame'):
+            if self.props_frame.winfo_viewable():
+                self.props_frame.pack_forget()
+                self.update_status("属性面板已隐藏")
+            else:
+                self.props_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+                self.update_status("属性面板已显示")
     
     def edit_params(self):
         """编辑参数"""
@@ -1197,6 +1240,16 @@ class SimplifiedPyMeshGenGUI:
                 self.toolbar_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
                 self.update_status("工具栏已显示")
     
+    def toggle_statusbar(self):
+        """切换状态栏显示"""
+        if hasattr(self, 'bottom_panel'):
+            if self.bottom_panel.winfo_viewable():
+                self.bottom_panel.pack_forget()
+                self.log_info("状态栏和信息输出已隐藏")
+            else:
+                self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+                self.log_info("状态栏和信息输出已显示")
+    
     def on_part_select(self, event):
         """处理部件列表选择事件"""
         # 获取选中的部件索引
@@ -1354,6 +1407,42 @@ class SimplifiedPyMeshGenGUI:
         else:
             self.root.attributes('-fullscreen', True)
             self.update_status("进入全屏模式")
+    
+    def zoom_in(self):
+        """放大视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.zoom_in()
+            self.update_status("视图已放大")
+    
+    def zoom_out(self):
+        """缩小视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.zoom_out()
+            self.update_status("视图已缩小")
+    
+    def reset_view(self):
+        """重置视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.reset_view()
+            self.update_status("视图已重置")
+    
+    def fit_view(self):
+        """适应视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.fit_view()
+            self.update_status("视图已适应")
+    
+    def pan_view(self):
+        """平移视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.pan_view()
+            self.update_status("视图平移模式")
+    
+    def rotate_view(self):
+        """旋转视图"""
+        if hasattr(self, 'main_mesh_display'):
+            self.main_mesh_display.rotate_view()
+            self.update_status("视图旋转模式")
             
     def edit_mesh_params(self):
         """编辑网格参数"""
@@ -1422,6 +1511,12 @@ Esc: 退出全屏
     def on_closing(self):
         """窗口关闭事件"""
         if messagebox.askokcancel("退出", "确定要退出吗?"):
+            # 清理VTK资源
+            if hasattr(self, 'mesh_display') and self.mesh_display:
+                try:
+                    self.mesh_display.cleanup()
+                except:
+                    pass
             self.root.destroy()
 
 
