@@ -45,6 +45,12 @@ class MeshDisplayArea(BaseFrame):
         
         # 创建网格显示区域
         self.create_mesh_display_area()
+        
+        # 设置网格显示区域可以接收键盘焦点
+        if hasattr(self.frame, 'focus_set'):
+            self.frame.focus_set()
+        if hasattr(self.frame, 'config'):
+            self.frame.config(takefocus=True)
     
     def __del__(self):
         """清理资源"""
@@ -97,6 +103,10 @@ class MeshDisplayArea(BaseFrame):
         if not self.offscreen:
             main_frame = ttk.Frame(self.frame)
             main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # 设置主框架可以接收键盘焦点
+            main_frame.bind("<Button-1>", lambda e: main_frame.focus_set())
+            main_frame.config(takefocus=True)
         
         # 创建VTK渲染器
         self.renderer = vtk.vtkRenderer()
@@ -115,6 +125,10 @@ class MeshDisplayArea(BaseFrame):
             # 创建一个Tkinter框架来容纳VTK窗口
             self.vtk_frame = ttk.Frame(main_frame)
             self.vtk_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # 设置VTK框架可以接收键盘焦点
+            self.vtk_frame.bind("<Button-1>", lambda e: self.vtk_frame.focus_set())
+            self.vtk_frame.config(takefocus=True)
             
             # 初始化交互器
             self.interactor = None
@@ -231,7 +245,7 @@ class MeshDisplayArea(BaseFrame):
                 self.render_window_interactor.pack(fill=tk.BOTH, expand=True)
                 
                 # 设置交互器
-                self.interactor.SetRenderWindow(self.render_window)
+                self.interactor = self.render_window_interactor.GetRenderWindow().GetInteractor()
                 
                 # 初始化交互器
                 self.interactor.Initialize()
@@ -242,6 +256,10 @@ class MeshDisplayArea(BaseFrame):
                 
                 # 添加渲染窗口回调，确保渲染持续进行
                 self.render_window.AddObserver('EndEvent', self.on_render_end)
+                
+                # 设置可以接收键盘焦点
+                self.render_window_interactor.bind("<Button-1>", lambda e: self.render_window_interactor.focus_set())
+                self.render_window_interactor.config(takefocus=True)
                 
                 # 强制更新
                 self.vtk_frame.update_idletasks()

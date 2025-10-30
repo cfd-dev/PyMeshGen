@@ -133,6 +133,7 @@ class SimplifiedPyMeshGenGUI:
         self.mesh_generator = None
         self.current_mesh = None
         self.cas_parts_info = None  # 初始化cas_parts_info属性
+        # 初始化视图控制变量
         self.render_mode_var = tk.StringVar(value="surface")
         self.show_boundary_var = tk.BooleanVar(value=True)
     
@@ -631,77 +632,110 @@ class SimplifiedPyMeshGenGUI:
         self.parts_listbox.bind('<<ListboxSelect>>', self.on_part_select)
     
     def create_right_panel(self):
-        """创建右侧网格视图交互区域（含交互提示）"""
-        # 网格信息框架
-        mesh_info_frame = ttk.Frame(self.right_panel)
-        mesh_info_frame.pack(fill=tk.X, padx=5, pady=2)
-        self.mesh_status_label = ttk.Label(mesh_info_frame, text="状态: 未生成")
-        self.mesh_status_label.pack(side=tk.LEFT, padx=5)
-        self.mesh_info_label = ttk.Label(mesh_info_frame, text="节点数: 0\n单元数: 0")
-        self.mesh_info_label.pack(side=tk.RIGHT, padx=5)
+        """创建右侧网格视图交互区域（最优化版，移除所有标签，仅保留纯净的网格显示）"""
+        # 移除网格信息框架 - 现在只保留纯净的网格显示区域
         
         # 创建网格显示区域
         self.mesh_display = MeshDisplayArea(self.right_panel)
-        self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        self.mesh_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)  # 增加边距以避免与边缘贴合
         
         # 存储对网格显示区域的引用，以便其他方法使用
         self.main_mesh_display = self.mesh_display
         
-        # 视图控制工具栏
-        view_toolbar_frame = ttk.Frame(self.right_panel)
-        view_toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
-        reset_view_btn = ttk.Button(view_toolbar_frame, text="重置视图", command=self.reset_view)
-        reset_view_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(reset_view_btn, "重置视图到初始状态")
-        fit_view_btn = ttk.Button(view_toolbar_frame, text="适应视图", command=self.fit_view)
-        fit_view_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(fit_view_btn, "调整视图以适应网格大小")
-        zoom_in_btn = ttk.Button(view_toolbar_frame, text="放大", command=self.zoom_in)
-        zoom_in_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(zoom_in_btn, "放大网格显示 (鼠标滚轮也可缩放)")
-        zoom_out_btn = ttk.Button(view_toolbar_frame, text="缩小", command=self.zoom_out)
-        zoom_out_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(zoom_out_btn, "缩小网格显示 (鼠标滚轮也可缩放)")
-        pan_btn = ttk.Button(view_toolbar_frame, text="平移", command=self.pan_view)
-        pan_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(pan_btn, "按住鼠标右键拖动可平移视图")
-        select_btn = ttk.Button(view_toolbar_frame, text="选择", command=lambda: self.update_status("选择模式：左键框选/点选节点"))
-        select_btn.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(select_btn, "左键框选/点选节点进行选择")
+        # 为网格显示区域绑定键盘事件
+        self.mesh_display.frame.bind("<Key>", self.on_mesh_display_key)
+        self.mesh_display.frame.focus_set()  # 确保网格显示区域可以获得键盘焦点
         
-        # 渲染控制工具栏
-        render_toolbar_frame = ttk.Frame(self.right_panel)
-        render_toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
+        # 为网格显示区域添加右键菜单
+        self.create_mesh_display_context_menu()
         
-        # 创建渲染方式选择
-        ttk.Label(render_toolbar_frame, text="渲染方式:").pack(side=tk.LEFT, padx=5)
+        # 添加键盘快捷键提示
+        self.add_view_interaction_hints()
+    
+    def on_mesh_display_key(self, event):
+        """处理网格显示区域的键盘事件"""
+        key = event.keysym.lower()
+        if key == 'r':  # 重置视图
+            self.reset_view()
+            self.update_status("已重置视图 (R键)")
+        elif key == 'f':  # 适应视图
+            self.fit_view()
+            self.update_status("已适应视图 (F键)")
+        elif key == 'o':  # 切换边界显示
+            new_state = not self.show_boundary_var.get()
+            self.show_boundary_var.set(new_state)
+            self.toggle_boundary_display()
+            self.update_status(f"边界显示: {'开启' if new_state else '关闭'} (O键)")
+        elif key == '1':  # 切换到表面模式
+            self.render_mode_var.set("surface")
+            self.change_render_mode()
+            self.update_status("渲染模式: 表面 (1键)")
+        elif key == '2':  # 切换到线框模式
+            self.render_mode_var.set("wireframe")
+            self.change_render_mode()
+            self.update_status("渲染模式: 线框 (2键)")
+        elif key == '3':  # 切换到点云模式
+            self.render_mode_var.set("points")
+            self.change_render_mode()
+            self.update_status("渲染模式: 点云 (3键)")
+        elif key == 'plus' or key == 'equal':  # 放大
+            self.zoom_in()
+            self.update_status("视图已放大 (+键)")
+        elif key == 'minus':  # 缩小
+            self.zoom_out()
+            self.update_status("视图已缩小 (-键)")
+    
+    def create_mesh_display_context_menu(self):
+        """为网格显示区域创建右键上下文菜单"""
+        # 创建右键菜单
+        self.mesh_context_menu = tk.Menu(self.mesh_display.frame, tearoff=0)
         
-        # 创建渲染方式选择变量
-        self.render_mode_var = tk.StringVar(value="surface")
+        # 视图操作菜单项
+        self.mesh_context_menu.add_command(label="重置视图 (R)", command=self.reset_view)
+        self.mesh_context_menu.add_command(label="适应视图 (F)", command=self.fit_view)
+        self.mesh_context_menu.add_separator()
         
-        # 创建渲染方式选择单选按钮
-        surface_rb = ttk.Radiobutton(render_toolbar_frame, text="表面", variable=self.render_mode_var, 
-                                    value="surface", command=self.change_render_mode)
-        surface_rb.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(surface_rb, "以表面模式显示网格")
+        # 渲染模式菜单项
+        self.mesh_context_menu.add_command(label="表面渲染 (1)", command=lambda: self.set_render_mode("surface"))
+        self.mesh_context_menu.add_command(label="线框渲染 (2)", command=lambda: self.set_render_mode("wireframe"))
+        self.mesh_context_menu.add_command(label="点云渲染 (3)", command=lambda: self.set_render_mode("points"))
+        self.mesh_context_menu.add_separator()
         
-        wireframe_rb = ttk.Radiobutton(render_toolbar_frame, text="线框", variable=self.render_mode_var, 
-                                      value="wireframe", command=self.change_render_mode)
-        wireframe_rb.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(wireframe_rb, "以线框模式显示网格")
+        # 边界显示菜单项
+        show_boundary_menu = tk.Menu(self.mesh_context_menu, tearoff=0)
+        show_boundary_menu.add_command(label="开启", command=lambda: self.set_boundary_visibility(True))
+        show_boundary_menu.add_command(label="关闭", command=lambda: self.set_boundary_visibility(False))
+        self.mesh_context_menu.add_cascade(label="边界显示", menu=show_boundary_menu)
         
-        points_rb = ttk.Radiobutton(render_toolbar_frame, text="点云", variable=self.render_mode_var, 
-                                  value="points", command=self.change_render_mode)
-        points_rb.pack(side=tk.LEFT, padx=2)
-        self.create_tooltip(points_rb, "以点云模式显示网格")
-        
-        # 创建边界显示复选框
-        self.show_boundary_var = tk.BooleanVar(value=True)
-        boundary_cb = ttk.Checkbutton(render_toolbar_frame, text="显示边界", 
-                                    variable=self.show_boundary_var,
-                                    command=self.toggle_boundary_display)
-        boundary_cb.pack(side=tk.LEFT, padx=5)
-        self.create_tooltip(boundary_cb, "切换边界显示")
+        # 绑定右键事件到网格显示区域
+        self.mesh_display.frame.bind("<Button-3>", self.show_mesh_context_menu)  # Windows/Linux
+        self.mesh_display.frame.bind("<Button-2>", self.show_mesh_context_menu)  # macOS (双击右键)
+    
+    def show_mesh_context_menu(self, event):
+        """显示网格显示区域的右键菜单"""
+        try:
+            self.mesh_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.mesh_context_menu.grab_release()
+    
+    def set_render_mode(self, mode):
+        """设置渲染模式并更新状态"""
+        self.render_mode_var.set(mode)
+        self.change_render_mode()
+        mode_names = {"surface": "表面", "wireframe": "线框", "points": "点云"}
+        self.update_status(f"渲染模式已切换到: {mode_names.get(mode, mode)}")
+    
+    def set_boundary_visibility(self, visible):
+        """设置边界可见性并更新状态"""
+        self.show_boundary_var.set(visible)
+        self.toggle_boundary_display()
+        self.update_status(f"边界显示已{'开启' if visible else '关闭'}")
+    
+    def add_view_interaction_hints(self):
+        """添加视图交互提示信息"""
+        # 这个方法可以用来显示当前可用的快捷键提示
+        # 可以在状态栏或其他地方显示当前可用的快捷键
+        pass
     
     def create_status_output_panel(self):
         """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
@@ -928,23 +962,19 @@ class SimplifiedPyMeshGenGUI:
             self.update_status("正在生成网格...")
             self.log_info("开始生成网格")
             
-            # 更新网格状态
-            self.mesh_status_label.config(text="状态: 正在生成...")
-            
             # 创建网格生成器
             self.mesh_generator = MeshGenerator(self.params)
             
             # 生成网格
             self.current_mesh = self.mesh_generator.generate()
             
-            # 更新网格状态
-            self.mesh_status_label.config(text="状态: 已生成")
-            
-            # 获取网格信息
+            # 获取网格信息 for logging purposes (but don't display it)
+            node_count = 0
+            element_count = 0
             if hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
                 node_count = len(self.current_mesh.nodes)
                 element_count = len(self.current_mesh.elements)
-                self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                self.log_info(f"生成网格: 节点数={node_count}, 单元数={element_count}")
             
             self.log_info("网格生成完成")
             self.update_status("网格生成完成")
@@ -952,7 +982,6 @@ class SimplifiedPyMeshGenGUI:
             # 显示网格
             self.display_mesh()
         except Exception as e:
-            self.mesh_status_label.config(text="状态: 生成失败")
             messagebox.showerror("错误", f"生成网格失败: {str(e)}")
             self.log_error(f"生成网格失败: {str(e)}")
             self.update_status("生成网格失败")
@@ -967,19 +996,12 @@ class SimplifiedPyMeshGenGUI:
             self.update_status("正在显示网格...")
             self.log_info("开始显示网格")
             
-            # 更新网格状态
-            self.mesh_status_label.config(text="状态: 正在显示...")
-            
             # 显示网格
             self.mesh_display.display_mesh(self.current_mesh)
-            
-            # 更新网格状态
-            self.mesh_status_label.config(text="状态: 已显示")
             
             self.log_info("网格显示完成")
             self.update_status("网格显示完成")
         except Exception as e:
-            self.mesh_status_label.config(text="状态: 显示失败")
             messagebox.showerror("错误", f"显示网格失败: {str(e)}")
             self.log_error(f"显示网格失败: {str(e)}")
             self.update_status("显示网格失败")
@@ -996,15 +1018,13 @@ class SimplifiedPyMeshGenGUI:
                 # 更新网格显示区域的网格数据
                 self.mesh_display.mesh_data = self.current_mesh
                 
-                # 更新网格状态
-                self.mesh_status_label.config(text="状态: 已导入")
-                
-                # 获取网格信息
+                # 获取网格信息 for logging purposes (but don't display it)
+                node_count = 0
+                element_count = 0
                 if isinstance(self.current_mesh, dict):
                     # 处理字典类型的网格数据
                     node_count = self.current_mesh.get('num_points', 0)
                     element_count = self.current_mesh.get('num_cells', 0)
-                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
                     
                     # 如果是cas文件，提取部件信息
                     if self.current_mesh.get('type') == 'cas' and 'parts_info' in self.current_mesh:
@@ -1012,15 +1032,15 @@ class SimplifiedPyMeshGenGUI:
                 elif hasattr(self.current_mesh, 'num_points') and hasattr(self.current_mesh, 'num_cells'):
                     node_count = self.current_mesh.num_points
                     element_count = self.current_mesh.num_cells
-                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
                 elif hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cells'):
                     node_count = len(self.current_mesh.node_coords)
                     element_count = len(self.current_mesh.cells)
-                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
                 elif hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
                     node_count = len(self.current_mesh.nodes)
                     element_count = len(self.current_mesh.elements)
-                    self.mesh_info_label.config(text=f"节点数: {node_count}\n单元数: {element_count}")
+                
+                # Log grid info (but don't display it in the view area)
+                self.log_info(f"导入网格: 节点数={node_count}, 单元数={element_count}")
                 
                 if dialog.result["preview"]:
                     self.display_mesh()
@@ -1028,7 +1048,6 @@ class SimplifiedPyMeshGenGUI:
                 self.log_info(f"已导入网格文件: {dialog.result['file_path']}")
                 self.update_status("已导入网格文件")
             except Exception as e:
-                self.mesh_status_label.config(text="状态: 导入失败")
                 messagebox.showerror("错误", f"导入网格失败: {str(e)}")
                 self.log_error(f"导入网格失败: {str(e)}")
                 self.update_status("导入网格失败")
@@ -1050,10 +1069,6 @@ class SimplifiedPyMeshGenGUI:
         """清空网格"""
         self.current_mesh = None
         self.mesh_display.clear()
-        
-        # 更新网格状态
-        self.mesh_status_label.config(text="状态: 未生成")
-        self.mesh_info_label.config(text="节点数: 0\n单元数: 0")
         
         self.log_info("已清空网格")
         self.update_status("已清空网格")
