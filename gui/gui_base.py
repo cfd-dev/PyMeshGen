@@ -228,26 +228,6 @@ class InfoOutput:
         if hasattr(self.parent, 'status_bar') and hasattr(self.parent.status_bar, 'update_status'):
             self.parent.status_bar.update_status("已清除信息输出")
         
-    def append_info_output(self, message):
-        """添加信息到输出窗口，线程安全版本"""
-        try:
-            # 检查info_text是否存在且是有效的tkinter组件
-            if hasattr(self, 'info_text') and self.info_text is not None:
-                # 在主线程中执行GUI更新
-                self.info_text.after(0, lambda: self._insert_message(message))
-        except Exception:
-            # 在测试环境或没有GUI的情况下忽略错误
-            pass
-
-    def _insert_message(self, message):
-        """实际插入消息的方法（在主线程中调用）"""
-        try:
-            self.info_text.insert(tk.END, message + "\n")
-            self.info_text.see(tk.END)  # 自动滚动到最新信息
-        except tk.TclError:
-            # 如果GUI组件已被销毁，则忽略错误
-            pass
-
     def clear(self):
         """清空信息输出窗口（与clear_info_output一致，供主界面按钮调用）"""
         self.clear_info_output()

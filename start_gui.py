@@ -19,7 +19,6 @@ def main():
         from gui.gui_main import main as gui_main
         
         print("正在启动PyMeshGen图形用户界面...")
-        print("注意：属性面板显示功能已修复，现在可以正常显示部件信息。")
         print("=" * 50)
         
         # 启动GUI主程序

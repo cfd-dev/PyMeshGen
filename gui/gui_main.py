@@ -159,11 +159,26 @@ class SimplifiedPyMeshGenGUI:
         self.create_left_panel()
 
         # 右侧网格视图交互区域（7/10宽度）
-        self.right_panel = ttk.Frame(self.paned_window, width=1)
-        self.paned_window.add(self.right_panel, weight=7)
+        right_main_frame = ttk.Frame(self.paned_window)
+        self.paned_window.add(right_main_frame, weight=7)
+        
+        # 在右侧区域中创建垂直分割窗格（网格显示和状态输出）
+        self.right_paned = ttk.PanedWindow(right_main_frame, orient=tk.VERTICAL)
+        self.right_paned.pack(fill=tk.BOTH, expand=True)
+        
+        # 上半部分：网格视图交互区域
+        self.right_panel = ttk.Frame(self.right_paned)
+        self.right_paned.add(self.right_panel, weight=1)
+        
+        # 下半部分：状态输出面板区域
+        bottom_frame = ttk.Frame(self.right_paned)
+        self.right_paned.add(bottom_frame, weight=0)
+        
+        # 创建网格视图
         self.create_right_panel()
-
-        # 创建状态栏和信息输出窗口区域（左右4:6布局）
+        
+        # 创建状态输出面板（放在右侧面板的下方部分）
+        self.bottom_frame = bottom_frame
         self.create_status_output_panel()
     
     def create_toolbar(self):
@@ -690,25 +705,20 @@ class SimplifiedPyMeshGenGUI:
     
     def create_status_output_panel(self):
         """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
-        screen_height = self.root.winfo_screenheight()
-        if screen_height >= 1080:
-            panel_height = 180
-        elif screen_height >= 768:
-            panel_height = 150
-        else:
-            panel_height = 120
-        self.bottom_panel = ttk.Frame(self.root, height=panel_height)
-        self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
-        self.bottom_panel.pack_propagate(False)
-        self.status_output_paned = ttk.PanedWindow(self.bottom_panel, orient=tk.HORIZONTAL)
+        # 在底部框架中创建左右分割的状态和输出面板
+        self.status_output_paned = ttk.PanedWindow(self.bottom_frame, orient=tk.HORIZONTAL)
         self.status_output_paned.pack(fill=tk.BOTH, expand=True)
+        
         # 左侧状态显示区域（4/10宽度）
-        self.status_panel = ttk.Frame(self.status_output_paned, width=1)
-        self.status_output_paned.add(self.status_panel, weight=2)
-        self.create_status_panel()
+        self.status_panel = ttk.Frame(self.status_output_paned)
+        self.status_output_paned.add(self.status_panel, weight=4)
+        
         # 右侧信息输出区域（6/10宽度）
-        self.output_panel = ttk.Frame(self.status_output_paned, width=1)
-        self.status_output_paned.add(self.output_panel, weight=8)
+        self.output_panel = ttk.Frame(self.status_output_paned)
+        self.status_output_paned.add(self.output_panel, weight=6)
+        
+        # 创建状态面板和输出面板
+        self.create_status_panel()
         self.create_output_panel()
     
     def create_status_panel(self):
@@ -732,12 +742,9 @@ class SimplifiedPyMeshGenGUI:
         self.status_bar = StatusBar(status_frame)
     
     def create_output_panel(self):
-        """创建信息输出面板（带清空按钮）"""
+        """创建信息输出面板（右键菜单可清空）"""
         self.info_output = InfoOutput(self.output_panel)
         self.info_output.frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        # 增加清空按钮
-        clear_btn = ttk.Button(self.output_panel, text="清空输出", command=self.info_output.clear)
-        clear_btn.pack(side=tk.BOTTOM, anchor=tk.E, padx=8, pady=2)
     
     def update_status(self, message):
         """更新状态栏和状态文本框"""
@@ -1242,12 +1249,14 @@ class SimplifiedPyMeshGenGUI:
     
     def toggle_statusbar(self):
         """切换状态栏显示"""
-        if hasattr(self, 'bottom_panel'):
-            if self.bottom_panel.winfo_viewable():
-                self.bottom_panel.pack_forget()
+        if hasattr(self, 'bottom_frame'):
+            # Get the current position of bottom frame in the paned window
+            paned_contents = self.right_paned.panes()
+            if self.bottom_frame in paned_contents:
+                self.right_paned.forget(self.bottom_frame)  # Hide the bottom frame
                 self.log_info("状态栏和信息输出已隐藏")
             else:
-                self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+                self.right_paned.add(self.bottom_frame, weight=0)  # Show the bottom frame
                 self.log_info("状态栏和信息输出已显示")
     
     def on_part_select(self, event):
@@ -1351,12 +1360,14 @@ class SimplifiedPyMeshGenGUI:
     
     def toggle_statusbar(self):
         """切换状态栏显示"""
-        if hasattr(self, 'bottom_panel'):
-            if self.bottom_panel.winfo_viewable():
-                self.bottom_panel.pack_forget()
+        if hasattr(self, 'bottom_frame'):
+            # Get the current position of bottom frame in the paned window
+            paned_contents = self.right_paned.panes()
+            if self.bottom_frame in paned_contents:
+                self.right_paned.forget(self.bottom_frame)  # Hide the bottom frame
                 self.log_info("状态栏和信息输出已隐藏")
             else:
-                self.bottom_panel.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+                self.right_paned.add(self.bottom_frame, weight=0)  # Show the bottom frame
                 self.log_info("状态栏和信息输出已显示")
     
     def save_config_as(self):
