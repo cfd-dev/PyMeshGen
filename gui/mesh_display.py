@@ -38,6 +38,7 @@ class MeshDisplayArea(BaseFrame):
         # 显示控制变量
         self.show_boundary_var = tk.BooleanVar(value=True)
         self.wireframe_var = tk.BooleanVar(value=False)
+        self.render_mode = tk.StringVar(value="surface")  # 新增：渲染模式 (surface/wireframe/points)
         
         # 渲染状态标志
         self._render_in_progress = False
@@ -96,7 +97,7 @@ class MeshDisplayArea(BaseFrame):
                 self.interactor.TerminateApp()
             except:
                 pass
-        
+    
     def create_mesh_display_area(self):
         """创建VTK网格显示区域"""
         # 创建主框架（仅在非离屏模式下创建）
@@ -156,8 +157,7 @@ class MeshDisplayArea(BaseFrame):
             self.interactor.SetRenderWindow(self.render_window)
             
             # 检测操作系统
-            import platform
-            system = platform.system()
+            system = self._get_system()
             
             # Windows系统使用特殊处理
             if system == "Windows":
@@ -176,18 +176,10 @@ class MeshDisplayArea(BaseFrame):
                     self.interactor.SetInteractorStyle(style)
                     
                     # 设置窗口大小
-                    self.vtk_frame.update_idletasks()
-                    width = self.vtk_frame.winfo_width()
-                    height = self.vtk_frame.winfo_height()
-                    if width <= 1 or height <= 1:
-                        width, height = 800, 600
-                    self.render_window.SetSize(width, height)
+                    self._update_window_size()
                     
                     # 添加渲染窗口回调，确保渲染持续进行
                     self.render_window.AddObserver('EndEvent', self.on_render_end)
-                    
-                    # 不要启动交互器，只初始化它
-                    # self.interactor.Start()  # 这行会导致GIL问题
                     
                     # 强制更新
                     self.vtk_frame.update_idletasks()
@@ -210,18 +202,10 @@ class MeshDisplayArea(BaseFrame):
                         self.interactor.SetInteractorStyle(style)
                         
                         # 设置窗口大小
-                        self.vtk_frame.update_idletasks()
-                        width = self.vtk_frame.winfo_width()
-                        height = self.vtk_frame.winfo_height()
-                        if width <= 1 or height <= 1:
-                            width, height = 800, 600
-                        self.render_window.SetSize(width, height)
+                        self._update_window_size()
                         
                         # 添加渲染窗口回调，确保渲染持续进行
                         self.render_window.AddObserver('EndEvent', self.on_render_end)
-                        
-                        # 不要启动交互器，只初始化它
-                        # self.interactor.Start()  # 这行会导致GIL问题
                         
                         # 强制更新
                         self.vtk_frame.update_idletasks()
@@ -311,6 +295,20 @@ class MeshDisplayArea(BaseFrame):
             self.embedded = False
             return False
     
+    def _get_system(self):
+        """获取操作系统名称"""
+        import platform
+        return platform.system()
+    
+    def _update_window_size(self):
+        """更新窗口大小"""
+        self.vtk_frame.update_idletasks()
+        width = self.vtk_frame.winfo_width()
+        height = self.vtk_frame.winfo_height()
+        if width <= 1 or height <= 1:
+            width, height = 800, 600
+        self.render_window.SetSize(width, height)
+    
     def on_render_end(self, obj, event):
         """渲染结束事件回调，确保网格不会消失"""
         try:
@@ -327,54 +325,6 @@ class MeshDisplayArea(BaseFrame):
             if hasattr(self, '_render_in_progress'):
                 self._render_in_progress = False
     
-    def force_render_update(self):
-        """强制更新渲染，防止网格消失（优化版本，减少渲染频率）"""
-        try:
-            if self.render_window and self.renderer:
-                # 检查是否需要更新渲染
-                should_render = False
-                
-                # 检查网格演员是否仍在渲染器中（简化检查）
-                if self.mesh_actor:
-                    actors = self.renderer.GetActors()
-                    actors.InitTraversal()
-                    found = False
-                    for i in range(min(actors.GetNumberOfItems(), 10)):  # 只检查前10个演员
-                        actor = actors.GetNextActor()
-                        if actor == self.mesh_actor:
-                            found = True
-                            break
-                    if not found:
-                        self.renderer.AddActor(self.mesh_actor)
-                        should_render = True
-                
-                # 检查坐标轴演员是否仍在渲染器中（简化检查）
-                if hasattr(self, 'axes_actor') and self.axes_actor:
-                    actors = self.renderer.GetActors()
-                    actors.InitTraversal()
-                    found = False
-                    for i in range(min(actors.GetNumberOfItems(), 10)):  # 只检查前10个演员
-                        actor = actors.GetNextActor()
-                        if actor == self.axes_actor:
-                            found = True
-                            break
-                    if not found:
-                        self.renderer.AddActor(self.axes_actor)
-                        should_render = True
-                
-                # 只有在演员缺失时才渲染
-                if should_render:
-                    # 防止递归调用，使用标志检查
-                    if not hasattr(self, '_render_in_progress'):
-                        self._render_in_progress = True
-                        self.render_window.Render()
-                        self._render_in_progress = False
-                
-                # 减少渲染更新频率，避免画面闪烁
-                # 不再自动安排下一次更新，只在必要时更新
-        except Exception as e:
-            print(f"强制渲染更新错误: {str(e)}")
-        
     def set_mesh_data(self, mesh_data):
         """设置网格数据"""
         self.mesh_data = mesh_data
@@ -407,7 +357,6 @@ class MeshDisplayArea(BaseFrame):
                 print("VTK窗口未正确嵌入，尝试重新嵌入...")
                 self.embed_vtk_window()
                 # 等待嵌入完成
-                import time
                 time.sleep(0.5)
                 
             # 如果仍然未嵌入，则返回失败（离屏模式下不需要交互器）
@@ -437,17 +386,11 @@ class MeshDisplayArea(BaseFrame):
                     self.mesh_actor = vtk.vtkActor()
                     self.mesh_actor.SetMapper(mapper)
                     
-                    # 设置属性
-                    self.mesh_actor.GetProperty().SetColor(0.0, 0.0, 0.0)  # 黑色
-                    self.mesh_actor.GetProperty().SetLineWidth(2.0)  # 增加线宽使线框更明显
+                    # 设置网格属性
+                    self._apply_default_mesh_properties()
                     
-                    # 根据wireframe_var设置显示模式
-                    if self.wireframe_var.get():
-                        self.mesh_actor.GetProperty().SetRepresentationToWireframe()
-                        self.mesh_actor.GetProperty().EdgeVisibilityOn()  # 确保边缘可见
-                    else:
-                        self.mesh_actor.GetProperty().SetRepresentationToSurface()
-                        self.mesh_actor.GetProperty().EdgeVisibilityOff()  # 关闭边缘可见性
+                    # 设置显示模式
+                    self._apply_render_mode()
                     
                     # 添加到渲染器
                     self.renderer.AddActor(self.mesh_actor)
@@ -465,12 +408,8 @@ class MeshDisplayArea(BaseFrame):
                     # 更新渲染窗口
                     self.render_window.Render()
                     
-                    # 不再添加额外的渲染更新，避免画面清空
-                    # 只在必要时添加渲染更新
-                    
                     # 检测操作系统
-                    import platform
-                    system = platform.system()
+                    system = self._get_system()
                     
                     # 如果交互器没有启动，则启动它（离屏模式下跳过）
                     if not self.offscreen and not self.interactor.GetInitialized():
@@ -497,10 +436,32 @@ class MeshDisplayArea(BaseFrame):
                 return False
         except Exception as e:
             print(f"显示网格失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return False
+    
+    def _apply_default_mesh_properties(self):
+        """应用默认网格属性"""
+        if self.mesh_actor:
+            self.mesh_actor.GetProperty().SetColor(0.0, 0.0, 0.0)  # 黑色
+            self.mesh_actor.GetProperty().SetLineWidth(2.0)  # 增加线宽使线框更明显
+            self.mesh_actor.GetProperty().SetPointSize(2.0)   # 设置点云大小
+    
+    def _apply_render_mode(self):
+        """应用当前渲染模式"""
+        if not self.mesh_actor:
+            return
             
+        mode = self.render_mode.get()
+        if mode == "wireframe":
+            self.mesh_actor.GetProperty().SetRepresentationToWireframe()
+            self.mesh_actor.GetProperty().EdgeVisibilityOn()
+            self.mesh_actor.GetProperty().SetLineWidth(2.0)
+        elif mode == "points":
+            self.mesh_actor.GetProperty().SetRepresentationToPoints()
+            self.mesh_actor.GetProperty().SetPointSize(4.0)
+        else:  # surface
+            self.mesh_actor.GetProperty().SetRepresentationToSurface()
+            self.mesh_actor.GetProperty().EdgeVisibilityOff()
+    
     def create_vtk_mesh(self):
         """根据网格数据创建VTK网格对象"""
         try:
@@ -586,8 +547,6 @@ class MeshDisplayArea(BaseFrame):
             
         except Exception as e:
             print(f"创建VTK网格失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return None
             
     def create_vtk_mesh_from_unstr_grid(self, unstr_grid):
@@ -634,8 +593,6 @@ class MeshDisplayArea(BaseFrame):
             
         except Exception as e:
             print(f"从Unstructured_Grid创建VTK网格失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
             return None
             
     def display_boundary(self):
@@ -647,14 +604,7 @@ class MeshDisplayArea(BaseFrame):
             self.boundary_actors.clear()
             
             # 获取边界信息
-            boundary_info = None
-            
-            if isinstance(self.mesh_data, dict) and 'unstr_grid' in self.mesh_data:
-                unstr_grid = self.mesh_data['unstr_grid']
-                if hasattr(unstr_grid, 'boundary_info'):
-                    boundary_info = unstr_grid.boundary_info
-            elif hasattr(self.mesh_data, 'boundary_info'):
-                boundary_info = self.mesh_data.boundary_info
+            boundary_info = self._get_boundary_info()
             
             if not boundary_info:
                 return
@@ -676,105 +626,136 @@ class MeshDisplayArea(BaseFrame):
                 
                 if not faces:
                     continue
-                    
-                # 创建边界多边形数据
-                boundary_points = vtk.vtkPoints()
-                boundary_polys = vtk.vtkCellArray()
-                point_map = {}  # 用于映射原始点到新点索引
-                
-                # 添加面
-                for face in faces:
-                    # 确保面是有效的
-                    if not isinstance(face, dict) or "nodes" not in face:
-                        continue
-                        
-                    # 获取节点列表
-                    nodes = face["nodes"]
-                    if not nodes or len(nodes) < 2:
-                        continue
-                        
-                    # 创建多边形
-                    polygon = vtk.vtkPolygon()
-                    polygon.GetPointIds().SetNumberOfIds(len(nodes))
-                    
-                    # 添加点并设置多边形顶点
-                    for i, node_id in enumerate(nodes):
-                        if node_id not in point_map:
-                            # 添加新点
-                            coord = None
-                            
-                            # 确保node_id是整数
-                            try:
-                                node_id_int = int(node_id)
-                            except (ValueError, TypeError):
-                                print(f"无效的节点ID: {node_id}")
-                                continue
-                            
-                            # 转换为0基索引（从1基索引转换为0基索引）
-                            node_id_0 = node_id_int - 1
-                            
-                            # 尝试从不同结构中获取节点坐标
-                            if isinstance(self.mesh_data, dict):
-                                if 'unstr_grid' in self.mesh_data:
-                                    unstr_grid = self.mesh_data['unstr_grid']
-                                    if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
-                                        # 确保node_id_0是有效的索引
-                                        if 0 <= node_id_0 < len(unstr_grid.node_coords):
-                                            coord = unstr_grid.node_coords[node_id_0]
-                                elif 'node_coords' in self.mesh_data and isinstance(self.mesh_data['node_coords'], list):
-                                    if 0 <= node_id_0 < len(self.mesh_data['node_coords']):
-                                        coord = self.mesh_data['node_coords'][node_id_0]
-                            elif hasattr(self.mesh_data, 'node_coords') and isinstance(self.mesh_data.node_coords, list):
-                                if 0 <= node_id_0 < len(self.mesh_data.node_coords):
-                                    coord = self.mesh_data.node_coords[node_id_0]
-                            elif hasattr(self.mesh_data, 'unstr_grid'):
-                                unstr_grid = self.mesh_data.unstr_grid
-                                if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
-                                    if 0 <= node_id_0 < len(unstr_grid.node_coords):
-                                        coord = unstr_grid.node_coords[node_id_0]
-                            
-                            if coord is None:
-                                print(f"无法获取节点坐标: {node_id}")
-                                continue
-                                
-                            if len(coord) == 2:
-                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], 0.0)
-                            else:
-                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], coord[2])
-                            point_map[node_id] = point_id
-                        else:
-                            point_id = point_map[node_id]
-                            
-                        polygon.GetPointIds().SetId(i, point_id)
-                    
-                    boundary_polys.InsertNextCell(polygon)
                 
                 # 创建边界多边形数据
-                boundary_polydata = vtk.vtkPolyData()
-                boundary_polydata.SetPoints(boundary_points)
-                boundary_polydata.SetPolys(boundary_polys)
+                boundary_polydata = self._create_boundary_polydata(faces)
                 
-                # 创建边界映射器和演员
-                boundary_mapper = vtk.vtkPolyDataMapper()
-                boundary_mapper.SetInputData(boundary_polydata)
-                
-                boundary_actor = vtk.vtkActor()
-                boundary_actor.SetMapper(boundary_mapper)
-                
-                # 设置边界颜色
-                color = bc_colors.get(bc_type, (0.5, 0.5, 0.5))
-                boundary_actor.GetProperty().SetColor(color)
-                boundary_actor.GetProperty().SetLineWidth(2.0)
-                
-                # 添加到渲染器和边界演员列表
-                self.renderer.AddActor(boundary_actor)
-                self.boundary_actors.append(boundary_actor)
+                if boundary_polydata:
+                    # 创建边界映射器和演员
+                    boundary_mapper = vtk.vtkPolyDataMapper()
+                    boundary_mapper.SetInputData(boundary_polydata)
+                    
+                    boundary_actor = vtk.vtkActor()
+                    boundary_actor.SetMapper(boundary_mapper)
+                    
+                    # 设置边界颜色
+                    color = bc_colors.get(bc_type, (0.5, 0.5, 0.5))
+                    boundary_actor.GetProperty().SetColor(color)
+                    boundary_actor.GetProperty().SetLineWidth(2.5)  # 增加线宽
+                    
+                    # 添加到渲染器和边界演员列表
+                    self.renderer.AddActor(boundary_actor)
+                    self.boundary_actors.append(boundary_actor)
                 
         except Exception as e:
             print(f"显示边界失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+    
+    def _get_boundary_info(self):
+        """获取边界信息"""
+        boundary_info = None
+        
+        if isinstance(self.mesh_data, dict) and 'unstr_grid' in self.mesh_data:
+            unstr_grid = self.mesh_data['unstr_grid']
+            if hasattr(unstr_grid, 'boundary_info'):
+                boundary_info = unstr_grid.boundary_info
+        elif hasattr(self.mesh_data, 'boundary_info'):
+            boundary_info = self.mesh_data.boundary_info
+        
+        return boundary_info
+    
+    def _create_boundary_polydata(self, faces):
+        """创建边界多边形数据"""
+        try:
+            boundary_points = vtk.vtkPoints()
+            boundary_polys = vtk.vtkCellArray()
+            point_map = {}  # 用于映射原始点到新点索引
             
+            # 添加面
+            for face in faces:
+                # 确保面是有效的
+                if not isinstance(face, dict) or "nodes" not in face:
+                    continue
+                    
+                # 获取节点列表
+                nodes = face["nodes"]
+                if not nodes or len(nodes) < 2:
+                    continue
+                    
+                # 创建多边形
+                polygon = vtk.vtkPolygon()
+                polygon.GetPointIds().SetNumberOfIds(len(nodes))
+                
+                # 添加点并设置多边形顶点
+                for i, node_id in enumerate(nodes):
+                    if node_id not in point_map:
+                        # 添加新点
+                        coord = None
+                        
+                        # 确保node_id是整数
+                        try:
+                            node_id_int = int(node_id)
+                        except (ValueError, TypeError):
+                            print(f"无效的节点ID: {node_id}")
+                            continue
+                        
+                        # 转换为0基索引（从1基索引转换为0基索引）
+                        node_id_0 = node_id_int - 1
+                        
+                        # 尝试从不同结构中获取节点坐标
+                        coord = self._get_node_coord(node_id_0)
+                        
+                        if coord is None:
+                            print(f"无法获取节点坐标: {node_id}")
+                            continue
+                            
+                        if len(coord) == 2:
+                            point_id = boundary_points.InsertNextPoint(coord[0], coord[1], 0.0)
+                        else:
+                            point_id = boundary_points.InsertNextPoint(coord[0], coord[1], coord[2])
+                        point_map[node_id] = point_id
+                    else:
+                        point_id = point_map[node_id]
+                        
+                    polygon.GetPointIds().SetId(i, point_id)
+                
+                boundary_polys.InsertNextCell(polygon)
+            
+            # 创建边界多边形数据
+            boundary_polydata = vtk.vtkPolyData()
+            boundary_polydata.SetPoints(boundary_points)
+            boundary_polydata.SetPolys(boundary_polys)
+            
+            return boundary_polydata
+        except Exception as e:
+            print(f"创建边界多边形数据失败: {str(e)}")
+            return None
+    
+    def _get_node_coord(self, node_id_0):
+        """获取节点坐标"""
+        coord = None
+        
+        # 尝试从不同结构中获取节点坐标
+        if isinstance(self.mesh_data, dict):
+            if 'unstr_grid' in self.mesh_data:
+                unstr_grid = self.mesh_data['unstr_grid']
+                if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
+                    # 确保node_id_0是有效的索引
+                    if 0 <= node_id_0 < len(unstr_grid.node_coords):
+                        coord = unstr_grid.node_coords[node_id_0]
+            elif 'node_coords' in self.mesh_data and isinstance(self.mesh_data['node_coords'], list):
+                if 0 <= node_id_0 < len(self.mesh_data['node_coords']):
+                    coord = self.mesh_data['node_coords'][node_id_0]
+        elif hasattr(self.mesh_data, 'node_coords') and isinstance(self.mesh_data.node_coords, list):
+            if 0 <= node_id_0 < len(self.mesh_data.node_coords):
+                coord = self.mesh_data.node_coords[node_id_0]
+        elif hasattr(self.mesh_data, 'unstr_grid'):
+            unstr_grid = self.mesh_data.unstr_grid
+            if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
+                if 0 <= node_id_0 < len(unstr_grid.node_coords):
+                    coord = unstr_grid.node_coords[node_id_0]
+        
+        return coord
+    
     def add_axes(self):
         """添加坐标轴到渲染器"""
         try:
@@ -790,40 +771,7 @@ class MeshDisplayArea(BaseFrame):
             axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
             
             # 创建坐标轴变换，将坐标轴放置在左下角
-            transform = vtk.vtkTransform()
-            
-            # 获取渲染器的边界
-            bounds = self.renderer.ComputeVisiblePropBounds()
-            if bounds:
-                # 计算网格中心点和尺寸
-                center_x = (bounds[0] + bounds[1]) / 2
-                center_y = (bounds[2] + bounds[3]) / 2
-                center_z = (bounds[4] + bounds[5]) / 2
-                
-                # 计算网格尺寸
-                size_x = bounds[1] - bounds[0]
-                size_y = bounds[3] - bounds[2]
-                size_z = bounds[5] - bounds[4]
-                
-                # 计算最大尺寸
-                max_size = max(size_x, size_y, size_z)
-                
-                # 计算左下角位置（稍微偏移，避免与网格重叠）
-                offset_x = center_x - size_x * 0.6
-                offset_y = center_y - size_y * 0.6
-                offset_z = center_z - size_z * 0.6
-                
-                # 设置变换，将坐标轴移动到左下角
-                transform.Translate(offset_x, offset_y, offset_z)
-                
-                # 根据网格大小调整坐标轴比例
-                scale = max_size * 0.15  # 坐标轴大小为网格最大尺寸的15%
-                transform.Scale(scale, scale, scale)
-            else:
-                # 如果没有边界信息，使用默认设置
-                transform.Translate(-1, -1, -1)
-                transform.Scale(0.5, 0.5, 0.5)
-            
+            transform = self._create_axes_transform()
             axes.SetUserTransform(transform)
             
             # 添加到渲染器
@@ -834,9 +782,45 @@ class MeshDisplayArea(BaseFrame):
             
         except Exception as e:
             print(f"添加坐标轴失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+    
+    def _create_axes_transform(self):
+        """创建坐标轴变换"""
+        transform = vtk.vtkTransform()
+        
+        # 获取渲染器的边界
+        bounds = self.renderer.ComputeVisiblePropBounds()
+        if bounds and all(bound != float('inf') and bound != float('-inf') for bound in bounds):
+            # 计算网格中心点和尺寸
+            center_x = (bounds[0] + bounds[1]) / 2
+            center_y = (bounds[2] + bounds[3]) / 2
+            center_z = (bounds[4] + bounds[5]) / 2
             
+            # 计算网格尺寸
+            size_x = bounds[1] - bounds[0]
+            size_y = bounds[3] - bounds[2]
+            size_z = bounds[5] - bounds[4]
+            
+            # 计算最大尺寸
+            max_size = max(size_x, size_y, size_z) if size_x > 0 and size_y > 0 and size_z > 0 else 1.0
+            
+            # 计算左下角位置（稍微偏移，避免与网格重叠）
+            offset_x = center_x - size_x * 0.6
+            offset_y = center_y - size_y * 0.6
+            offset_z = center_z - size_z * 0.6
+            
+            # 设置变换，将坐标轴移动到左下角
+            transform.Translate(offset_x, offset_y, offset_z if size_z > 0 else 0.0)
+            
+            # 根据网格大小调整坐标轴比例
+            scale = max_size * 0.15  # 坐标轴大小为网格最大尺寸的15%
+            transform.Scale(scale, scale, scale)
+        else:
+            # 如果没有边界信息，使用默认设置
+            transform.Translate(-1, -1, -1)
+            transform.Scale(0.5, 0.5, 0.5)
+        
+        return transform
+    
     def clear_mesh_actors(self):
         """清除所有网格相关的演员"""
         # 清除主网格演员
@@ -881,7 +865,7 @@ class MeshDisplayArea(BaseFrame):
             # 确保在出错时重置标志
             if hasattr(self, '_render_in_progress'):
                 self._render_in_progress = False
-            
+    
     def clear(self):
         """清除显示（别名方法，与clear_display功能相同）"""
         self.clear_display()
@@ -910,15 +894,11 @@ class MeshDisplayArea(BaseFrame):
                 self.render_window.Render()
                 self._render_in_progress = False
     
-    def toggle_points(self, show_points=True):
-        """切换点云显示模式"""
-        if self.mesh_actor:
-            if show_points:
-                self.mesh_actor.GetProperty().SetRepresentationToPoints()
-                self.mesh_actor.GetProperty().SetPointSize(3.0)
-            else:
-                # 切换回表面模式
-                self.mesh_actor.GetProperty().SetRepresentationToSurface()
+    def set_render_mode(self, mode):
+        """设置渲染模式"""
+        if mode in ["surface", "wireframe", "points"]:
+            self.render_mode.set(mode)
+            self._apply_render_mode()
             
             # 更新渲染窗口
             if self.render_window:
@@ -1008,37 +988,3 @@ class MeshDisplayArea(BaseFrame):
                 self._render_in_progress = True
                 self.render_window.Render()
                 self._render_in_progress = False
-            
-    def toggle_wireframe(self, wireframe=None):
-        """切换线框/实体模式"""
-        if wireframe is not None:
-            self.wireframe_var.set(wireframe)
-            
-        if self.mesh_actor:
-            if self.wireframe_var.get():
-                self.mesh_actor.GetProperty().SetRepresentationToWireframe()
-                self.mesh_actor.GetProperty().SetLineWidth(2.0)  # 增加线宽使线框更明显
-                self.mesh_actor.GetProperty().EdgeVisibilityOn()  # 确保边缘可见
-            else:
-                self.mesh_actor.GetProperty().SetRepresentationToSurface()
-                self.mesh_actor.GetProperty().EdgeVisibilityOff()  # 关闭边缘可见性
-            
-            # 更新渲染窗口
-            if self.render_window:
-                # 防止递归调用，使用标志检查
-                if not hasattr(self, '_render_in_progress'):
-                    self._render_in_progress = True
-                    self.render_window.Render()
-                    self._render_in_progress = False
-    
-    def pan_view(self):
-        """平移视图"""
-        # VTK的交互器默认支持鼠标左键旋转，右键平移，滚轮缩放
-        # 这里我们只更新状态提示，实际平移由鼠标交互完成
-        pass
-            
-    def rotate_view(self):
-        """旋转视图"""
-        # VTK的交互器默认支持鼠标左键旋转，右键平移，滚轮缩放
-        # 这里我们只更新状态提示，实际旋转由鼠标交互完成
-        pass

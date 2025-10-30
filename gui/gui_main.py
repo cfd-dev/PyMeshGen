@@ -886,21 +886,17 @@ class SimplifiedPyMeshGenGUI:
         if hasattr(self, 'mesh_display') and self.mesh_display:
             render_mode = self.render_mode_var.get()
             
-            if render_mode == "surface":
-                self.mesh_display.toggle_wireframe(False)
-                self.update_status("切换到表面渲染模式")
-            elif render_mode == "wireframe":
-                self.mesh_display.toggle_wireframe(True)
-                self.update_status("切换到线框渲染模式")
-            elif render_mode == "points":
-                # 点云模式需要特殊处理
-                if hasattr(self.mesh_display, 'toggle_points'):
-                    self.mesh_display.toggle_points(True)
-                    self.update_status("切换到点云渲染模式")
-                else:
-                    # 如果没有点云模式，则使用线框模式
-                    self.mesh_display.toggle_wireframe(True)
-                    self.update_status("切换到线框渲染模式（点云模式不可用）")
+            if render_mode in ["surface", "wireframe", "points"]:
+                self.mesh_display.set_render_mode(render_mode)
+                
+                mode_names = {
+                    "surface": "表面",
+                    "wireframe": "线框", 
+                    "points": "点云"
+                }
+                self.update_status(f"切换到{mode_names.get(render_mode, render_mode)}渲染模式")
+            else:
+                self.update_status("未知的渲染模式")
     
     def toggle_boundary_display(self):
         """切换边界显示"""
