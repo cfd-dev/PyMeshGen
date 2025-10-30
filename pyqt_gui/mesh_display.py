@@ -92,35 +92,6 @@ class MeshDisplayArea:
             except:
                 pass
     
-    def __init__(self, parent=None, figsize=(16, 9), dpi=100, offscreen=False):
-        self.figsize = figsize
-        self.dpi = dpi
-        self.mesh_data = None
-        self.params = None
-        self.offscreen = offscreen  # 离屏渲染模式标志
-        
-        # VTK相关组件
-        self.renderer = None
-        self.render_window = None
-        self.interactor = None
-        self.mesh_actor = None
-        self.boundary_actors = []
-        self.axes_actor = None  # 添加坐标轴演员引用
-        
-        # 显示控制变量
-        self.show_boundary = True
-        self.wireframe = False
-        self.render_mode = "surface"  # 渲染模式 (surface/wireframe/points)
-        
-        # 渲染状态标志
-        self._render_in_progress = False
-        
-        # 创建网格显示区域
-        self.create_mesh_display_area(parent)
-        
-        # 启用交互功能
-        self.enable_interaction()
-        
     def create_mesh_display_area(self, parent):
         """创建VTK网格显示区域"""
         # 创建主框架
@@ -290,47 +261,78 @@ class MeshDisplayArea:
             polys = vtk.vtkCellArray()
             
             # 处理不同类型的网格数据
-            if isinstance(self.mesh_data, dict) and 'type' in self.mesh_data:
-                if self.mesh_data['type'] in ['vtk', 'stl', 'obj', 'ply']:
-                    # 使用统一的数据结构
-                    if 'node_coords' not in self.mesh_data:
-                        print("mesh_data缺少'node_coords'键")
-                        return None
-                    if 'cells' not in self.mesh_data:
-                        print("mesh_data缺少'cells'键")
-                        return None
+            if isinstance(self.mesh_data, dict):
+                # 如果是字典，检查是否有type键和相应数据
+                if 'type' in self.mesh_data:
+                    if self.mesh_data['type'] in ['vtk', 'stl', 'obj', 'ply']:
+                        # 使用统一的数据结构
+                        if 'node_coords' not in self.mesh_data:
+                            print("mesh_data缺少'node_coords'键")
+                            return None
+                        if 'cells' not in self.mesh_data:
+                            print("mesh_data缺少'cells'键")
+                            return None
+                            
+                        node_coords = self.mesh_data['node_coords']
+                        cells = self.mesh_data['cells']
                         
-                    node_coords = self.mesh_data['node_coords']
-                    cells = self.mesh_data['cells']
+                        # 添加点
+                        for i, coord in enumerate(node_coords):
+                            if len(coord) >= 2:
+                                if len(coord) == 2:
+                                    points.InsertNextPoint(coord[0], coord[1], 0.0)
+                                else:
+                                    points.InsertNextPoint(coord[0], coord[1], coord[2])
+                        
+                        # 添加单元
+                        for cell in cells:
+                            if len(cell) == 3:  # 三角形
+                                triangle = vtk.vtkTriangle()
+                                triangle.GetPointIds().SetId(0, cell[0])
+                                triangle.GetPointIds().SetId(1, cell[1])
+                                triangle.GetPointIds().SetId(2, cell[2])
+                                polys.InsertNextCell(triangle)
+                            elif len(cell) == 4:  # 四边形
+                                quad = vtk.vtkQuad()
+                                quad.GetPointIds().SetId(0, cell[0])
+                                quad.GetPointIds().SetId(1, cell[1])
+                                quad.GetPointIds().SetId(2, cell[2])
+                                quad.GetPointIds().SetId(3, cell[3])
+                                polys.InsertNextCell(quad)
                     
-                    # 添加点
-                    for i, coord in enumerate(node_coords):
-                        if len(coord) >= 2:
-                            if len(coord) == 2:
-                                points.InsertNextPoint(coord[0], coord[1], 0.0)
-                            else:
-                                points.InsertNextPoint(coord[0], coord[1], coord[2])
-                    
-                    # 添加单元
-                    for cell in cells:
-                        if len(cell) == 3:  # 三角形
-                            triangle = vtk.vtkTriangle()
-                            triangle.GetPointIds().SetId(0, cell[0])
-                            triangle.GetPointIds().SetId(1, cell[1])
-                            triangle.GetPointIds().SetId(2, cell[2])
-                            polys.InsertNextCell(triangle)
-                        elif len(cell) == 4:  # 四边形
-                            quad = vtk.vtkQuad()
-                            quad.GetPointIds().SetId(0, cell[0])
-                            quad.GetPointIds().SetId(1, cell[1])
-                            quad.GetPointIds().SetId(2, cell[2])
-                            quad.GetPointIds().SetId(3, cell[3])
-                            polys.InsertNextCell(quad)
-                
-                elif self.mesh_data['type'] == 'cas':
-                    # 对于.cas文件，使用Unstructured_Grid对象
-                    if 'unstr_grid' in self.mesh_data:
-                        return self.create_vtk_mesh_from_unstr_grid(self.mesh_data['unstr_grid'])
+                    elif self.mesh_data['type'] == 'cas':
+                        # 对于.cas文件，使用Unstructured_Grid对象
+                        if 'unstr_grid' in self.mesh_data:
+                            return self.create_vtk_mesh_from_unstr_grid(self.mesh_data['unstr_grid'])
+                else:
+                    # 字典中没有type键，尝试作为普通网格数据处理
+                    if 'node_coords' in self.mesh_data and 'cells' in self.mesh_data:
+                        node_coords = self.mesh_data['node_coords']
+                        cells = self.mesh_data['cells']
+                        
+                        # 添加点
+                        for i, coord in enumerate(node_coords):
+                            if len(coord) >= 2:
+                                if len(coord) == 2:
+                                    points.InsertNextPoint(coord[0], coord[1], 0.0)
+                                else:
+                                    points.InsertNextPoint(coord[0], coord[1], coord[2])
+                        
+                        # 添加单元
+                        for cell in cells:
+                            if len(cell) == 3:  # 三角形
+                                triangle = vtk.vtkTriangle()
+                                triangle.GetPointIds().SetId(0, cell[0])
+                                triangle.GetPointIds().SetId(1, cell[1])
+                                triangle.GetPointIds().SetId(2, cell[2])
+                                polys.InsertNextCell(triangle)
+                            elif len(cell) == 4:  # 四边形
+                                quad = vtk.vtkQuad()
+                                quad.GetPointIds().SetId(0, cell[0])
+                                quad.GetPointIds().SetId(1, cell[1])
+                                quad.GetPointIds().SetId(2, cell[2])
+                                quad.GetPointIds().SetId(3, cell[3])
+                                polys.InsertNextCell(quad)
             
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
                 # 处理具有node_coords和cells属性的对象
