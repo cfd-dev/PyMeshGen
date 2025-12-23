@@ -185,7 +185,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.current_mesh = None
         self.cas_parts_info = None  # 初始化cas_parts_info属性
         # 初始化视图控制变量
-        self.render_mode = "surface"
+        self.render_mode = "wireframe"
         self.show_boundary = True
     
     def create_widgets(self):
@@ -381,7 +381,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 实体模式
         self.surface_mode_action = QAction("实体", self)
         self.surface_mode_action.setCheckable(True)
-        self.surface_mode_action.setChecked(True)
+        self.surface_mode_action.setChecked(False)  # Default is wireframe now
         self.surface_mode_action.setToolTip("实体模式：仅显示模型表面 (1键)")
         self.surface_mode_action.triggered.connect(lambda: self.set_render_mode("surface"))
         self.display_mode_group.addAction(self.surface_mode_action)
@@ -390,6 +390,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 线框模式
         self.wireframe_mode_action = QAction("线框", self)
         self.wireframe_mode_action.setCheckable(True)
+        self.wireframe_mode_action.setChecked(True)  # Default mode
         self.wireframe_mode_action.setToolTip("线框模式：仅显示模型边缘线条 (2键)")
         self.wireframe_mode_action.triggered.connect(lambda: self.set_render_mode("wireframe"))
         self.display_mode_group.addAction(self.wireframe_mode_action)
@@ -398,6 +399,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 混合模式
         self.mixed_mode_action = QAction("混合", self)
         self.mixed_mode_action.setCheckable(True)
+        self.mixed_mode_action.setChecked(False)  # Default is wireframe now
         self.mixed_mode_action.setToolTip("混合模式：同时显示模型表面和边缘线条 (3键)")
         self.mixed_mode_action.triggered.connect(lambda: self.set_render_mode("mixed"))
         self.display_mode_group.addAction(self.mixed_mode_action)
