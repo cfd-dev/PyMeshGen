@@ -15,6 +15,9 @@ from PyQt5.QtGui import QIcon, QFont, QPainter, QColor, QPalette
 
 class RibbonTabBar(QTabWidget):
     """Custom ribbon tab bar with large buttons and icons"""
+    
+    # 添加标签栏点击信号
+    tab_bar_clicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -52,6 +55,15 @@ class RibbonTabBar(QTabWidget):
                                                  stop: 0 #f8f8f8, stop: 1 #e8e8e8);
             }
         """)
+        
+    def mousePressEvent(self, event):
+        """重写鼠标点击事件，当点击标签栏时发出信号"""
+        # Check if the click is on the tab bar area (not on the content pane)
+        tab_bar = self.tabBar()
+        if tab_bar.underMouse():
+            # 发出标签栏点击信号
+            self.tab_bar_clicked.emit()
+        super().mousePressEvent(event)
 
 
 class RibbonGroup(QFrame):
@@ -229,21 +241,26 @@ class RibbonWidget(QWidget):
         self.help_tab = self.create_help_tab()
         self.ribbon_tabs.addTab(self.help_tab, "帮助")
 
-        # Add the ribbon tabs to the main layout
-        self.main_layout.addWidget(self.ribbon_tabs)
-
         # Add toggle button to the right of the ribbon tabs
         from PyQt5.QtWidgets import QPushButton
-        self.toggle_button = QPushButton("▲")
+        self.toggle_button = QPushButton("^")
         self.toggle_button.setFixedSize(24, 24)
         self.toggle_button.setToolTip("折叠/展开功能区")
 
-        # Add the toggle button to the layout
-        # We'll need to manage the button separately from the tabs
-        self.toggle_layout = QHBoxLayout()
-        self.toggle_layout.addStretch()  # Push button to the right
-        self.toggle_layout.addWidget(self.toggle_button)
-        self.main_layout.addLayout(self.toggle_layout)
+        # Create a horizontal layout to hold both ribbon tabs and toggle button
+        # This will keep them on the same line
+        self.tabs_and_toggle_layout = QHBoxLayout()
+        self.tabs_and_toggle_layout.setContentsMargins(0, 0, 0, 0)
+        self.tabs_and_toggle_layout.setSpacing(0)
+        
+        # Add ribbon tabs to the layout, taking up most of the space
+        self.tabs_and_toggle_layout.addWidget(self.ribbon_tabs, 1)  # Give ribbon tabs most space
+        
+        # Add toggle button to the layout
+        self.tabs_and_toggle_layout.addWidget(self.toggle_button, 0, Qt.AlignTop)  # Align button to top
+        
+        # Add the combined layout to the main layout
+        self.main_layout.addLayout(self.tabs_and_toggle_layout)
 
         self.setLayout(self.main_layout)
 
@@ -252,67 +269,28 @@ class RibbonWidget(QWidget):
         
         # 连接标签页切换信号，确保在折叠状态下切换标签页也不会显示内容
         self.ribbon_tabs.currentChanged.connect(self._on_tab_changed)
+        
+        # 连接标签栏点击信号，用于在折叠状态下展开ribbon
+        self.ribbon_tabs.tab_bar_clicked.connect(self._on_tab_bar_clicked)
     
     def _on_tab_changed(self, index):
-        """当标签页切换时，确保在折叠状态下内容仍然隐藏"""
+        """当标签页切换时，根据当前可见性状态决定是否调整高度"""
+        # 只在折叠状态下才调整高度，展开状态下不做任何操作
         if not self._content_visible:
             # 如果处于折叠状态，确保最大高度仍然限制在标签栏高度
             tab_bar_height = self.ribbon_tabs.tabBar().height()
-            button_height = self.toggle_button.height()
-            self.setMaximumHeight(max(tab_bar_height, button_height) + 15)
-
-        # Style the ribbon
-        self.setStyleSheet("""
-            RibbonWidget {
-                background-color: #e6e6e6;
-                border-bottom: 1px solid #cccccc;
-            }
-        """)
-
-    def toggle_content_visibility(self):
-        """Toggle visibility of ribbon content (tabs and groups)"""
-        if self._content_visible:
-            # Collapse the ribbon by reducing its maximum height
-            # This keeps the tab headers visible but hides the content
-            tab_bar_height = self.ribbon_tabs.tabBar().height()
-            button_height = self.toggle_button.height()
-            self.setMaximumHeight(max(tab_bar_height, button_height) + 15)  # Just enough for tabs and toggle button
-            self.toggle_button.setText("▼")  # Show up arrow when collapsed
-            self._content_visible = False
-            # 更新样式以确保视觉一致性
-            self.ribbon_tabs.setStyleSheet("""
-                QTabWidget::pane {
-                    border: 0px;
-                    background-color: #f0f0f0;
-                }
-                QTabBar::tab {
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                                     stop: 0 #f0f0f0, stop: 1 #e0e0e0);
-                    color: #333333;
-                    border: 1px solid #b0b0b0;
-                    border-bottom: none;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    padding: 5px 10px;
-                    margin: 0px 2px 0px 0px;
-                    font-size: 9pt;
-                    font-weight: bold;
-                }
-                QTabBar::tab:selected {
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                                     stop: 0 #ffffff, stop: 1 #f0f0f0);
-                    color: #000000;
-                    border-bottom: 2px solid #0078d4;
-                }
-                QTabBar::tab:hover {
-                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
-                                                     stop: 0 #f8f8f8, stop: 1 #e8e8e8);
-                }
-            """)
-        else:
-            # Expand the ribbon by removing maximum height restriction
+            self.setMaximumHeight(tab_bar_height + 5)
+        
+        # 移除在这里设置样式表的代码，避免重复设置和信号干扰
+        # 样式表应该只在初始化时设置一次
+    
+    def _on_tab_bar_clicked(self):
+        """当标签栏被点击时，如果处于折叠状态则展开ribbon"""
+        if not self._content_visible:
+            # 如果处于折叠状态，点击标签栏则展开ribbon
             self.setMaximumHeight(16777215)  # Maximum allowed height for QWidget
-            self.toggle_button.setText("▲")  # Show down arrow when expanded
+            self.toggle_button.show()  # Show toggle button when expanded
+            self.toggle_button.setText("^")  # Show up arrow when expanded
             self._content_visible = True
             # 恢复完整样式
             self.ribbon_tabs.setStyleSheet("""
@@ -344,6 +322,103 @@ class RibbonWidget(QWidget):
                                                      stop: 0 #f8f8f8, stop: 1 #e8e8e8);
                 }
             """)
+
+            # Make sure the ribbon tabs are properly visible and update the layout
+            self.ribbon_tabs.show()
+
+            # Force a layout update to ensure the ribbon is properly displayed
+            self.updateGeometry()
+            if self.parent() and hasattr(self.parent(), 'update') and callable(getattr(self.parent(), 'update')):
+                self.parent().update()
+
+    def toggle_content_visibility(self):
+        """Toggle visibility of ribbon content (tabs and groups)"""
+        if self._content_visible:
+            # Collapse the ribbon by reducing its maximum height
+            # This keeps the tab headers visible but hides the content
+            tab_bar_height = self.ribbon_tabs.tabBar().height()
+            self.setMaximumHeight(tab_bar_height + 5)  # Just enough for tabs, no button space
+            self.toggle_button.hide()  # Hide toggle button when collapsed
+            self._content_visible = False
+            # 更新样式以确保视觉一致性
+            self.ribbon_tabs.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 0px;
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f0f0f0, stop: 1 #e0e0e0);
+                    color: #333333;
+                    border: 1px solid #b0b0b0;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    padding: 5px 10px;
+                    margin: 0px 2px 0px 0px;
+                    font-size: 9pt;
+                    font-weight: bold;
+                }
+                QTabBar::tab:selected {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #ffffff, stop: 1 #f0f0f0);
+                    color: #000000;
+                    border-bottom: 2px solid #0078d4;
+                }
+                QTabBar::tab:hover {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f8f8f8, stop: 1 #e8e8e8);
+                }
+            """)
+
+            # Force a layout update after collapsing
+            self.updateGeometry()
+            if self.parent() and hasattr(self.parent(), 'update') and callable(getattr(self.parent(), 'update')):
+                self.parent().update()
+        else:
+            # Expand the ribbon by removing maximum height restriction
+            self.setMaximumHeight(16777215)  # Maximum allowed height for QWidget
+            self.toggle_button.show()  # Show toggle button when expanded
+            self.toggle_button.setText("^")  # Show up arrow when expanded
+            self._content_visible = True
+            # 恢复完整样式
+            self.ribbon_tabs.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 0px;
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f0f0f0, stop: 1 #e0e0e0);
+                    color: #333333;
+                    border: 1px solid #b0b0b0;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    padding: 5px 10px;
+                    margin: 0px 2px 0px 0px;
+                    font-size: 9pt;
+                    font-weight: bold;
+                }
+                QTabBar::tab:selected {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #ffffff, stop: 1 #f0f0f0);
+                    color: #000000;
+                    border-bottom: 2px solid #0078d4;
+                }
+                QTabBar::tab:hover {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f8f8f8, stop: 1 #e8e8e8);
+                }
+            """)
+
+            # Make sure the ribbon is visible after expanding
+            self.show()
+
+            # Force a layout update after expanding
+            self.updateGeometry()
+            if self.parent() and hasattr(self.parent(), 'update') and callable(getattr(self.parent(), 'update')):
+                self.parent().update()
 
     def is_content_visible(self):
         """Check if ribbon content is visible"""
