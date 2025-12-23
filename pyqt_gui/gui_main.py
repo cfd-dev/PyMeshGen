@@ -57,13 +57,33 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def setup_window(self):
         """设置窗口大小和标题"""
         self.setWindowTitle("PyMeshGen - 高性能网格生成工具 (PyQt)")
-        
+
+        # 设置窗口图标 if available
+        try:
+            import os
+            icon_path = os.path.join(self.project_root, "gui", "icons", "app_icon.png")
+            if os.path.exists(icon_path):
+                from PyQt5.QtGui import QIcon
+                self.setWindowIcon(QIcon(icon_path))
+        except:
+            pass  # 如果图标不存在则跳过
+
+        # 设置窗口属性
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+            }
+        """)
+
         # 获取屏幕尺寸
         screen = QApplication.primaryScreen()
         screen_size = screen.size()
         screen_width = screen_size.width()
         screen_height = screen_size.height()
-        
+
         # 根据屏幕分辨率设置窗口大小
         if screen_width >= 1920 and screen_height >= 1080:
             # 高分辨率屏幕
@@ -77,32 +97,82 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 低分辨率屏幕
             window_width = int(screen_width * 0.95)
             window_height = int(screen_height * 0.95)
-        
+
         # 设置最小窗口大小
-        min_width = 1024
-        min_height = 768
-        
+        min_width = 1200
+        min_height = 800
+
         # 确保窗口大小不小于最小值
         window_width = max(window_width, min_width)
         window_height = max(window_height, min_height)
-        
+
         self.resize(window_width, window_height)
-        
+
         # 居中窗口
         frame_geometry = self.frameGeometry()
         center_point = screen.availableGeometry().center()
         frame_geometry.moveCenter(center_point)
         self.move(frame_geometry.topLeft())
-        
+
         # 设置最小窗口大小
         self.setMinimumSize(min_width, min_height)
+
+        # 设置窗口透明度效果
+        self.setAttribute(Qt.WA_TranslucentBackground, False)
     
     def setup_fonts(self):
         """设置字体"""
         # 应用系统默认字体
         font = QFont()
+        font.setFamily("Microsoft YaHei")
         font.setPointSize(10)
+        font.setStyleHint(QFont.SansSerif)
         self.setFont(font)
+
+        # Apply global stylesheet for consistent appearance
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+            }
+            QWidget {
+                background-color: #f0f0f0;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 10pt;
+                color: #333333;
+            }
+            QMenuBar {
+                background-color: #e6e6e6;
+                spacing: 5px;
+            }
+            QMenuBar::item {
+                background: transparent;
+                padding: 4px 8px;
+            }
+            QMenuBar::item:selected {
+                background: #0078d4;
+                color: white;
+            }
+            QMenuBar::item:pressed {
+                background: #005a9e;
+                color: white;
+            }
+            QPushButton {
+                background-color: #f5f5f5;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                padding: 5px;
+                min-width: 60px;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+            }
+            QPushButton:hover {
+                background-color: #e6e6e6;
+                border: 1px solid #999999;
+            }
+            QPushButton:pressed {
+                background-color: #d9d9d9;
+                border: 1px solid #666666;
+            }
+        """)
     
     def initialize_modules(self):
         """初始化模块"""
@@ -197,13 +267,43 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         right_main_layout.addWidget(self.right_paned)
         self.paned_window.addWidget(right_main_widget)
         
-        # 设置拉伸比例
-        self.paned_window.setStretchFactor(0, 3)
-        self.paned_window.setStretchFactor(1, 7)
-        
-        # 设置右侧部分的拉伸
-        self.right_paned.setStretchFactor(0, 1)
-        self.right_paned.setStretchFactor(1, 0)
+        # 设置拉伸比例 - improved proportions
+        self.paned_window.setStretchFactor(0, 2)  # Left panel: 20% (was 30%)
+        self.paned_window.setStretchFactor(1, 8)  # Right panel: 80% (was 70%)
+
+        # Style the splitters
+        self.paned_window.setStyleSheet("""
+            QSplitter::handle {
+                background-color: #d0d0d0;
+                border: 1px solid #b0b0b0;
+                border-radius: 2px;
+            }
+            QSplitter::handle:horizontal {
+                width: 6px;
+            }
+            QSplitter::handle:vertical {
+                height: 6px;
+            }
+        """)
+
+        # 设置右侧部分的拉伸 - improved proportions
+        self.right_paned.setStretchFactor(0, 7)  # Mesh display: 70% (was 100%)
+        self.right_paned.setStretchFactor(1, 3)  # Status output: 30% (was 0%)
+
+        # Style the right splitter too
+        self.right_paned.setStyleSheet("""
+            QSplitter::handle {
+                background-color: #d0d0d0;
+                border: 1px solid #b0b0b0;
+                border-radius: 2px;
+            }
+            QSplitter::handle:horizontal {
+                width: 6px;
+            }
+            QSplitter::handle:vertical {
+                height: 6px;
+            }
+        """)
         
         main_layout.addWidget(self.paned_window)
         
@@ -213,21 +313,52 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def create_toolbar(self):
         """创建工具栏"""
         self.toolbar = ToolBar(self)
-        
+
+        # 设置工具栏样式
+        self.toolbar.toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #e0e0e0;
+                border: 1px solid #cccccc;
+                spacing: 5px;
+                padding: 5px;
+            }
+            QToolButton {
+                background-color: #f5f5f5;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                padding: 5px;
+                margin: 2px;
+                min-width: 60px;
+            }
+            QToolButton:hover {
+                background-color: #e6e6e6;
+                border: 1px solid #999999;
+            }
+            QToolButton:pressed {
+                background-color: #d9d9d9;
+                border: 1px solid #666666;
+            }
+            QToolButton:checked {
+                background-color: #0078d4;
+                color: white;
+                border: 1px solid #005a9e;
+            }
+        """)
+
         # 导入Qt图标
         from PyQt5.QtGui import QIcon
         from PyQt5.QtWidgets import QActionGroup, QAction
-        
+
         # 获取图标路径
         icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui", "icons")
-        
+
         # 创建工具栏按钮，使用现有图标
         def get_icon(icon_name):
             icon_path = os.path.join(icon_dir, f"{icon_name}.png")
             if os.path.exists(icon_path):
                 return QIcon(icon_path)
             return None
-        
+
         # 文件操作按钮
         self.toolbar.add_action("新建", get_icon("new"), self.new_config, "创建新的网格配置\n快捷键: Ctrl+N")
         self.toolbar.add_action("打开", get_icon("open"), self.open_config, "打开已保存的网格配置文件\n支持格式: .json, .cfg\n快捷键: Ctrl+O")
@@ -236,36 +367,36 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.toolbar.add_action("导入", get_icon("import"), self.import_mesh, "从外部文件导入网格数据\n支持格式: .vtk, .cas, .msh\n快捷键: Ctrl+I")
         self.toolbar.add_action("导出", get_icon("export"), self.export_mesh, "将当前网格导出到文件\n支持格式: .vtk, .obj, .stl\n快捷键: Ctrl+E")
         self.toolbar.add_separator()
-        
+
         # 网格操作按钮
         self.toolbar.add_action("生成", get_icon("generate"), self.generate_mesh, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
         self.toolbar.add_action("显示", get_icon("display"), self.display_mesh, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
         self.toolbar.add_action("清空", get_icon("clear"), self.clear_mesh, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
         self.toolbar.add_separator()
-        
+
         # 显示模式切换按钮组
         self.display_mode_group = QActionGroup(self)
         self.display_mode_group.setExclusive(True)
-        
+
         # 实体模式
-        self.surface_mode_action = QAction("实体模式", self)
+        self.surface_mode_action = QAction("实体", self)
         self.surface_mode_action.setCheckable(True)
         self.surface_mode_action.setChecked(True)
         self.surface_mode_action.setToolTip("实体模式：仅显示模型表面 (1键)")
         self.surface_mode_action.triggered.connect(lambda: self.set_render_mode("surface"))
         self.display_mode_group.addAction(self.surface_mode_action)
         self.toolbar.toolbar.addAction(self.surface_mode_action)
-        
+
         # 线框模式
-        self.wireframe_mode_action = QAction("线框模式", self)
+        self.wireframe_mode_action = QAction("线框", self)
         self.wireframe_mode_action.setCheckable(True)
         self.wireframe_mode_action.setToolTip("线框模式：仅显示模型边缘线条 (2键)")
         self.wireframe_mode_action.triggered.connect(lambda: self.set_render_mode("wireframe"))
         self.display_mode_group.addAction(self.wireframe_mode_action)
         self.toolbar.toolbar.addAction(self.wireframe_mode_action)
-        
+
         # 混合模式
-        self.mixed_mode_action = QAction("混合模式", self)
+        self.mixed_mode_action = QAction("混合", self)
         self.mixed_mode_action.setCheckable(True)
         self.mixed_mode_action.setToolTip("混合模式：同时显示模型表面和边缘线条 (3键)")
         self.mixed_mode_action.triggered.connect(lambda: self.set_render_mode("mixed"))
@@ -356,13 +487,119 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """创建左侧部件信息区域（分组更清晰，带滚动）"""
         # 部件列表分组
         self.parts_list_widget = PartListWidget()
-        
+
+        # Apply styling to the parts list widget
+        if hasattr(self.parts_list_widget, 'parts_list') and self.parts_list_widget.parts_list:
+            self.parts_list_widget.parts_list.setStyleSheet("""
+                QListWidget {
+                    border: 1px solid #cccccc;
+                    border-radius: 3px;
+                    background-color: #ffffff;
+                    color: #333333;
+                    alternate-background-color: #f0f0f0;
+                    font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                    font-size: 9pt;
+                }
+                QListWidget::item {
+                    padding: 4px;
+                    border-bottom: 1px solid #e0e0e0;
+                }
+                QListWidget::item:selected {
+                    background-color: #0078d4;
+                    color: white;
+                }
+                QListWidget::item:hover {
+                    background-color: #cceeff;
+                }
+            """)
+
+        # Apply styling to the buttons
+        if hasattr(self.parts_list_widget, 'add_button'):
+            self.parts_list_widget.add_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #e6f3ff;
+                    border: 1px solid #0078d4;
+                    border-radius: 3px;
+                    padding: 4px;
+                    color: #0078d4;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #cceeff;
+                }
+                QPushButton:pressed {
+                    background-color: #99ddff;
+                }
+            """)
+
+        if hasattr(self.parts_list_widget, 'remove_button'):
+            self.parts_list_widget.remove_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #ffe6e6;
+                    border: 1px solid #cc0000;
+                    border-radius: 3px;
+                    padding: 4px;
+                    color: #cc0000;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #ffcccc;
+                }
+                QPushButton:pressed {
+                    background-color: #ff9999;
+                }
+            """)
+
+        if hasattr(self.parts_list_widget, 'edit_button'):
+            self.parts_list_widget.edit_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #f0f0f0;
+                    border: 1px solid #666666;
+                    border-radius: 3px;
+                    padding: 4px;
+                    color: #333333;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #e0e0e0;
+                }
+                QPushButton:pressed {
+                    background-color: #d0d0d0;
+                }
+            """)
+
         # 属性面板分组
         self.props_frame = QGroupBox("属性面板")
+        self.props_frame.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                margin-top: 1ex;
+                padding-top: 10px;
+                background-color: #f9f9f9;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: #333333;
+            }
+        """)
         props_layout = QVBoxLayout()
-        
+
         self.props_text = QTextEdit()
         self.props_text.setReadOnly(True)
+        self.props_text.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                background-color: #ffffff;
+                color: #333333;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
+            }
+        """)
         props_layout.addWidget(self.props_text)
         self.props_frame.setLayout(props_layout)
     
@@ -370,14 +607,24 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """创建右侧网格视图交互区域（最优化版，移除所有标签，仅保留纯净的网格显示）"""
         # 创建网格显示区域
         self.main_mesh_display = MeshDisplayArea(self.right_panel)
+
+        # Apply styling to the mesh display container
+        self.main_mesh_display.frame.setStyleSheet("""
+            QFrame {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                background-color: #ffffff;
+            }
+        """)
+
         # 这里我们 need to get the actual frame that the MeshDisplayArea creates
         # Store reference to the actual VTK widget
         self.mesh_display = self.main_mesh_display
-        
+
         # Set up keyboard event handling for the VTK widget
         # For now we'll just ensure the widget can receive focus
         self.main_mesh_display.frame.setFocusPolicy(Qt.StrongFocus)
-        
+
         # Add keyboard event handling
         self.main_mesh_display.frame.keyPressEvent = self.on_mesh_display_key
     
@@ -436,23 +683,82 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
         # 创建左右分割的状态和输出面板
         self.status_output_paned = QSplitter(Qt.Horizontal)
-        
+
         # 左侧状态显示区域（4/10宽度）
         self.status_panel = QGroupBox("状态信息")
+        self.status_panel.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+                margin-top: 1ex;
+                padding-top: 10px;
+                background-color: #f9f9f9;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+                color: #333333;
+            }
+        """)
         status_layout = QVBoxLayout(self.status_panel)
-        
-        # 创建状态文本框和滚动条
+
+        # 创建状态文本框 and style it
         self.status_text = QTextEdit()
         self.status_text.setReadOnly(True)
+        self.status_text.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #cccccc;
+                border-radius: 3px;
+                background-color: #ffffff;
+                color: #333333;
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
+            }
+        """)
         status_layout.addWidget(self.status_text)
-        
+
         # 添加到分割器
         self.status_output_paned.addWidget(self.status_panel)
-        
+
         # 右侧信息输出区域（6/10宽度）
         self.info_output = InfoOutput(self.status_output_paned)
+
+        # Apply styling to the info output panel
+        if hasattr(self.info_output, 'frame') and self.info_output.frame:
+            self.info_output.frame.setStyleSheet("""
+                QGroupBox {
+                    font-weight: bold;
+                    border: 1px solid #cccccc;
+                    border-radius: 4px;
+                    margin-top: 1ex;
+                    padding-top: 10px;
+                    background-color: #f9f9f9;
+                }
+                QGroupBox::title {
+                    subcontrol-origin: margin;
+                    left: 10px;
+                    padding: 0 5px 0 5px;
+                    color: #333333;
+                }
+            """)
+
+        # Apply styling to the info text area
+        if hasattr(self.info_output, 'info_text') and self.info_output.info_text:
+            self.info_output.info_text.setStyleSheet("""
+                QTextEdit {
+                    border: 1px solid #cccccc;
+                    border-radius: 3px;
+                    background-color: #ffffff;
+                    color: #333333;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    font-size: 9pt;
+                }
+            """)
+
         self.status_output_paned.addWidget(self.info_output.frame)
-        
+
         # 设置拉伸比例
         self.status_output_paned.setStretchFactor(0, 4)
         self.status_output_paned.setStretchFactor(1, 6)
