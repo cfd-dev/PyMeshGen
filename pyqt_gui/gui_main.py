@@ -219,6 +219,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         
         # 创建主布局
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(2)  # Reduced spacing
         
         # 创建左右两栏布局（3:7比例）
         self.paned_window = QSplitter(Qt.Horizontal)
@@ -226,6 +227,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 左侧部件信息区域（3/10宽度）
         self.left_panel = QWidget()
         left_layout = QVBoxLayout(self.left_panel)
+        left_layout.setSpacing(2)  # Reduced spacing
         
         # Initialize the part list widget first
         self.create_left_panel()
@@ -233,6 +235,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 部件列表分组
         parts_frame_container = QGroupBox("部件列表")
         parts_layout = QVBoxLayout(parts_frame_container)
+        parts_layout.setSpacing(2)  # Reduced spacing
 
         # 部件列表带滚动条 - includes buttons in the widget
         parts_layout.addWidget(self.parts_list_widget.widget)
@@ -249,6 +252,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 右侧网格视图交互区域（7/10宽度）
         right_main_widget = QWidget()
         right_main_layout = QVBoxLayout(right_main_widget)
+        right_main_layout.setSpacing(2)  # Reduced spacing
         
         # 在右侧区域中创建垂直分割窗格（网格显示和状态输出）
         self.right_paned = QSplitter(Qt.Vertical)
@@ -256,6 +260,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 上半部分：网格视图交互区域
         self.right_panel = QWidget()
         right_panel_layout = QVBoxLayout(self.right_panel)
+        right_panel_layout.setSpacing(2)  # Reduced spacing
         self.create_right_panel()
         right_panel_layout.addWidget(self.main_mesh_display.frame)
         self.right_paned.addWidget(self.right_panel)
@@ -263,6 +268,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 下半部分：状态输出面板区域
         self.bottom_frame = QWidget()
         bottom_layout = QVBoxLayout(self.bottom_frame)
+        bottom_layout.setSpacing(2)  # Reduced spacing
         self.create_status_output_panel()
         bottom_layout.addWidget(self.status_output_paned)
         self.right_paned.addWidget(self.bottom_frame)
@@ -552,6 +558,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }
         """)
         props_layout = QVBoxLayout()
+        props_layout.setSpacing(2)  # Reduced spacing
 
         self.props_text = QTextEdit()
         self.props_text.setReadOnly(True)

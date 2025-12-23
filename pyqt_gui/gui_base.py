@@ -65,6 +65,7 @@ class InfoOutput:
         # 创建信息输出框架
         self.frame = QGroupBox("信息输出")
         layout = QVBoxLayout()
+        layout.setSpacing(3)  # Reduced spacing
 
         # 创建文本框 and set smaller minimum size
         self.info_text = QTextEdit()
@@ -249,6 +250,7 @@ class ConfigDialog(DialogBase):
         # 创建部件配置分组框
         parts_group = QGroupBox("部件配置")
         parts_layout = QVBoxLayout(parts_group)
+        parts_layout.setSpacing(2)  # Reduced spacing
         
         # 创建部件配置的树形视图
         self.parts_tree = QTreeView()
@@ -265,14 +267,15 @@ class ConfigDialog(DialogBase):
         
         # 添加部件操作按钮
         parts_buttons_layout = QHBoxLayout()
+        parts_buttons_layout.setSpacing(2)  # Reduced spacing
         self.add_part_btn = QPushButton("添加部件")
         self.add_part_btn.clicked.connect(self.add_part)
         parts_buttons_layout.addWidget(self.add_part_btn)
-        
+
         self.remove_part_btn = QPushButton("删除部件")
         self.remove_part_btn.clicked.connect(self.remove_part)
         parts_buttons_layout.addWidget(self.remove_part_btn)
-        
+
         parts_layout.addLayout(parts_buttons_layout)
         
         # 添加部件配置分组到主布局
@@ -492,11 +495,13 @@ class PartListWidget:
         self.widget = QWidget()
 
         layout = QVBoxLayout()
+        layout.setSpacing(2)  # Reduced spacing
         self.parts_list = QListWidget()
         layout.addWidget(self.parts_list)
 
         # 按钮布局
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(2)  # Reduced spacing
         self.add_button = QPushButton("添加")
         self.remove_button = QPushButton("删除")
         self.edit_button = QPushButton("编辑")
