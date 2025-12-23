@@ -36,7 +36,8 @@ for dir_path in [data_structure_dir, fileio_dir, meshsize_dir, visualization_dir
         sys.path.insert(0, dir_path)
 
 # 导入自定义模块
-from pyqt_gui.gui_base import BaseWidget, MenuBar, StatusBar, InfoOutput, DialogBase, ToolBar, Splitter, PartListWidget
+from pyqt_gui.gui_base import BaseWidget, StatusBar, InfoOutput, DialogBase, Splitter, PartListWidget
+from pyqt_gui.ribbon_widget import RibbonWidget
 from pyqt_gui.mesh_display import MeshDisplayArea
 from parameters import Parameters
 from PyMeshGen import PyMeshGen as MeshGenerator
@@ -190,11 +191,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     
     def create_widgets(self):
         """创建UI组件"""
-        # 创建菜单栏
+        # 创建功能区（替代菜单栏和工具栏）
         self.create_menu()
-
-        # 创建工具栏（位于菜单栏下方）
-        self.create_toolbar()
 
         # 创建中央小工具
         central_widget = QWidget()
@@ -296,180 +294,135 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 创建状态栏
         self.status_bar = StatusBar(self)
     
-    def create_toolbar(self):
-        """创建工具栏"""
-        self.toolbar = ToolBar(self)
+    def create_ribbon(self):
+        """创建功能区"""
+        self.ribbon = RibbonWidget(self)
+        # Set up icons for the ribbon buttons
+        self.setup_ribbon_icons()
+        self.ribbon.set_callbacks(self)
+        self.setMenuWidget(self.ribbon)
 
-        # 设置工具栏样式
-        self.toolbar.toolbar.setStyleSheet("""
-            QToolBar {
-                background-color: #e0e0e0;
-                border: 1px solid #cccccc;
-                spacing: 5px;
-                padding: 5px;
-            }
-            QToolButton {
-                background-color: #f5f5f5;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                padding: 5px;
-                margin: 2px;
-                min-width: 60px;
-            }
-            QToolButton:hover {
-                background-color: #e6e6e6;
-                border: 1px solid #999999;
-            }
-            QToolButton:pressed {
-                background-color: #d9d9d9;
-                border: 1px solid #666666;
-            }
-            QToolButton:checked {
-                background-color: #0078d4;
-                color: white;
-                border: 1px solid #005a9e;
-            }
-        """)
-
-        # 导入Qt图标
-        from PyQt5.QtGui import QIcon
-        from PyQt5.QtWidgets import QActionGroup, QAction
-
-        # 获取图标路径
+    def setup_ribbon_icons(self):
+        """设置功能区按钮图标"""
+        # Try to load icons from the icons directory
         icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui", "icons")
 
-        # 创建工具栏按钮，使用现有图标
+        # Function to get icon with fallback
         def get_icon(icon_name):
             icon_path = os.path.join(icon_dir, f"{icon_name}.png")
             if os.path.exists(icon_path):
+                from PyQt5.QtGui import QIcon
                 return QIcon(icon_path)
-            return None
+            # If file doesn't exist, return a standard icon
+            from PyQt5.QtGui import QIcon
+            return QIcon.fromTheme(icon_name, QIcon())  # Fallback to system theme
 
-        # 文件操作按钮
-        self.toolbar.add_action("新建", get_icon("new"), self.new_config, "创建新的网格配置\n快捷键: Ctrl+N")
-        self.toolbar.add_action("打开", get_icon("open"), self.open_config, "打开已保存的网格配置文件\n支持格式: .json, .cfg\n快捷键: Ctrl+O")
-        self.toolbar.add_action("保存", get_icon("save"), self.save_config, "保存当前网格配置到文件\n格式: .json\n快捷键: Ctrl+S")
-        self.toolbar.add_separator()
-        self.toolbar.add_action("导入", get_icon("import"), self.import_mesh, "从外部文件导入网格数据\n支持格式: .vtk, .cas, .msh\n快捷键: Ctrl+I")
-        self.toolbar.add_action("导出", get_icon("export"), self.export_mesh, "将当前网格导出到文件\n支持格式: .vtk, .obj, .stl\n快捷键: Ctrl+E")
-        self.toolbar.add_separator()
+        # Add icons to file buttons
+        if hasattr(self.ribbon, 'buttons') and 'file' in self.ribbon.buttons:
+            for button_name, button in self.ribbon.buttons['file'].items():
+                if button_name == 'new':
+                    button.setIcon(self.get_standard_icon('document-new'))
+                elif button_name == 'open':
+                    button.setIcon(self.get_standard_icon('document-open'))
+                elif button_name == 'save':
+                    button.setIcon(self.get_standard_icon('document-save'))
+                elif button_name == 'import':
+                    button.setIcon(self.get_standard_icon('document-import'))
+                elif button_name == 'export':
+                    button.setIcon(self.get_standard_icon('document-export'))
 
-        # 网格操作按钮
-        self.toolbar.add_action("生成", get_icon("generate"), self.generate_mesh, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
-        self.toolbar.add_action("显示", get_icon("display"), self.display_mesh, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
-        self.toolbar.add_action("清空", get_icon("clear"), self.clear_mesh, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
-        self.toolbar.add_separator()
+        # Add icons to view buttons
+        if hasattr(self.ribbon, 'buttons') and 'view' in self.ribbon.buttons:
+            for button_name, button in self.ribbon.buttons['view'].items():
+                if button_name == 'reset':
+                    button.setIcon(self.get_standard_icon('view-refresh'))
+                elif button_name == 'fit':
+                    button.setIcon(self.get_standard_icon('zoom-fit-best'))
+                elif button_name == 'zoom_in':
+                    button.setIcon(self.get_standard_icon('zoom-in'))
+                elif button_name == 'zoom_out':
+                    button.setIcon(self.get_standard_icon('zoom-out'))
+                elif button_name in ['surface', 'wireframe', 'mixed', 'points']:
+                    button.setIcon(self.get_standard_icon('applications-graphics'))
 
-        # 显示模式切换按钮组
-        self.display_mode_group = QActionGroup(self)
-        self.display_mode_group.setExclusive(True)
+        # Add icons to config buttons
+        if hasattr(self.ribbon, 'buttons') and 'config' in self.ribbon.buttons:
+            for button_name, button in self.ribbon.buttons['config'].items():
+                if button_name in ['params', 'mesh_params', 'boundary']:
+                    button.setIcon(self.get_standard_icon('configure'))
+                elif button_name in ['import_config', 'export_config']:
+                    button.setIcon(self.get_standard_icon('document-properties'))
+                elif button_name == 'reset':
+                    button.setIcon(self.get_standard_icon('edit-clear'))
 
-        # 实体模式
-        self.surface_mode_action = QAction("实体", self)
-        self.surface_mode_action.setCheckable(True)
-        self.surface_mode_action.setChecked(False)  # Default is wireframe now
-        self.surface_mode_action.setToolTip("实体模式：仅显示模型表面 (1键)")
-        self.surface_mode_action.triggered.connect(lambda: self.set_render_mode("surface"))
-        self.display_mode_group.addAction(self.surface_mode_action)
-        self.toolbar.toolbar.addAction(self.surface_mode_action)
+        # Add icons to mesh buttons
+        if hasattr(self.ribbon, 'buttons') and 'mesh' in self.ribbon.buttons:
+            for button_name, button in self.ribbon.buttons['mesh'].items():
+                if button_name == 'generate':
+                    button.setIcon(self.get_standard_icon('system-run'))
+                elif button_name == 'display':
+                    button.setIcon(self.get_standard_icon('view-fullscreen'))
+                elif button_name == 'clear':
+                    button.setIcon(self.get_standard_icon('edit-delete'))
+                elif button_name in ['quality', 'smooth', 'optimize']:
+                    button.setIcon(self.get_standard_icon('tools-check-spelling'))
+                elif button_name in ['statistics', 'report']:
+                    button.setIcon(self.get_standard_icon('x-office-spreadsheet'))
 
-        # 线框模式
-        self.wireframe_mode_action = QAction("线框", self)
-        self.wireframe_mode_action.setCheckable(True)
-        self.wireframe_mode_action.setChecked(True)  # Default mode
-        self.wireframe_mode_action.setToolTip("线框模式：仅显示模型边缘线条 (2键)")
-        self.wireframe_mode_action.triggered.connect(lambda: self.set_render_mode("wireframe"))
-        self.display_mode_group.addAction(self.wireframe_mode_action)
-        self.toolbar.toolbar.addAction(self.wireframe_mode_action)
+        # Add icons to help buttons
+        if hasattr(self.ribbon, 'buttons') and 'help' in self.ribbon.buttons:
+            for button_name, button in self.ribbon.buttons['help'].items():
+                if button_name == 'manual':
+                    button.setIcon(self.get_standard_icon('help-contents'))
+                elif button_name == 'quick_start':
+                    button.setIcon(self.get_standard_icon('help-faq'))
+                elif button_name == 'shortcuts':
+                    button.setIcon(self.get_standard_icon('help-keyboard-shortcuts'))
+                elif button_name == 'updates':
+                    button.setIcon(self.get_standard_icon('help-about'))
+                elif button_name == 'about':
+                    button.setIcon(self.get_standard_icon('help-about'))
 
-        # 混合模式
-        self.mixed_mode_action = QAction("混合", self)
-        self.mixed_mode_action.setCheckable(True)
-        self.mixed_mode_action.setChecked(False)  # Default is wireframe now
-        self.mixed_mode_action.setToolTip("混合模式：同时显示模型表面和边缘线条 (3键)")
-        self.mixed_mode_action.triggered.connect(lambda: self.set_render_mode("mixed"))
-        self.display_mode_group.addAction(self.mixed_mode_action)
-        self.toolbar.toolbar.addAction(self.mixed_mode_action)
+    def get_standard_icon(self, icon_name):
+        """获取标准图标"""
+        from PyQt5.QtWidgets import QStyle
+        from PyQt5.QtGui import QIcon
+
+        # Map common icon names to Qt standard icons
+        icon_map = {
+            'document-new': QStyle.SP_FileIcon,
+            'document-open': QStyle.SP_DirOpenIcon,
+            'document-save': QStyle.SP_DialogSaveButton,
+            'document-import': QStyle.SP_ArrowUp,
+            'document-export': QStyle.SP_ArrowDown,
+            'zoom-fit-best': QStyle.SP_ComputerIcon,
+            'zoom-in': QStyle.SP_ArrowUp,
+            'zoom-out': QStyle.SP_ArrowDown,
+            'applications-graphics': QStyle.SP_DesktopIcon,
+            'configure': QStyle.SP_ToolBarHorizontalExtensionButton,
+            'system-run': QStyle.SP_MediaPlay,
+            'view-fullscreen': QStyle.SP_TitleBarMaxButton,
+            'edit-delete': QStyle.SP_TrashIcon,
+            'edit-clear': QStyle.SP_LineEditClearButton,
+            'tools-check-spelling': QStyle.SP_DialogApplyButton,
+            'x-office-spreadsheet': QStyle.SP_FileDialogContentsView,
+            'help-contents': QStyle.SP_MessageBoxInformation,
+            'help-faq': QStyle.SP_MessageBoxQuestion,
+            'help-keyboard-shortcuts': QStyle.SP_DialogHelpButton,
+            'help-about': QStyle.SP_MessageBoxQuestion,
+            'view-refresh': QStyle.SP_BrowserReload,
+        }
+
+        if icon_name in icon_map:
+            return self.style().standardIcon(icon_map[icon_name])
+        else:
+            # Return a generic icon if not found
+            return self.style().standardIcon(QStyle.SP_MessageBoxInformation)
     
     def create_menu(self):
-        """创建菜单"""
-        # 创建菜单栏对象
-        self.menu_bar = MenuBar(self)
-        
-        # 文件菜单
-        file_commands = {
-            "新建配置": self.new_config,
-            "打开配置": self.open_config,
-            "保存配置": self.save_config,
-            "另存为": self.save_config_as,
-            "---": None,
-            "导入网格": self.import_mesh,
-            "导出网格": self.export_mesh,
-            "---": None,
-            "最近文件": self.show_recent_files,
-            "---": None,
-            "退出": self.close
-        }
-        self.menu_bar.create_file_menu(file_commands)
-        
-        # 视图菜单
-        view_commands = {
-            "重置视图": self.reset_view,
-            "适应视图": self.fit_view,
-            "---": None,
-            "放大": self.zoom_in,
-            "缩小": self.zoom_out,
-            "平移": self.pan_view,
-            "旋转": self.rotate_view,
-            "---": None,
-            "显示工具栏": self.toggle_toolbar,
-            "显示状态栏": self.toggle_statusbar,
-            "显示部件列表": self.toggle_parts_list,
-            "显示属性面板": self.toggle_properties_panel,
-            "---": None,
-            "全屏显示": self.toggle_fullscreen
-        }
-        self.menu_bar.create_view_menu(view_commands)
-        
-        # 配置菜单
-        config_commands = {
-            "参数设置": self.edit_params,
-            "网格参数": self.edit_mesh_params,
-            "边界条件": self.edit_boundary_conditions,
-            "---": None,
-            "导入配置": self.import_config,
-            "导出配置": self.export_config,
-            "---": None,
-            "清空网格": self.clear_mesh,
-            "重置配置": self.reset_config
-        }
-        self.menu_bar.create_config_menu(config_commands)
-        
-        # 网格菜单
-        mesh_commands = {
-            "生成网格": self.generate_mesh,
-            "显示网格": self.display_mesh,
-            "网格质量": self.check_mesh_quality,
-            "---": None,
-            "平滑网格": self.smooth_mesh,
-            "优化网格": self.optimize_mesh,
-            "---": None,
-            "网格统计": self.show_mesh_statistics,
-            "导出报告": self.export_mesh_report
-        }
-        self.menu_bar.create_mesh_menu(mesh_commands)
-        
-        # 帮助菜单
-        help_commands = {
-            "用户手册": self.show_user_manual,
-            "快速入门": self.show_quick_start,
-            "---": None,
-            "快捷键": self.show_shortcuts,
-            "检查更新": self.check_for_updates,
-            "---": None,
-            "关于": self.show_about
-        }
-        self.menu_bar.create_help_menu(help_commands)
+        """创建菜单 - 使用功能区替代传统菜单"""
+        # 创建功能区替代传统菜单和工具栏
+        self.create_ribbon()
     
     def create_left_panel(self):
         """创建左侧部件信息区域（分组更清晰，带滚动）"""
@@ -1233,14 +1186,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.update_status("视图已缩小")
     
     def toggle_toolbar(self):
-        """切换工具栏显示"""
-        if hasattr(self, 'toolbar') and hasattr(self, 'toolbar.toolbar'):
-            if self.toolbar.toolbar.isVisible():
-                self.toolbar.toolbar.hide()
-                self.update_status("工具栏已隐藏")
+        """切换工具栏显示 - 现在切换功能区显示"""
+        if hasattr(self, 'ribbon') and hasattr(self, 'ribbon'):
+            if self.ribbon.isVisible():
+                self.ribbon.hide()
+                self.update_status("功能区已隐藏")
             else:
-                self.toolbar.toolbar.show()
-                self.update_status("工具栏已显示")
+                self.ribbon.show()
+                self.update_status("功能区已显示")
     
     def toggle_statusbar(self):
         """切换状态栏显示"""

@@ -7,8 +7,8 @@ PyQt GUI基础组件模块
 """
 
 import sys
-from PyQt5.QtWidgets import (QWidget, QMainWindow, QMenuBar, QStatusBar, QToolBar, 
-                             QVBoxLayout, QHBoxLayout, QSplitter, QFrame, QGroupBox, 
+from PyQt5.QtWidgets import (QWidget, QMainWindow, QStatusBar, QToolBar,
+                             QVBoxLayout, QHBoxLayout, QSplitter, QFrame, QGroupBox,
                              QLabel, QTextEdit, QScrollArea, QTabWidget, QToolButton,
                              QDockWidget, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal
@@ -31,77 +31,6 @@ class BaseWidget:
         self.widget.hide()
 
 
-class MenuBar:
-    """菜单栏类"""
-    
-    def __init__(self, main_window):
-        self.main_window = main_window
-        self.menubar = main_window.menuBar()
-        
-    def create_file_menu(self, commands):
-        """创建文件菜单"""
-        file_menu = self.menubar.addMenu('文件')
-        
-        for label, command in commands.items():
-            if label == "---":
-                file_menu.addSeparator()
-            else:
-                action = file_menu.addAction(label)
-                action.triggered.connect(command)
-                
-        return file_menu
-    
-    def create_view_menu(self, commands):
-        """创建视图菜单"""
-        view_menu = self.menubar.addMenu('视图')
-        
-        for label, command in commands.items():
-            if label == "---":
-                view_menu.addSeparator()
-            else:
-                action = view_menu.addAction(label)
-                action.triggered.connect(command)
-                
-        return view_menu
-    
-    def create_config_menu(self, commands):
-        """创建配置菜单"""
-        config_menu = self.menubar.addMenu('配置')
-        
-        for label, command in commands.items():
-            if label == "---":
-                config_menu.addSeparator()
-            else:
-                action = config_menu.addAction(label)
-                action.triggered.connect(command)
-            
-        return config_menu
-    
-    def create_mesh_menu(self, commands):
-        """创建网格菜单"""
-        mesh_menu = self.menubar.addMenu('网格')
-        
-        for label, command in commands.items():
-            if label == "---":
-                mesh_menu.addSeparator()
-            else:
-                action = mesh_menu.addAction(label)
-                action.triggered.connect(command)
-                
-        return mesh_menu
-    
-    def create_help_menu(self, commands):
-        """创建帮助菜单"""
-        help_menu = self.menubar.addMenu('帮助')
-        
-        for label, command in commands.items():
-            if label == "---":
-                help_menu.addSeparator()
-            else:
-                action = help_menu.addAction(label)
-                action.triggered.connect(command)
-            
-        return help_menu
 
 
 class StatusBar:
@@ -156,28 +85,6 @@ class InfoOutput:
         self.clear_info_output()
 
 
-class ToolBar:
-    """工具栏类"""
-    
-    def __init__(self, main_window):
-        self.main_window = main_window
-        self.toolbar = main_window.addToolBar('工具栏')
-        
-    def add_action(self, text, icon=None, callback=None, tooltip=None):
-        """添加动作到工具栏"""
-        if icon:
-            action = self.toolbar.addAction(icon, text)
-        else:
-            action = self.toolbar.addAction(text)
-        if callback:
-            action.triggered.connect(callback)
-        if tooltip:
-            action.setToolTip(tooltip)
-        return action
-        
-    def add_separator(self):
-        """添加分隔符"""
-        self.toolbar.addSeparator()
 
 
 class Splitter:
