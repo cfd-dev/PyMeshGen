@@ -103,11 +103,7 @@ class RibbonGroup(QFrame):
         if tooltip:
             button.setToolTip(tooltip)
             # Enhance tooltip with custom styling
-            button.setStyleSheet(button.styleSheet() + """
-                QToolButton {
-                    tooltip-duration: 10000;
-                }
-            """)
+            # PyQt5不支持tooltip-duration属性，已移除
 
         button.setFixedSize(50, 50)  # Smaller size
         button.setStyleSheet("""
@@ -157,11 +153,7 @@ class RibbonGroup(QFrame):
         if tooltip:
             button.setToolTip(tooltip)
             # Enhance tooltip with custom styling
-            button.setStyleSheet(button.styleSheet() + """
-                QToolButton {
-                    tooltip-duration: 10000;
-                }
-            """)
+            # PyQt5不支持tooltip-duration属性，已移除
 
         button.setFixedSize(90, 22)  # Slightly larger for better usability
         button.setStyleSheet("""
