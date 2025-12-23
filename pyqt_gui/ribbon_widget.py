@@ -257,6 +257,17 @@ class RibbonWidget(QWidget):
 
         # Track content visibility state
         self._content_visible = True
+        
+        # 连接标签页切换信号，确保在折叠状态下切换标签页也不会显示内容
+        self.ribbon_tabs.currentChanged.connect(self._on_tab_changed)
+    
+    def _on_tab_changed(self, index):
+        """当标签页切换时，确保在折叠状态下内容仍然隐藏"""
+        if not self._content_visible:
+            # 如果处于折叠状态，确保最大高度仍然限制在标签栏高度
+            tab_bar_height = self.ribbon_tabs.tabBar().height()
+            button_height = self.toggle_button.height()
+            self.setMaximumHeight(max(tab_bar_height, button_height) + 15)
 
         # Style the ribbon
         self.setStyleSheet("""
@@ -269,20 +280,78 @@ class RibbonWidget(QWidget):
     def toggle_content_visibility(self):
         """Toggle visibility of ribbon content (tabs and groups)"""
         if self._content_visible:
-            # Hide the content of each tab while keeping the tab headers visible
-            # Get the current tab and hide its content
-            for i in range(self.ribbon_tabs.count()):
-                tab_widget = self.ribbon_tabs.widget(i)
-                tab_widget.hide()
+            # Collapse the ribbon by reducing its maximum height
+            # This keeps the tab headers visible but hides the content
+            tab_bar_height = self.ribbon_tabs.tabBar().height()
+            button_height = self.toggle_button.height()
+            self.setMaximumHeight(max(tab_bar_height, button_height) + 15)  # Just enough for tabs and toggle button
             self.toggle_button.setText("▶")  # Show right arrow when collapsed
             self._content_visible = False
+            # 更新样式以确保视觉一致性
+            self.ribbon_tabs.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 0px;
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f0f0f0, stop: 1 #e0e0e0);
+                    color: #333333;
+                    border: 1px solid #b0b0b0;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    padding: 5px 10px;
+                    margin: 0px 2px 0px 0px;
+                    font-size: 9pt;
+                    font-weight: bold;
+                }
+                QTabBar::tab:selected {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #ffffff, stop: 1 #f0f0f0);
+                    color: #000000;
+                    border-bottom: 2px solid #0078d4;
+                }
+                QTabBar::tab:hover {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f8f8f8, stop: 1 #e8e8e8);
+                }
+            """)
         else:
-            # Show the content of each tab
-            for i in range(self.ribbon_tabs.count()):
-                tab_widget = self.ribbon_tabs.widget(i)
-                tab_widget.show()
+            # Expand the ribbon by removing maximum height restriction
+            self.setMaximumHeight(16777215)  # Maximum allowed height for QWidget
             self.toggle_button.setText("◀")  # Show left arrow when expanded
             self._content_visible = True
+            # 恢复完整样式
+            self.ribbon_tabs.setStyleSheet("""
+                QTabWidget::pane {
+                    border: 0px;
+                    background-color: #f0f0f0;
+                }
+                QTabBar::tab {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f0f0f0, stop: 1 #e0e0e0);
+                    color: #333333;
+                    border: 1px solid #b0b0b0;
+                    border-bottom: none;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    padding: 5px 10px;
+                    margin: 0px 2px 0px 0px;
+                    font-size: 9pt;
+                    font-weight: bold;
+                }
+                QTabBar::tab:selected {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #ffffff, stop: 1 #f0f0f0);
+                    color: #000000;
+                    border-bottom: 2px solid #0078d4;
+                }
+                QTabBar::tab:hover {
+                    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                                     stop: 0 #f8f8f8, stop: 1 #e8e8e8);
+                }
+            """)
 
     def is_content_visible(self):
         """Check if ribbon content is visible"""
