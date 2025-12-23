@@ -216,91 +216,110 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         
         # 导入Qt图标
         from PyQt5.QtGui import QIcon
-        from PyQt5.QtWidgets import qApp
         
-        # 创建工具栏按钮
-        self.toolbar.add_action("新建", QIcon.fromTheme("document-new", qApp.style().standardIcon(qApp.style().SP_FileIcon)), self.new_config, "创建新的网格配置\n快捷键: Ctrl+N")
-        self.toolbar.add_action("打开", QIcon.fromTheme("document-open", qApp.style().standardIcon(qApp.style().SP_DirOpenIcon)), self.open_config, "打开已保存的网格配置文件\n支持格式: .json, .cfg\n快捷键: Ctrl+O")
-        self.toolbar.add_action("保存", QIcon.fromTheme("document-save", qApp.style().standardIcon(qApp.style().SP_DialogSaveButton)), self.save_config, "保存当前网格配置到文件\n格式: .json\n快捷键: Ctrl+S")
+        # 获取图标路径
+        icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui", "icons")
+        
+        # 创建工具栏按钮，使用现有图标
+        def get_icon(icon_name):
+            icon_path = os.path.join(icon_dir, f"{icon_name}.png")
+            if os.path.exists(icon_path):
+                return QIcon(icon_path)
+            return None
+        
+        # 文件操作按钮
+        self.toolbar.add_action("新建", get_icon("new"), self.new_config, "创建新的网格配置\n快捷键: Ctrl+N")
+        self.toolbar.add_action("打开", get_icon("open"), self.open_config, "打开已保存的网格配置文件\n支持格式: .json, .cfg\n快捷键: Ctrl+O")
+        self.toolbar.add_action("保存", get_icon("save"), self.save_config, "保存当前网格配置到文件\n格式: .json\n快捷键: Ctrl+S")
         self.toolbar.add_separator()
-        self.toolbar.add_action("导入", QIcon.fromTheme("document-import", qApp.style().standardIcon(qApp.style().SP_ArrowUp)), self.import_mesh, "从外部文件导入网格数据\n支持格式: .vtk, .cas, .msh\n快捷键: Ctrl+I")
-        self.toolbar.add_action("导出", QIcon.fromTheme("document-export", qApp.style().standardIcon(qApp.style().SP_ArrowDown)), self.export_mesh, "将当前网格导出到文件\n支持格式: .vtk, .obj, .stl\n快捷键: Ctrl+E")
+        self.toolbar.add_action("导入", get_icon("import"), self.import_mesh, "从外部文件导入网格数据\n支持格式: .vtk, .cas, .msh\n快捷键: Ctrl+I")
+        self.toolbar.add_action("导出", get_icon("export"), self.export_mesh, "将当前网格导出到文件\n支持格式: .vtk, .obj, .stl\n快捷键: Ctrl+E")
         self.toolbar.add_separator()
-        self.toolbar.add_action("生成", QIcon.fromTheme("media-playback-start", qApp.style().standardIcon(qApp.style().SP_MediaPlay)), self.generate_mesh, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
-        self.toolbar.add_action("显示", QIcon.fromTheme("visibility", qApp.style().standardIcon(qApp.style().SP_DialogApplyButton)), self.display_mesh, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
-        self.toolbar.add_action("清空", QIcon.fromTheme("edit-delete", qApp.style().standardIcon(qApp.style().SP_TrashIcon)), self.clear_mesh, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
+        
+        # 网格操作按钮
+        self.toolbar.add_action("生成", get_icon("generate"), self.generate_mesh, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
+        self.toolbar.add_action("显示", get_icon("display"), self.display_mesh, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
+        self.toolbar.add_action("清空", get_icon("clear"), self.clear_mesh, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
     
     def create_menu(self):
         """创建菜单"""
-        # 文件菜单
-        file_menu = self.menuBar().addMenu('文件')
+        # 创建菜单栏对象
+        self.menu_bar = MenuBar(self)
         
-        file_menu.addAction('新建配置', self.new_config)
-        file_menu.addAction('打开配置', self.open_config)
-        file_menu.addAction('保存配置', self.save_config)
-        file_menu.addAction('另存为', self.save_config_as)
-        file_menu.addSeparator()
-        file_menu.addAction('导入网格', self.import_mesh)
-        file_menu.addAction('导出网格', self.export_mesh)
-        file_menu.addSeparator()
-        file_menu.addAction('最近文件', self.show_recent_files)
-        file_menu.addSeparator()
-        file_menu.addAction('退出', self.close)
+        # 文件菜单
+        file_commands = {
+            "新建配置": self.new_config,
+            "打开配置": self.open_config,
+            "保存配置": self.save_config,
+            "另存为": self.save_config_as,
+            "---": None,
+            "导入网格": self.import_mesh,
+            "导出网格": self.export_mesh,
+            "---": None,
+            "最近文件": self.show_recent_files,
+            "---": None,
+            "退出": self.close
+        }
+        self.menu_bar.create_file_menu(file_commands)
         
         # 视图菜单
-        view_menu = self.menuBar().addMenu('视图')
-        
-        view_menu.addAction('重置视图', self.reset_view)
-        view_menu.addAction('适应视图', self.fit_view)
-        view_menu.addSeparator()
-        view_menu.addAction('放大', self.zoom_in)
-        view_menu.addAction('缩小', self.zoom_out)
-        view_menu.addAction('平移', self.pan_view)
-        view_menu.addAction('旋转', self.rotate_view)
-        view_menu.addSeparator()
-        view_menu.addAction('显示工具栏', self.toggle_toolbar)
-        view_menu.addAction('显示状态栏', self.toggle_statusbar)
-        view_menu.addAction('显示部件列表', self.toggle_parts_list)
-        view_menu.addAction('显示属性面板', self.toggle_properties_panel)
-        view_menu.addSeparator()
-        view_menu.addAction('全屏显示', self.toggle_fullscreen)
+        view_commands = {
+            "重置视图": self.reset_view,
+            "适应视图": self.fit_view,
+            "---": None,
+            "放大": self.zoom_in,
+            "缩小": self.zoom_out,
+            "平移": self.pan_view,
+            "旋转": self.rotate_view,
+            "---": None,
+            "显示工具栏": self.toggle_toolbar,
+            "显示状态栏": self.toggle_statusbar,
+            "显示部件列表": self.toggle_parts_list,
+            "显示属性面板": self.toggle_properties_panel,
+            "---": None,
+            "全屏显示": self.toggle_fullscreen
+        }
+        self.menu_bar.create_view_menu(view_commands)
         
         # 配置菜单
-        config_menu = self.menuBar().addMenu('配置')
-        
-        config_menu.addAction('参数设置', self.edit_params)
-        config_menu.addAction('网格参数', self.edit_mesh_params)
-        config_menu.addAction('边界条件', self.edit_boundary_conditions)
-        config_menu.addSeparator()
-        config_menu.addAction('导入配置', self.import_config)
-        config_menu.addAction('导出配置', self.export_config)
-        config_menu.addSeparator()
-        config_menu.addAction('清空网格', self.clear_mesh)
-        config_menu.addAction('重置配置', self.reset_config)
+        config_commands = {
+            "参数设置": self.edit_params,
+            "网格参数": self.edit_mesh_params,
+            "边界条件": self.edit_boundary_conditions,
+            "---": None,
+            "导入配置": self.import_config,
+            "导出配置": self.export_config,
+            "---": None,
+            "清空网格": self.clear_mesh,
+            "重置配置": self.reset_config
+        }
+        self.menu_bar.create_config_menu(config_commands)
         
         # 网格菜单
-        mesh_menu = self.menuBar().addMenu('网格')
-        
-        mesh_menu.addAction('生成网格', self.generate_mesh)
-        mesh_menu.addAction('显示网格', self.display_mesh)
-        mesh_menu.addAction('网格质量', self.check_mesh_quality)
-        mesh_menu.addSeparator()
-        mesh_menu.addAction('平滑网格', self.smooth_mesh)
-        mesh_menu.addAction('优化网格', self.optimize_mesh)
-        mesh_menu.addSeparator()
-        mesh_menu.addAction('网格统计', self.show_mesh_statistics)
-        mesh_menu.addAction('导出报告', self.export_mesh_report)
+        mesh_commands = {
+            "生成网格": self.generate_mesh,
+            "显示网格": self.display_mesh,
+            "网格质量": self.check_mesh_quality,
+            "---": None,
+            "平滑网格": self.smooth_mesh,
+            "优化网格": self.optimize_mesh,
+            "---": None,
+            "网格统计": self.show_mesh_statistics,
+            "导出报告": self.export_mesh_report
+        }
+        self.menu_bar.create_mesh_menu(mesh_commands)
         
         # 帮助菜单
-        help_menu = self.menuBar().addMenu('帮助')
-        
-        help_menu.addAction('用户手册', self.show_user_manual)
-        help_menu.addAction('快速入门', self.show_quick_start)
-        help_menu.addSeparator()
-        help_menu.addAction('快捷键', self.show_shortcuts)
-        help_menu.addAction('检查更新', self.check_for_updates)
-        help_menu.addSeparator()
-        help_menu.addAction('关于', self.show_about)
+        help_commands = {
+            "用户手册": self.show_user_manual,
+            "快速入门": self.show_quick_start,
+            "---": None,
+            "快捷键": self.show_shortcuts,
+            "检查更新": self.check_for_updates,
+            "---": None,
+            "关于": self.show_about
+        }
+        self.menu_bar.create_help_menu(help_commands)
     
     def create_left_panel(self):
         """创建左侧部件信息区域（分组更清晰，带滚动）"""
@@ -540,10 +559,27 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             return
             
         try:
-            # For now, just show a message
-            QMessageBox.information(self, "信息", "参数编辑功能")
-            self.log_info("参数编辑功能")
-            self.update_status("参数编辑功能")
+            # 创建配置管理器
+            from gui.config_manager import ConfigManager
+            config_manager = ConfigManager(self.project_root)
+            
+            # 从参数创建配置
+            config = config_manager.create_config_from_params(self.params)
+            
+            # 创建配置对话框
+            from pyqt_gui.gui_base import ConfigDialog
+            dialog = ConfigDialog(self, config)
+            
+            # 显示对话框
+            if dialog.dialog.exec_() == dialog.dialog.Accepted:
+                # 应用修改后的配置
+                new_config = dialog.result
+                if new_config:
+                    # 从新配置创建参数对象
+                    self.params = config_manager.create_params_from_config(new_config)
+                    self.update_params_display()
+                    self.log_info("已更新参数配置")
+                    self.update_status("已更新参数配置")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"编辑参数失败: {str(e)}")
             self.log_error(f"编辑参数失败: {str(e)}")
@@ -558,38 +594,39 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.update_status("正在生成网格...")
             self.log_info("开始生成网格")
             
-            # Set the global GUI instance to this instance so PyMeshGen can update it
-            from PyMeshGen import set_gui_instance
-            set_gui_instance(self)  # Temporarily set this instance as the global instance
+            # 创建网格生成器实例
+            from PyMeshGen import PyMeshGen as MeshGenerator
+            self.mesh_generator = MeshGenerator(self.params)
             
-            # Call the PyMeshGen function directly
-            # The original function handles the mesh generation
-            PyMeshGen(self.params)
+            # 生成网格
+            self.current_mesh = self.mesh_generator.generate()
             
-            # After mesh generation, the current mesh should be updated
-            # Check if the mesh was properly set (PyMeshGen should update self.mesh_data if it's the global instance)
-            # But if PyMeshGen doesn't update properly, we will load from the output file
-            if (not hasattr(self, 'current_mesh') or self.current_mesh is None) and (not hasattr(self, 'mesh_data') or self.mesh_data is None):
-                # Try to load the generated mesh from output file
-                if self.params and hasattr(self.params, 'output_file') and self.params.output_file:
-                    try:
-                        from fileIO.vtk_io import parse_vtk_msh
-                        self.current_mesh = parse_vtk_msh(self.params.output_file)
-                        self.log_info(f"网格已从输出文件加载: {self.params.output_file}")
-                    except Exception as e:
-                        self.log_error(f"无法从输出文件加载网格: {str(e)}")
+            # 获取网格信息用于日志记录
+            node_count = 0
+            element_count = 0
+            if hasattr(self.current_mesh, 'nodes') and hasattr(self.current_mesh, 'elements'):
+                node_count = len(self.current_mesh.nodes)
+                element_count = len(self.current_mesh.elements)
+                self.log_info(f"生成网格: 节点数={node_count}, 单元数={element_count}")
+            elif isinstance(self.current_mesh, dict):
+                node_count = self.current_mesh.get('num_points', 0)
+                element_count = self.current_mesh.get('num_cells', 0)
+                self.log_info(f"生成网格: 节点数={node_count}, 单元数={element_count}")
             
             self.log_info("网格生成完成")
             self.update_status("网格生成完成")
             
+            # 自动显示生成的网格
+            self.display_mesh()
+            
+        except ImportError as e:
+            QMessageBox.critical(self, "错误", f"导入PyMeshGen模块失败: {str(e)}")
+            self.log_error(f"导入PyMeshGen模块失败: {str(e)}")
+            self.update_status("导入PyMeshGen模块失败")
         except Exception as e:
             QMessageBox.critical(self, "错误", f"生成网格失败: {str(e)}")
             self.log_error(f"生成网格失败: {str(e)}")
             self.update_status("生成网格失败")
-        finally:
-            # Reset the global GUI instance
-            from PyMeshGen import set_gui_instance
-            set_gui_instance(None)
     
     def display_mesh(self):
         """显示网格"""
@@ -632,24 +669,33 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self,
             "选择网格文件",
             "",
-            "VTK文件 (*.vtk);;CAS文件 (*.cas);;MSH文件 (*.msh);;所有文件 (*.*)"
+            "所有支持的文件 (*.vtk *.stl *.obj *.ply *.cas);;VTK文件 (*.vtk);;STL文件 (*.stl);;OBJ文件 (*.obj);;PLY文件 (*.ply);;CAS文件 (*.cas);;所有文件 (*.*)"
         )
         
         if file_path:
             try:
-                # For now, just set the file path
-                self.current_mesh = {"file_path": file_path, "type": "vtk"}
+                # 创建文件操作对象
+                from gui.file_operations import FileOperations
+                file_ops = FileOperations(self.project_root)
+                
+                # 导入网格文件
+                self.current_mesh = file_ops.import_mesh(file_path)
                 
                 # Update mesh display area with mesh data
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.set_mesh_data(self.current_mesh)
+                    self.mesh_display.display_mesh()
                 
-                # Get grid info (but don't display it in the view area)
-                node_count = 0
-                element_count = 0
+                # Get grid info
+                node_count = self.current_mesh.get('num_points', 0)
+                element_count = self.current_mesh.get('num_cells', 0)
                 
                 # Log grid info 
                 self.log_info(f"导入网格: 节点数={node_count}, 单元数={element_count}")
+                
+                # 更新部件列表（如果是CAS文件）
+                if self.current_mesh.get('type') == 'cas' and 'parts_info' in self.current_mesh:
+                    self.update_parts_list_from_cas(self.current_mesh['parts_info'])
                 
                 self.log_info(f"已导入网格文件: {file_path}")
                 self.update_status("已导入网格文件")
@@ -668,12 +714,37 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self,
             "保存网格文件",
             "",
-            "VTK文件 (*.vtk);;OBJ文件 (*.obj);;STL文件 (*.stl);;所有文件 (*.*)"
+            "所有支持的文件 (*.vtk *.stl *.obj *.ply);;VTK文件 (*.vtk);;STL文件 (*.stl);;OBJ文件 (*.obj);;PLY文件 (*.ply);;所有文件 (*.*)"
         )
         
         if file_path:
             try:
-                # For now, just show a message
+                # 创建文件操作对象
+                from gui.file_operations import FileOperations
+                file_ops = FileOperations(self.project_root)
+                
+                # 获取要导出的VTK PolyData对象
+                vtk_poly_data = None
+                if isinstance(self.current_mesh, dict):
+                    # 如果是字典类型，尝试获取vtk_poly_data
+                    vtk_poly_data = self.current_mesh.get('vtk_poly_data')
+                
+                if vtk_poly_data:
+                    # 导出网格文件
+                    file_ops.export_mesh(vtk_poly_data, file_path)
+                else:
+                    # 如果没有vtk_poly_data，检查是否是Unstructured_Grid对象
+                    if hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cell_container'):
+                        # 对于Unstructured_Grid对象，使用save_to_vtkfile方法（如果可用）
+                        if hasattr(self.current_mesh, 'save_to_vtkfile'):
+                            self.current_mesh.save_to_vtkfile(file_path)
+                        else:
+                            QMessageBox.warning(self, "警告", "当前网格格式不支持直接保存，请使用VTK格式")
+                            return
+                    else:
+                        QMessageBox.warning(self, "警告", "无法获取有效的VTK数据进行导出")
+                        return
+                
                 self.log_info(f"已导出网格文件: {file_path}")
                 self.update_status("已导出网格文件")
             except Exception as e:
@@ -758,9 +829,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.parts_list_widget.parts_list.clear()
         
         if self.params:
-            # Add parts to list (for now just add dummy data)
-            self.parts_list_widget.parts_list.addItem("默认部件1")
-            self.parts_list_widget.parts_list.addItem("默认部件2")
+            # Add actual parts from params object
+            if hasattr(self.params, 'part_params') and self.params.part_params:
+                for i, part in enumerate(self.params.part_params):
+                    # Get part name from part_params if available
+                    part_name = getattr(part, 'part_name', f"部件{i+1}")
+                    if hasattr(part, 'part_params') and hasattr(part.part_params, 'part_name'):
+                        part_name = part.part_params.part_name
+                    self.parts_list_widget.parts_list.addItem(part_name)
+            else:
+                # If no parts available, add a default part
+                self.parts_list_widget.parts_list.addItem("默认部件")
     
     def update_parts_list_from_cas(self, parts_info):
         """从cas文件的部件信息更新部件列表"""
