@@ -70,7 +70,7 @@ class RibbonGroup(QFrame):
         self.title_label = QLabel(title)
         title_font = QFont()
         title_font.setBold(True)
-        title_font.setPointSize(8)  # Smaller font
+        title_font.setPointSize(9)  # Slightly larger font for better visibility
         self.title_label.setFont(title_font)
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setStyleSheet("""
@@ -79,6 +79,8 @@ class RibbonGroup(QFrame):
             border-bottom: 1px solid #cccccc;
             padding-bottom: 2px;
         """)
+        # Ensure minimum size for proper text display
+        self.title_label.setMinimumHeight(20)
         layout.addWidget(self.title_label)
 
         # Content area for buttons and controls

@@ -126,7 +126,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 应用系统默认字体
         font = QFont()
         font.setFamily("Microsoft YaHei")
-        font.setPointSize(10)
+        font.setPointSize(9)  # Slightly smaller font to prevent truncation
         font.setStyleHint(QFont.SansSerif)
         self.setFont(font)
 
@@ -138,7 +138,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             QWidget {
                 background-color: #f0f0f0;
                 font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-                font-size: 10pt;
+                font-size: 9pt;  # Slightly smaller font to prevent truncation
                 color: #333333;
             }
             QMenuBar {
@@ -147,7 +147,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }
             QMenuBar::item {
                 background: transparent;
-                padding: 4px 8px;
+                padding: 5px 10px;  # More padding to prevent text truncation
+                font-size: 9pt;
             }
             QMenuBar::item:selected {
                 background: #0078d4;
@@ -161,9 +162,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 background-color: #f5f5f5;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                padding: 5px;
+                padding: 6px 8px;  # More padding to prevent text truncation
                 min-width: 60px;
                 font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
             }
             QPushButton:hover {
                 background-color: #e6e6e6;
@@ -172,6 +174,23 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             QPushButton:pressed {
                 background-color: #d9d9d9;
                 border: 1px solid #666666;
+            }
+            QLabel {
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
+            }
+            QGroupBox {
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
+                font-weight: bold;
+            }
+            QGroupBox::title {
+                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+                font-size: 9pt;
+                font-weight: bold;
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
             }
         """)
     
@@ -653,6 +672,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 创建状态文本框 and style it
         self.status_text = QTextEdit()
         self.status_text.setReadOnly(True)
+        # Set minimum size to ensure text is visible
+        self.status_text.setMinimumHeight(100)
         self.status_text.setStyleSheet("""
             QTextEdit {
                 border: 1px solid #cccccc;

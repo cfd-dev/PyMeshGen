@@ -35,15 +35,22 @@ class BaseWidget:
 
 class StatusBar:
     """状态栏类"""
-    
+
     def __init__(self, main_window):
         self.main_window = main_window
         self.status_bar = main_window.statusBar()
+        # Set a larger minimum height to ensure text fits
+        self.status_bar.setMinimumHeight(25)
         self.status_bar.showMessage("就绪")
-        
+
     def update_status(self, message):
         """更新状态栏信息"""
         self.status_bar.showMessage(message)
+
+        # Ensure the status bar can show the full text by setting appropriate font
+        font = self.status_bar.font()
+        font.setPointSize(9)  # Slightly smaller font to fit more text
+        self.status_bar.setFont(font)
 
 
 class InfoOutput:
@@ -58,17 +65,18 @@ class InfoOutput:
         # 创建信息输出框架
         self.frame = QGroupBox("信息输出")
         layout = QVBoxLayout()
-        
-        # 创建文本框和滚动条
+
+        # 创建文本框 and set minimum size to ensure text is visible
         self.info_text = QTextEdit()
         self.info_text.setReadOnly(True)
+        self.info_text.setMinimumHeight(100)  # Ensure text is visible
         layout.addWidget(self.info_text)
-        
+
         self.frame.setLayout(layout)
-        
+
         # 设置默认大小
-        self.frame.setMinimumHeight(100)
-        
+        self.frame.setMinimumHeight(120)  # Increased minimum height
+
         return self.frame
     
     def append_info_output(self, message):
