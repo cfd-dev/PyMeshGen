@@ -270,9 +270,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         right_main_layout.addWidget(self.right_paned)
         self.paned_window.addWidget(right_main_widget)
         
-        # 设置拉伸比例 - improved proportions
-        self.paned_window.setStretchFactor(0, 2)  # Left panel: 20% (was 30%)
-        self.paned_window.setStretchFactor(1, 8)  # Right panel: 80% (was 70%)
+        # 设置拉伸比例 - improved proportions for larger view area
+        self.paned_window.setStretchFactor(0, 1)  # Left panel: 10% (reduced from 20%)
+        self.paned_window.setStretchFactor(1, 9)  # Right panel: 90% (increased from 80%)
 
         # Style the splitters
         self.paned_window.setStyleSheet("""
@@ -289,9 +289,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }
         """)
 
-        # 设置右侧部分的拉伸 - improved proportions
-        self.right_paned.setStretchFactor(0, 7)  # Mesh display: 70% (was 100%)
-        self.right_paned.setStretchFactor(1, 3)  # Status output: 30% (was 0%)
+        # 设置右侧部分的拉伸 - improved proportions for larger view area
+        self.right_paned.setStretchFactor(0, 8)  # Mesh display: 80% (increased from 70%)
+        self.right_paned.setStretchFactor(1, 2)  # Status output: 20% (reduced from 30%)
 
         # Style the right splitter too
         self.right_paned.setStyleSheet("""
@@ -598,17 +598,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.render_mode = mode
         if hasattr(self, 'mesh_display'):
             self.mesh_display.set_render_mode(mode)
-        
+
         # 更新UI状态
         if mode == "surface":
-            self.surface_mode_action.setChecked(True)
             self.update_status("渲染模式: 实体模式 (1键)")
         elif mode == "wireframe":
-            self.wireframe_mode_action.setChecked(True)
             self.update_status("渲染模式: 线框模式 (2键)")
         elif mode == "mixed" or mode == "surface-wireframe":
-            self.mixed_mode_action.setChecked(True)
             self.update_status("渲染模式: 混合模式 (3键)")
+        elif mode == "points":
+            self.update_status("渲染模式: 点云模式 (4键)")
         
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
@@ -645,52 +644,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             QWidget.keyPressEvent(self.main_mesh_display.frame, event)
     
     def create_status_output_panel(self):
-        """创建状态栏和信息输出面板（左右4:6布局，信息输出区带清空按钮）"""
-        # 创建左右分割的状态和输出面板
-        self.status_output_paned = QSplitter(Qt.Horizontal)
-
-        # 左侧状态显示区域（4/10宽度）
-        self.status_panel = QGroupBox("状态信息")
-        self.status_panel.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                margin-top: 1ex;
-                padding-top: 10px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                color: #333333;
-            }
-        """)
-        status_layout = QVBoxLayout(self.status_panel)
-
-        # 创建状态文本框 and style it
-        self.status_text = QTextEdit()
-        self.status_text.setReadOnly(True)
-        # Set minimum size to ensure text is visible
-        self.status_text.setMinimumHeight(100)
-        self.status_text.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid #cccccc;
-                border-radius: 3px;
-                background-color: #ffffff;
-                color: #333333;
-                font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-                font-size: 9pt;
-            }
-        """)
-        status_layout.addWidget(self.status_text)
-
-        # 添加到分割器
-        self.status_output_paned.addWidget(self.status_panel)
-
-        # 右侧信息输出区域（6/10宽度）
-        self.info_output = InfoOutput(self.status_output_paned)
+        """创建信息输出面板（移除状态窗口，仅保留信息输出区）"""
+        # 直接创建信息输出区域，不再使用左右分割
+        self.info_output = InfoOutput(self)
 
         # Apply styling to the info output panel
         if hasattr(self.info_output, 'frame') and self.info_output.frame:
@@ -724,24 +680,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 }
             """)
 
-        self.status_output_paned.addWidget(self.info_output.frame)
-
-        # 设置拉伸比例
-        self.status_output_paned.setStretchFactor(0, 4)
-        self.status_output_paned.setStretchFactor(1, 6)
+        # Set the info_output frame as the main panel
+        self.status_output_paned = self.info_output.frame
     
     def update_status(self, message):
-        """更新状态栏和状态文本框"""
+        """更新状态栏（移除状态文本框）"""
         # 更新状态栏
         if hasattr(self, 'status_bar'):
             self.status_bar.update_status(message)
-        
-        # 更新状态文本框
-        if hasattr(self, 'status_text'):
-            # 添加时间戳
-            import datetime
-            timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-            self.status_text.append(f"[{timestamp}] {message}")
     
     def log_info(self, message):
         """记录信息"""

@@ -66,16 +66,16 @@ class InfoOutput:
         self.frame = QGroupBox("信息输出")
         layout = QVBoxLayout()
 
-        # 创建文本框 and set minimum size to ensure text is visible
+        # 创建文本框 and set smaller minimum size
         self.info_text = QTextEdit()
         self.info_text.setReadOnly(True)
-        self.info_text.setMinimumHeight(100)  # Ensure text is visible
+        self.info_text.setMinimumHeight(60)  # Reduced minimum height
         layout.addWidget(self.info_text)
 
         self.frame.setLayout(layout)
 
         # 设置默认大小
-        self.frame.setMinimumHeight(120)  # Increased minimum height
+        self.frame.setMinimumHeight(80)  # Reduced minimum height
 
         return self.frame
     
