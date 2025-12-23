@@ -69,16 +69,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         except:
             pass  # 如果图标不存在则跳过
 
-        # 设置窗口属性
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #f0f0f0;
-            }
-            QWidget {
-                background-color: #f0f0f0;
-            }
-        """)
-
         # 获取屏幕尺寸
         screen = QApplication.primaryScreen()
         screen_size = screen.size()
@@ -138,7 +128,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             QWidget {
                 background-color: #f0f0f0;
                 font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-                font-size: 9pt;  # Slightly smaller font to prevent truncation
+                font-size: 9pt;  /* Slightly smaller font to prevent truncation */
                 color: #333333;
             }
             QMenuBar {
@@ -147,7 +137,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }
             QMenuBar::item {
                 background: transparent;
-                padding: 5px 10px;  # More padding to prevent text truncation
+                padding: 5px 10px;  /* More padding to prevent text truncation */
                 font-size: 9pt;
             }
             QMenuBar::item:selected {
@@ -162,7 +152,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 background-color: #f5f5f5;
                 border: 1px solid #cccccc;
                 border-radius: 4px;
-                padding: 6px 8px;  # More padding to prevent text truncation
+                padding: 6px 8px;  /* More padding to prevent text truncation */
                 min-width: 60px;
                 font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
                 font-size: 9pt;
