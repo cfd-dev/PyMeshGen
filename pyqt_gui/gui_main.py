@@ -327,6 +327,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.ribbon.set_callbacks(self)
         self.setMenuWidget(self.ribbon)
 
+        # Connect the toggle button to the same toggle function
+        self.ribbon.toggle_button.clicked.connect(self.toggle_ribbon)
+
+        # Also connect a keyboard shortcut
+        from PyQt5.QtWidgets import QShortcut
+        from PyQt5.QtGui import QKeySequence
+        shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        shortcut.activated.connect(self.toggle_ribbon)
+
     def setup_ribbon_icons(self):
         """设置功能区按钮图标"""
         # Try to load icons from the icons directory
@@ -448,6 +457,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """创建菜单 - 使用功能区替代传统菜单"""
         # 创建功能区替代传统菜单和工具栏
         self.create_ribbon()
+
+
+    def toggle_ribbon(self):
+        """Toggle ribbon content visibility"""
+        if hasattr(self, 'ribbon') and self.ribbon:
+            # Instead of hiding the entire ribbon, we'll collapse the content inside
+            # This will be handled by a method in the ribbon widget
+            self.ribbon.toggle_content_visibility()
     
     def create_left_panel(self):
         """创建左侧部件信息区域（分组更清晰，带滚动）"""

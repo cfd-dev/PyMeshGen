@@ -237,8 +237,26 @@ class RibbonWidget(QWidget):
         self.help_tab = self.create_help_tab()
         self.ribbon_tabs.addTab(self.help_tab, "帮助")
 
+        # Add the ribbon tabs to the main layout
         self.main_layout.addWidget(self.ribbon_tabs)
+
+        # Add toggle button to the right of the ribbon tabs
+        from PyQt5.QtWidgets import QPushButton
+        self.toggle_button = QPushButton("◀")
+        self.toggle_button.setFixedSize(24, 24)
+        self.toggle_button.setToolTip("折叠/展开功能区")
+
+        # Add the toggle button to the layout
+        # We'll need to manage the button separately from the tabs
+        self.toggle_layout = QHBoxLayout()
+        self.toggle_layout.addStretch()  # Push button to the right
+        self.toggle_layout.addWidget(self.toggle_button)
+        self.main_layout.addLayout(self.toggle_layout)
+
         self.setLayout(self.main_layout)
+
+        # Track content visibility state
+        self._content_visible = True
 
         # Style the ribbon
         self.setStyleSheet("""
@@ -247,6 +265,28 @@ class RibbonWidget(QWidget):
                 border-bottom: 1px solid #cccccc;
             }
         """)
+
+    def toggle_content_visibility(self):
+        """Toggle visibility of ribbon content (tabs and groups)"""
+        if self._content_visible:
+            # Hide the content of each tab while keeping the tab headers visible
+            # Get the current tab and hide its content
+            for i in range(self.ribbon_tabs.count()):
+                tab_widget = self.ribbon_tabs.widget(i)
+                tab_widget.hide()
+            self.toggle_button.setText("▶")  # Show right arrow when collapsed
+            self._content_visible = False
+        else:
+            # Show the content of each tab
+            for i in range(self.ribbon_tabs.count()):
+                tab_widget = self.ribbon_tabs.widget(i)
+                tab_widget.show()
+            self.toggle_button.setText("◀")  # Show left arrow when expanded
+            self._content_visible = True
+
+    def is_content_visible(self):
+        """Check if ribbon content is visible"""
+        return self._content_visible
 
     def create_file_tab(self):
         """Create the file ribbon tab"""
