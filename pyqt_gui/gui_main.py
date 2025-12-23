@@ -216,23 +216,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 部件列表分组
         parts_frame_container = QGroupBox("部件列表")
         parts_layout = QVBoxLayout(parts_frame_container)
-        
-        # 部件列表带滚动条
+
+        # 部件列表带滚动条 - includes buttons in the widget
         parts_layout.addWidget(self.parts_list_widget.widget)
-        
-        # 部件操作按钮
-        parts_button_layout = QHBoxLayout()
-        add_part_btn = QPushButton("添加")
-        add_part_btn.clicked.connect(self.add_part)
-        remove_part_btn = QPushButton("删除")
-        remove_part_btn.clicked.connect(self.remove_part)
-        edit_part_btn = QPushButton("编辑")
-        edit_part_btn.clicked.connect(self.edit_part)
-        
-        parts_button_layout.addWidget(add_part_btn)
-        parts_button_layout.addWidget(remove_part_btn)
-        parts_button_layout.addWidget(edit_part_btn)
-        parts_layout.addLayout(parts_button_layout)
         
         left_layout.addWidget(parts_frame_container)
         left_layout.addWidget(self.props_frame)
@@ -488,7 +474,12 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def create_left_panel(self):
         """创建左侧部件信息区域（分组更清晰，带滚动）"""
         # 部件列表分组
-        self.parts_list_widget = PartListWidget()
+        self.parts_list_widget = PartListWidget(
+            parent=self,
+            add_callback=self.add_part,
+            remove_callback=self.remove_part,
+            edit_callback=self.edit_part
+        )
 
         # Apply styling to the parts list widget
         if hasattr(self.parts_list_widget, 'parts_list') and self.parts_list_widget.parts_list:

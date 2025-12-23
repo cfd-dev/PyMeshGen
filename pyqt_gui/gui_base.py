@@ -568,44 +568,48 @@ class ConfigDialog(DialogBase):
 
 class PartListWidget:
     """部件列表组件"""
-    
-    def __init__(self, parent=None):
+
+    def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None):
         from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QWidget
         from PyQt5.QtCore import pyqtSignal
-        
+
         self.parent = parent
         self.widget = QWidget()
-        
+
         layout = QVBoxLayout()
         self.parts_list = QListWidget()
         layout.addWidget(self.parts_list)
-        
+
         # 按钮布局
         button_layout = QHBoxLayout()
         self.add_button = QPushButton("添加")
         self.remove_button = QPushButton("删除")
         self.edit_button = QPushButton("编辑")
-        
+
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.remove_button)
         button_layout.addWidget(self.edit_button)
-        
+
         layout.addLayout(button_layout)
         self.widget.setLayout(layout)
-        
-        # 信号连接
-        self.add_button.clicked.connect(self.add_part)
-        self.remove_button.clicked.connect(self.remove_part)
-        self.edit_button.clicked.connect(self.edit_part)
-        
+
+        # 信号连接 - use provided callbacks or default to empty methods
+        self.add_callback = add_callback or self.add_part
+        self.remove_callback = remove_callback or self.remove_part
+        self.edit_callback = edit_callback or self.edit_part
+
+        self.add_button.clicked.connect(self.add_callback)
+        self.remove_button.clicked.connect(self.remove_callback)
+        self.edit_button.clicked.connect(self.edit_callback)
+
     def add_part(self):
         """添加部件 - 需要在主类中重写"""
         pass
-        
+
     def remove_part(self):
         """删除部件 - 需要在主类中重写"""
         pass
-        
+
     def edit_part(self):
         """编辑部件 - 需要在主类中重写"""
         pass
