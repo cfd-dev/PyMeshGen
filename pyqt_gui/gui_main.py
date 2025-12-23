@@ -606,7 +606,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             
         try:
             # 创建配置管理器
-            from gui.config_manager import ConfigManager
+            from pyqt_gui.config_manager import ConfigManager
             config_manager = ConfigManager(self.project_root)
             
             # 从参数创建配置
@@ -721,9 +721,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if file_path:
             try:
                 # 创建文件操作对象
-                from gui.file_operations import FileOperations
+                from pyqt_gui.file_operations import FileOperations
                 file_ops = FileOperations(self.project_root)
-                
+
                 # 导入网格文件
                 self.current_mesh = file_ops.import_mesh(file_path)
                 
@@ -766,7 +766,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if file_path:
             try:
                 # 创建文件操作对象
-                from gui.file_operations import FileOperations
+                from pyqt_gui.file_operations import FileOperations
                 file_ops = FileOperations(self.project_root)
                 
                 # 获取要导出的VTK PolyData对象
@@ -891,14 +891,25 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """从cas文件的部件信息更新部件列表"""
         # Clear the list
         self.parts_list_widget.parts_list.clear()
-        
+
         # Store cas parts info for selection
         self.cas_parts_info = parts_info
-        
-        # Add parts to list
-        for part_info in parts_info:
-            part_name = part_info.get('part_name', '未知部件')
-            self.parts_list_widget.parts_list.addItem(part_name)
+
+        # Handle both list and dictionary formats for parts_info
+        if isinstance(parts_info, list):
+            # If parts_info is a list, iterate directly
+            for part_info in parts_info:
+                part_name = part_info.get('part_name', '未知部件')
+                self.parts_list_widget.parts_list.addItem(part_name)
+        elif isinstance(parts_info, dict):
+            # If parts_info is a dictionary (like boundary_info), use the keys as part names
+            for part_name in parts_info.keys():
+                # Only add if it's a valid part name (not a general info key)
+                if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    self.parts_list_widget.parts_list.addItem(part_name)
+        elif parts_info:
+            # If parts_info is neither a list nor a dict but is truthy, try to handle as single item
+            self.parts_list_widget.parts_list.addItem(str(parts_info))
     
     def show_about(self):
         """显示关于对话框"""
@@ -954,28 +965,63 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         part_index = index
         
         # Check if it's cas file parts
-        if hasattr(self, 'cas_parts_info') and self.cas_parts_info and part_index < len(self.cas_parts_info):
-            # Show cas part properties
-            part_info = self.cas_parts_info[part_index]
-            
-            # Clear properties text
-            props_content = f"=== CAS部件属性 ===\n\n"
-            props_content += f"部件名称: {part_info.get('part_name', '未知')}\n"
-            props_content += f"边界条件类型: {part_info.get('bc_type', '未知')}\n"
-            props_content += f"面数量: {part_info.get('face_count', 0)}\n"
-            props_content += f"节点数量: {len(part_info.get('nodes', []))}\n"
-            props_content += f"单元数量: {len(part_info.get('cells', []))}\n"
-            
-            # Add status info
-            props_content += f"\n=== 状态信息 ===\n"
-            props_content += f"选择时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            props_content += f"部件索引: {part_index}\n"
-            props_content += f"总部件数: {len(self.cas_parts_info)}\n"
-            props_content += f"数据来源: CAS文件\n"
-            
-            self.props_text.setPlainText(props_content)
-            self.update_status(f"已选中CAS部件: {part_info.get('part_name', f'部件{part_index}')}")
-            return
+        # Get the part name from the list widget
+        selected_part_name = ""
+        if self.parts_list_widget.parts_list.count() > index:
+            selected_part_name = self.parts_list_widget.parts_list.item(index).text()
+
+        # Check if it's cas file parts - handle both dict and list formats
+        if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+            # Check if cas_parts_info is a dictionary (most common case for boundary_info)
+            if isinstance(self.cas_parts_info, dict) and selected_part_name in self.cas_parts_info:
+                part_info = self.cas_parts_info[selected_part_name]
+
+                # Clear properties text
+                props_content = f"=== CAS部件属性 ===\n\n"
+                props_content += f"部件名称: {selected_part_name}\n"
+                props_content += f"边界条件类型: {part_info.get('type', '未知') if isinstance(part_info, dict) else '未知'}\n"
+                props_content += f"面数量: {len(part_info.get('faces', []) if isinstance(part_info, dict) else [])}\n"
+                if isinstance(part_info, dict) and 'faces' in part_info:
+                    total_nodes = 0
+                    for face in part_info['faces']:
+                        total_nodes += len(face.get('nodes', []))
+                    props_content += f"节点数量: {total_nodes}\n"
+                else:
+                    props_content += f"节点数量: 0\n"
+                props_content += f"单元数量: 0\n"  # Assuming no cell info in this format
+
+                # Add status info
+                props_content += f"\n=== 状态信息 ===\n"
+                props_content += f"选择时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                props_content += f"部件索引: {part_index}\n"
+                props_content += f"总部件数: {len(self.cas_parts_info)}\n"
+                props_content += f"数据来源: CAS文件\n"
+
+                self.props_text.setPlainText(props_content)
+                self.update_status(f"已选中CAS部件: {selected_part_name}")
+                return
+            # Original logic for when cas_parts_info is a list
+            elif isinstance(self.cas_parts_info, list) and part_index < len(self.cas_parts_info):
+                part_info = self.cas_parts_info[part_index]
+
+                # Clear properties text
+                props_content = f"=== CAS部件属性 ===\n\n"
+                props_content += f"部件名称: {part_info.get('part_name', '未知')}\n"
+                props_content += f"边界条件类型: {part_info.get('bc_type', '未知')}\n"
+                props_content += f"面数量: {part_info.get('face_count', 0)}\n"
+                props_content += f"节点数量: {len(part_info.get('nodes', []))}\n"
+                props_content += f"单元数量: {len(part_info.get('cells', []))}\n"
+
+                # Add status info
+                props_content += f"\n=== 状态信息 ===\n"
+                props_content += f"选择时间: {time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                props_content += f"部件索引: {part_index}\n"
+                props_content += f"总部件数: {len(self.cas_parts_info)}\n"
+                props_content += f"数据来源: CAS文件\n"
+
+                self.props_text.setPlainText(props_content)
+                self.update_status(f"已选中CAS部件: {part_info.get('part_name', f'部件{part_index}')}")
+                return
         
         # If we have params, show selected part properties
         if hasattr(self, 'params') and self.params:

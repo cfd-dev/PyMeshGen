@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+PyQt文件操作模块
+处理网格文件的导入和导出功能
+"""
+
+import os
+import sys
+import vtk
+from vtk.util import numpy_support
+import numpy as np
+
+
+class FileOperations:
+    """文件操作类"""
+
+    def __init__(self, project_root):
+        self.project_root = project_root
+        self.mesh_dir = os.path.join(project_root, "meshes")
+        
+        # 确保网格目录存在
+        if not os.path.exists(self.mesh_dir):
+            os.makedirs(self.mesh_dir, exist_ok=True)
+
+    def import_mesh(self, file_path):
+        """导入网格文件"""
+        try:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext == '.vtk':
+                return self._import_vtk(file_path)
+            elif file_ext == '.stl':
+                return self._import_stl(file_path)
+            elif file_ext == '.obj':
+                return self._import_obj(file_path)
+            elif file_ext == '.cas':
+                return self._import_cas(file_path)
+            elif file_ext == '.msh':
+                return self._import_msh(file_path)
+            elif file_ext == '.ply':
+                return self._import_ply(file_path)
+            else:
+                raise ValueError(f"不支持的文件格式: {file_ext}")
+                
+        except Exception as e:
+            print(f"导入网格失败: {str(e)}")
+            return None
+
+    def _import_vtk(self, file_path):
+        """导入VTK文件"""
+        try:
+            # 创建VTK读取器
+            reader = vtk.vtkUnstructuredGridReader()
+            reader.SetFileName(file_path)
+            reader.ReadAllScalarsOn()
+            reader.ReadAllVectorsOn()
+            reader.Update()
+            
+            # 获取网格数据
+            unstructured_grid = reader.GetOutput()
+            
+            # 提取节点坐标
+            points = unstructured_grid.GetPoints()
+            if points:
+                num_points = points.GetNumberOfPoints()
+                node_coords = []
+                for i in range(num_points):
+                    point = points.GetPoint(i)
+                    node_coords.append(list(point))
+            else:
+                node_coords = []
+            
+            # 提取单元数据
+            cells = unstructured_grid.GetCells()
+            if cells:
+                cell_array = cells.GetData()
+                num_cells = cells.GetNumberOfCells()
+                cell_data = []
+                
+                # 解析单元数据
+                offset = 0
+                for i in range(num_cells):
+                    num_ids = cell_array.GetValue(offset)
+                    cell_ids = []
+                    for j in range(1, num_ids + 1):
+                        cell_ids.append(cell_array.GetValue(offset + j))
+                    cell_data.append(cell_ids)
+                    offset += num_ids + 1
+            else:
+                cell_data = []
+            
+            # 返回网格数据字典
+            mesh_data = {
+                'type': 'vtk',
+                'node_coords': node_coords,
+                'cells': cell_data,
+                'num_points': len(node_coords),
+                'num_cells': len(cell_data),
+                'vtk_poly_data': unstructured_grid
+            }
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入VTK文件失败: {str(e)}")
+            return None
+
+    def _import_stl(self, file_path):
+        """导入STL文件"""
+        try:
+            # 创建STL读取器
+            reader = vtk.vtkSTLReader()
+            reader.SetFileName(file_path)
+            reader.Update()
+            
+            # 获取多边形数据
+            poly_data = reader.GetOutput()
+            
+            # 提取节点坐标
+            points = poly_data.GetPoints()
+            if points:
+                num_points = points.GetNumberOfPoints()
+                node_coords = []
+                for i in range(num_points):
+                    point = points.GetPoint(i)
+                    node_coords.append(list(point))
+            else:
+                node_coords = []
+            
+            # 提取面数据
+            polys = poly_data.GetPolys()
+            if polys:
+                cell_array = polys.GetData()
+                num_cells = polys.GetNumberOfCells()
+                cell_data = []
+                
+                # 解析面数据
+                offset = 0
+                for i in range(num_cells):
+                    num_ids = cell_array.GetValue(offset)
+                    cell_ids = []
+                    for j in range(1, num_ids + 1):
+                        cell_ids.append(cell_array.GetValue(offset + j))
+                    cell_data.append(cell_ids)
+                    offset += num_ids + 1
+            else:
+                cell_data = []
+            
+            # 返回网格数据字典
+            mesh_data = {
+                'type': 'stl',
+                'node_coords': node_coords,
+                'cells': cell_data,
+                'num_points': len(node_coords),
+                'num_cells': len(cell_data),
+                'vtk_poly_data': poly_data
+            }
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入STL文件失败: {str(e)}")
+            return None
+
+    def _import_obj(self, file_path):
+        """导入OBJ文件"""
+        try:
+            # 创建OBJ读取器
+            reader = vtk.vtkOBJReader()
+            reader.SetFileName(file_path)
+            reader.Update()
+            
+            # 获取多边形数据
+            poly_data = reader.GetOutput()
+            
+            # 提取节点坐标
+            points = poly_data.GetPoints()
+            if points:
+                num_points = points.GetNumberOfPoints()
+                node_coords = []
+                for i in range(num_points):
+                    point = points.GetPoint(i)
+                    node_coords.append(list(point))
+            else:
+                node_coords = []
+            
+            # 提取面数据
+            polys = poly_data.GetPolys()
+            if polys:
+                cell_array = polys.GetData()
+                num_cells = polys.GetNumberOfCells()
+                cell_data = []
+                
+                # 解析面数据
+                offset = 0
+                for i in range(num_cells):
+                    num_ids = cell_array.GetValue(offset)
+                    cell_ids = []
+                    for j in range(1, num_ids + 1):
+                        cell_ids.append(cell_array.GetValue(offset + j))
+                    cell_data.append(cell_ids)
+                    offset += num_ids + 1
+            else:
+                cell_data = []
+            
+            # 返回网格数据字典
+            mesh_data = {
+                'type': 'obj',
+                'node_coords': node_coords,
+                'cells': cell_data,
+                'num_points': len(node_coords),
+                'num_cells': len(cell_data),
+                'vtk_poly_data': poly_data
+            }
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入OBJ文件失败: {str(e)}")
+            return None
+
+    def _import_cas(self, file_path):
+        """导入CAS文件 - 用于CFD网格"""
+        try:
+            # 首先尝试使用专门的CAS解析函数
+            try:
+                from fileIO.read_cas import parse_cas_to_unstr_grid
+                unstr_grid = parse_cas_to_unstr_grid(file_path)
+
+                if unstr_grid:
+                    # 将Unstructured_Grid对象转换为字典格式
+                    # 提取节点坐标
+                    node_coords = []
+                    if hasattr(unstr_grid, 'node_coords'):
+                        for coord in unstr_grid.node_coords:
+                            if len(coord) == 2:
+                                node_coords.append([coord[0], coord[1], 0.0])  # 补充z坐标
+                            else:
+                                node_coords.append(list(coord))
+                    elif hasattr(unstr_grid, 'nodes'):
+                        for node in unstr_grid.nodes:
+                            node_coords.append(list(node))
+
+                    # 提取单元数据
+                    cells = []
+                    if hasattr(unstr_grid, 'cell_container'):
+                        for cell in unstr_grid.cell_container:
+                            if cell is not None:  # 确保cell不为None
+                                if hasattr(cell, 'node_ids'):
+                                    # 将1基索引转换为0基索引
+                                    cell_ids = [nid - 1 if isinstance(nid, int) and nid > 0 else nid
+                                               for nid in cell.node_ids]
+                                    cells.append(cell_ids)
+                                elif hasattr(cell, 'nodes'):
+                                    # 如果cell有nodes属性
+                                    cell_ids = []
+                                    for node in cell.nodes:
+                                        if hasattr(node, 'id'):
+                                            cell_ids.append(node.id - 1)  # 转换为0基索引
+                                    if cell_ids:
+                                        cells.append(cell_ids)
+
+                    # 构建网格数据字典
+                    mesh_data = {
+                        'type': 'cas',
+                        'node_coords': node_coords,
+                        'cells': cells,
+                        'num_points': len(node_coords),
+                        'num_cells': len(cells),
+                        'unstr_grid': unstr_grid,  # 保留原始对象
+                        'parts_info': getattr(unstr_grid, 'boundary_info', {}),  # 部件信息
+                        'boundary_info': getattr(unstr_grid, 'boundary_info', {})  # 边界信息
+                    }
+                    return mesh_data
+            except ImportError:
+                print("未找到CAS解析模块，使用备用方法")
+            except Exception as e:
+                print(f"使用专门的CAS解析函数失败: {str(e)}")
+
+            # 备用方法：使用VTK_IO模块
+            try:
+                from fileIO.vtk_io import parse_vtk_msh
+                mesh_data = parse_vtk_msh(file_path)
+
+                if mesh_data:
+                    if isinstance(mesh_data, dict):
+                        mesh_data['type'] = 'cas'
+                    else:
+                        # 如果返回的是Unstructured_Grid对象，转换为字典格式
+                        mesh_data = {
+                            'type': 'cas',
+                            'unstr_grid': mesh_data,
+                            'node_coords': getattr(mesh_data, 'node_coords', []),
+                            'cells': [],
+                            'num_points': len(getattr(mesh_data, 'node_coords', [])),
+                            'num_cells': 0,
+                            'parts_info': getattr(mesh_data, 'boundary_info', {}),
+                            'boundary_info': getattr(mesh_data, 'boundary_info', {})
+                        }
+                    return mesh_data
+            except ImportError:
+                pass  # 继续下面的实现
+            except Exception as e:
+                print(f"使用VTK_IO模块解析CAS文件失败: {str(e)}")
+
+            # 简单的文本解析（根据实际需求调整）
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(1024)  # 读取前1024个字符
+
+            # 基本的CAS文件检测
+            if 'FLUENT' in content.upper() or 'CASE' in content.upper():
+                # 这是一个CAS文件，但需要更复杂的解析逻辑
+                # 这里返回一个基本结构
+                mesh_data = {
+                    'type': 'cas',
+                    'node_coords': [],
+                    'cells': [],
+                    'num_points': 0,
+                    'num_cells': 0,
+                    'parts_info': {},  # 部件信息
+                    'boundary_info': {}  # 边界信息
+                }
+                return mesh_data
+            else:
+                print("文件不包含FLUENT或CASE标识，可能不是有效的CAS文件")
+                # 即使不是标准CAS文件，也返回一个基本结构而不是None
+                mesh_data = {
+                    'type': 'cas',
+                    'node_coords': [],
+                    'cells': [],
+                    'num_points': 0,
+                    'num_cells': 0,
+                    'parts_info': {},
+                    'boundary_info': {}
+                }
+                return mesh_data
+
+        except Exception as e:
+            print(f"导入CAS文件失败: {str(e)}")
+            # 返回一个基本结构而不是None，以避免调用代码出现'NoneType'错误
+            return {
+                'type': 'cas',
+                'node_coords': [],
+                'cells': [],
+                'num_points': 0,
+                'num_cells': 0,
+                'parts_info': {},
+                'boundary_info': {}
+            }
+
+    def _import_msh(self, file_path):
+        """导入Gmsh MSH文件"""
+        try:
+            # MSH文件格式解析（简化版）
+            # 通常需要使用Gmsh Python API，这里提供基本解析
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            
+            nodes = []
+            elements = []
+            in_nodes = False
+            in_elements = False
+            
+            for line in lines:
+                line = line.strip()
+                
+                if line == '$Nodes':
+                    in_nodes = True
+                    continue
+                elif line == '$EndNodes':
+                    in_nodes = False
+                    continue
+                elif line == '$Elements':
+                    in_elements = True
+                    continue
+                elif line == '$EndElements':
+                    in_elements = False
+                    continue
+                
+                if in_nodes and line.isdigit():
+                    # 跳过节点数量行
+                    continue
+                elif in_nodes and line:
+                    # 解析节点数据: node_number x y z
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        try:
+                            x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+                            nodes.append([x, y, z])
+                        except (ValueError, IndexError):
+                            continue
+                
+                if in_elements and line.isdigit():
+                    # 跳过元素数量行
+                    continue
+                elif in_elements and line:
+                    # 解析元素数据
+                    parts = line.split()
+                    if len(parts) >= 5:  # 至少包含类型、标签、节点数和节点ID
+                        try:
+                            # 通常格式: element_number type tag_count node_ids...
+                            node_ids = [int(parts[i]) - 1 for i in range(3, len(parts))]  # 转换为0基索引
+                            elements.append(node_ids)
+                        except (ValueError, IndexError):
+                            continue
+            
+            # 返回网格数据
+            mesh_data = {
+                'type': 'msh',
+                'node_coords': nodes,
+                'cells': elements,
+                'num_points': len(nodes),
+                'num_cells': len(elements)
+            }
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入MSH文件失败: {str(e)}")
+            return None
+
+    def _import_ply(self, file_path):
+        """导入PLY文件"""
+        try:
+            # 创建PLY读取器
+            reader = vtk.vtkPLYReader()
+            reader.SetFileName(file_path)
+            reader.Update()
+            
+            # 获取多边形数据
+            poly_data = reader.GetOutput()
+            
+            # 提取节点坐标
+            points = poly_data.GetPoints()
+            if points:
+                num_points = points.GetNumberOfPoints()
+                node_coords = []
+                for i in range(num_points):
+                    point = points.GetPoint(i)
+                    node_coords.append(list(point))
+            else:
+                node_coords = []
+            
+            # 提取面数据
+            polys = poly_data.GetPolys()
+            if polys:
+                cell_array = polys.GetData()
+                num_cells = polys.GetNumberOfCells()
+                cell_data = []
+                
+                # 解析面数据
+                offset = 0
+                for i in range(num_cells):
+                    num_ids = cell_array.GetValue(offset)
+                    cell_ids = []
+                    for j in range(1, num_ids + 1):
+                        cell_ids.append(cell_array.GetValue(offset + j))
+                    cell_data.append(cell_ids)
+                    offset += num_ids + 1
+            else:
+                cell_data = []
+            
+            # 返回网格数据字典
+            mesh_data = {
+                'type': 'ply',
+                'node_coords': node_coords,
+                'cells': cell_data,
+                'num_points': len(node_coords),
+                'num_cells': len(cell_data),
+                'vtk_poly_data': poly_data
+            }
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入PLY文件失败: {str(e)}")
+            return None
+
+    def export_mesh(self, mesh_data, file_path):
+        """导出网格文件"""
+        try:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            if file_ext == '.vtk':
+                return self._export_vtk(mesh_data, file_path)
+            elif file_ext == '.stl':
+                return self._export_stl(mesh_data, file_path)
+            elif file_ext == '.obj':
+                return self._export_obj(mesh_data, file_path)
+            elif file_ext == '.ply':
+                return self._export_ply(mesh_data, file_path)
+            else:
+                raise ValueError(f"不支持的导出格式: {file_ext}")
+                
+        except Exception as e:
+            print(f"导出网格失败: {str(e)}")
+            return False
+
+    def _export_vtk(self, mesh_data, file_path):
+        """导出VTK文件"""
+        try:
+            # 检查mesh_data是否包含vtk_poly_data
+            if isinstance(mesh_data, dict) and 'vtk_poly_data' in mesh_data:
+                vtk_poly_data = mesh_data['vtk_poly_data']
+            elif hasattr(mesh_data, 'GetPoints') and hasattr(mesh_data, 'GetCells'):
+                # mesh_data本身就是一个VTK对象
+                vtk_poly_data = mesh_data
+            else:
+                # 从字典数据创建VTK对象
+                vtk_poly_data = self._create_vtk_from_dict(mesh_data)
+            
+            if vtk_poly_data:
+                # 创建VTK写入器
+                writer = vtk.vtkUnstructuredGridWriter()
+                writer.SetFileName(file_path)
+                writer.SetInputData(vtk_poly_data)
+                writer.Write()
+                return True
+            else:
+                print("无法创建VTK数据对象")
+                return False
+                
+        except Exception as e:
+            print(f"导出VTK文件失败: {str(e)}")
+            return False
+
+    def _export_stl(self, mesh_data, file_path):
+        """导出STL文件"""
+        try:
+            # 从字典数据创建VTK对象
+            vtk_poly_data = self._create_vtk_from_dict(mesh_data)
+            
+            if vtk_poly_data:
+                # 创建STL写入器
+                writer = vtk.vtkSTLWriter()
+                writer.SetFileName(file_path)
+                writer.SetInputData(vtk_poly_data)
+                writer.Write()
+                return True
+            else:
+                print("无法创建VTK数据对象")
+                return False
+                
+        except Exception as e:
+            print(f"导出STL文件失败: {str(e)}")
+            return False
+
+    def _export_obj(self, mesh_data, file_path):
+        """导出OBJ文件"""
+        try:
+            # 从字典数据创建VTK对象
+            vtk_poly_data = self._create_vtk_from_dict(mesh_data)
+            
+            if vtk_poly_data:
+                # 创建OBJ写入器
+                writer = vtk.vtkOBJWriter()
+                writer.SetFileName(file_path)
+                writer.SetInputData(vtk_poly_data)
+                writer.Write()
+                return True
+            else:
+                print("无法创建VTK数据对象")
+                return False
+                
+        except Exception as e:
+            print(f"导出OBJ文件失败: {str(e)}")
+            return False
+
+    def _export_ply(self, mesh_data, file_path):
+        """导出PLY文件"""
+        try:
+            # 从字典数据创建VTK对象
+            vtk_poly_data = self._create_vtk_from_dict(mesh_data)
+            
+            if vtk_poly_data:
+                # 创建PLY写入器
+                writer = vtk.vtkPLYWriter()
+                writer.SetFileName(file_path)
+                writer.SetInputData(vtk_poly_data)
+                writer.Write()
+                return True
+            else:
+                print("无法创建VTK数据对象")
+                return False
+                
+        except Exception as e:
+            print(f"导出PLY文件失败: {str(e)}")
+            return False
+
+    def _create_vtk_from_dict(self, mesh_data):
+        """从字典数据创建VTK对象"""
+        try:
+            # 创建VTK点
+            vtk_points = vtk.vtkPoints()
+            
+            # 添加节点坐标
+            if isinstance(mesh_data, dict):
+                node_coords = mesh_data.get('node_coords', [])
+            elif hasattr(mesh_data, 'node_coords'):
+                node_coords = mesh_data.node_coords
+            else:
+                node_coords = []
+            
+            for coord in node_coords:
+                if len(coord) == 2:
+                    vtk_points.InsertNextPoint(coord[0], coord[1], 0.0)
+                elif len(coord) >= 3:
+                    vtk_points.InsertNextPoint(coord[0], coord[1], coord[2])
+            
+            # 创建VTK单元
+            vtk_cells = vtk.vtkCellArray()
+            
+            # 添加单元数据
+            if isinstance(mesh_data, dict):
+                cells = mesh_data.get('cells', [])
+            elif hasattr(mesh_data, 'cells'):
+                cells = mesh_data.cells
+            else:
+                cells = []
+            
+            for cell in cells:
+                if len(cell) == 3:  # 三角形
+                    triangle = vtk.vtkTriangle()
+                    for i, node_id in enumerate(cell):
+                        triangle.GetPointIds().SetId(i, node_id)
+                    vtk_cells.InsertNextCell(triangle)
+                elif len(cell) == 4:  # 四边形
+                    quad = vtk.vtkQuad()
+                    for i, node_id in enumerate(cell):
+                        quad.GetPointIds().SetId(i, node_id)
+                    vtk_cells.InsertNextCell(quad)
+                elif len(cell) > 4:  # 多边形
+                    polygon = vtk.vtkPolygon()
+                    polygon.GetPointIds().SetNumberOfIds(len(cell))
+                    for i, node_id in enumerate(cell):
+                        polygon.GetPointIds().SetId(i, node_id)
+                    vtk_cells.InsertNextCell(polygon)
+            
+            # 创建VTK多边形数据
+            vtk_poly_data = vtk.vtkPolyData()
+            vtk_poly_data.SetPoints(vtk_points)
+            vtk_poly_data.SetPolys(vtk_cells)
+            
+            return vtk_poly_data
+            
+        except Exception as e:
+            print(f"从字典数据创建VTK对象失败: {str(e)}")
+            return None
+
+    def get_supported_import_formats(self):
+        """获取支持的导入格式"""
+        return [
+            "VTK文件 (*.vtk)",
+            "STL文件 (*.stl)", 
+            "OBJ文件 (*.obj)",
+            "CAS文件 (*.cas)",
+            "Gmsh文件 (*.msh)",
+            "PLY文件 (*.ply)"
+        ]
+
+    def get_supported_export_formats(self):
+        """获取支持的导出格式"""
+        return [
+            "VTK文件 (*.vtk)",
+            "STL文件 (*.stl)",
+            "OBJ文件 (*.obj)",
+            "PLY文件 (*.ply)"
+        ]
