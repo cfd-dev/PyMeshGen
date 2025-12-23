@@ -66,24 +66,7 @@ class RibbonGroup(QFrame):
         layout.setContentsMargins(6, 6, 6, 6)  # Slightly more padding for visual appeal
         layout.setSpacing(6)  # More spacing for visual appeal
 
-        # Title label
-        self.title_label = QLabel(title)
-        title_font = QFont()
-        title_font.setBold(True)
-        title_font.setPointSize(9)  # Slightly larger font for better visibility
-        self.title_label.setFont(title_font)
-        self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setStyleSheet("""
-            color: #444444;
-            font-weight: bold;
-            border-bottom: 1px solid #cccccc;
-            padding-bottom: 2px;
-        """)
-        # Ensure minimum size for proper text display
-        self.title_label.setMinimumHeight(20)
-        layout.addWidget(self.title_label)
-
-        # Content area for buttons and controls
+        # Content area for buttons and controls (no title)
         self.content_widget = QWidget()
         self.content_layout = QGridLayout()
         self.content_layout.setSpacing(4)  # Better spacing for visual appeal
@@ -272,14 +255,14 @@ class RibbonWidget(QWidget):
         layout.setSpacing(4)  # Reduced spacing
 
         # File operations group
-        file_group = RibbonGroup("文件操作")
+        file_group = RibbonGroup("")
         self.buttons['file']['new'] = file_group.add_large_button("新建", tooltip="新建配置 (Ctrl+N)", row=0, col=0)
         self.buttons['file']['open'] = file_group.add_large_button("打开", tooltip="打开配置 (Ctrl+O)", row=0, col=1)
         self.buttons['file']['save'] = file_group.add_large_button("保存", tooltip="保存配置 (Ctrl+S)", row=0, col=2)
         layout.addWidget(file_group)
 
         # Import/Export group
-        io_group = RibbonGroup("导入/导出")
+        io_group = RibbonGroup("")
         self.buttons['file']['import'] = io_group.add_large_button("导入", tooltip="导入网格 (Ctrl+I)", row=0, col=0)
         self.buttons['file']['export'] = io_group.add_large_button("导出", tooltip="导出网格 (Ctrl+E)", row=0, col=1)
         layout.addWidget(io_group)
@@ -295,19 +278,19 @@ class RibbonWidget(QWidget):
         layout.setSpacing(4)  # Reduced spacing
 
         # View operations group
-        view_group = RibbonGroup("视图操作")
+        view_group = RibbonGroup("")
         self.buttons['view']['reset'] = view_group.add_large_button("重置", tooltip="重置视图 (R键)", row=0, col=0)
         self.buttons['view']['fit'] = view_group.add_large_button("适应", tooltip="适应视图 (F键)", row=0, col=1)
         layout.addWidget(view_group)
 
         # Zoom group
-        zoom_group = RibbonGroup("缩放")
+        zoom_group = RibbonGroup("")
         self.buttons['view']['zoom_in'] = zoom_group.add_large_button("放大", tooltip="放大视图 (+键)", row=0, col=0)
         self.buttons['view']['zoom_out'] = zoom_group.add_large_button("缩小", tooltip="缩小视图 (-键)", row=0, col=1)
         layout.addWidget(zoom_group)
 
         # Display mode group
-        display_group = RibbonGroup("显示模式")
+        display_group = RibbonGroup("")
         self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)", row=0, col=0)
         self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)", row=0, col=1)
         self.buttons['view']['mixed'] = display_group.add_small_button("混合", tooltip="混合模式 (3键)", row=1, col=0)
@@ -325,14 +308,14 @@ class RibbonWidget(QWidget):
         layout.setSpacing(4)  # Reduced spacing
 
         # Parameter group
-        param_group = RibbonGroup("参数设置")
+        param_group = RibbonGroup("")
         self.buttons['config']['params'] = param_group.add_large_button("参数", tooltip="编辑参数", row=0, col=0)
         self.buttons['config']['mesh_params'] = param_group.add_large_button("网格参数", tooltip="编辑网格参数", row=0, col=1)
         self.buttons['config']['boundary'] = param_group.add_large_button("边界条件", tooltip="编辑边界条件", row=0, col=2)
         layout.addWidget(param_group)
 
         # Configuration group
-        config_group = RibbonGroup("配置管理")
+        config_group = RibbonGroup("")
         self.buttons['config']['import_config'] = config_group.add_large_button("导入", tooltip="导入配置", row=0, col=0)
         self.buttons['config']['export_config'] = config_group.add_large_button("导出", tooltip="导出配置", row=0, col=1)
         self.buttons['config']['reset'] = config_group.add_large_button("重置", tooltip="重置配置", row=0, col=2)
@@ -349,21 +332,21 @@ class RibbonWidget(QWidget):
         layout.setSpacing(4)  # Reduced spacing
 
         # Generation group
-        gen_group = RibbonGroup("生成")
+        gen_group = RibbonGroup("")
         self.buttons['mesh']['generate'] = gen_group.add_large_button("生成", tooltip="生成网格 (F5)", row=0, col=0)
         self.buttons['mesh']['display'] = gen_group.add_large_button("显示", tooltip="显示网格 (F6)", row=0, col=1)
         self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", tooltip="清空网格", row=0, col=2)
         layout.addWidget(gen_group)
 
         # Quality group
-        quality_group = RibbonGroup("质量")
+        quality_group = RibbonGroup("")
         self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", tooltip="检查网格质量", row=0, col=0)
         self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", tooltip="平滑网格", row=0, col=1)
         self.buttons['mesh']['optimize'] = quality_group.add_large_button("优化", tooltip="优化网格", row=0, col=2)
         layout.addWidget(quality_group)
 
         # Analysis group
-        analysis_group = RibbonGroup("分析")
+        analysis_group = RibbonGroup("")
         self.buttons['mesh']['statistics'] = analysis_group.add_large_button("统计", tooltip="网格统计", row=0, col=0)
         self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告", row=0, col=1)
         layout.addWidget(analysis_group)
@@ -379,13 +362,13 @@ class RibbonWidget(QWidget):
         layout.setSpacing(4)  # Reduced spacing
 
         # Documentation group
-        doc_group = RibbonGroup("文档")
+        doc_group = RibbonGroup("")
         self.buttons['help']['manual'] = doc_group.add_large_button("手册", tooltip="用户手册", row=0, col=0)
         self.buttons['help']['quick_start'] = doc_group.add_large_button("入门", tooltip="快速入门", row=0, col=1)
         layout.addWidget(doc_group)
 
         # Support group
-        support_group = RibbonGroup("支持")
+        support_group = RibbonGroup("")
         self.buttons['help']['shortcuts'] = support_group.add_large_button("快捷键", tooltip="快捷键", row=0, col=0)
         self.buttons['help']['updates'] = support_group.add_large_button("更新", tooltip="检查更新", row=0, col=1)
         self.buttons['help']['about'] = support_group.add_large_button("关于", tooltip="关于", row=0, col=2)
