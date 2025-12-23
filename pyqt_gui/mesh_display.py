@@ -603,67 +603,76 @@ class MeshDisplayArea:
     def add_axes(self):
         """添加坐标轴到渲染器"""
         try:
-            # 创建坐标轴
+            # Create a 2D coordinate system that stays fixed in the corner of the viewport
+            # This will use a special actor that is not affected by camera zoom
+
+            # Create the axes actor
             axes = vtk.vtkAxesActor()
-            
-            # 设置坐标轴大小
+
+            # Set axis lengths
             axes.SetTotalLength(1.0, 1.0, 1.0)
-            
-            # 设置坐标轴标签字号
-            axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
-            axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
-            axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(12)
-            
-            # 创建坐标轴变换，将坐标轴放置在左下角
-            transform = self._create_axes_transform()
-            axes.SetUserTransform(transform)
-            
-            # 添加到渲染器
-            self.renderer.AddActor(axes)
-            
-            # 保存坐标轴引用以便后续操作
+
+            # Set better colors for visibility
+            axes.GetXAxisShaftProperty().SetColor(1, 0, 0)  # Red for X
+            axes.GetYAxisShaftProperty().SetColor(0, 1, 0)  # Green for Y
+            axes.GetZAxisShaftProperty().SetColor(0, 0, 1)  # Blue for Z
+
+            axes.GetXAxisTipProperty().SetColor(1, 0, 0)   # Red for X tip
+            axes.GetYAxisTipProperty().SetColor(0, 1, 0)   # Green for Y tip
+            axes.GetZAxisTipProperty().SetColor(0, 0, 1)   # Blue for Z tip
+
+            # Set label properties
+            axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+            axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+            axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+
+            # Use a special approach to keep the axes in the corner regardless of zoom
+            # Create a widget to position the axes in the viewport
+            self.axes_widget = vtk.vtkOrientationMarkerWidget()
+            self.axes_widget.SetOrientationMarker(axes)
+            self.axes_widget.SetInteractor(self.frame.GetRenderWindow().GetInteractor())
+            self.axes_widget.SetEnabled(True)
+            self.axes_widget.InteractiveOff()  # Disable interaction with the axes
+
+            # Position the axes in the lower-left corner of the viewport
+            self.axes_widget.SetViewport(0.0, 0.0, 0.2, 0.2)  # Lower-left corner
+
+            # Save reference to axes widget for later operations
             self.axes_actor = axes
-            
+            self.axes_widget_ref = self.axes_widget
+
         except Exception as e:
             print(f"添加坐标轴失败: {str(e)}")
-    
-    def _create_axes_transform(self):
-        """创建坐标轴变换"""
-        transform = vtk.vtkTransform()
-        
-        # 获取渲染器的边界
-        bounds = self.renderer.ComputeVisiblePropBounds()
-        if bounds and all(bound != float('inf') and bound != float('-inf') for bound in bounds):
-            # 计算网格中心点和尺寸
-            center_x = (bounds[0] + bounds[1]) / 2
-            center_y = (bounds[2] + bounds[3]) / 2
-            center_z = (bounds[4] + bounds[5]) / 2
-            
-            # 计算网格尺寸
-            size_x = bounds[1] - bounds[0]
-            size_y = bounds[3] - bounds[2]
-            size_z = bounds[5] - bounds[4]
-            
-            # 计算最大尺寸
-            max_size = max(size_x, size_y, size_z) if size_x > 0 and size_y > 0 and size_z > 0 else 1.0
-            
-            # 计算左下角位置（稍微偏移，避免与网格重叠）
-            offset_x = center_x - size_x * 0.6
-            offset_y = center_y - size_y * 0.6
-            offset_z = center_z - size_z * 0.6
-            
-            # 设置变换，将坐标轴移动到左下角
-            transform.Translate(offset_x, offset_y, offset_z if size_z > 0 else 0.0)
-            
-            # 根据网格大小调整坐标轴比例
-            scale = max_size * 0.15  # 坐标轴大小为网格最大尺寸的15%
-            transform.Scale(scale, scale, scale)
-        else:
-            # 如果没有边界信息，使用默认设置
-            transform.Translate(-1, -1, -1)
-            transform.Scale(0.5, 0.5, 0.5)
-        
-        return transform
+            # Fallback to original method if the widget approach fails
+            try:
+                # 创建坐标轴
+                axes = vtk.vtkAxesActor()
+                axes.SetTotalLength(1.0, 1.0, 1.0)
+
+                # Set better colors for visibility
+                axes.GetXAxisShaftProperty().SetColor(1, 0, 0)  # Red for X
+                axes.GetYAxisShaftProperty().SetColor(0, 1, 0)  # Green for Y
+                axes.GetZAxisShaftProperty().SetColor(0, 0, 1)  # Blue for Z
+
+                axes.GetXAxisTipProperty().SetColor(1, 0, 0)   # Red for X tip
+                axes.GetYAxisTipProperty().SetColor(0, 1, 0)   # Green for Y tip
+                axes.GetZAxisTipProperty().SetColor(0, 0, 1)   # Blue for Z tip
+
+                # Set label properties
+                axes.GetXAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+                axes.GetYAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+                axes.GetZAxisCaptionActor2D().GetCaptionTextProperty().SetFontSize(14)
+
+                # Add to renderer with a fixed transform
+                transform = vtk.vtkTransform()
+                transform.Translate(-0.8, -0.8, 0)  # Fixed position
+                transform.Scale(0.1, 0.1, 0.1)      # Fixed scale
+                axes.SetUserTransform(transform)
+
+                self.renderer.AddActor(axes)
+                self.axes_actor = axes
+            except Exception as fallback_e:
+                print(f"备用坐标轴方法也失败: {str(fallback_e)}")
     
     def clear_mesh_actors(self):
         """清除所有网格相关的演员"""
