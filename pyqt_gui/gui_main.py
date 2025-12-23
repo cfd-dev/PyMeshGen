@@ -216,6 +216,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         
         # 导入Qt图标
         from PyQt5.QtGui import QIcon
+        from PyQt5.QtWidgets import QActionGroup, QAction
         
         # 获取图标路径
         icon_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gui", "icons")
@@ -240,6 +241,36 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.toolbar.add_action("生成", get_icon("generate"), self.generate_mesh, "根据当前配置生成网格\n支持三角形、四边形和混合网格\n快捷键: F5")
         self.toolbar.add_action("显示", get_icon("display"), self.display_mesh, "在显示区域显示当前网格\n支持缩放、旋转和平移操作\n快捷键: F6")
         self.toolbar.add_action("清空", get_icon("clear"), self.clear_mesh, "清空当前网格数据\n注意: 此操作不可撤销\n快捷键: Delete")
+        self.toolbar.add_separator()
+        
+        # 显示模式切换按钮组
+        self.display_mode_group = QActionGroup(self)
+        self.display_mode_group.setExclusive(True)
+        
+        # 实体模式
+        self.surface_mode_action = QAction("实体模式", self)
+        self.surface_mode_action.setCheckable(True)
+        self.surface_mode_action.setChecked(True)
+        self.surface_mode_action.setToolTip("实体模式：仅显示模型表面 (1键)")
+        self.surface_mode_action.triggered.connect(lambda: self.set_render_mode("surface"))
+        self.display_mode_group.addAction(self.surface_mode_action)
+        self.toolbar.toolbar.addAction(self.surface_mode_action)
+        
+        # 线框模式
+        self.wireframe_mode_action = QAction("线框模式", self)
+        self.wireframe_mode_action.setCheckable(True)
+        self.wireframe_mode_action.setToolTip("线框模式：仅显示模型边缘线条 (2键)")
+        self.wireframe_mode_action.triggered.connect(lambda: self.set_render_mode("wireframe"))
+        self.display_mode_group.addAction(self.wireframe_mode_action)
+        self.toolbar.toolbar.addAction(self.wireframe_mode_action)
+        
+        # 混合模式
+        self.mixed_mode_action = QAction("混合模式", self)
+        self.mixed_mode_action.setCheckable(True)
+        self.mixed_mode_action.setToolTip("混合模式：同时显示模型表面和边缘线条 (3键)")
+        self.mixed_mode_action.triggered.connect(lambda: self.set_render_mode("mixed"))
+        self.display_mode_group.addAction(self.mixed_mode_action)
+        self.toolbar.toolbar.addAction(self.mixed_mode_action)
     
     def create_menu(self):
         """创建菜单"""
@@ -350,6 +381,23 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # Add keyboard event handling
         self.main_mesh_display.frame.keyPressEvent = self.on_mesh_display_key
     
+    def set_render_mode(self, mode):
+        """设置渲染模式"""
+        self.render_mode = mode
+        if hasattr(self, 'mesh_display'):
+            self.mesh_display.set_render_mode(mode)
+        
+        # 更新UI状态
+        if mode == "surface":
+            self.surface_mode_action.setChecked(True)
+            self.update_status("渲染模式: 实体模式 (1键)")
+        elif mode == "wireframe":
+            self.wireframe_mode_action.setChecked(True)
+            self.update_status("渲染模式: 线框模式 (2键)")
+        elif mode == "mixed" or mode == "surface-wireframe":
+            self.mixed_mode_action.setChecked(True)
+            self.update_status("渲染模式: 混合模式 (3键)")
+        
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
         key = event.key()
@@ -364,18 +412,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.show_boundary = new_state
             self.mesh_display.toggle_boundary_display(new_state)
             self.update_status(f"边界显示: {'开启' if new_state else '关闭'} (O键)")
-        elif key == Qt.Key_1:  # 切换到表面模式
-            self.render_mode = "surface"
-            self.mesh_display.set_render_mode("surface")
-            self.update_status("渲染模式: 表面 (1键)")
+        elif key == Qt.Key_1:  # 切换到实体模式
+            self.set_render_mode("surface")
         elif key == Qt.Key_2:  # 切换到线框模式
-            self.render_mode = "wireframe"
-            self.mesh_display.set_render_mode("wireframe")
-            self.update_status("渲染模式: 线框 (2键)")
-        elif key == Qt.Key_3:  # 切换到点云模式
+            self.set_render_mode("wireframe")
+        elif key == Qt.Key_3:  # 切换到混合模式
+            self.set_render_mode("mixed")
+        elif key == Qt.Key_4:  # 切换到点云模式
             self.render_mode = "points"
             self.mesh_display.set_render_mode("points")
-            self.update_status("渲染模式: 点云 (3键)")
+            self.update_status("渲染模式: 点云 (4键)")
         elif key == Qt.Key_Plus or key == Qt.Key_Equal:  # 放大
             self.zoom_in()
             self.update_status("视图已放大 (+键)")

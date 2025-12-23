@@ -238,13 +238,22 @@ class MeshDisplayArea:
             
         mode = self.render_mode
         if mode == "wireframe":
+            # 线框模式：仅显示边缘线条
             self.mesh_actor.GetProperty().SetRepresentationToWireframe()
             self.mesh_actor.GetProperty().EdgeVisibilityOn()
             self.mesh_actor.GetProperty().SetLineWidth(2.0)
         elif mode == "points":
+            # 点云模式：仅显示点
             self.mesh_actor.GetProperty().SetRepresentationToPoints()
             self.mesh_actor.GetProperty().SetPointSize(4.0)
+        elif mode == "surface-wireframe" or mode == "mixed":
+            # 混合模式：同时显示表面和边缘线条
+            self.mesh_actor.GetProperty().SetRepresentationToSurface()
+            self.mesh_actor.GetProperty().EdgeVisibilityOn()
+            self.mesh_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)  # 黑色边缘
+            self.mesh_actor.GetProperty().SetLineWidth(1.5)  # 边缘线宽
         else:  # surface
+            # 实体模式：仅显示完整表面
             self.mesh_actor.GetProperty().SetRepresentationToSurface()
             self.mesh_actor.GetProperty().EdgeVisibilityOff()
     
