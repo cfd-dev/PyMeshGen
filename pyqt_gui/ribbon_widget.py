@@ -63,13 +63,14 @@ class RibbonGroup(QFrame):
         self.setLineWidth(1)
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(6, 6, 6, 6)  # Slightly more padding for visual appeal
-        layout.setSpacing(6)  # More spacing for visual appeal
+        layout.setContentsMargins(2, 2, 2, 2)  # Reduced padding
+        layout.setSpacing(2)  # Reduced spacing
 
         # Content area for buttons and controls (no title)
         self.content_widget = QWidget()
-        self.content_layout = QGridLayout()
-        self.content_layout.setSpacing(4)  # Better spacing for visual appeal
+        self.content_layout = QHBoxLayout()  # Changed to QHBoxLayout for left alignment
+        self.content_layout.setSpacing(2)  # Reduced spacing
+        self.content_layout.setAlignment(Qt.AlignLeft)  # Align content to the left
         self.content_widget.setLayout(self.content_layout)
         layout.addWidget(self.content_widget)
 
@@ -137,7 +138,7 @@ class RibbonGroup(QFrame):
             }
         """)
 
-        self.content_layout.addWidget(button, row, col)
+        self.content_layout.addWidget(button)  # Removed row, col parameters for QHBoxLayout
         return button
 
     def add_small_button(self, text, icon=None, callback=None, tooltip=None, row=0, col=0):
@@ -190,7 +191,7 @@ class RibbonGroup(QFrame):
             }
         """)
 
-        self.content_layout.addWidget(button, row, col)
+        self.content_layout.addWidget(button)  # Removed row, col parameters for QHBoxLayout
         return button
 
 
@@ -251,21 +252,25 @@ class RibbonWidget(QWidget):
         """Create the file ribbon tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
-        layout.setSpacing(4)  # Reduced spacing
+        layout.setContentsMargins(2, 2, 2, 2)  # Further reduced margins
+        layout.setSpacing(2)  # Further reduced spacing
+        layout.setAlignment(Qt.AlignLeft)  # Align groups to the left
 
         # File operations group
         file_group = RibbonGroup("")
-        self.buttons['file']['new'] = file_group.add_large_button("新建", tooltip="新建配置 (Ctrl+N)", row=0, col=0)
-        self.buttons['file']['open'] = file_group.add_large_button("打开", tooltip="打开配置 (Ctrl+O)", row=0, col=1)
-        self.buttons['file']['save'] = file_group.add_large_button("保存", tooltip="保存配置 (Ctrl+S)", row=0, col=2)
+        self.buttons['file']['new'] = file_group.add_large_button("新建", tooltip="新建配置 (Ctrl+N)")
+        self.buttons['file']['open'] = file_group.add_large_button("打开", tooltip="打开配置 (Ctrl+O)")
+        self.buttons['file']['save'] = file_group.add_large_button("保存", tooltip="保存配置 (Ctrl+S)")
         layout.addWidget(file_group)
 
         # Import/Export group
         io_group = RibbonGroup("")
-        self.buttons['file']['import'] = io_group.add_large_button("导入", tooltip="导入网格 (Ctrl+I)", row=0, col=0)
-        self.buttons['file']['export'] = io_group.add_large_button("导出", tooltip="导出网格 (Ctrl+E)", row=0, col=1)
+        self.buttons['file']['import'] = io_group.add_large_button("导入", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['file']['export'] = io_group.add_large_button("导出", tooltip="导出网格 (Ctrl+E)")
         layout.addWidget(io_group)
+
+        # Add stretch to push groups to the left
+        layout.addStretch(1)
 
         tab_widget.setLayout(layout)
         return tab_widget
@@ -274,28 +279,32 @@ class RibbonWidget(QWidget):
         """Create the view ribbon tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
-        layout.setSpacing(4)  # Reduced spacing
+        layout.setContentsMargins(2, 2, 2, 2)  # Further reduced margins
+        layout.setSpacing(2)  # Further reduced spacing
+        layout.setAlignment(Qt.AlignLeft)  # Align groups to the left
 
         # View operations group
         view_group = RibbonGroup("")
-        self.buttons['view']['reset'] = view_group.add_large_button("重置", tooltip="重置视图 (R键)", row=0, col=0)
-        self.buttons['view']['fit'] = view_group.add_large_button("适应", tooltip="适应视图 (F键)", row=0, col=1)
+        self.buttons['view']['reset'] = view_group.add_large_button("重置", tooltip="重置视图 (R键)")
+        self.buttons['view']['fit'] = view_group.add_large_button("适应", tooltip="适应视图 (F键)")
         layout.addWidget(view_group)
 
         # Zoom group
         zoom_group = RibbonGroup("")
-        self.buttons['view']['zoom_in'] = zoom_group.add_large_button("放大", tooltip="放大视图 (+键)", row=0, col=0)
-        self.buttons['view']['zoom_out'] = zoom_group.add_large_button("缩小", tooltip="缩小视图 (-键)", row=0, col=1)
+        self.buttons['view']['zoom_in'] = zoom_group.add_large_button("放大", tooltip="放大视图 (+键)")
+        self.buttons['view']['zoom_out'] = zoom_group.add_large_button("缩小", tooltip="缩小视图 (-键)")
         layout.addWidget(zoom_group)
 
         # Display mode group
         display_group = RibbonGroup("")
-        self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)", row=0, col=0)
-        self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)", row=0, col=1)
-        self.buttons['view']['mixed'] = display_group.add_small_button("混合", tooltip="混合模式 (3键)", row=1, col=0)
-        self.buttons['view']['points'] = display_group.add_small_button("点云", tooltip="点云模式 (4键)", row=1, col=1)
+        self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)")
+        self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)")
+        self.buttons['view']['mixed'] = display_group.add_small_button("混合", tooltip="混合模式 (3键)")
+        self.buttons['view']['points'] = display_group.add_small_button("点云", tooltip="点云模式 (4键)")
         layout.addWidget(display_group)
+
+        # Add stretch to push groups to the left
+        layout.addStretch(1)
 
         tab_widget.setLayout(layout)
         return tab_widget
@@ -304,22 +313,26 @@ class RibbonWidget(QWidget):
         """Create the config ribbon tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
-        layout.setSpacing(4)  # Reduced spacing
+        layout.setContentsMargins(2, 2, 2, 2)  # Further reduced margins
+        layout.setSpacing(2)  # Further reduced spacing
+        layout.setAlignment(Qt.AlignLeft)  # Align groups to the left
 
         # Parameter group
         param_group = RibbonGroup("")
-        self.buttons['config']['params'] = param_group.add_large_button("参数", tooltip="编辑参数", row=0, col=0)
-        self.buttons['config']['mesh_params'] = param_group.add_large_button("网格参数", tooltip="编辑网格参数", row=0, col=1)
-        self.buttons['config']['boundary'] = param_group.add_large_button("边界条件", tooltip="编辑边界条件", row=0, col=2)
+        self.buttons['config']['params'] = param_group.add_large_button("参数", tooltip="编辑参数")
+        self.buttons['config']['mesh_params'] = param_group.add_large_button("网格参数", tooltip="编辑网格参数")
+        self.buttons['config']['boundary'] = param_group.add_large_button("边界条件", tooltip="编辑边界条件")
         layout.addWidget(param_group)
 
         # Configuration group
         config_group = RibbonGroup("")
-        self.buttons['config']['import_config'] = config_group.add_large_button("导入", tooltip="导入配置", row=0, col=0)
-        self.buttons['config']['export_config'] = config_group.add_large_button("导出", tooltip="导出配置", row=0, col=1)
-        self.buttons['config']['reset'] = config_group.add_large_button("重置", tooltip="重置配置", row=0, col=2)
+        self.buttons['config']['import_config'] = config_group.add_large_button("导入", tooltip="导入配置")
+        self.buttons['config']['export_config'] = config_group.add_large_button("导出", tooltip="导出配置")
+        self.buttons['config']['reset'] = config_group.add_large_button("重置", tooltip="重置配置")
         layout.addWidget(config_group)
+
+        # Add stretch to push groups to the left
+        layout.addStretch(1)
 
         tab_widget.setLayout(layout)
         return tab_widget
@@ -328,28 +341,32 @@ class RibbonWidget(QWidget):
         """Create the mesh ribbon tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
-        layout.setSpacing(4)  # Reduced spacing
+        layout.setContentsMargins(2, 2, 2, 2)  # Further reduced margins
+        layout.setSpacing(2)  # Further reduced spacing
+        layout.setAlignment(Qt.AlignLeft)  # Align groups to the left
 
         # Generation group
         gen_group = RibbonGroup("")
-        self.buttons['mesh']['generate'] = gen_group.add_large_button("生成", tooltip="生成网格 (F5)", row=0, col=0)
-        self.buttons['mesh']['display'] = gen_group.add_large_button("显示", tooltip="显示网格 (F6)", row=0, col=1)
-        self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", tooltip="清空网格", row=0, col=2)
+        self.buttons['mesh']['generate'] = gen_group.add_large_button("生成", tooltip="生成网格 (F5)")
+        self.buttons['mesh']['display'] = gen_group.add_large_button("显示", tooltip="显示网格 (F6)")
+        self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", tooltip="清空网格")
         layout.addWidget(gen_group)
 
         # Quality group
         quality_group = RibbonGroup("")
-        self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", tooltip="检查网格质量", row=0, col=0)
-        self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", tooltip="平滑网格", row=0, col=1)
-        self.buttons['mesh']['optimize'] = quality_group.add_large_button("优化", tooltip="优化网格", row=0, col=2)
+        self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", tooltip="检查网格质量")
+        self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", tooltip="平滑网格")
+        self.buttons['mesh']['optimize'] = quality_group.add_large_button("优化", tooltip="优化网格")
         layout.addWidget(quality_group)
 
         # Analysis group
         analysis_group = RibbonGroup("")
-        self.buttons['mesh']['statistics'] = analysis_group.add_large_button("统计", tooltip="网格统计", row=0, col=0)
-        self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告", row=0, col=1)
+        self.buttons['mesh']['statistics'] = analysis_group.add_large_button("统计", tooltip="网格统计")
+        self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告")
         layout.addWidget(analysis_group)
+
+        # Add stretch to push groups to the left
+        layout.addStretch(1)
 
         tab_widget.setLayout(layout)
         return tab_widget
@@ -358,21 +375,25 @@ class RibbonWidget(QWidget):
         """Create the help ribbon tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)  # Reduced margins
-        layout.setSpacing(4)  # Reduced spacing
+        layout.setContentsMargins(2, 2, 2, 2)  # Further reduced margins
+        layout.setSpacing(2)  # Further reduced spacing
+        layout.setAlignment(Qt.AlignLeft)  # Align groups to the left
 
         # Documentation group
         doc_group = RibbonGroup("")
-        self.buttons['help']['manual'] = doc_group.add_large_button("手册", tooltip="用户手册", row=0, col=0)
-        self.buttons['help']['quick_start'] = doc_group.add_large_button("入门", tooltip="快速入门", row=0, col=1)
+        self.buttons['help']['manual'] = doc_group.add_large_button("手册", tooltip="用户手册")
+        self.buttons['help']['quick_start'] = doc_group.add_large_button("入门", tooltip="快速入门")
         layout.addWidget(doc_group)
 
         # Support group
         support_group = RibbonGroup("")
-        self.buttons['help']['shortcuts'] = support_group.add_large_button("快捷键", tooltip="快捷键", row=0, col=0)
-        self.buttons['help']['updates'] = support_group.add_large_button("更新", tooltip="检查更新", row=0, col=1)
-        self.buttons['help']['about'] = support_group.add_large_button("关于", tooltip="关于", row=0, col=2)
+        self.buttons['help']['shortcuts'] = support_group.add_large_button("快捷键", tooltip="快捷键")
+        self.buttons['help']['updates'] = support_group.add_large_button("更新", tooltip="检查更新")
+        self.buttons['help']['about'] = support_group.add_large_button("关于", tooltip="关于")
         layout.addWidget(support_group)
+
+        # Add stretch to push groups to the left
+        layout.addStretch(1)
 
         tab_widget.setLayout(layout)
         return tab_widget
