@@ -234,7 +234,7 @@ class RibbonWidget(QWidget):
 
         # Add toggle button to the right of the ribbon tabs
         from PyQt5.QtWidgets import QPushButton
-        self.toggle_button = QPushButton("◀")
+        self.toggle_button = QPushButton("▲")
         self.toggle_button.setFixedSize(24, 24)
         self.toggle_button.setToolTip("折叠/展开功能区")
 
@@ -277,7 +277,7 @@ class RibbonWidget(QWidget):
             tab_bar_height = self.ribbon_tabs.tabBar().height()
             button_height = self.toggle_button.height()
             self.setMaximumHeight(max(tab_bar_height, button_height) + 15)  # Just enough for tabs and toggle button
-            self.toggle_button.setText("▶")  # Show right arrow when collapsed
+            self.toggle_button.setText("▼")  # Show up arrow when collapsed
             self._content_visible = False
             # 更新样式以确保视觉一致性
             self.ribbon_tabs.setStyleSheet("""
@@ -312,7 +312,7 @@ class RibbonWidget(QWidget):
         else:
             # Expand the ribbon by removing maximum height restriction
             self.setMaximumHeight(16777215)  # Maximum allowed height for QWidget
-            self.toggle_button.setText("◀")  # Show left arrow when expanded
+            self.toggle_button.setText("▲")  # Show down arrow when expanded
             self._content_visible = True
             # 恢复完整样式
             self.ribbon_tabs.setStyleSheet("""
