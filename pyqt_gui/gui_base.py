@@ -7,30 +7,13 @@ PyQt GUI基础组件模块
 """
 
 import sys
-from PyQt5.QtWidgets import (QWidget, QMainWindow, QStatusBar, QToolBar,
+import time
+from PyQt5.QtWidgets import (QStatusBar, QToolBar,
                              QVBoxLayout, QHBoxLayout, QSplitter, QFrame, QGroupBox,
                              QLabel, QTextEdit, QScrollArea, QTabWidget, QToolButton,
                              QDockWidget, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont
-
-
-class BaseWidget:
-    """基础窗口组件类，提供通用功能"""
-    
-    def __init__(self, parent=None):
-        self.parent = parent
-        self.widget = QWidget(parent)
-        
-    def show(self):
-        """显示组件"""
-        self.widget.show()
-        
-    def hide(self):
-        """隐藏组件"""
-        self.widget.hide()
-
-
 
 
 class StatusBar:
@@ -82,8 +65,17 @@ class InfoOutput:
     
     def append_info_output(self, message):
         """添加信息到输出窗口"""
-        # 在主线程中执行GUI更新
         self.info_text.append(message)
+    
+    def log_info(self, message):
+        """记录信息"""
+        timestamp = time.strftime("%H:%M:%S")
+        self.info_text.append(f"[{timestamp}] [INFO] {message}")
+    
+    def log_error(self, message):
+        """记录错误"""
+        timestamp = time.strftime("%H:%M:%S")
+        self.info_text.append(f"[{timestamp}] [ERROR] {message}")
     
     def clear_info_output(self):
         """清除信息输出"""
