@@ -725,9 +725,51 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def edit_mesh_params(self):
         """编辑部件参数"""
-        QMessageBox.information(self, "待开发", "部件参数配置功能正在开发中...")
-        self.log_info("部件参数配置功能待开发")
-        self.update_status("部件参数配置功能待开发")
+        import json
+        import os
+        from pyqt_gui.part_params_dialog import PartParamsDialog
+        
+        # 尝试从配置文件读取部件参数
+        parts_params = []
+        config_file = os.path.join(self.project_root, "config", "30p30n_4wall.json")
+        
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, 'r') as f:
+                    config_data = json.load(f)
+                    if "parts" in config_data:
+                        parts_params = config_data["parts"]
+                        self.log_info(f"已从配置文件加载 {len(parts_params)} 个部件参数")
+            except Exception as e:
+                self.log_error(f"读取配置文件失败: {str(e)}")
+        
+        # 如果没有从配置文件读取到参数，使用默认值
+        if not parts_params:
+            parts_params = [
+                {"part_name": "farfield", "max_size": 2.0, "PRISM_SWITCH": "wall", 
+                 "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
+                 "full_layers": 5, "multi_direction": False},
+                {"part_name": "wall1", "max_size": 2.0, "PRISM_SWITCH": "wall", 
+                 "first_height": 1e-4, "growth_rate": 1.2, "max_layers": 10, 
+                 "full_layers": 5, "multi_direction": False},
+                {"part_name": "wall2", "max_size": 2.0, "PRISM_SWITCH": "wall", 
+                 "first_height": 1e-5, "growth_rate": 1.2, "max_layers": 60, 
+                 "full_layers": 5, "multi_direction": False},
+                {"part_name": "wall3", "max_size": 2.0, "PRISM_SWITCH": "wall", 
+                 "first_height": 1e-4, "growth_rate": 1.2, "max_layers": 10, 
+                 "full_layers": 5, "multi_direction": False}
+            ]
+        
+        # 创建并显示对话框
+        dialog = PartParamsDialog(self, parts=parts_params)
+        if dialog.exec_() == QDialog.Accepted:
+            # 获取设置后的参数
+            self.parts_params = dialog.get_parts_params()
+            self.log_info(f"已更新部件参数，共 {len(self.parts_params)} 个部件")
+            self.update_status("部件参数已更新")
+        else:
+            self.log_info("取消设置部件参数")
+            self.update_status("已取消部件参数设置")
 
     def edit_boundary_conditions(self):
         """编辑边界条件"""
