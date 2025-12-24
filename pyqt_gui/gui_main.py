@@ -169,7 +169,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             parent=self,
             add_callback=self.add_part,
             remove_callback=self.remove_part,
-            edit_callback=self.edit_part
+            edit_callback=self.edit_part,
+            show_callback=self.show_selected_part,
+            show_only_callback=self.show_only_selected_part
         )
 
         self._apply_parts_list_styling()
@@ -585,6 +587,68 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         else:
             self.log_info("取消设置部件参数")
             self.update_status("已取消部件参数设置")
+    
+    def show_selected_part(self):
+        """显示选中部件（从右键菜单调用）"""
+        # 获取当前选中的部件索引
+        current_row = self.parts_list_widget.parts_list.currentRow()
+        if current_row < 0:
+            return
+
+        # 获取选中部件的名称
+        selected_part_item = self.parts_list_widget.parts_list.item(current_row)
+        if selected_part_item:
+            selected_part_name = selected_part_item.text()
+
+            # 在日志中显示部件信息
+            self.log_info(f"显示选中部件: {selected_part_name}")
+
+            # 更新状态栏
+            self.update_status(f"已选中部件: {selected_part_name}")
+
+            # 如果有3D显示区域，只显示选中的部件
+            if hasattr(self, 'mesh_display'):
+                try:
+                    success = self.mesh_display.display_part(selected_part_name, parts_info=self.cas_parts_info)
+                    if success:
+                        self.log_info(f"成功显示部件: {selected_part_name}")
+                    else:
+                        self.log_error(f"显示部件失败: {selected_part_name}")
+                except Exception as e:
+                    self.log_error(f"显示部件失败: {str(e)}")
+
+
+
+    def show_only_selected_part(self):
+        """只显示选中部件，隐藏其他所有部件（从右键菜单调用）"""
+        # 获取当前选中的部件索引
+        current_row = self.parts_list_widget.parts_list.currentRow()
+        if current_row < 0:
+            return
+
+        # 获取选中部件的名称
+        selected_part_item = self.parts_list_widget.parts_list.item(current_row)
+        if selected_part_item:
+            selected_part_name = selected_part_item.text()
+
+            # 在日志中显示部件信息
+            self.log_info(f"只显示选中部件: {selected_part_name}")
+
+            # 更新状态栏
+            self.update_status(f"只显示部件: {selected_part_name}")
+
+            # 如果有3D显示区域，只显示选中的部件
+            if hasattr(self, 'mesh_display'):
+                try:
+                    success = self.mesh_display.show_only_selected_part(selected_part_name, parts_info=self.cas_parts_info)
+                    if success:
+                        self.log_info(f"成功只显示部件: {selected_part_name}")
+                    else:
+                        self.log_error(f"只显示部件失败: {selected_part_name}")
+                except Exception as e:
+                    self.log_error(f"只显示部件失败: {str(e)}")
+
+
 
     def update_params_display(self):
         """更新参数显示"""

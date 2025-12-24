@@ -145,10 +145,9 @@ class MeshDisplayArea:
                     from fileIO.vtk_io import parse_vtk_msh
                     self.mesh_data = parse_vtk_msh(self.params.output_file)
                 except Exception as e:
-                    print(f"无法从输出文件加载网格数据: {str(e)}")
+                    pass
             
             if not self.mesh_data:
-                print("没有有效的网格数据，无法显示网格")
                 return False
                 
         try:
@@ -184,12 +183,10 @@ class MeshDisplayArea:
 
                     return True
                 else:
-                    print("无法创建VTK网格")
                     return False
             else:
                 return False
         except Exception as e:
-            print(f"显示网格失败: {str(e)}")
             return False
 
     def _apply_default_mesh_properties(self):
@@ -751,16 +748,13 @@ class MeshDisplayArea:
                 self.render_window.Render()
 
         except Exception as e:
-            print(f"高亮部件失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            pass
     
     def clear_highlights(self):
         """清除所有高亮状态"""
         try:
             # 恢复原始网格属性（如果有）
             if self.mesh_actor is not None and hasattr(self, 'original_mesh_color'):
-                print("恢复原始网格颜色和线宽")
                 self.mesh_actor.GetProperty().SetColor(self.original_mesh_color)
                 self.mesh_actor.GetProperty().SetLineWidth(self.original_mesh_line_width)
                 
@@ -781,15 +775,11 @@ class MeshDisplayArea:
                             pass
                 self.highlight_actors.clear()
                 
-                print("已清除所有高亮状态")
-                
                 # 更新渲染窗口
                 if self.render_window:
                     self.render_window.Render()
         except Exception as e:
-            print(f"清除高亮失败: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            pass
     
     def clear_mesh_actors(self):
         """清除所有网格相关的演员"""
@@ -879,3 +869,187 @@ class MeshDisplayArea:
                 return
 
             self.render_window.Render()
+    
+    def display_part(self, part_name, parts_info=None):
+        """只显示指定的部件，清空其他内容
+
+        Args:
+            part_name (str): 要显示的部件名称
+            parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
+        """
+        try:
+            # 首先清空所有演员
+            self.clear_mesh_actors()
+
+            # 检查渲染器和渲染窗口是否可用
+            if not self.renderer or not self.render_window:
+                return False
+
+            # 检查网格数据是否可用
+            if not self.mesh_data:
+                return False
+
+            # 获取边界信息
+            boundary_info = self._get_boundary_info()
+
+            # 直接从mesh_data中获取部件信息，支持更多数据格式
+            part_faces = []
+
+            # 优先使用传递的parts_info
+            if parts_info:
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 然后检查mesh_data中是否有parts_info
+            elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
+                parts_info = self.mesh_data['parts_info']
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 检查是否有边界信息
+            elif boundary_info and part_name in boundary_info:
+                part_data = boundary_info[part_name]
+                part_faces = part_data.get("faces", [])
+            # 检查是否有直接的部件数据
+            elif isinstance(self.mesh_data, dict) and part_name in self.mesh_data:
+                part_faces = self.mesh_data[part_name].get('faces', [])
+
+            # 检查是否有面数据
+            if part_faces:
+                # 创建只包含该部件的VTK网格
+                part_polydata = self._create_boundary_polydata(part_faces)
+
+                if part_polydata:
+                    mapper = vtk.vtkPolyDataMapper()
+                    mapper.SetInputData(part_polydata)
+
+                    part_actor = vtk.vtkActor()
+                    part_actor.SetMapper(mapper)
+
+                    # 设置部件颜色（黄色）
+                    part_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+                    part_actor.GetProperty().SetLineWidth(4.0)
+                    part_actor.GetProperty().SetOpacity(1.0)
+
+                    # 添加部件演员
+                    self.renderer.AddActor(part_actor)
+
+                    # 保存部件演员引用
+                    self.mesh_actor = part_actor
+            else:
+                # 如果没有找到特定部件的数据，尝试显示整个网格
+                vtk_mesh = self.create_vtk_mesh()
+                if vtk_mesh:
+                    mapper = vtk.vtkPolyDataMapper()
+                    mapper.SetInputData(vtk_mesh)
+
+                    self.mesh_actor = vtk.vtkActor()
+                    self.mesh_actor.SetMapper(mapper)
+
+                    self._apply_default_mesh_properties()
+                    self._apply_render_mode()
+
+                    self.renderer.AddActor(self.mesh_actor)
+
+            # 添加坐标轴
+            self.add_axes()
+
+            # 重置相机并渲染
+            self.renderer.ResetCamera()
+            self.render_window.Render()
+            self.enable_interaction()
+
+            return True
+
+        except Exception as e:
+            return False
+
+    def show_only_selected_part(self, part_name, parts_info=None):
+        """只显示选中的部件，隐藏其他所有部件
+
+        Args:
+            part_name (str): 要显示的部件名称
+            parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
+        """
+        try:
+            # 清空所有演员
+            self.clear_mesh_actors()
+
+            # 检查渲染器和渲染窗口是否可用
+            if not self.renderer or not self.render_window:
+                return False
+
+            # 检查网格数据是否可用
+            if not self.mesh_data:
+                return False
+
+            # 获取边界信息
+            boundary_info = self._get_boundary_info()
+
+            # 直接从mesh_data中获取部件信息，支持更多数据格式
+            part_faces = []
+
+            # 优先使用传递的parts_info
+            if parts_info:
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 然后检查mesh_data中是否有parts_info
+            elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
+                parts_info = self.mesh_data['parts_info']
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 检查是否有边界信息
+            elif boundary_info and part_name in boundary_info:
+                part_data = boundary_info[part_name]
+                part_faces = part_data.get("faces", [])
+            # 检查是否有直接的部件数据
+            elif isinstance(self.mesh_data, dict) and part_name in self.mesh_data:
+                part_faces = self.mesh_data[part_name].get('faces', [])
+
+            # 检查是否有面数据
+            if part_faces:
+                # 创建只包含该部件的VTK网格
+                part_polydata = self._create_boundary_polydata(part_faces)
+
+                if part_polydata:
+                    mapper = vtk.vtkPolyDataMapper()
+                    mapper.SetInputData(part_polydata)
+
+                    part_actor = vtk.vtkActor()
+                    part_actor.SetMapper(mapper)
+
+                    # 设置部件颜色（黄色）
+                    part_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+                    part_actor.GetProperty().SetLineWidth(4.0)
+                    part_actor.GetProperty().SetOpacity(1.0)
+
+                    # 添加部件演员
+                    self.renderer.AddActor(part_actor)
+
+                    # 保存部件演员引用
+                    self.mesh_actor = part_actor
+            else:
+                # 如果没有找到特定部件的数据，尝试显示整个网格
+                vtk_mesh = self.create_vtk_mesh()
+                if vtk_mesh:
+                    mapper = vtk.vtkPolyDataMapper()
+                    mapper.SetInputData(vtk_mesh)
+
+                    self.mesh_actor = vtk.vtkActor()
+                    self.mesh_actor.SetMapper(mapper)
+
+                    self._apply_default_mesh_properties()
+                    self._apply_render_mode()
+
+                    self.renderer.AddActor(self.mesh_actor)
+
+            # 添加坐标轴
+            self.add_axes()
+
+            # 重置相机并渲染
+            self.renderer.ResetCamera()
+            self.render_window.Render()
+            self.enable_interaction()
+
+            return True
+
+        except Exception as e:
+            return False

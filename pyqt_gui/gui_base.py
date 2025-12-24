@@ -479,7 +479,7 @@ class ConfigDialog(DialogBase):
 class PartListWidget:
     """部件列表组件"""
 
-    def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None):
+    def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None, show_callback=None, show_only_callback=None):
         from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QWidget, QMenu
         from PyQt5.QtCore import pyqtSignal, Qt
         from PyQt5.QtWidgets import QAction
@@ -493,13 +493,15 @@ class PartListWidget:
         layout.addWidget(self.parts_list)
 
         # 移除按钮布局和按钮
-        
+
         self.widget.setLayout(layout)
 
         # 保存回调函数
         self.add_callback = add_callback or self.add_part
         self.remove_callback = remove_callback or self.remove_part
         self.edit_callback = edit_callback or self.edit_part
+        self.show_callback = show_callback or self.show_selected_part
+        self.show_only_callback = show_only_callback or self.show_only_selected_part
 
         # 添加右键菜单
         self.parts_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -511,12 +513,17 @@ class PartListWidget:
         # 检查是否有选中的项
         if self.parts_list.currentRow() >= 0:
             menu = QMenu()
-            
+
             # 添加编辑菜单项
             edit_action = QAction("编辑部件参数", self.widget)
             edit_action.triggered.connect(self.edit_callback)
             menu.addAction(edit_action)
-            
+
+            # 添加显示选中部件菜单项
+            show_action = QAction("显示选中部件", self.widget)
+            show_action.triggered.connect(self.show_callback)
+            menu.addAction(show_action)
+
             # 显示菜单
             menu.exec_(self.parts_list.mapToGlobal(position))
 
@@ -530,4 +537,12 @@ class PartListWidget:
 
     def edit_part(self):
         """编辑部件 - 需要在主类中重写"""
+        pass
+
+    def show_selected_part(self):
+        """显示选中部件 - 需要在主类中重写"""
+        pass
+
+    def show_only_selected_part(self):
+        """只显示选中部件 - 需要在主类中重写"""
         pass
