@@ -312,7 +312,7 @@ class LayoutConfig:
     """Centralized layout configuration"""
 
     RIBBON_TAB_MARGINS = (2, 2, 2, 2)
-    RIBBIN_TAB_SPACING = 2
+    RIBBIN_TAB_SPACING = 10
 
     RIBBON_GROUP_MARGINS = (2, 2, 2, 2)
     RIBBON_GROUP_SPACING = 2
@@ -344,7 +344,7 @@ def create_tool_button(text, icon=None, callback=None, tooltip=None,
         button.setIconSize(QSize(20, 20))
         button.setStyleSheet(UIStyles.LARGE_BUTTON_STYLESHEET)
         if size is None:
-            size = (50, 50)
+            size = (70, 60)
     else:
         button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         button.setIconSize(QSize(16, 16))
