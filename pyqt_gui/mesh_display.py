@@ -624,6 +624,202 @@ class MeshDisplayArea:
         # 更新渲染窗口
         self.render_window.Render()
     
+    def highlight_part(self, part_name, highlight=True, parts_info=None):
+        """高亮显示指定部件
+
+        Args:
+            part_name (str): 要高亮的部件名称
+            highlight (bool): 是否高亮
+            parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
+        """
+        try:
+            # 首先清除所有高亮状态
+            self.clear_highlights()
+
+            # 如果不进行高亮或部件名称为空，直接返回
+            if not highlight or not part_name:
+                return
+
+            # 检查渲染器和渲染窗口是否可用
+            if not self.renderer or not self.render_window:
+                return
+
+            # 检查网格数据是否可用
+            if not self.mesh_data:
+                return
+
+            # 获取边界信息
+            boundary_info = self._get_boundary_info()
+
+            # 直接从mesh_data中获取部件信息，支持更多数据格式
+            part_faces = []
+
+            # 优先使用传递的parts_info
+            if parts_info:
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 然后检查mesh_data中是否有parts_info
+            elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
+                parts_info = self.mesh_data['parts_info']
+                if isinstance(parts_info, dict) and part_name in parts_info:
+                    part_faces = parts_info[part_name].get('faces', [])
+            # 检查是否有边界信息
+            elif boundary_info and part_name in boundary_info:
+                part_data = boundary_info[part_name]
+                part_faces = part_data.get("faces", [])
+            # 检查是否有直接的部件数据
+            elif isinstance(self.mesh_data, dict) and part_name in self.mesh_data:
+                part_faces = self.mesh_data[part_name].get('faces', [])
+
+            # 检查是否有面数据
+            if not part_faces:
+                # 如果没有面数据，尝试高亮整个网格
+                if self.mesh_actor:
+                    # 保存原始颜色
+                    if not hasattr(self, 'original_mesh_color'):
+                        self.original_mesh_color = list(self.mesh_actor.GetProperty().GetColor())
+                        self.original_mesh_line_width = self.mesh_actor.GetProperty().GetLineWidth()
+
+                    # 设置高亮颜色
+                    self.mesh_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+                    self.mesh_actor.GetProperty().SetLineWidth(4.0)
+                    self.render_window.Render()
+
+                    # 保存高亮演员引用
+                    if not hasattr(self, 'highlight_actors'):
+                        self.highlight_actors = []
+                    self.highlight_actors.append(self.mesh_actor)
+
+                    return
+                else:
+                    return
+
+            # 检查是否有节点坐标数据
+            has_node_coords = False
+            if isinstance(self.mesh_data, dict):
+                if 'unstr_grid' in self.mesh_data and hasattr(self.mesh_data['unstr_grid'], 'node_coords'):
+                    has_node_coords = True
+                elif 'node_coords' in self.mesh_data:
+                    has_node_coords = True
+            elif hasattr(self.mesh_data, 'node_coords'):
+                has_node_coords = True
+
+            if not has_node_coords:
+                # 尝试高亮整个网格作为备选方案
+                if self.mesh_actor:
+                    # 保存原始颜色
+                    if not hasattr(self, 'original_mesh_color'):
+                        self.original_mesh_color = list(self.mesh_actor.GetProperty().GetColor())
+                        self.original_mesh_line_width = self.mesh_actor.GetProperty().GetLineWidth()
+
+                    # 设置高亮颜色
+                    self.mesh_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+                    self.mesh_actor.GetProperty().SetLineWidth(4.0)
+                    self.render_window.Render()
+
+                    # 保存高亮演员引用
+                    if not hasattr(self, 'highlight_actors'):
+                        self.highlight_actors = []
+                    self.highlight_actors.append(self.mesh_actor)
+
+                return
+
+            # 创建高亮多边形数据
+            highlight_polydata = self._create_boundary_polydata(part_faces)
+
+            if highlight_polydata:
+                highlight_mapper = vtk.vtkPolyDataMapper()
+                highlight_mapper.SetInputData(highlight_polydata)
+
+                highlight_actor = vtk.vtkActor()
+                highlight_actor.SetMapper(highlight_mapper)
+
+                # 设置高亮颜色（黄色）
+                highlight_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+                highlight_actor.GetProperty().SetLineWidth(4.0)
+                highlight_actor.GetProperty().SetOpacity(0.8)
+
+                # 添加高亮演员
+                self.renderer.AddActor(highlight_actor)
+
+                # 保存高亮演员引用
+                if not hasattr(self, 'highlight_actors'):
+                    self.highlight_actors = []
+                self.highlight_actors.append(highlight_actor)
+
+                # 更新渲染窗口
+                self.render_window.Render()
+
+        except Exception as e:
+            print(f"高亮部件失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def clear_highlights(self):
+        """清除所有高亮状态"""
+        try:
+            # 恢复原始网格属性（如果有）
+            if self.mesh_actor is not None and hasattr(self, 'original_mesh_color'):
+                print("恢复原始网格颜色和线宽")
+                self.mesh_actor.GetProperty().SetColor(self.original_mesh_color)
+                self.mesh_actor.GetProperty().SetLineWidth(self.original_mesh_line_width)
+                
+                # 移除原始网格颜色和线宽的引用
+                if hasattr(self, 'original_mesh_color'):
+                    delattr(self, 'original_mesh_color')
+                if hasattr(self, 'original_mesh_line_width'):
+                    delattr(self, 'original_mesh_line_width')
+            
+            # 移除高亮演员
+            if hasattr(self, 'highlight_actors'):
+                for actor in self.highlight_actors:
+                    # 只移除我们创建的高亮演员，不移除原始网格演员
+                    if actor != self.mesh_actor:
+                        try:
+                            self.renderer.RemoveActor(actor)
+                        except:
+                            pass
+                self.highlight_actors.clear()
+                
+                print("已清除所有高亮状态")
+                
+                # 更新渲染窗口
+                if self.render_window:
+                    self.render_window.Render()
+        except Exception as e:
+            print(f"清除高亮失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    def clear_mesh_actors(self):
+        """清除所有网格相关的演员"""
+        # 清除主网格演员
+        if self.mesh_actor:
+            try:
+                self.renderer.RemoveActor(self.mesh_actor)
+            except:
+                pass  # 忽略移除演员时的错误
+            self.mesh_actor = None
+            
+        # 清除坐标轴演员
+        if hasattr(self, 'axes_actor') and self.axes_actor:
+            try:
+                self.renderer.RemoveActor(self.axes_actor)
+            except:
+                pass  # 忽略移除演员时的错误
+            self.axes_actor = None
+            
+        # 清除边界演员
+        for actor in self.boundary_actors:
+            try:
+                self.renderer.RemoveActor(actor)
+            except:
+                pass  # 忽略移除演员时的错误
+        self.boundary_actors.clear()
+        
+        # 清除高亮演员
+        self.clear_highlights()
+    
     def set_render_mode(self, mode):
         """设置渲染模式"""
         if mode in ["surface", "wireframe", "points"]:
@@ -634,9 +830,14 @@ class MeshDisplayArea:
             self.render_window.Render()
     
     def reset_view(self):
-        """重置视图到原始大小"""
+        """重置视图到xy平面"""
         if self.renderer:
             try:
+                camera = self.renderer.GetActiveCamera()
+                camera.SetPosition(0, 0, 1)
+                camera.SetFocalPoint(0, 0, 0)
+                camera.SetViewUp(0, 1, 0)
+                camera.SetParallelProjection(True)
                 self.renderer.ResetCamera()
             except Exception as e:
                 print(f"重置视图失败: {str(e)}")

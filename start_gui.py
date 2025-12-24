@@ -16,11 +16,11 @@ sys.path.insert(0, project_root)
 def main():
     """主启动函数"""
     print("正在启动PyMeshGen图形用户界面...")
-    print("=" * 50)
+    print("=" * 30)
 
     # Launch the PyQt version
     try:
-        print("启动的GUI...")
+        print("启动GUI...")
         from pyqt_gui.gui_main import main as pyqt_main
         print("GUI加载成功，正在启动...")
         pyqt_main()

@@ -573,6 +573,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if index < 0:
             self.props_text.setPlainText("未选择任何部件\n请从左侧列表中选择一个部件以查看其属性")
             self.update_status("未选择部件")
+            # 清除高亮
+            if hasattr(self, 'mesh_display'):
+                self.mesh_display.highlight_part(None, False)
             return
 
         part_index = index
@@ -601,11 +604,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 self.props_text.setPlainText(props_content)
                 self.update_status(f"已选中CAS部件: {selected_part_name}")
+                
+                # 高亮显示选中的部件
+                if hasattr(self, 'mesh_display'):
+                    self.mesh_display.highlight_part(selected_part_name, highlight=True, parts_info=self.cas_parts_info)
                 return
             elif isinstance(self.cas_parts_info, list) and part_index < len(self.cas_parts_info):
                 part_info = self.cas_parts_info[part_index]
+                part_name = part_info.get('part_name', f'部件{part_index}')
                 props_content = f"=== CAS部件属性 ===\n\n"
-                props_content += f"部件名称: {part_info.get('part_name', '未知')}\n"
+                props_content += f"部件名称: {part_name}\n"
                 props_content += f"边界条件类型: {part_info.get('bc_type', '未知')}\n"
                 props_content += f"面数量: {part_info.get('face_count', 0)}\n"
                 props_content += f"节点数量: {len(part_info.get('nodes', []))}\n"
@@ -617,7 +625,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 props_content += f"数据来源: CAS文件\n"
 
                 self.props_text.setPlainText(props_content)
-                self.update_status(f"已选中CAS部件: {part_info.get('part_name', f'部件{part_index}')}")
+                self.update_status(f"已选中CAS部件: {part_name}")
+                
+                # 高亮显示选中的部件
+                if hasattr(self, 'mesh_display'):
+                    # 当cas_parts_info是列表时，需要构建一个临时的部件字典
+                    temp_parts_info = {}
+                    for info in self.cas_parts_info:
+                        temp_parts_info[info.get('part_name', f'部件{self.cas_parts_info.index(info)}')] = info
+                    self.mesh_display.highlight_part(part_name, highlight=True, parts_info=temp_parts_info)
                 return
 
         if hasattr(self, 'params') and self.params:
@@ -633,6 +649,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 self.props_text.setPlainText(props_content)
                 self.update_status(f"已选中部件: {part_name}")
+                
+                # 高亮显示选中的部件
+                if hasattr(self, 'mesh_display'):
+                    self.mesh_display.highlight_part(part_name, highlight=True)
             except Exception as e:
                 self.log_error(f"显示部件属性时出错: {str(e)}")
                 error_content = f"=== 错误信息 ===\n\n"
@@ -698,12 +718,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.log_info("状态栏已显示")
 
     def edit_params(self):
-        """编辑参数"""
-        self.log_info("编辑参数功能暂未实现")
+        """编辑全局参数"""
+        QMessageBox.information(self, "待开发", "全局参数配置功能正在开发中...")
+        self.log_info("全局参数配置功能待开发")
+        self.update_status("全局参数配置功能待开发")
 
     def edit_mesh_params(self):
-        """编辑网格参数"""
-        self.log_info("编辑网格参数功能暂未实现")
+        """编辑部件参数"""
+        QMessageBox.information(self, "待开发", "部件参数配置功能正在开发中...")
+        self.log_info("部件参数配置功能待开发")
+        self.update_status("部件参数配置功能待开发")
 
     def edit_boundary_conditions(self):
         """编辑边界条件"""
@@ -711,11 +735,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def import_config(self):
         """导入配置"""
-        self.open_config()
+        QMessageBox.information(self, "待开发", "导入配置功能正在开发中...")
+        self.log_info("导入配置功能待开发")
+        self.update_status("导入配置功能待开发")
 
     def export_config(self):
         """导出配置"""
-        self.save_config()
+        QMessageBox.information(self, "待开发", "导出配置功能正在开发中...")
+        self.log_info("导出配置功能待开发")
+        self.update_status("导出配置功能待开发")
 
     def reset_config(self):
         """重置配置"""

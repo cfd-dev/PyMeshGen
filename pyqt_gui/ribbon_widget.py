@@ -235,15 +235,13 @@ class RibbonWidget(QWidget):
         )
 
         param_group = RibbonGroup("")
-        self.buttons['config']['params'] = param_group.add_large_button("参数", tooltip="编辑参数")
-        self.buttons['config']['mesh_params'] = param_group.add_large_button("网格参数", tooltip="编辑网格参数")
-        self.buttons['config']['boundary'] = param_group.add_large_button("边界条件", tooltip="编辑边界条件")
+        self.buttons['config']['params'] = param_group.add_large_button("全局参数", tooltip="编辑全局参数")
+        self.buttons['config']['mesh_params'] = param_group.add_large_button("部件参数", tooltip="编辑部件参数")
         layout.addWidget(param_group)
 
         config_group = RibbonGroup("")
         self.buttons['config']['import_config'] = config_group.add_large_button("导入配置", tooltip="导入配置")
         self.buttons['config']['export_config'] = config_group.add_large_button("导出配置", tooltip="导出配置")
-        self.buttons['config']['reset'] = config_group.add_large_button("重置配置", tooltip="重置配置")
         layout.addWidget(config_group)
 
         layout.addStretch(1)
@@ -329,10 +327,8 @@ class RibbonWidget(QWidget):
         # Config tab callbacks
         self.buttons['config']['params'].clicked.connect(main_window.edit_params)
         self.buttons['config']['mesh_params'].clicked.connect(main_window.edit_mesh_params)
-        self.buttons['config']['boundary'].clicked.connect(main_window.edit_boundary_conditions)
         self.buttons['config']['import_config'].clicked.connect(main_window.import_config)
         self.buttons['config']['export_config'].clicked.connect(main_window.export_config)
-        self.buttons['config']['reset'].clicked.connect(main_window.reset_config)
 
         # Mesh tab callbacks
         self.buttons['mesh']['generate'].clicked.connect(main_window.generate_mesh)
