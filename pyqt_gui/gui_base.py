@@ -480,8 +480,9 @@ class PartListWidget:
     """部件列表组件"""
 
     def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None):
-        from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QHBoxLayout, QPushButton, QWidget
-        from PyQt5.QtCore import pyqtSignal
+        from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QWidget, QMenu
+        from PyQt5.QtCore import pyqtSignal, Qt
+        from PyQt5.QtWidgets import QAction
 
         self.parent = parent
         self.widget = QWidget()
@@ -491,28 +492,33 @@ class PartListWidget:
         self.parts_list = QListWidget()
         layout.addWidget(self.parts_list)
 
-        # 按钮布局
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(2)  # Reduced spacing
-        self.add_button = QPushButton("添加")
-        self.remove_button = QPushButton("删除")
-        self.edit_button = QPushButton("编辑")
-
-        button_layout.addWidget(self.add_button)
-        button_layout.addWidget(self.remove_button)
-        button_layout.addWidget(self.edit_button)
-
-        layout.addLayout(button_layout)
+        # 移除按钮布局和按钮
+        
         self.widget.setLayout(layout)
 
-        # 信号连接 - use provided callbacks or default to empty methods
+        # 保存回调函数
         self.add_callback = add_callback or self.add_part
         self.remove_callback = remove_callback or self.remove_part
         self.edit_callback = edit_callback or self.edit_part
 
-        self.add_button.clicked.connect(self.add_callback)
-        self.remove_button.clicked.connect(self.remove_callback)
-        self.edit_button.clicked.connect(self.edit_callback)
+        # 添加右键菜单
+        self.parts_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.parts_list.customContextMenuRequested.connect(self.show_context_menu)
+
+    def show_context_menu(self, position):
+        """显示右键菜单"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        # 检查是否有选中的项
+        if self.parts_list.currentRow() >= 0:
+            menu = QMenu()
+            
+            # 添加编辑菜单项
+            edit_action = QAction("编辑部件参数", self.widget)
+            edit_action.triggered.connect(self.edit_callback)
+            menu.addAction(edit_action)
+            
+            # 显示菜单
+            menu.exec_(self.parts_list.mapToGlobal(position))
 
     def add_part(self):
         """添加部件 - 需要在主类中重写"""

@@ -520,17 +520,71 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             QMessageBox.warning(self, "警告", "请先选择要删除的部件")
 
     def edit_part(self):
-        """编辑部件"""
-        if not self.params:
-            QMessageBox.warning(self, "警告", "请先创建或加载配置")
-            return
-
+        """编辑部件参数（从右键菜单调用）"""
+        from PyQt5.QtWidgets import QDialog
+        from pyqt_gui.part_params_dialog import PartParamsDialog
+        
+        # 获取当前选中的部件索引
         current_row = self.parts_list_widget.parts_list.currentRow()
-        if current_row >= 0:
-            part_name = self.parts_list_widget.parts_list.item(current_row).text()
-            QMessageBox.information(self, "信息", f"编辑部件: {part_name}")
+        if current_row < 0:
+            return
+        
+        # 检查是否有导入的网格数据
+        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+            QMessageBox.warning(self, "警告", "请先导入网格文件以获取部件列表")
+            self.log_info("未检测到导入的网格数据，无法设置部件参数")
+            self.update_status("未检测到导入的网格数据")
+            return
+        
+        # 从当前导入的网格数据中获取部件列表
+        parts_params = []
+        
+        # 处理不同格式的部件信息
+        if isinstance(self.cas_parts_info, dict):
+            # 部件信息是字典格式: {part_name: part_info}
+            for part_name in self.cas_parts_info.keys():
+                parts_params.append({
+                    "part_name": part_name,
+                    "max_size": 2.0,
+                    "PRISM_SWITCH": "wall",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
+        elif isinstance(self.cas_parts_info, list):
+            # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
+            for part_info in self.cas_parts_info:
+                part_name = part_info.get('part_name', f'部件{self.cas_parts_info.index(part_info)}')
+                parts_params.append({
+                    "part_name": part_name,
+                    "max_size": 2.0,
+                    "PRISM_SWITCH": "wall",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
         else:
-            QMessageBox.warning(self, "警告", "请先选择要编辑的部件")
+            # 处理其他格式的部件信息
+            QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(self.cas_parts_info)}")
+            self.log_error(f"不支持的部件信息格式: {type(self.cas_parts_info)}")
+            return
+        
+        self.log_info(f"已从导入的网格数据中获取 {len(parts_params)} 个部件信息")
+        
+        # 创建并显示对话框，默认选中当前部件
+        dialog = PartParamsDialog(self, parts=parts_params, current_part=current_row)
+        if dialog.exec_() == QDialog.Accepted:
+            # 获取设置后的参数
+            self.parts_params = dialog.get_parts_params()
+            self.log_info(f"已更新部件参数，共 {len(self.parts_params)} 个部件")
+            self.update_status("部件参数已更新")
+        else:
+            self.log_info("取消设置部件参数")
+            self.update_status("已取消部件参数设置")
 
     def update_params_display(self):
         """更新参数显示"""
