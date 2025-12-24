@@ -39,7 +39,7 @@ from pyqt_gui.gui_base import (
 from pyqt_gui.ribbon_widget import RibbonWidget
 from pyqt_gui.mesh_display import MeshDisplayArea
 from pyqt_gui.ui_utils import UIStyles
-from parameters import Parameters
+from data_structure.parameters import Parameters
 from PyMeshGen import PyMeshGen as MeshGenerator
 
 
@@ -119,6 +119,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.mesh_generator = None
         self.current_mesh = None
         self.cas_parts_info = None
+        self.parts_params = []  # 初始化部件参数列表
         self.render_mode = "wireframe"
         self.show_boundary = True
 
@@ -423,8 +424,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.display_mesh(mesh_data)
 
-                if isinstance(mesh_data, dict) and 'parts_info' in mesh_data:
-                    self.update_parts_list_from_cas(mesh_data['parts_info'])
+                # 从MeshData对象中获取部件信息
+                if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
+                    self.update_parts_list_from_cas(mesh_data.parts_info)
 
                 self.log_info(f"已导入网格: {file_path}")
                 self.update_status("已导入网格")
@@ -532,7 +534,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             return
         
         # 检查是否有导入的网格数据
-        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+        if not hasattr(self, 'current_mesh') or not self.current_mesh:
             QMessageBox.warning(self, "警告", "请先导入网格文件以获取部件列表")
             self.log_info("未检测到导入的网格数据，无法设置部件参数")
             self.update_status("未检测到导入的网格数据")
@@ -541,39 +543,64 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 从当前导入的网格数据中获取部件列表
         parts_params = []
         
+        # 获取部件信息
+        parts_info = None
+        if hasattr(self.current_mesh, 'parts_info') and self.current_mesh.parts_info:
+            parts_info = self.current_mesh.parts_info
+        
         # 处理不同格式的部件信息
-        if isinstance(self.cas_parts_info, dict):
-            # 部件信息是字典格式: {part_name: part_info}
-            for part_name in self.cas_parts_info.keys():
-                parts_params.append({
-                    "part_name": part_name,
-                    "max_size": 2.0,
-                    "PRISM_SWITCH": "wall",
-                    "first_height": 0.01,
-                    "growth_rate": 1.2,
-                    "max_layers": 5,
-                    "full_layers": 5,
-                    "multi_direction": False
-                })
-        elif isinstance(self.cas_parts_info, list):
-            # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
-            for part_info in self.cas_parts_info:
-                part_name = part_info.get('part_name', f'部件{self.cas_parts_info.index(part_info)}')
-                parts_params.append({
-                    "part_name": part_name,
-                    "max_size": 2.0,
-                    "PRISM_SWITCH": "wall",
-                    "first_height": 0.01,
-                    "growth_rate": 1.2,
-                    "max_layers": 5,
-                    "full_layers": 5,
-                    "multi_direction": False
-                })
+        if parts_info:
+            if isinstance(parts_info, dict):
+                # 部件信息是字典格式: {part_name: part_info}
+                for part_name in parts_info.keys():
+                    parts_params.append({
+                        "part_name": part_name,
+                        "max_size": 2.0,
+                        "PRISM_SWITCH": "off",
+                        "first_height": 0.01,
+                        "growth_rate": 1.2,
+                        "max_layers": 5,
+                        "full_layers": 5,
+                        "multi_direction": False
+                    })
+            elif isinstance(parts_info, list):
+                # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
+                for part_info in parts_info:
+                    part_name = part_info.get('part_name', f'部件{parts_info.index(part_info)}')
+                    parts_params.append({
+                        "part_name": part_name,
+                        "max_size": 2.0,
+                        "PRISM_SWITCH": "wall",
+                        "first_height": 0.01,
+                        "growth_rate": 1.2,
+                        "max_layers": 5,
+                        "full_layers": 5,
+                        "multi_direction": False
+                    })
+            else:
+                # 处理其他格式的部件信息
+                QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(parts_info)}")
+                self.log_error(f"不支持的部件信息格式: {type(parts_info)}")
+                return
         else:
-            # 处理其他格式的部件信息
-            QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(self.cas_parts_info)}")
-            self.log_error(f"不支持的部件信息格式: {type(self.cas_parts_info)}")
-            return
+            # 如果没有部件信息，创建默认部件
+            # 获取当前选中部件的名称
+            selected_part_item = self.parts_list_widget.parts_list.item(current_row)
+            if selected_part_item:
+                part_name = selected_part_item.text()
+                parts_params.append({
+                    "part_name": part_name,
+                    "max_size": 2.0,
+                    "PRISM_SWITCH": "off",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
+            else:
+                QMessageBox.warning(self, "警告", "未找到选中的部件")
+                return
         
         self.log_info(f"已从导入的网格数据中获取 {len(parts_params)} 个部件信息")
         
@@ -961,7 +988,142 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def generate_mesh(self):
         """生成网格"""
-        self.log_info("生成网格功能暂未实现")
+        try:
+            # 检查是否有导入的网格文件
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                QMessageBox.warning(self, "警告", "请先导入网格文件")
+                self.log_info("未导入网格文件，无法生成网格")
+                self.update_status("未导入网格文件")
+                return
+            
+            # 检查是否有配置好的部件参数
+            if not hasattr(self, 'parts_params') or not self.parts_params:
+                QMessageBox.warning(self, "警告", "请先配置部件参数")
+                self.log_info("未配置部件参数，无法生成网格")
+                self.update_status("未配置部件参数")
+                return
+            
+            # 获取输入文件路径
+            input_file = ""
+            
+            if isinstance(self.current_mesh, dict):
+                if 'file_path' in self.current_mesh:
+                    input_file = self.current_mesh['file_path']
+            elif hasattr(self.current_mesh, 'file_path'):
+                input_file = self.current_mesh.file_path
+            
+            # 确保文件路径是绝对路径
+            if input_file:
+                input_file = os.path.abspath(input_file)
+            
+            # 检查当前网格是否有网格数据
+            has_mesh_data = False
+            if isinstance(self.current_mesh, dict):
+                has_mesh_data = 'node_coords' in self.current_mesh and 'cells' in self.current_mesh
+            elif hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cells'):
+                has_mesh_data = True
+            
+            # 只有当没有网格数据且没有有效输入文件时，才显示错误
+            if not has_mesh_data and (not input_file or not os.path.exists(input_file)):
+                QMessageBox.warning(self, "警告", "无法获取有效的输入网格文件路径")
+                self.log_info("无法获取有效的输入网格文件路径")
+                self.update_status("无法获取有效的输入网格文件路径")
+                return
+            
+            # 构建配置数据
+            config_data = {
+                "debug_level": 0,
+                "output_file": "./out/mesh.vtk",
+                "viz_enabled": False,  # 禁用matplotlib可视化，使用VTK
+                "parts": self.parts_params
+            }
+
+            # 如果有导入的部件信息，但没有设置参数，则使用默认参数
+            if hasattr(self, 'cas_parts_info') and self.cas_parts_info and not self.parts_params:
+                # 从导入的部件信息创建默认参数
+                for part_name in self.cas_parts_info.keys():
+                    config_data["parts"].append({
+                        "part_name": part_name,
+                        "max_size": 2.0,
+                        "PRISM_SWITCH": "off",
+                        "first_height": 0.01,
+                        "growth_rate": 1.2,
+                        "max_layers": 5,
+                        "full_layers": 5,
+                        "multi_direction": False
+                    })
+            
+            # 总是添加input_file字段，即使为空字符串
+            config_data["input_file"] = input_file if input_file else ""
+            
+            # 创建临时配置文件
+            import json
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+                json.dump(config_data, temp_file, indent=2)
+                temp_file_path = temp_file.name
+            
+            try:
+                # 构建参数对象
+                self.log_info("正在构建网格生成参数...")
+                self.update_status("正在构建网格生成参数...")
+                
+                # 创建参数对象
+                from data_structure.parameters import Parameters
+                params = Parameters("FROM_CASE_JSON", temp_file_path)
+                
+                # 设置GUI实例，提供日志输出功能
+                from PyMeshGen import set_gui_instance
+                
+                # 创建一个包含PyMeshGen所需属性的临时对象
+                class GUITempObject:
+                    def __init__(self, gui):
+                        self.gui = gui
+                        self.ax = None  # 添加ax属性，设置为None，因为我们使用VTK而不是matplotlib
+                    
+                    def append_info_output(self, message):
+                        self.gui.log_info(message)
+                
+                # 创建临时GUI对象并设置
+                temp_gui_obj = GUITempObject(self)
+                set_gui_instance(temp_gui_obj)
+                
+                # 调用PyMeshGen主函数
+                self.log_info("正在生成网格...")
+                self.update_status("正在生成网格...")
+                
+                # 直接将当前网格数据传递给PyMeshGen函数
+                from PyMeshGen import PyMeshGen as MeshGenerator
+                MeshGenerator(params, self.current_mesh)
+                
+                # 更新状态
+                self.log_info("网格生成完成!")
+                self.update_status("网格生成完成")
+                
+                # 加载生成的网格文件并显示
+                self.log_info("正在加载生成的网格文件...")
+                self.update_status("正在加载生成的网格文件...")
+                
+                # 从输出文件加载生成的网格
+                from fileIO.vtk_io import parse_vtk_msh
+                generated_mesh = parse_vtk_msh("./out/mesh.vtk")
+                
+                # 显示生成的网格
+                if hasattr(self, 'mesh_display') and generated_mesh:
+                    self.current_mesh = generated_mesh
+                    self.mesh_display.display_mesh(generated_mesh)
+                    self.log_info("已显示生成的网格")
+                    self.update_status("已显示生成的网格")
+            
+            finally:
+                # 删除临时文件
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                    
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"生成网格失败: {str(e)}")
+            self.log_error(f"生成网格失败: {str(e)}")
+            self.update_status("网格生成失败")
 
     def display_mesh(self):
         """显示网格"""

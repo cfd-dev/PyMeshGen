@@ -34,16 +34,16 @@ class PartParamsDialog(QDialog):
         
         # 初始化部件数据
         self.parts = parts or [
-            {"part_name": "part1", "max_size": 1.0, "PRISM_SWITCH": "wall", 
+            {"part_name": "part1", "max_size": 1.0, "PRISM_SWITCH": "off", 
              "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
              "full_layers": 5, "multi_direction": False},
-            {"part_name": "part2", "max_size": 1.0, "PRISM_SWITCH": "wall", 
+            {"part_name": "part2", "max_size": 1.0, "PRISM_SWITCH": "off", 
              "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
              "full_layers": 5, "multi_direction": False},
-            {"part_name": "part3", "max_size": 1.0, "PRISM_SWITCH": "wall", 
+            {"part_name": "part3", "max_size": 1.0, "PRISM_SWITCH": "off", 
              "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
              "full_layers": 5, "multi_direction": False},
-            {"part_name": "part4", "max_size": 1.0, "PRISM_SWITCH": "wall", 
+            {"part_name": "part4", "max_size": 1.0, "PRISM_SWITCH": "off", 
              "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
              "full_layers": 5, "multi_direction": False}
         ]

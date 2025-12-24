@@ -1,48 +1,54 @@
 import sys
+import os
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent / "fileIO"))
-sys.path.append(str(Path(__file__).parent / "data_structure"))
-sys.path.append(str(Path(__file__).parent / "meshsize"))
-sys.path.append(str(Path(__file__).parent / "visualization"))
-sys.path.append(str(Path(__file__).parent / "adfront2"))
-sys.path.append(str(Path(__file__).parent / "optimize"))
-sys.path.append(str(Path(__file__).parent / "utils"))
+# 获取项目根目录
+project_root = str(Path(__file__).parent)
 
-from read_cas import parse_fluent_msh
-from front2d import construct_initial_front
+# 将项目根目录和所有子目录添加到sys.path
+for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils"]:
+    sys.path.append(str(Path(project_root) / subdir))
 
-# Add the project directories to Python path to allow imports
-sys.path.append(str(Path(__file__).parent / "fileIO"))
-from adlayers2 import Adlayers2
-from mesh_visualization import Visualization
-from parameters import Parameters
-sys.path.append(str(Path(__file__).parent / "adfront2"))
-sys.path.append(str(Path(__file__).parent / "optimize"))
-sys.path.append(str(Path(__file__).parent / "utils"))
-
+# 直接从文件导入，避免包导入问题
 from read_cas import parse_fluent_msh
 from front2d import construct_initial_front
 from meshsize import QuadtreeSizing
 from adfront2 import Adfront2
-from optimize import edge_swap, laplacian_smooth
 from adlayers2 import Adlayers2
 from mesh_visualization import Visualization
 from parameters import Parameters
-from utils.timer import TimeSpan
-from utils.message import info
+from optimize import edge_swap, laplacian_smooth
+from timer import TimeSpan
+from message import info
 
 # 全局GUI引用
 _global_gui_instance = None
 
 
 def set_gui_instance(gui_instance):
-    """设置全局GUI实例"""
+    """设置全局GUI实例
+    
+    Args:
+        gui_instance: GUI实例，用于在网格生成过程中输出信息和显示中间结果
+    """
     global _global_gui_instance
     _global_gui_instance = gui_instance
 
 
-def PyMeshGen(parameters=None):
+def PyMeshGen(parameters=None, mesh_data=None):
+    """PyMeshGen主函数
+    
+    调用底层算法生成网格，支持两种调用方式：
+    1. 通过parameters参数传递配置文件路径，从文件中读取网格数据
+    2. 直接通过mesh_data参数传递网格数据
+    
+    Args:
+        parameters: Parameters对象，包含网格生成的配置参数
+        mesh_data: 可选，直接传入的网格数据对象，可以是MeshData对象、字典或其他类型
+    
+    Returns:
+        生成的网格数据（如果有返回值的话）
+    """
     # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
@@ -63,7 +69,36 @@ def PyMeshGen(parameters=None):
         _global_gui_instance.append_info_output("开始生成三角形网格...")
 
     # 读入边界网格
-    input_grid = parse_fluent_msh(parameters.input_file)
+    input_grid = None
+    
+    # 导入数据转换模块
+    from utils.data_converter import convert_to_internal_mesh_format
+    
+    # 优先使用直接传入的网格数据
+    if mesh_data is not None:
+        info("使用直接传入的网格数据")
+        input_grid = convert_to_internal_mesh_format(mesh_data)
+    # 否则尝试从参数中获取文件路径
+    elif parameters.input_file and isinstance(parameters.input_file, str) and os.path.exists(parameters.input_file):
+        # 真实文件路径，正常解析
+        input_grid = parse_fluent_msh(parameters.input_file)
+    else:
+        # 尝试从GUI获取当前网格数据
+        if _global_gui_instance and hasattr(_global_gui_instance, 'current_mesh'):
+            current_mesh = _global_gui_instance.current_mesh
+            info("使用GUI中的当前网格数据")
+            input_grid = convert_to_internal_mesh_format(current_mesh)
+        else:
+            raise ValueError("无法获取有效的网格数据")
+
+    # If the input grid contains parts information, log it and update parameters
+    if hasattr(input_grid, 'parts_info') and input_grid.parts_info:
+        info(f"检测到 {len(input_grid.parts_info)} 个部件信息")
+        for part_name in input_grid.parts_info.keys():
+            info(f"  - 部件: {part_name}")
+
+        # Update parameters based on mesh parts information
+        parameters.update_part_params_from_mesh(input_grid)
     
     # 在GUI模式下清除之前的绘图内容
     if _global_gui_instance and hasattr(_global_gui_instance, 'ax') and _global_gui_instance.ax:
@@ -89,6 +124,7 @@ def PyMeshGen(parameters=None):
         resolution=0.1,
         decay=1.2,
         visual_obj=visual_obj,
+        param_obj=parameters,
     )
     # sizing_system.draw_bgmesh()
     

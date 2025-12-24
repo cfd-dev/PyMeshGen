@@ -48,6 +48,7 @@ class Adfront2:
 
         self.front_list = boundary_front  # 初始边界阵面列表，堆
         self.sizing_system = sizing_system  # 尺寸场系统对象
+        self.param_obj = param_obj  # 参数对象，包含部件参数
         self.base_front = None  # 当前基准阵面
         self.pbest = None  #  当前Pbest，NodeElement对象
         self.pselected = None  # 当前选中的节点，NodeElement对象
@@ -309,20 +310,23 @@ class Adfront2:
         # 更新节点
         self.update_nodes()
 
+        # 获取当前基准阵面的部件信息
+        part_name = getattr(self.base_front, 'part_name', 'default')
+
         # 更新阵面
         new_front1 = Front(
             self.base_front.node_elems[0],
             self.pselected,
             -1,
             "interior",
-            "internal",
+            part_name,  # 使用当前阵面的部件信息
         )
         new_front2 = Front(
             self.pselected,
             self.base_front.node_elems[1],
             -1,
             "interior",
-            "internal",
+            part_name,  # 使用当前阵面的部件信息
         )
 
         self.update_fronts([new_front1, new_front2])
@@ -334,7 +338,13 @@ class Adfront2:
             self.base_front.node_elems[1],
             self.pselected,
             self.num_cells,
+            node_ids=[self.base_front.node_elems[0].idx,
+                     self.base_front.node_elems[1].idx,
+                     self.pselected.idx]
         )
+
+        # 为新单元添加部件信息
+        new_cell.part_name = part_name
 
         self.update_cells(new_cell)
 
@@ -507,10 +517,13 @@ class Adfront2:
                 fc[1] + normal_vec[1] * spacing,
             ]
 
+        # 创建节点时考虑部件信息
+        part_name = getattr(self.base_front, 'part_name', 'default')
         self.pbest = NodeElement(
             pbest,
             self.num_nodes,
             "interior",
+            part_name=part_name,  # 传递部件信息
         )
 
         return self.pbest

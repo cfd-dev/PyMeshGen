@@ -12,6 +12,12 @@ import vtk
 from vtk.util import numpy_support
 import numpy as np
 
+# 添加项目根目录到sys.path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+# 导入通用网格数据类
+from data_structure.mesh_data import MeshData
+
 
 class FileOperations:
     """文件操作类"""
@@ -51,55 +57,68 @@ class FileOperations:
     def _import_vtk(self, file_path):
         """导入VTK文件"""
         try:
-            # 创建VTK读取器
-            reader = vtk.vtkUnstructuredGridReader()
-            reader.SetFileName(file_path)
-            reader.ReadAllScalarsOn()
-            reader.ReadAllVectorsOn()
-            reader.Update()
+            # 检查文件扩展名，使用合适的读取器
+            file_ext = os.path.splitext(file_path)[1].lower()
+            poly_data = None
             
-            # 获取网格数据
-            unstructured_grid = reader.GetOutput()
+            if file_ext == '.vtk':
+                # 尝试先作为结构化网格读取
+                reader = vtk.vtkPolyDataReader()
+                reader.SetFileName(file_path)
+                reader.Update()
+                poly_data = reader.GetOutput()
+                
+                # 如果不是PolyData，尝试作为UnstructuredGrid读取
+                if not poly_data or poly_data.GetNumberOfPoints() == 0:
+                    reader = vtk.vtkUnstructuredGridReader()
+                    reader.SetFileName(file_path)
+                    reader.ReadAllScalarsOn()
+                    reader.ReadAllVectorsOn()
+                    reader.Update()
+                    
+                    # 将UnstructuredGrid转换为PolyData
+                    geometry_filter = vtk.vtkGeometryFilter()
+                    geometry_filter.SetInputData(reader.GetOutput())
+                    geometry_filter.Update()
+                    poly_data = geometry_filter.GetOutput()
+            
+            if not poly_data or poly_data.GetNumberOfPoints() == 0:
+                print(f"无法读取VTK文件: {file_path}")
+                return None
             
             # 提取节点坐标
-            points = unstructured_grid.GetPoints()
+            points = poly_data.GetPoints()
+            node_coords = []
             if points:
                 num_points = points.GetNumberOfPoints()
-                node_coords = []
                 for i in range(num_points):
                     point = points.GetPoint(i)
                     node_coords.append(list(point))
-            else:
-                node_coords = []
             
             # 提取单元数据
-            cells = unstructured_grid.GetCells()
+            cells = poly_data.GetPolys()
+            cell_data = []
             if cells:
                 cell_array = cells.GetData()
                 num_cells = cells.GetNumberOfCells()
-                cell_data = []
-                
-                # 解析单元数据
                 offset = 0
+                
                 for i in range(num_cells):
                     num_ids = cell_array.GetValue(offset)
-                    cell_ids = []
-                    for j in range(1, num_ids + 1):
-                        cell_ids.append(cell_array.GetValue(offset + j))
-                    cell_data.append(cell_ids)
+                    # 只处理三角形和四边形单元
+                    if num_ids == 3 or num_ids == 4:
+                        cell_ids = []
+                        for j in range(1, num_ids + 1):
+                            cell_ids.append(cell_array.GetValue(offset + j))
+                        cell_data.append(cell_ids)
                     offset += num_ids + 1
-            else:
-                cell_data = []
             
-            # 返回网格数据字典
-            mesh_data = {
-                'type': 'vtk',
-                'node_coords': node_coords,
-                'cells': cell_data,
-                'num_points': len(node_coords),
-                'num_cells': len(cell_data),
-                'vtk_poly_data': unstructured_grid
-            }
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='vtk')
+            mesh_data.node_coords = node_coords
+            mesh_data.cells = cell_data
+            mesh_data.vtk_poly_data = poly_data
+            mesh_data.update_counts()
             
             return mesh_data
             
@@ -148,15 +167,12 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 返回网格数据字典
-            mesh_data = {
-                'type': 'stl',
-                'node_coords': node_coords,
-                'cells': cell_data,
-                'num_points': len(node_coords),
-                'num_cells': len(cell_data),
-                'vtk_poly_data': poly_data
-            }
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='stl')
+            mesh_data.node_coords = node_coords
+            mesh_data.cells = cell_data
+            mesh_data.vtk_poly_data = poly_data
+            mesh_data.update_counts()
             
             return mesh_data
             
@@ -205,15 +221,12 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 返回网格数据字典
-            mesh_data = {
-                'type': 'obj',
-                'node_coords': node_coords,
-                'cells': cell_data,
-                'num_points': len(node_coords),
-                'num_cells': len(cell_data),
-                'vtk_poly_data': poly_data
-            }
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='obj')
+            mesh_data.node_coords = node_coords
+            mesh_data.cells = cell_data
+            mesh_data.vtk_poly_data = poly_data
+            mesh_data.update_counts()
             
             return mesh_data
             
@@ -224,13 +237,15 @@ class FileOperations:
     def _import_cas(self, file_path):
         """导入CAS文件 - 用于CFD网格"""
         try:
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='cas')
+
             # 首先尝试使用专门的CAS解析函数
             try:
                 from fileIO.read_cas import parse_cas_to_unstr_grid
                 unstr_grid = parse_cas_to_unstr_grid(file_path)
 
                 if unstr_grid:
-                    # 将Unstructured_Grid对象转换为字典格式
                     # 提取节点坐标
                     node_coords = []
                     if hasattr(unstr_grid, 'node_coords'):
@@ -262,17 +277,30 @@ class FileOperations:
                                     if cell_ids:
                                         cells.append(cell_ids)
 
-                    # 构建网格数据字典
-                    mesh_data = {
-                        'type': 'cas',
-                        'node_coords': node_coords,
-                        'cells': cells,
-                        'num_points': len(node_coords),
-                        'num_cells': len(cells),
-                        'unstr_grid': unstr_grid,  # 保留原始对象
-                        'parts_info': getattr(unstr_grid, 'boundary_info', {}),  # 部件信息
-                        'boundary_info': getattr(unstr_grid, 'boundary_info', {})  # 边界信息
-                    }
+                    # 更新MeshData对象
+                    mesh_data.node_coords = node_coords
+                    mesh_data.cells = cells
+                    mesh_data.unstr_grid = unstr_grid  # 保留原始对象
+
+                    # Extract parts information from boundary_info
+                    boundary_info = getattr(unstr_grid, 'boundary_info', {})
+                    if boundary_info:
+                        parts_info = {}
+                        for part_name, part_data in boundary_info.items():
+                            # Create part info with essential properties
+                            parts_info[part_name] = {
+                                'type': part_data.get('type', 'unknown'),
+                                'faces': part_data.get('faces', []),
+                                'face_count': len(part_data.get('faces', [])),
+                                'part_name': part_name
+                            }
+                        mesh_data.parts_info = parts_info
+                    else:
+                        mesh_data.parts_info = {}
+
+                    mesh_data.boundary_info = boundary_info  # 边界信息
+                    mesh_data.update_counts()
+
                     return mesh_data
             except ImportError:
                 print("未找到CAS解析模块，使用备用方法")
@@ -282,23 +310,53 @@ class FileOperations:
             # 备用方法：使用VTK_IO模块
             try:
                 from fileIO.vtk_io import parse_vtk_msh
-                mesh_data = parse_vtk_msh(file_path)
+                vtk_mesh_data = parse_vtk_msh(file_path)
 
-                if mesh_data:
-                    if isinstance(mesh_data, dict):
-                        mesh_data['type'] = 'cas'
+                if vtk_mesh_data:
+                    if isinstance(vtk_mesh_data, dict):
+                        # 从字典更新MeshData对象
+                        mesh_data.node_coords = vtk_mesh_data.get('node_coords', [])
+                        mesh_data.cells = vtk_mesh_data.get('cells', [])
+
+                        # Extract parts information from the imported data
+                        parts_info = vtk_mesh_data.get('parts_info', {})
+                        if not parts_info and 'boundary_info' in vtk_mesh_data:
+                            # Extract from boundary_info if parts_info is not directly available
+                            boundary_info = vtk_mesh_data.get('boundary_info', {})
+                            parts_info = {}
+                            for part_name, part_data in boundary_info.items():
+                                parts_info[part_name] = {
+                                    'type': part_data.get('type', 'unknown'),
+                                    'faces': part_data.get('faces', []),
+                                    'face_count': len(part_data.get('faces', [])),
+                                    'part_name': part_name
+                                }
+
+                        mesh_data.parts_info = parts_info
+                        mesh_data.boundary_info = vtk_mesh_data.get('boundary_info', {})
                     else:
-                        # 如果返回的是Unstructured_Grid对象，转换为字典格式
-                        mesh_data = {
-                            'type': 'cas',
-                            'unstr_grid': mesh_data,
-                            'node_coords': getattr(mesh_data, 'node_coords', []),
-                            'cells': [],
-                            'num_points': len(getattr(mesh_data, 'node_coords', [])),
-                            'num_cells': 0,
-                            'parts_info': getattr(mesh_data, 'boundary_info', {}),
-                            'boundary_info': getattr(mesh_data, 'boundary_info', {})
-                        }
+                        # 如果返回的是Unstructured_Grid对象
+                        mesh_data.unstr_grid = vtk_mesh_data
+                        mesh_data.node_coords = getattr(vtk_mesh_data, 'node_coords', [])
+
+                        # Extract parts information from boundary_info
+                        boundary_info = getattr(vtk_mesh_data, 'boundary_info', {})
+                        if boundary_info:
+                            parts_info = {}
+                            for part_name, part_data in boundary_info.items():
+                                parts_info[part_name] = {
+                                    'type': part_data.get('type', 'unknown'),
+                                    'faces': part_data.get('faces', []),
+                                    'face_count': len(part_data.get('faces', [])),
+                                    'part_name': part_name
+                                }
+                            mesh_data.parts_info = parts_info
+                        else:
+                            mesh_data.parts_info = {}
+
+                        mesh_data.boundary_info = boundary_info
+
+                    mesh_data.update_counts()
                     return mesh_data
             except ImportError:
                 pass  # 继续下面的实现
@@ -313,46 +371,27 @@ class FileOperations:
             if 'FLUENT' in content.upper() or 'CASE' in content.upper():
                 # 这是一个CAS文件，但需要更复杂的解析逻辑
                 # 这里返回一个基本结构
-                mesh_data = {
-                    'type': 'cas',
-                    'node_coords': [],
-                    'cells': [],
-                    'num_points': 0,
-                    'num_cells': 0,
-                    'parts_info': {},  # 部件信息
-                    'boundary_info': {}  # 边界信息
-                }
+                mesh_data.update_counts()
                 return mesh_data
             else:
                 print("文件不包含FLUENT或CASE标识，可能不是有效的CAS文件")
                 # 即使不是标准CAS文件，也返回一个基本结构而不是None
-                mesh_data = {
-                    'type': 'cas',
-                    'node_coords': [],
-                    'cells': [],
-                    'num_points': 0,
-                    'num_cells': 0,
-                    'parts_info': {},
-                    'boundary_info': {}
-                }
+                mesh_data.update_counts()
                 return mesh_data
 
         except Exception as e:
             print(f"导入CAS文件失败: {str(e)}")
             # 返回一个基本结构而不是None，以避免调用代码出现'NoneType'错误
-            return {
-                'type': 'cas',
-                'node_coords': [],
-                'cells': [],
-                'num_points': 0,
-                'num_cells': 0,
-                'parts_info': {},
-                'boundary_info': {}
-            }
+            mesh_data = MeshData(file_path=file_path, mesh_type='cas')
+            mesh_data.update_counts()
+            return mesh_data
 
     def _import_msh(self, file_path):
         """导入Gmsh MSH文件"""
         try:
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='msh')
+            
             # MSH文件格式解析（简化版）
             # 通常需要使用Gmsh Python API，这里提供基本解析
             with open(file_path, 'r') as f:
@@ -406,14 +445,10 @@ class FileOperations:
                         except (ValueError, IndexError):
                             continue
             
-            # 返回网格数据
-            mesh_data = {
-                'type': 'msh',
-                'node_coords': nodes,
-                'cells': elements,
-                'num_points': len(nodes),
-                'num_cells': len(elements)
-            }
+            # 更新MeshData对象
+            mesh_data.node_coords = nodes
+            mesh_data.cells = elements
+            mesh_data.update_counts()
             
             return mesh_data
             
@@ -424,6 +459,9 @@ class FileOperations:
     def _import_ply(self, file_path):
         """导入PLY文件"""
         try:
+            # 创建MeshData对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='ply')
+            
             # 创建PLY读取器
             reader = vtk.vtkPLYReader()
             reader.SetFileName(file_path)
@@ -462,15 +500,11 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 返回网格数据字典
-            mesh_data = {
-                'type': 'ply',
-                'node_coords': node_coords,
-                'cells': cell_data,
-                'num_points': len(node_coords),
-                'num_cells': len(cell_data),
-                'vtk_poly_data': poly_data
-            }
+            # 更新MeshData对象
+            mesh_data.node_coords = node_coords
+            mesh_data.cells = cell_data
+            mesh_data.vtk_poly_data = poly_data
+            mesh_data.update_counts()
             
             return mesh_data
             

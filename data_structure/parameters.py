@@ -9,7 +9,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 sys.path.append(os.path.join(parent_dir, 'utils'))
 
-# 使用绝对导入
+# 使用直接导入，避免相对导入问题
 from basic_elements import Connector, Part
 
 # 导入message模块
@@ -110,6 +110,42 @@ class Parameters:
                 self._create_part_params(merged_params)
             else:
                 self._create_part_params(part)
+
+    def update_part_params_from_mesh(self, mesh_data):
+        """根据导入的网格数据更新部件参数，如果网格数据中的部件不在配置中，则添加默认参数"""
+        if not hasattr(mesh_data, 'parts_info') or not mesh_data.parts_info:
+            return  # 如果没有部件信息，直接返回
+
+        # 获取当前配置中的部件名称
+        existing_part_names = [part.part_name for part in self.part_params]
+
+        # 遍历网格数据中的所有部件
+        for part_name in mesh_data.parts_info.keys():
+            if part_name not in existing_part_names:
+                # 如果网格数据中的部件不在当前配置中，添加默认参数
+                default_param = MeshParameters(
+                    part_name=part_name,
+                    max_size=1.0,
+                    PRISM_SWITCH="off",
+                    first_height=0.1,
+                    growth_rate=1.2,
+                    growth_method="geometric",
+                    max_layers=3,
+                    full_layers=0,
+                    multi_direction=False,
+                )
+
+                # 创建默认的connector
+                default_connector = Connector(
+                    part_name=part_name,
+                    curve_name="default",
+                    param=default_param,
+                )
+
+                # 创建Part对象并添加到part_params列表
+                new_part = Part(part_name, default_param, [default_connector])
+                self.part_params.append(new_part)
+                print(f"添加新部件到参数配置: {part_name}")
 
     def _create_part_params(self, params):
         """创建部件参数对象（支持单curve和多curve模式）"""

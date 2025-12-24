@@ -148,12 +148,14 @@ def process_initial_front(grid):
                 coords=node1,
                 idx=-1,
                 bc_type=face["bc_type"],
+                part_name=face.get("part_name", "default"),  # 从face数据中获取部件名称
             )
 
             node_elem2 = NodeElement(
                 coords=node2,
                 idx=-1,
                 bc_type=face["bc_type"],
+                part_name=face.get("part_name", "default"),  # 从face数据中获取部件名称
             )
 
             # 创建Front对象并压入堆
@@ -164,7 +166,7 @@ def process_initial_front(grid):
                     node_elem2=node_elem2,
                     idx=front_count,
                     bc_type=face["bc_type"],
-                    part_name=face["part_name"],
+                    part_name=face.get("part_name", "default"),  # 从face数据中获取部件名称
                 ),
             )
             front_count += 1

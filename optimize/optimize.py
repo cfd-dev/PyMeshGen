@@ -3,10 +3,10 @@ import numpy as np
 import heapq
 from itertools import combinations
 
-import geom_toolkit as geom_tool
-from timer import TimeSpan
-from message import info, debug, verbose, warning, error
-from basic_elements import Triangle, Quadrilateral
+from utils import geom_toolkit as geom_tool
+from utils.timer import TimeSpan
+from utils.message import info, debug, verbose, warning, error
+from data_structure.basic_elements import Triangle, Quadrilateral
 from mesh_quality import quadrilateral_quality2
 
 def optimize_hybrid_grid(hybrid_grid):

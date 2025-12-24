@@ -97,12 +97,14 @@ class QuadtreeSizing:
         resolution=0.1,  # 网格细分分辨率阈值（尺寸差百分比）
         decay=1.2,  # 尺寸场衰减系数（>1时尺寸随距离增大）
         visual_obj=None,  # matplotlib可视化对象
+        param_obj=None,  # 参数对象，包含部件参数
     ):
 
         self.max_size = max_size  # 最大网格尺寸
         self.resolution = resolution  # 分辨率
         self.decay = decay  # 网格尺寸场的decay
         self.initial_front = initial_front  # 阵面列表
+        self.param_obj = param_obj  # 参数对象，包含部件参数
 
         self.quad_tree = None  # 四叉树
         self.bg_bounds = []  # 背景网格边界
@@ -285,15 +287,18 @@ class QuadtreeSizing:
         4. 递归细分直到满足条件
         """
 
-        def _should_refine(node, target_size):
+        def _should_refine(node, target_size, part_specific_size=None):
             """细分条件判断"""
             if node.level >= self.depth:
                 return False
 
-            current_spacing = current.spacing[0]
-            if current_spacing <= target_size:
+            current_spacing = node.spacing[0]
+
+            # 如果有部件特定的最大尺寸，则使用部件特定尺寸，否则使用全局尺寸
+            max_spacing = part_specific_size if part_specific_size is not None else current_spacing
+            if max_spacing <= target_size:
                 return False
-            diff = (current_spacing - target_size) / current_spacing
+            diff = (max_spacing - target_size) / max_spacing
             return diff > self.resolution
 
         verbose(f"细化初始quadtree...")
@@ -302,6 +307,14 @@ class QuadtreeSizing:
         for front in self.initial_front:
             face_center = front.center
             target_size = front.length
+
+            # 获取当前front所属部件的参数
+            part_specific_size = None
+            if self.param_obj and hasattr(self.param_obj, 'part_params'):
+                for part in self.param_obj.part_params:
+                    if part.part_name == front.part_name:
+                        part_specific_size = part.part_params.max_size
+                        break
 
             # 从背景网格根节点开始定位
             current = None
@@ -313,7 +326,7 @@ class QuadtreeSizing:
                     current = root
                     break
 
-            while _should_refine(current, target_size):
+            while _should_refine(current, target_size, part_specific_size):
                 # 执行细分
                 if not current.children:
                     current.subflag = 1
@@ -324,7 +337,12 @@ class QuadtreeSizing:
                     for i, child in enumerate(current.children):
                         child.level = current.level + 1
                         child.parent = current
-                        child.spacing = [s / 2 for s in current.spacing]
+                        # 使用部件特定尺寸，如果有的话
+                        child_spacing = part_specific_size if part_specific_size is not None else [s / 2 for s in current.spacing]
+                        if isinstance(child_spacing, (int, float)):
+                            child.spacing = [child_spacing] * 4
+                        else:
+                            child.spacing = [s / 2 for s in current.spacing]
 
                 # 重新定位到子节点
                 current = self._locate_quadtree(face_center, current)
@@ -459,13 +477,24 @@ class QuadtreeSizing:
                 face_center = front.center
                 target_size = front.length
 
+                # 获取当前front所属部件的参数
+                part_specific_size = None
+                if self.param_obj and hasattr(self.param_obj, 'part_params'):
+                    for part in self.param_obj.part_params:
+                        if part.part_name == front.part_name:
+                            part_specific_size = part.part_params.max_size
+                            break
+
+                # 如果有部件特定尺寸，使用它，否则使用原始长度
+                effective_target_size = part_specific_size if part_specific_size is not None else target_size
+
                 # 计算子节点中心到表面节点的距离
                 dx = x_center - face_center[0]
                 dy = y_center - face_center[1]
                 dist = math.sqrt(dx**2 + dy**2)
 
                 # 计算该表面节点影响的尺寸
-                sp = source_spacing(target_size, dist, self.decay)
+                sp = source_spacing(effective_target_size, dist, self.decay)
                 min_sp = min(min_sp, sp)
 
             # 限制最小尺寸不超过全局尺寸

@@ -2,8 +2,8 @@ import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
 
-from vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
-from geom_toolkit import (
+from fileIO.vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
+from utils.geom_toolkit import (
     calculate_distance,
     segments_intersect,
     triangle_area,
@@ -13,14 +13,7 @@ from geom_toolkit import (
     quad_intersects_triangle,
     quad_intersects_quad,
 )
-from mesh_quality import (
-    triangle_shape_quality,
-    triangle_skewness,
-    quadrilateral_shape_quality,
-    quadrilateral_skewness,
-    quadrilateral_aspect_ratio,
-)
-from message import info, debug, warning, verbose
+from utils.message import info, debug, warning, verbose
 
 
 class NodeElement:
@@ -166,6 +159,9 @@ class Triangle:
         return False
 
     def init_metrics(self, force_update=False):
+        # 动态导入质量计算函数，避免循环导入
+        from optimize.mesh_quality import triangle_shape_quality, triangle_skewness
+        
         if self.area is None or force_update:
             self.area = triangle_area(self.p1, self.p2, self.p3)
             if self.area == 0.0:
@@ -183,6 +179,8 @@ class Triangle:
 
     def get_quality(self):
         if self.quality is None:
+            # 动态导入质量计算函数，避免循环导入
+            from optimize.mesh_quality import triangle_shape_quality
             self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
         return self.quality
 
@@ -193,6 +191,8 @@ class Triangle:
 
     def get_skewness(self):
         if self.skewness is None:
+            # 动态导入质量计算函数，避免循环导入
+            from optimize.mesh_quality import triangle_skewness
             self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
         return self.skewness
 
@@ -273,6 +273,9 @@ class Quadrilateral:
         return False
 
     def init_metrics(self, force_update=False):
+        # 动态导入质量计算函数，避免循环导入
+        from optimize.mesh_quality import quadrilateral_shape_quality, quadrilateral_skewness
+        
         if self.area is None or force_update:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
             if self.area == 0.0:
@@ -293,6 +296,8 @@ class Quadrilateral:
 
     def get_skewness(self):
         if self.skewness is None:
+            # 动态导入质量计算函数，避免循环导入
+            from optimize.mesh_quality import quadrilateral_skewness
             self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
         return self.skewness
 
@@ -303,6 +308,8 @@ class Quadrilateral:
 
     def get_quality(self):
         if self.quality is None:
+            # 动态导入质量计算函数，避免循环导入
+            from optimize.mesh_quality import quadrilateral_shape_quality
             self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
         return self.quality
 
@@ -313,6 +320,8 @@ class Quadrilateral:
 
     def get_aspect_ratio(self):
         """基于最大/最小边长的长宽比"""
+        # 动态导入质量计算函数，避免循环导入
+        from optimize.mesh_quality import quadrilateral_aspect_ratio
         return quadrilateral_aspect_ratio(self.p1, self.p2, self.p3, self.p4)
 
     def get_aspect_ratio2(self):

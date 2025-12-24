@@ -1,0 +1,38 @@
+{
+  "debug_level": 0,
+  "input_file": "",
+  "output_file": "./out/mesh.vtk",
+  "viz_enabled": true,
+  "parts": [
+    {
+      "part_name": "interior-unspecified",
+      "max_size": 2.0,
+      "PRISM_SWITCH": "off",
+      "first_height": 0.01,
+      "growth_rate": 1.2,
+      "max_layers": 5,
+      "full_layers": 5,
+      "multi_direction": false
+    },
+    {
+      "part_name": "wall",
+      "max_size": 2.0,
+      "PRISM_SWITCH": "wall",
+      "first_height": 0.01,
+      "growth_rate": 1.2,
+      "max_layers": 5,
+      "full_layers": 5,
+      "multi_direction": false
+    },
+    {
+      "part_name": "farfield",
+      "max_size": 2.0,
+      "PRISM_SWITCH": "wall",
+      "first_height": 0.01,
+      "growth_rate": 1.2,
+      "max_layers": 5,
+      "full_layers": 5,
+      "multi_direction": false
+    }
+  ]
+}

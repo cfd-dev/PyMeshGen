@@ -283,6 +283,12 @@ class MeshDisplayArea:
                             add_cell(cell)
 
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
+                # 对于CAS类型的MeshData对象，优先使用unstr_grid属性
+                if hasattr(self.mesh_data, 'mesh_type') and self.mesh_data.mesh_type == 'cas':
+                    if hasattr(self.mesh_data, 'unstr_grid') and self.mesh_data.unstr_grid:
+                        return self.create_vtk_mesh_from_unstr_grid(self.mesh_data.unstr_grid)
+                
+                # 其他类型的MeshData对象，使用node_coords和cells属性
                 node_coords = self.mesh_data.node_coords
                 cells = self.mesh_data.cells
 
