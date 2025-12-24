@@ -387,60 +387,19 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.update_status(f"边界显示: {'开启' if new_state else '关闭'} (O键)")
 
     def new_config(self):
-        """新建配置"""
-        self.params = Parameters()
-        self.mesh_generator = MeshGenerator(self.params)
-        self.update_params_display()
-        self.log_info("已创建新配置")
-        self.update_status("已创建新配置")
+        """新建工程"""
+        self.log_info("新建工程功能暂未实现")
+        self.update_status("新建工程功能暂未实现")
 
     def open_config(self):
-        """打开配置"""
-        from pyqt_gui.config_manager import ConfigManager
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "打开配置文件",
-            os.path.join(self.project_root, "configs"),
-            "JSON配置文件 (*.json)"
-        )
-
-        if file_path:
-            try:
-                config_manager = ConfigManager(self.project_root)
-                self.params = config_manager.load_config(file_path)
-                self.mesh_generator = MeshGenerator(self.params)
-                self.update_params_display()
-                self.log_info(f"已加载配置: {file_path}")
-                self.update_status("已加载配置")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"加载配置失败: {str(e)}")
-                self.log_error(f"加载配置失败: {str(e)}")
+        """打开工程"""
+        self.log_info("打开工程功能暂未实现")
+        self.update_status("打开工程功能暂未实现")
 
     def save_config(self):
-        """保存配置"""
-        from pyqt_gui.config_manager import ConfigManager
-
-        if not self.params:
-            QMessageBox.warning(self, "警告", "没有可保存的配置")
-            return
-
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "保存配置文件",
-            os.path.join(self.project_root, "configs", "config.json"),
-            "JSON配置文件 (*.json)"
-        )
-
-        if file_path:
-            try:
-                config_manager = ConfigManager(self.project_root)
-                config_manager.save_config(self.params, file_path)
-                self.log_info(f"已保存配置: {file_path}")
-                self.update_status("已保存配置")
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"保存配置失败: {str(e)}")
-                self.log_error(f"保存配置失败: {str(e)}")
+        """保存工程"""
+        self.log_info("保存工程功能暂未实现")
+        self.update_status("保存工程功能暂未实现")
 
     def import_mesh(self):
         """导入网格"""
@@ -703,7 +662,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def show_user_manual(self):
         """显示用户手册"""
-        manual_text = """PyMeshGen 用户手册\n\n1. 文件菜单\n   - 新建配置：创建新的网格配置\n   - 打开配置：加载已保存的配置文件\n   - 保存配置：保存当前配置到文件\n   - 导入网格：从外部文件导入网格数据\n   - 导出网格：将当前网格导出到文件\n\n2. 视图菜单\n   - 重置视图：将视图恢复到初始状态\n   - 适应视图：自动调整视图以适应整个网格\n   - 放大/缩小：缩放网格显示\n   - 显示工具栏：切换工具栏的显示/隐藏\n   - 显示状态栏：切换状态栏的显示/隐藏\n\n3. 配置菜单\n   - 参数设置：配置网格生成参数\n   - 清空网格：清除当前显示的网格\n\n4. 网格菜单\n   - 生成网格：根据当前配置生成网格\n   - 显示网格：显示/隐藏网格\n\n5. 工具栏\n   - 提供常用功能的快速访问按钮\n\n6. 主界面\n   - 左侧：部件信息区域，包含部件列表和属性面板\n   - 右侧：网格视图交互区域，支持缩放、平移和选择操作\n   - 底部：状态栏显示系统状态和信息输出窗口"""
+        manual_text = """PyMeshGen 用户手册\n\n1. 文件菜单\n   - 新建工程：创建新的工程\n   - 打开工程：打开已保存的工程\n   - 保存工程：保存当前工程\n   - 导入网格：从外部文件导入网格数据\n   - 导出网格：将当前网格导出到文件\n\n2. 视图菜单\n   - 重置视图：将视图恢复到初始状态\n   - 适应视图：自动调整视图以适应整个网格\n   - 放大/缩小：缩放网格显示\n   - 显示工具栏：切换工具栏的显示/隐藏\n   - 显示状态栏：切换状态栏的显示/隐藏\n\n3. 配置菜单\n   - 参数设置：配置网格生成参数\n   - 网格参数：配置网格相关参数\n   - 边界条件：配置边界条件\n   - 导入配置：导入配置文件\n   - 导出配置：导出配置文件\n   - 重置配置：重置配置\n   - 清空网格：清除当前显示的网格\n\n4. 网格菜单\n   - 生成网格：根据当前配置生成网格\n   - 显示网格：显示/隐藏网格\n   - 清空网格：清除当前显示的网格\n   - 检查质量：检查网格质量\n   - 平滑网格：平滑网格\n   - 优化网格：优化网格\n   - 统计信息：显示网格统计信息\n   - 导出报告：导出网格报告\n\n5. 工具栏\n   - 提供常用功能的快速访问按钮\n\n6. 主界面\n   - 左侧：部件信息区域，包含部件列表和属性面板\n   - 右侧：网格视图交互区域，支持缩放、平移和选择操作\n   - 底部：状态栏显示系统状态和信息输出窗口"""
         QMessageBox.about(self, "用户手册", manual_text)
 
     def zoom_in(self):
@@ -801,7 +760,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def show_shortcuts(self):
         """显示快捷键"""
-        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建配置\nCtrl+O: 打开配置\nCtrl+S: 保存配置\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
+        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
         QMessageBox.about(self, "快捷键", shortcuts_text)
 
     def toggle_fullscreen(self):

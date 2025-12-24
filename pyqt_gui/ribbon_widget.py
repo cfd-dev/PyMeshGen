@@ -179,14 +179,14 @@ class RibbonWidget(QWidget):
         )
 
         file_group = RibbonGroup("")
-        self.buttons['file']['new'] = file_group.add_large_button("新建", tooltip="新建配置 (Ctrl+N)")
-        self.buttons['file']['open'] = file_group.add_large_button("打开", tooltip="打开配置 (Ctrl+O)")
-        self.buttons['file']['save'] = file_group.add_large_button("保存", tooltip="保存配置 (Ctrl+S)")
+        self.buttons['file']['new'] = file_group.add_large_button("新建工程", tooltip="新建工程 (Ctrl+N)")
+        self.buttons['file']['open'] = file_group.add_large_button("打开工程", tooltip="打开工程 (Ctrl+O)")
+        self.buttons['file']['save'] = file_group.add_large_button("保存工程", tooltip="保存工程 (Ctrl+S)")
         layout.addWidget(file_group)
 
         io_group = RibbonGroup("")
-        self.buttons['file']['import'] = io_group.add_large_button("导入", tooltip="导入网格 (Ctrl+I)")
-        self.buttons['file']['export'] = io_group.add_large_button("导出", tooltip="导出网格 (Ctrl+E)")
+        self.buttons['file']['import'] = io_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['file']['export'] = io_group.add_large_button("导出网格", tooltip="导出网格 (Ctrl+E)")
         layout.addWidget(io_group)
 
         layout.addStretch(1)
@@ -241,9 +241,9 @@ class RibbonWidget(QWidget):
         layout.addWidget(param_group)
 
         config_group = RibbonGroup("")
-        self.buttons['config']['import_config'] = config_group.add_large_button("导入", tooltip="导入配置")
-        self.buttons['config']['export_config'] = config_group.add_large_button("导出", tooltip="导出配置")
-        self.buttons['config']['reset'] = config_group.add_large_button("重置", tooltip="重置配置")
+        self.buttons['config']['import_config'] = config_group.add_large_button("导入配置", tooltip="导入配置")
+        self.buttons['config']['export_config'] = config_group.add_large_button("导出配置", tooltip="导出配置")
+        self.buttons['config']['reset'] = config_group.add_large_button("重置配置", tooltip="重置配置")
         layout.addWidget(config_group)
 
         layout.addStretch(1)
