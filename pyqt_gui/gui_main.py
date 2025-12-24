@@ -725,40 +725,54 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def edit_mesh_params(self):
         """编辑部件参数"""
-        import json
-        import os
+        from PyQt5.QtWidgets import QDialog
         from pyqt_gui.part_params_dialog import PartParamsDialog
         
-        # 尝试从配置文件读取部件参数
+        # 检查是否有导入的网格数据
+        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+            QMessageBox.warning(self, "警告", "请先导入网格文件以获取部件列表")
+            self.log_info("未检测到导入的网格数据，无法设置部件参数")
+            self.update_status("未检测到导入的网格数据")
+            return
+        
+        # 从当前导入的网格数据中获取部件列表
         parts_params = []
-        config_file = os.path.join(self.project_root, "config", "30p30n_4wall.json")
         
-        if os.path.exists(config_file):
-            try:
-                with open(config_file, 'r') as f:
-                    config_data = json.load(f)
-                    if "parts" in config_data:
-                        parts_params = config_data["parts"]
-                        self.log_info(f"已从配置文件加载 {len(parts_params)} 个部件参数")
-            except Exception as e:
-                self.log_error(f"读取配置文件失败: {str(e)}")
+        # 处理不同格式的部件信息
+        if isinstance(self.cas_parts_info, dict):
+            # 部件信息是字典格式: {part_name: part_info}
+            for part_name in self.cas_parts_info.keys():
+                parts_params.append({
+                    "part_name": part_name,
+                    "max_size": 2.0,
+                    "PRISM_SWITCH": "wall",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
+        elif isinstance(self.cas_parts_info, list):
+            # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
+            for part_info in self.cas_parts_info:
+                part_name = part_info.get('part_name', f'部件{self.cas_parts_info.index(part_info)}')
+                parts_params.append({
+                    "part_name": part_name,
+                    "max_size": 2.0,
+                    "PRISM_SWITCH": "wall",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
+        else:
+            # 处理其他格式的部件信息
+            QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(self.cas_parts_info)}")
+            self.log_error(f"不支持的部件信息格式: {type(self.cas_parts_info)}")
+            return
         
-        # 如果没有从配置文件读取到参数，使用默认值
-        if not parts_params:
-            parts_params = [
-                {"part_name": "farfield", "max_size": 2.0, "PRISM_SWITCH": "wall", 
-                 "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
-                 "full_layers": 5, "multi_direction": False},
-                {"part_name": "wall1", "max_size": 2.0, "PRISM_SWITCH": "wall", 
-                 "first_height": 1e-4, "growth_rate": 1.2, "max_layers": 10, 
-                 "full_layers": 5, "multi_direction": False},
-                {"part_name": "wall2", "max_size": 2.0, "PRISM_SWITCH": "wall", 
-                 "first_height": 1e-5, "growth_rate": 1.2, "max_layers": 60, 
-                 "full_layers": 5, "multi_direction": False},
-                {"part_name": "wall3", "max_size": 2.0, "PRISM_SWITCH": "wall", 
-                 "first_height": 1e-4, "growth_rate": 1.2, "max_layers": 10, 
-                 "full_layers": 5, "multi_direction": False}
-            ]
+        self.log_info(f"已从导入的网格数据中获取 {len(parts_params)} 个部件信息")
         
         # 创建并显示对话框
         dialog = PartParamsDialog(self, parts=parts_params)
@@ -783,9 +797,45 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def export_config(self):
         """导出配置"""
-        QMessageBox.information(self, "待开发", "导出配置功能正在开发中...")
-        self.log_info("导出配置功能待开发")
-        self.update_status("导出配置功能待开发")
+        import json
+        import os
+        from PyQt5.QtWidgets import QFileDialog
+        
+        # 检查是否有需要导出的配置
+        if not hasattr(self, 'parts_params') or not self.parts_params:
+            QMessageBox.warning(self, "警告", "没有可导出的部件参数配置")
+            self.log_info("没有可导出的部件参数配置")
+            self.update_status("没有可导出的部件参数配置")
+            return
+        
+        # 打开文件保存对话框
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出配置文件",
+            os.path.join(self.project_root, "config", "exported_config.json"),
+            "JSON文件 (*.json)"
+        )
+        
+        if file_path:
+            try:
+                # 创建配置数据结构
+                config_data = {
+                    "debug_level": 0,
+                    "input_file": "",
+                    "output_file": "./out/mesh.vtk",
+                    "viz_enabled": True,
+                    "parts": self.parts_params
+                }
+                
+                # 保存配置到文件
+                with open(file_path, 'w') as f:
+                    json.dump(config_data, f, indent=2)
+                
+                self.log_info(f"配置已成功导出到: {file_path}")
+                self.update_status(f"配置已成功导出到: {os.path.basename(file_path)}")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导出配置失败: {str(e)}")
+                self.log_error(f"导出配置失败: {str(e)}")
 
     def reset_config(self):
         """重置配置"""
