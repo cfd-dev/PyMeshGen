@@ -13,6 +13,7 @@ from utils.geom_toolkit import (
     quad_intersects_triangle,
     quad_intersects_quad,
 )
+from optimize.mesh_quality import quadrilateral_skewness
 from utils.message import info, debug, warning, verbose
 
 
