@@ -62,14 +62,35 @@ class FileOperations:
             poly_data = None
             
             if file_ext == '.vtk':
-                # 尝试先作为结构化网格读取
-                reader = vtk.vtkPolyDataReader()
-                reader.SetFileName(file_path)
-                reader.Update()
-                poly_data = reader.GetOutput()
+                # 先读取文件头，确定文件类型
+                file_type = None
+                with open(file_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('DATASET'):
+                            file_type = line.split()[1]
+                            break
                 
-                # 如果不是PolyData，尝试作为UnstructuredGrid读取
-                if not poly_data or poly_data.GetNumberOfPoints() == 0:
+                # 根据文件类型选择合适的读取器
+                if file_type == 'POLYDATA':
+                    reader = vtk.vtkPolyDataReader()
+                    reader.SetFileName(file_path)
+                    reader.Update()
+                    poly_data = reader.GetOutput()
+                elif file_type == 'UNSTRUCTURED_GRID':
+                    reader = vtk.vtkUnstructuredGridReader()
+                    reader.SetFileName(file_path)
+                    reader.ReadAllScalarsOn()
+                    reader.ReadAllVectorsOn()
+                    reader.Update()
+                    
+                    # 将UnstructuredGrid转换为PolyData
+                    geometry_filter = vtk.vtkGeometryFilter()
+                    geometry_filter.SetInputData(reader.GetOutput())
+                    geometry_filter.Update()
+                    poly_data = geometry_filter.GetOutput()
+                else:
+                    # 对于其他类型或无法确定类型，尝试使用UnstructuredGridReader
                     reader = vtk.vtkUnstructuredGridReader()
                     reader.SetFileName(file_path)
                     reader.ReadAllScalarsOn()
