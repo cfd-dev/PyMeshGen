@@ -548,46 +548,39 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if hasattr(self.current_mesh, 'parts_info') and self.current_mesh.parts_info:
             parts_info = self.current_mesh.parts_info
         
-        # 处理不同格式的部件信息
+        # 获取当前部件名称列表
+        current_part_names = []
         if parts_info:
             if isinstance(parts_info, dict):
                 # 部件信息是字典格式: {part_name: part_info}
-                for part_name in parts_info.keys():
-                    parts_params.append({
-                        "part_name": part_name,
-                        "max_size": 2.0,
-                        "PRISM_SWITCH": "off",
-                        "first_height": 0.01,
-                        "growth_rate": 1.2,
-                        "max_layers": 5,
-                        "full_layers": 5,
-                        "multi_direction": False
-                    })
+                current_part_names = list(parts_info.keys())
             elif isinstance(parts_info, list):
                 # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
-                for part_info in parts_info:
-                    part_name = part_info.get('part_name', f'部件{parts_info.index(part_info)}')
-                    parts_params.append({
-                        "part_name": part_name,
-                        "max_size": 2.0,
-                        "PRISM_SWITCH": "wall",
-                        "first_height": 0.01,
-                        "growth_rate": 1.2,
-                        "max_layers": 5,
-                        "full_layers": 5,
-                        "multi_direction": False
-                    })
-            else:
-                # 处理其他格式的部件信息
-                QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(parts_info)}")
-                self.log_error(f"不支持的部件信息格式: {type(parts_info)}")
-                return
+                current_part_names = [part_info.get('part_name', f'部件{parts_info.index(part_info)}') for part_info in parts_info]
         else:
-            # 如果没有部件信息，创建默认部件
-            # 获取当前选中部件的名称
+            # 如果没有部件信息，获取当前选中部件的名称
             selected_part_item = self.parts_list_widget.parts_list.item(current_row)
             if selected_part_item:
-                part_name = selected_part_item.text()
+                current_part_names = [selected_part_item.text()]
+            else:
+                QMessageBox.warning(self, "警告", "未找到选中的部件")
+                return
+        
+        # 创建已保存参数的映射字典，按部件名称索引
+        saved_params_map = {}
+        if hasattr(self, 'parts_params') and self.parts_params:
+            for param in self.parts_params:
+                if 'part_name' in param:
+                    saved_params_map[param['part_name']] = param
+            self.log_info(f"使用已保存的部件参数，共 {len(saved_params_map)} 个部件")
+        
+        # 为每个当前部件创建参数，优先使用已保存的参数
+        for part_name in current_part_names:
+            if part_name in saved_params_map:
+                # 使用已保存的参数
+                parts_params.append(saved_params_map[part_name])
+            else:
+                # 使用默认参数
                 parts_params.append({
                     "part_name": part_name,
                     "max_size": 2.0,
@@ -598,11 +591,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     "full_layers": 5,
                     "multi_direction": False
                 })
-            else:
-                QMessageBox.warning(self, "警告", "未找到选中的部件")
-                return
         
-        self.log_info(f"已从导入的网格数据中获取 {len(parts_params)} 个部件信息")
+        self.log_info(f"已准备 {len(parts_params)} 个部件的参数")
         
         # 创建并显示对话框，默认选中当前部件
         dialog = PartParamsDialog(self, parts=parts_params, current_part=current_row)
@@ -883,41 +873,40 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 从当前导入的网格数据中获取部件列表
         parts_params = []
         
-        # 处理不同格式的部件信息
+        # 获取当前部件名称列表
+        current_part_names = []
         if isinstance(self.cas_parts_info, dict):
-            # 部件信息是字典格式: {part_name: part_info}
-            for part_name in self.cas_parts_info.keys():
-                parts_params.append({
-                    "part_name": part_name,
-                    "max_size": 2.0,
-                    "PRISM_SWITCH": "wall",
-                    "first_height": 0.01,
-                    "growth_rate": 1.2,
-                    "max_layers": 5,
-                    "full_layers": 5,
-                    "multi_direction": False
-                })
+            current_part_names = list(self.cas_parts_info.keys())
         elif isinstance(self.cas_parts_info, list):
-            # 部件信息是列表格式: [{part_name: "xxx", ...}, ...]
-            for part_info in self.cas_parts_info:
-                part_name = part_info.get('part_name', f'部件{self.cas_parts_info.index(part_info)}')
+            current_part_names = [part_info.get('part_name', f'部件{self.cas_parts_info.index(part_info)}') for part_info in self.cas_parts_info]
+        
+        # 创建已保存参数的映射字典，按部件名称索引
+        saved_params_map = {}
+        if hasattr(self, 'parts_params') and self.parts_params:
+            for param in self.parts_params:
+                if 'part_name' in param:
+                    saved_params_map[param['part_name']] = param
+            self.log_info(f"使用已保存的部件参数，共 {len(saved_params_map)} 个部件")
+        
+        # 为每个当前部件创建参数，优先使用已保存的参数
+        for part_name in current_part_names:
+            if part_name in saved_params_map:
+                # 使用已保存的参数
+                parts_params.append(saved_params_map[part_name])
+            else:
+                # 使用默认参数
                 parts_params.append({
                     "part_name": part_name,
                     "max_size": 2.0,
-                    "PRISM_SWITCH": "wall",
+                    "PRISM_SWITCH": "off",
                     "first_height": 0.01,
                     "growth_rate": 1.2,
                     "max_layers": 5,
                     "full_layers": 5,
                     "multi_direction": False
                 })
-        else:
-            # 处理其他格式的部件信息
-            QMessageBox.warning(self, "警告", f"不支持的部件信息格式: {type(self.cas_parts_info)}")
-            self.log_error(f"不支持的部件信息格式: {type(self.cas_parts_info)}")
-            return
         
-        self.log_info(f"已从导入的网格数据中获取 {len(parts_params)} 个部件信息")
+        self.log_info(f"已准备 {len(parts_params)} 个部件的参数")
         
         # 创建并显示对话框
         dialog = PartParamsDialog(self, parts=parts_params)
