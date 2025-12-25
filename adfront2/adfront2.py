@@ -307,6 +307,11 @@ class Adfront2:
         if self.pselected is None:
             return
 
+        # Safety check: ensure base front has at least 2 nodes
+        if len(self.base_front.node_elems) < 2:
+            warning(f"阵面{self.base_front.node_ids}节点数量不足，无法更新数据！")
+            return
+
         # 更新节点
         self.update_nodes()
 
@@ -349,6 +354,13 @@ class Adfront2:
         self.update_cells(new_cell)
 
     def select_point(self):
+        # Safety check: ensure base front has at least 2 nodes
+        if len(self.base_front.node_elems) < 2:
+            warning(f"阵面{self.base_front.node_ids}节点数量不足，无法进行选择！")
+            self.base_front.al *= 1.2
+            heapq.heappush(self.front_list, self.base_front)
+            return None
+
         # 预计算基准点坐标
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
@@ -399,7 +411,7 @@ class Adfront2:
         if self.base_front.al > 200:
             # 异常退出
             raise Exception("基准阵面搜索半径超过20，可能存在问题")
-        
+
         return self.pselected
 
     def debug_save(self):
@@ -410,6 +422,10 @@ class Adfront2:
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):
+        # Safety check: ensure base front has at least 2 nodes
+        if len(self.base_front.node_elems) < 2:
+            return False  # Can't form a segment with less than 2 nodes
+
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
 
@@ -417,6 +433,9 @@ class Adfront2:
         line2 = LineSegment(node_elem, p1)
 
         for front in self.front_candidates:
+            # Safety check: ensure front has at least 2 nodes
+            if len(front.node_elems) < 2:
+                continue  # Skip fronts with insufficient nodes
             front_line = LineSegment(front.node_elems[0], front.node_elems[1])
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
@@ -522,8 +541,8 @@ class Adfront2:
         self.pbest = NodeElement(
             pbest,
             self.num_nodes,
-            "interior",
             part_name=part_name,  # 传递部件信息
+            bc_type="interior",
         )
 
         return self.pbest

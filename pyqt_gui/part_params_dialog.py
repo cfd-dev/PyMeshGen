@@ -64,6 +64,8 @@ class PartParamsDialog(QDialog):
         select_layout.addWidget(QLabel("选择部件:"))
         
         self.part_combo = QComboBox()
+        # 设置白色背景
+        self.part_combo.setStyleSheet("background-color: white;")
         for i, part in enumerate(self.parts):
             self.part_combo.addItem(f"{i+1}. {part['part_name']}")
         self.part_combo.setCurrentIndex(self.current_part_index)
@@ -89,11 +91,15 @@ class PartParamsDialog(QDialog):
         self.max_size_spin.setRange(0.001, 100.0)
         self.max_size_spin.setDecimals(3)
         self.max_size_spin.setSingleStep(0.1)
+        # 设置白色背景
+        self.max_size_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("最大网格尺寸:", self.max_size_spin)
         
         # PRISM_SWITCH
         self.prism_switch_combo = QComboBox()
         self.prism_switch_combo.addItems(["wall", "off"])
+        # 设置白色背景
+        self.prism_switch_combo.setStyleSheet("background-color: white;")
         params_layout.addRow("棱柱层开关:", self.prism_switch_combo)
         
         # 第一层高度
@@ -102,6 +108,8 @@ class PartParamsDialog(QDialog):
         self.first_height_spin.setDecimals(6)
         self.first_height_spin.setSingleStep(0.001)
         self.first_height_spin.setSpecialValueText("自动")
+        # 设置白色背景
+        self.first_height_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("第一层高度:", self.first_height_spin)
         
         # 增长率
@@ -109,22 +117,30 @@ class PartParamsDialog(QDialog):
         self.growth_rate_spin.setRange(1.01, 2.0)
         self.growth_rate_spin.setDecimals(2)
         self.growth_rate_spin.setSingleStep(0.05)
+        # 设置白色背景
+        self.growth_rate_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("增长率:", self.growth_rate_spin)
         
         # 最大层数
         self.max_layers_spin = QSpinBox()
         self.max_layers_spin.setRange(1, 100)
         self.max_layers_spin.setSingleStep(1)
+        # 设置白色背景
+        self.max_layers_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("最大层数:", self.max_layers_spin)
         
         # 完整层数
         self.full_layers_spin = QSpinBox()
         self.full_layers_spin.setRange(1, 100)
         self.full_layers_spin.setSingleStep(1)
+        # 设置白色背景
+        self.full_layers_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("完整层数:", self.full_layers_spin)
         
         # 多方向
         self.multi_direction_check = QCheckBox()
+        # 设置白色背景
+        # self.multi_direction_check.setStyleSheet("background-color: white;")
         params_layout.addRow("多方向:", self.multi_direction_check)
         
         main_layout.addWidget(params_group)
