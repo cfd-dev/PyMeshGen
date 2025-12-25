@@ -182,7 +182,7 @@ def PyMeshGen(parameters=None, mesh_data=None):
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
     
     # 在GUI模式下更新画布
-    if _global_gui_instance:
+    if _global_gui_instance and hasattr(_global_gui_instance, 'canvas'):
         _global_gui_instance.canvas.draw()
 
     # 输出网格信息

@@ -159,8 +159,12 @@ class Triangle:
         return False
 
     def init_metrics(self, force_update=False):
-        # 动态导入质量计算函数，避免循环导入
-        from optimize.mesh_quality import triangle_shape_quality, triangle_skewness
+        # 直接导入质量计算函数
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        from mesh_quality import triangle_shape_quality, triangle_skewness
         
         if self.area is None or force_update:
             self.area = triangle_area(self.p1, self.p2, self.p3)
@@ -179,8 +183,12 @@ class Triangle:
 
     def get_quality(self):
         if self.quality is None:
-            # 动态导入质量计算函数，避免循环导入
-            from optimize.mesh_quality import triangle_shape_quality
+            # 直接导入质量计算函数
+            import sys
+            import os
+            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+            from mesh_quality import triangle_shape_quality
             self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
         return self.quality
 
@@ -273,8 +281,12 @@ class Quadrilateral:
         return False
 
     def init_metrics(self, force_update=False):
-        # 动态导入质量计算函数，避免循环导入
-        from optimize.mesh_quality import quadrilateral_shape_quality, quadrilateral_skewness
+        # 直接导入质量计算函数
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        
+        from mesh_quality import quadrilateral_shape_quality, quadrilateral_skewness
         
         if self.area is None or force_update:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)

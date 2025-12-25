@@ -83,7 +83,8 @@ def convert_to_internal_mesh_format(mesh_data):
                     for face_data in part_data['faces']:
                         if isinstance(face_data, dict) and 'nodes' in face_data:
                             # 确保节点索引是1基的（fluent格式）
-                            nodes = [n + 1 if isinstance(n, int) else n for n in face_data['nodes']]  # 转换为1基索引
+                            # nodes = [n + 1 if isinstance(n, int) else n for n in face_data['nodes']]  # 转换为1基索引
+                            nodes = [n if isinstance(n, int) else n for n in face_data['nodes']]  # 转换为1基索引
                             face = {
                                 "nodes": nodes,
                                 "left_cell": face_data.get('left_cell', 0),
