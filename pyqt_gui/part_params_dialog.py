@@ -88,7 +88,7 @@ class PartParamsDialog(QDialog):
         
         # 最大网格尺寸
         self.max_size_spin = QDoubleSpinBox()
-        self.max_size_spin.setRange(0.001, 100.0)
+        self.max_size_spin.setRange(1e-6, 1e6)
         self.max_size_spin.setDecimals(3)
         self.max_size_spin.setSingleStep(0.1)
         # 设置白色背景
@@ -97,14 +97,14 @@ class PartParamsDialog(QDialog):
         
         # PRISM_SWITCH
         self.prism_switch_combo = QComboBox()
-        self.prism_switch_combo.addItems(["wall", "off"])
+        self.prism_switch_combo.addItems(["wall", "off", "match"])
         # 设置白色背景
         self.prism_switch_combo.setStyleSheet("background-color: white;")
         params_layout.addRow("棱柱层开关:", self.prism_switch_combo)
         
         # 第一层高度
         self.first_height_spin = QDoubleSpinBox()
-        self.first_height_spin.setRange(1e-6, 1.0)
+        self.first_height_spin.setRange(1e-12, 1e3)
         self.first_height_spin.setDecimals(6)
         self.first_height_spin.setSingleStep(0.001)
         self.first_height_spin.setSpecialValueText("自动")
