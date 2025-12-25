@@ -38,8 +38,40 @@ def convert_to_internal_mesh_format(mesh_data):
 
     # MeshData对象类型
     elif hasattr(mesh_data, 'node_coords') and hasattr(mesh_data, 'cells'):
-        internal_mesh['nodes'] = mesh_data.node_coords
-        internal_mesh['node_count'] = len(mesh_data.node_coords)
+        # 先获取节点坐标
+        node_coords = mesh_data.node_coords
+        
+        # 先只考虑2维，后续再拓展到3维
+        # 先获取网格维度，用于后续的节点坐标处理
+        # if hasattr(mesh_data, 'dimensions'):
+        #     mesh_dimensions = mesh_data.dimensions
+        # else:
+        #     # 根据节点坐标推断维度
+        #     if node_coords and len(node_coords[0]) > 2:
+        #         mesh_dimensions = 3
+        #     else:
+        #         mesh_dimensions = 2
+        
+        # 设置网格维度
+        mesh_dimensions = 2
+        internal_mesh['dimensions'] = mesh_dimensions
+        
+        # 对于2D网格，去掉z坐标
+        processed_nodes = []
+        for node in node_coords:
+            # 确保节点坐标是列表或元组
+            if isinstance(node, (list, tuple)):
+                # 如果是3D坐标且网格是2D，只保留x和y
+                if mesh_dimensions == 2 and len(node) >= 2:
+                    processed_nodes.append(node[:2])
+                else:
+                    processed_nodes.append(node)
+            else:
+                processed_nodes.append(node)
+        
+        # 设置处理后的节点坐标
+        internal_mesh['nodes'] = processed_nodes
+        internal_mesh['node_count'] = len(processed_nodes)
 
         # 优先使用parts_info来构建faces（如果存在）
         if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
@@ -123,18 +155,40 @@ def convert_to_internal_mesh_format(mesh_data):
         if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
             internal_mesh['zones'] = mesh_data.parts_info
 
-        # 获取网格维度
-        if hasattr(mesh_data, 'dimensions'):
-            internal_mesh['dimensions'] = mesh_data.dimensions
-        else:
-            # 根据节点坐标推断维度
-            if mesh_data.node_coords and len(mesh_data.node_coords[0]) > 2:
-                internal_mesh['dimensions'] = 3
-
     # 字典类型
     elif isinstance(mesh_data, dict):
-        internal_mesh['nodes'] = mesh_data.get('node_coords', [])
-        internal_mesh['node_count'] = len(internal_mesh['nodes'])
+        # 先获取节点坐标
+        node_coords = mesh_data.get('node_coords', [])
+        
+        # 先获取网格维度，用于后续的节点坐标处理
+        if 'dimensions' in mesh_data:
+            mesh_dimensions = mesh_data['dimensions']
+        else:
+            # 根据节点坐标推断维度
+            if node_coords and len(node_coords[0]) > 2:
+                mesh_dimensions = 3
+            else:
+                mesh_dimensions = 2
+        
+        # 设置网格维度
+        internal_mesh['dimensions'] = mesh_dimensions
+        
+        # 对于2D网格，去掉z坐标
+        processed_nodes = []
+        for node in node_coords:
+            # 确保节点坐标是列表或元组
+            if isinstance(node, (list, tuple)):
+                # 如果是3D坐标且网格是2D，只保留x和y
+                if mesh_dimensions == 2 and len(node) >= 2:
+                    processed_nodes.append(node[:2])
+                else:
+                    processed_nodes.append(node)
+            else:
+                processed_nodes.append(node)
+        
+        # 设置处理后的节点坐标
+        internal_mesh['nodes'] = processed_nodes
+        internal_mesh['node_count'] = len(processed_nodes)
 
         # 优先使用字典中的faces信息（如果存在）
         if 'faces' in mesh_data and mesh_data['faces']:
@@ -240,14 +294,6 @@ def convert_to_internal_mesh_format(mesh_data):
 
         internal_mesh['face_count'] = len(internal_mesh['faces'])
         internal_mesh['zones'] = mesh_data.get('parts_info', {})
-
-        # 获取网格维度
-        if 'dimensions' in mesh_data:
-            internal_mesh['dimensions'] = mesh_data['dimensions']
-        else:
-            # 根据节点坐标推断维度
-            if internal_mesh['nodes'] and len(internal_mesh['nodes'][0]) > 2:
-                internal_mesh['dimensions'] = 3
 
     # 其他类型
     else:

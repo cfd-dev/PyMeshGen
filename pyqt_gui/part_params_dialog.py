@@ -33,20 +33,8 @@ class PartParamsDialog(QDialog):
         self.setFont(font)
         
         # 初始化部件数据
-        self.parts = parts or [
-            {"part_name": "part1", "max_size": 1.0, "PRISM_SWITCH": "off", 
-             "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
-             "full_layers": 5, "multi_direction": False},
-            {"part_name": "part2", "max_size": 1.0, "PRISM_SWITCH": "off", 
-             "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
-             "full_layers": 5, "multi_direction": False},
-            {"part_name": "part3", "max_size": 1.0, "PRISM_SWITCH": "off", 
-             "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
-             "full_layers": 5, "multi_direction": False},
-            {"part_name": "part4", "max_size": 1.0, "PRISM_SWITCH": "off", 
-             "first_height": 0.01, "growth_rate": 1.2, "max_layers": 5, 
-             "full_layers": 5, "multi_direction": False}
-        ]
+        # 注意：这里的默认列表只是示例，实际部件数量由传入的parts参数决定，支持任意数量的部件
+        self.parts = parts or []
         
         self.current_part_index = current_part
         self._create_widgets()

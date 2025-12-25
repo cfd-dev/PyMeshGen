@@ -51,7 +51,7 @@ class Adlayers2:
         self.full_layers = 0  # 完整推进层数
         self.growth_rate = 1.2  # 网格高度增长比例
         self.growth_method = "geometric"  # 网格高度增长方法
-        self.max_size = 1.0  # 最大网格尺寸
+        self.max_size = 1e6  # 最大网格尺寸
         self.multi_direction = False  # 是否多方向推进
 
         self.initial_front_list = boundary_front  # 初始阵面

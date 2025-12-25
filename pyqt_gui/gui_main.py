@@ -583,7 +583,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 # 使用默认参数
                 parts_params.append({
                     "part_name": part_name,
-                    "max_size": 2.0,
+                    "max_size": 1e6,
                     "PRISM_SWITCH": "off",
                     "first_height": 0.01,
                     "growth_rate": 1.2,
@@ -897,7 +897,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 # 使用默认参数
                 parts_params.append({
                     "part_name": part_name,
-                    "max_size": 2.0,
+                    "max_size": 1e6,
                     "PRISM_SWITCH": "off",
                     "first_height": 0.01,
                     "growth_rate": 1.2,
@@ -1033,7 +1033,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 for part_name in self.cas_parts_info.keys():
                     config_data["parts"].append({
                         "part_name": part_name,
-                        "max_size": 2.0,
+                        "max_size": 1e6,
                         "PRISM_SWITCH": "off",
                         "first_height": 0.01,
                         "growth_rate": 1.2,

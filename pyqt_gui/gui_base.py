@@ -285,7 +285,7 @@ class ConfigDialog(DialogBase):
             # 获取部件参数
             part_params = part.get("part_params", {})
             part_name = part.get("part_name", f"部件{i+1}")
-            max_size = part_params.get("max_size", 1.0)
+            max_size = part_params.get("max_size", 1e6)
             first_height = part_params.get("first_height", 0.1)
             growth_rate = part_params.get("growth_rate", 1.2)
             max_layers = part_params.get("max_layers", 3)
@@ -398,7 +398,7 @@ class ConfigDialog(DialogBase):
             try:
                 max_size = float(self.parts_model.item(row, 1).text())
             except ValueError:
-                max_size = 1.0
+                max_size = 1e6
             
             try:
                 first_height = float(self.parts_model.item(row, 2).text())

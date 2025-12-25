@@ -212,8 +212,8 @@ class MeshParameters:
     def __init__(
         self,
         part_name,
-        max_size=1.0,
-        PRISM_SWITCH="off",
+        max_size=1e6,
+        PRISM_SWITCH="on",
         first_height=0.1,
         growth_rate=1.2,
         growth_method="geometric",

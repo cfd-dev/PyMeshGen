@@ -123,8 +123,7 @@ def PyMeshGen(parameters=None, mesh_data=None):
         max_size=4,
         resolution=0.1,
         decay=1.2,
-        visual_obj=visual_obj,
-        param_obj=parameters,
+        visual_obj=visual_obj
     )
     # sizing_system.draw_bgmesh()
     
