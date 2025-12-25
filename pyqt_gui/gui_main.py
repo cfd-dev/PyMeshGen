@@ -40,7 +40,15 @@ from pyqt_gui.ribbon_widget import RibbonWidget
 from pyqt_gui.mesh_display import MeshDisplayArea
 from pyqt_gui.ui_utils import UIStyles
 from data_structure.parameters import Parameters
-from PyMeshGen import PyMeshGen as MeshGenerator
+# 从core模块导入网格生成函数
+import sys
+import os
+from pathlib import Path
+
+# 获取项目根目录
+project_root = str(Path(__file__).parent.parent)
+sys.path.append(project_root)
+from core import generate_mesh
 
 
 class SimplifiedPyMeshGenGUI(QMainWindow):
@@ -1061,9 +1069,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 from data_structure.parameters import Parameters
                 params = Parameters("FROM_CASE_JSON", temp_file_path)
                 
-                # 设置GUI实例，提供日志输出功能
-                from PyMeshGen import set_gui_instance
-                
                 # 创建一个包含PyMeshGen所需属性的临时对象
                 class GUITempObject:
                     def __init__(self, gui):
@@ -1073,17 +1078,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     def append_info_output(self, message):
                         self.gui.log_info(message)
                 
-                # 创建临时GUI对象并设置
+                # 创建临时GUI对象
                 temp_gui_obj = GUITempObject(self)
-                set_gui_instance(temp_gui_obj)
                 
-                # 调用PyMeshGen主函数
+                # 调用核心网格生成函数
                 self.log_info("正在生成网格...")
                 self.update_status("正在生成网格...")
                 
-                # 直接将当前网格数据传递给PyMeshGen函数
-                from PyMeshGen import PyMeshGen as MeshGenerator
-                MeshGenerator(params, self.current_mesh)
+                # 直接将当前网格数据传递给generate_mesh函数
+                generate_mesh(params, self.current_mesh, temp_gui_obj)
                 
                 # 更新状态
                 self.log_info("网格生成完成!")

@@ -5,28 +5,20 @@ from pathlib import Path
 # 获取项目根目录
 project_root = str(Path(__file__).parent)
 
-# 将项目根目录和所有子目录添加到sys.path
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils"]:
-    sys.path.append(str(Path(project_root) / subdir))
+# 将项目根目录添加到sys.path，确保能导入core模块
+sys.path.append(project_root)
 
-# 直接从文件导入，避免包导入问题
-from read_cas import parse_fluent_msh
-from front2d import construct_initial_front
-from meshsize import QuadtreeSizing
-from adfront2 import Adfront2
-from adlayers2 import Adlayers2
-from mesh_visualization import Visualization
+# 导入核心网格生成模块
+from core import generate_mesh
 from parameters import Parameters
-from optimize import edge_swap, laplacian_smooth
-from timer import TimeSpan
-from message import info
 
-# 全局GUI引用
+
+# 全局GUI引用 - 保留用于向后兼容
 _global_gui_instance = None
 
 
 def set_gui_instance(gui_instance):
-    """设置全局GUI实例
+    """设置全局GUI实例（向后兼容）
     
     Args:
         gui_instance: GUI实例，用于在网格生成过程中输出信息和显示中间结果
@@ -36,7 +28,7 @@ def set_gui_instance(gui_instance):
 
 
 def PyMeshGen(parameters=None, mesh_data=None):
-    """PyMeshGen主函数
+    """PyMeshGen主函数（向后兼容）
     
     调用底层算法生成网格，支持两种调用方式：
     1. 通过parameters参数传递配置文件路径，从文件中读取网格数据
@@ -47,171 +39,16 @@ def PyMeshGen(parameters=None, mesh_data=None):
         mesh_data: 可选，直接传入的网格数据对象，可以是MeshData对象、字典或其他类型
     
     Returns:
-        生成的网格数据（如果有返回值的话）
+        生成的网格数据
     """
-    # 开始计时
-    global_timer = TimeSpan("PyMeshGen开始运行...")
-
-    # 建立参数管理对象
-    # if parameters is None:
-    #     parameters = Parameters("FROM_MAIN_JSON")
-
-    # 建立可视化对象
-    if _global_gui_instance:
-        # 在GUI模式下，传入GUI的绘图区域
-        visual_obj = Visualization(parameters.viz_enabled, _global_gui_instance.ax)
-    else:
-        # 在命令行模式下，不传入ax参数
-        visual_obj = Visualization(parameters.viz_enabled)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("开始生成三角形网格...")
-
-    # 读入边界网格
-    input_grid = None
-    
-    # 导入数据转换模块
-    from utils.data_converter import convert_to_internal_mesh_format
-    
-    # 优先使用直接传入的网格数据
-    if mesh_data is not None:
-        info("使用直接传入的网格数据")
-        input_grid = convert_to_internal_mesh_format(mesh_data)
-    # 否则尝试从参数中获取文件路径
-    elif parameters.input_file and isinstance(parameters.input_file, str) and os.path.exists(parameters.input_file):
-        # 真实文件路径，正常解析
-        input_grid = parse_fluent_msh(parameters.input_file)
-    else:
-        # 尝试从GUI获取当前网格数据
-        if _global_gui_instance and hasattr(_global_gui_instance, 'current_mesh'):
-            current_mesh = _global_gui_instance.current_mesh
-            info("使用GUI中的当前网格数据")
-            input_grid = convert_to_internal_mesh_format(current_mesh)
-        else:
-            raise ValueError("无法获取有效的网格数据")
-
-    # If the input grid contains parts information, log it and update parameters
-    if hasattr(input_grid, 'parts_info') and input_grid.parts_info:
-        info(f"检测到 {len(input_grid.parts_info)} 个部件信息")
-        for part_name in input_grid.parts_info.keys():
-            info(f"  - 部件: {part_name}")
-
-        # Update parameters based on mesh parts information
-        parameters.update_part_params_from_mesh(input_grid)
-    
-    # 在GUI模式下清除之前的绘图内容
-    if _global_gui_instance and hasattr(_global_gui_instance, 'ax') and _global_gui_instance.ax:
-        _global_gui_instance.ax.clear()
-        
-    visual_obj.plot_mesh(input_grid, boundary_only=True)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output(f"已读取输入网格文件: {parameters.input_file}")
-
-    # 构造初始阵面
-    front_heap = construct_initial_front(input_grid)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("初始阵面构造完成")
-
-    # 计算网格尺寸场
-    sizing_system = QuadtreeSizing(
-        initial_front=front_heap,
-        max_size=4,
-        resolution=0.1,
-        decay=1.2,
-        visual_obj=visual_obj
-    )
-    # sizing_system.draw_bgmesh()
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("网格尺寸场计算完成")
-
-    unstr_grid_list = []
-    # 推进生成边界层网格
-    adlayers = Adlayers2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        param_obj=parameters,
-        visual_obj=visual_obj,
-    )
-    boundary_grid, front_heap = adlayers.generate_elements()
-    unstr_grid_list.append(boundary_grid)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("边界层网格生成完成")
-
-    # 推进生成网格
-    adfront2 = Adfront2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        node_coords=boundary_grid.node_coords,
-        param_obj=parameters,
-        visual_obj=visual_obj,
-    )
-    triangular_grid = adfront2.generate_elements()
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("网格生成完成")
-
-    # 网格质量优化
-    triangular_grid = edge_swap(triangular_grid)
-    triangular_grid = laplacian_smooth(triangular_grid, 3)
-    unstr_grid_list.append(triangular_grid)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("网格质量优化完成")
-
-    # 合并各向同性网格和边界层网格
-    global_unstr_grid = unstr_grid_list[0]
-    for unstr_grid in unstr_grid_list[1:]:
-        global_unstr_grid.merge(unstr_grid)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("网格合并完成")
-
-    # 可视化
-    global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
-    
-    # 在GUI模式下更新画布
-    if _global_gui_instance and hasattr(_global_gui_instance, 'canvas'):
-        _global_gui_instance.canvas.draw()
-
-    # 输出网格信息
-    global_unstr_grid.summary()
-    # global_unstr_grid.quality_histogram(_global_gui_instance.ax if _global_gui_instance else None)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("网格信息输出完成")
-
-    # 输出网格文件
-    global_unstr_grid.save_to_vtkfile(parameters.output_file)
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
-        
-        # 将优化后的网格对象设置到GUI实例中
-        _global_gui_instance.mesh_data = global_unstr_grid
-
-    # 结束计时
-    global_timer.show_to_console("程序运行正常退出.")
-    
-    # 输出信息到GUI
-    if _global_gui_instance:
-        _global_gui_instance.append_info_output("程序运行正常退出")
+    return generate_mesh(parameters, mesh_data, _global_gui_instance)
 
 
 if __name__ == "__main__":
+    """CLI入口
+    
+    命令行模式下运行网格生成器
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description="PyMeshGen 非结构网格生成器")
@@ -230,6 +67,7 @@ if __name__ == "__main__":
         else Parameters("FROM_MAIN_JSON")
     )
 
-    PyMeshGen(params)
+    # 调用核心生成函数
+    generate_mesh(params)
 
     input("Press Enter to continue...")
