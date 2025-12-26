@@ -12,7 +12,7 @@ sys.path.append(os.path.join(parent_dir, 'utils'))
 # Use lazy import to avoid circular import
 def _get_connector_and_part():
     """Lazy import for Connector and Part to avoid circular imports"""
-    from basic_elements import Connector, Part
+    from .basic_elements import Connector, Part
     return Connector, Part
 
 # 导入message模块

@@ -6,6 +6,7 @@ from utils.geom_toolkit import (
     calculate_angle,
     is_valid_quadrilateral,
     is_convex,
+    segments_intersect,
 )
 
 

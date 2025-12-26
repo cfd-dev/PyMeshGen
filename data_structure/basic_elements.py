@@ -360,7 +360,8 @@ class Quadrilateral:
         return (edges[0] + edges[2]) / (edges[1] + edges[3])
 
     def get_skewness(self):
-        return quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+        quad_skewness_func = _get_quadrilateral_skewness()
+        return quad_skewness_func(self.p1, self.p2, self.p3, self.p4)
 
     def is_intersect_triangle(self, triangle):
         if not isinstance(triangle, Triangle):
