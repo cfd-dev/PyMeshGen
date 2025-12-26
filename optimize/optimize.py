@@ -268,7 +268,8 @@ def edge_swap(unstr_grid):
             cell1_idx, cell2_idx = cells
             cell1 = unstr_grid.cell_container[cell1_idx]
             cell2 = unstr_grid.cell_container[cell2_idx]
-            if not (isinstance(cell1, Triangle) and isinstance(cell2, Triangle)):
+            # 使用字符串类型比较代替isinstance，避免导入路径问题
+            if not (type(cell1).__name__ == 'Triangle' and type(cell2).__name__ == 'Triangle'):
                 continue  # 非三角形单元跳过
 
             # 确认公共边
@@ -290,9 +291,10 @@ def edge_swap(unstr_grid):
                 continue
 
             # 计算交换前的最小角
+            # 修复：直接传递node_ids而不是Triangle对象
             current_min = min(
-                geom_tool.calculate_min_angle(cell1, node_coords),
-                geom_tool.calculate_min_angle(cell2, node_coords),
+                geom_tool.calculate_min_angle(cell1.node_ids, node_coords),
+                geom_tool.calculate_min_angle(cell2.node_ids, node_coords),
             )
 
             # 交换后的单元

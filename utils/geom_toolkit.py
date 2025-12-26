@@ -241,7 +241,8 @@ def fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
 
 # 计算三角形最小角
 def calculate_min_angle(cell, node_coords):
-    from basic_elements import Triangle
+    # 使用完整的包路径导入，确保类型一致
+    from data_structure.basic_elements import Triangle
 
     if isinstance(cell, Triangle):
         cell = cell.node_ids
@@ -263,7 +264,8 @@ def calculate_min_angle(cell, node_coords):
 
 # 检查三角形是否有效（非退化）
 def is_valid_triangle(cell, node_coords):
-    from basic_elements import Triangle
+    # 使用完整的包路径导入，确保类型一致
+    from data_structure.basic_elements import Triangle
 
     if isinstance(cell, Triangle):
         cell = cell.node_ids

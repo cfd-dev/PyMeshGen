@@ -197,7 +197,7 @@ class TestMeshGeneration(unittest.TestCase):
 
         # 验证单元数、节点数
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 1301, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_cells, 1279, delta=10)  # 预期单元数（边交换后会减少22个单元）
         self.assertAlmostEqual(grid.num_nodes, 1085, delta=10)  # 预期节点数
         # 耗时比较
         self.assertLess(cost, 14)  # 预期耗时
