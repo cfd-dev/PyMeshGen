@@ -1,35 +1,24 @@
 import numpy as np
 from math import pi, sqrt
 import heapq
-import sys
-import os
 
-# 添加必要的路径
-current_dir = os.path.dirname(__file__)
-parent_dir = os.path.dirname(current_dir)
-utils_dir = os.path.join(parent_dir, 'utils')
-data_structure_dir = os.path.join(parent_dir, 'data_structure')
-
-sys.path.append(utils_dir)
-sys.path.append(data_structure_dir)
-
-from geom_toolkit import (
+from utils.geom_toolkit import (
     min_distance_between_segments,
     segments_intersect,
     is_left2d,
     points_equal,
     fast_distance_check,
 )
-from basic_elements import (
+from data_structure.basic_elements import (
     NodeElement,
     NodeElementALM,
     Quadrilateral,
     Unstructured_Grid,
 )
-from front2d import Front
-from message import info, debug, verbose, warning
-from timer import TimeSpan
-from rtree_space import (
+from data_structure.front2d import Front
+from utils.message import info, debug, verbose, warning
+from utils.timer import TimeSpan
+from data_structure.rtree_space import (
     build_space_index_with_RTree,
     add_elems_to_space_index_with_RTree,
     get_candidate_elements_id,

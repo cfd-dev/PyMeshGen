@@ -9,8 +9,11 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 sys.path.append(os.path.join(parent_dir, 'utils'))
 
-# 使用直接导入，避免相对导入问题
-from basic_elements import Connector, Part
+# Use lazy import to avoid circular import
+def _get_connector_and_part():
+    """Lazy import for Connector and Part to avoid circular imports"""
+    from basic_elements import Connector, Part
+    return Connector, Part
 
 # 导入message模块
 from message import set_debug_level
@@ -136,6 +139,7 @@ class Parameters:
                 )
 
                 # 创建默认的connector
+                Connector, Part = _get_connector_and_part()
                 default_connector = Connector(
                     part_name=part_name,
                     curve_name="default",
@@ -167,6 +171,9 @@ class Parameters:
 
         # 处理curve定义
         connectors = []
+        # Get Connector and Part using lazy import at the beginning
+        Connector, Part = _get_connector_and_part()
+
         if "curves" in params:
             for curve in params["curves"]:
                 # 对于每个curve，优先使用自己的参数，如果自己没有定义参数，则使用部件参数

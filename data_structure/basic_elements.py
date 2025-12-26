@@ -13,8 +13,34 @@ from utils.geom_toolkit import (
     quad_intersects_triangle,
     quad_intersects_quad,
 )
-from optimize.mesh_quality import quadrilateral_skewness
 from utils.message import info, debug, warning, verbose
+
+# Avoid direct import to prevent circular import
+# Import mesh_quality functions using lazy import to avoid circular imports
+def _get_quadrilateral_skewness():
+    """Lazy import for quadrilateral_skewness to avoid circular imports"""
+    from optimize.mesh_quality import quadrilateral_skewness
+    return quadrilateral_skewness
+
+def _get_quadrilateral_shape_quality():
+    """Lazy import for quadrilateral_shape_quality to avoid circular imports"""
+    from optimize.mesh_quality import quadrilateral_shape_quality
+    return quadrilateral_shape_quality
+
+def _get_quadrilateral_aspect_ratio():
+    """Lazy import for quadrilateral_aspect_ratio to avoid circular imports"""
+    from optimize.mesh_quality import quadrilateral_aspect_ratio
+    return quadrilateral_aspect_ratio
+
+def _get_triangle_shape_quality():
+    """Lazy import for triangle_shape_quality to avoid circular imports"""
+    from optimize.mesh_quality import triangle_shape_quality
+    return triangle_shape_quality
+
+def _get_triangle_skewness():
+    """Lazy import for triangle_skewness to avoid circular imports"""
+    from optimize.mesh_quality import triangle_skewness
+    return triangle_skewness
 
 
 class NodeElement:
@@ -160,13 +186,6 @@ class Triangle:
         return False
 
     def init_metrics(self, force_update=False):
-        # 直接导入质量计算函数
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        from mesh_quality import triangle_shape_quality, triangle_skewness
-        
         if self.area is None or force_update:
             self.area = triangle_area(self.p1, self.p2, self.p3)
             if self.area == 0.0:
@@ -174,23 +193,20 @@ class Triangle:
                     f"三角形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
         if self.quality is None or force_update:
-            self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
+            tri_shape_quality_func = _get_triangle_shape_quality()
+            self.quality = tri_shape_quality_func(self.p1, self.p2, self.p3)
             if self.quality == 0.0:
                 raise ValueError(
                     f"三角形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}"
                 )
         if self.skewness is None or force_update:
-            self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
+            tri_skewness_func = _get_triangle_skewness()
+            self.skewness = tri_skewness_func(self.p1, self.p2, self.p3)
 
     def get_quality(self):
         if self.quality is None:
-            # 直接导入质量计算函数
-            import sys
-            import os
-            sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            
-            from mesh_quality import triangle_shape_quality
-            self.quality = triangle_shape_quality(self.p1, self.p2, self.p3)
+            tri_shape_quality_func = _get_triangle_shape_quality()
+            self.quality = tri_shape_quality_func(self.p1, self.p2, self.p3)
         return self.quality
 
     def get_area(self):
@@ -200,9 +216,8 @@ class Triangle:
 
     def get_skewness(self):
         if self.skewness is None:
-            # 动态导入质量计算函数，避免循环导入
-            from optimize.mesh_quality import triangle_skewness
-            self.skewness = triangle_skewness(self.p1, self.p2, self.p3)
+            tri_skewness_func = _get_triangle_skewness()
+            self.skewness = tri_skewness_func(self.p1, self.p2, self.p3)
         return self.skewness
 
     def get_element_size(self):
@@ -282,13 +297,6 @@ class Quadrilateral:
         return False
 
     def init_metrics(self, force_update=False):
-        # 直接导入质量计算函数
-        import sys
-        import os
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        from mesh_quality import quadrilateral_shape_quality, quadrilateral_skewness
-        
         if self.area is None or force_update:
             self.area = quadrilateral_area(self.p1, self.p2, self.p3, self.p4)
             if self.area == 0.0:
@@ -296,7 +304,8 @@ class Quadrilateral:
                     f"四边形面积异常：{self.area}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
         if self.quality is None or force_update:
-            self.quality = quadrilateral_shape_quality(
+            quad_shape_quality_func = _get_quadrilateral_shape_quality()
+            self.quality = quad_shape_quality_func(
                 self.p1, self.p2, self.p3, self.p4
             )
             # self.quality = self.get_skewness()
@@ -305,13 +314,14 @@ class Quadrilateral:
                     f"四边形质量异常：{self.quality}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
         if self.skewness is None or force_update:
-            self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+            quad_skewness_func = _get_quadrilateral_skewness()
+            self.skewness = quad_skewness_func(self.p1, self.p2, self.p3, self.p4)
 
     def get_skewness(self):
         if self.skewness is None:
-            # 动态导入质量计算函数，避免循环导入
-            from optimize.mesh_quality import quadrilateral_skewness
-            self.skewness = quadrilateral_skewness(self.p1, self.p2, self.p3, self.p4)
+            # 动态 import to avoid circular import
+            quad_skewness_func = _get_quadrilateral_skewness()
+            self.skewness = quad_skewness_func(self.p1, self.p2, self.p3, self.p4)
         return self.skewness
 
     def get_area(self):
@@ -321,9 +331,9 @@ class Quadrilateral:
 
     def get_quality(self):
         if self.quality is None:
-            # 动态导入质量计算函数，避免循环导入
-            from optimize.mesh_quality import quadrilateral_shape_quality
-            self.quality = quadrilateral_shape_quality(self.p1, self.p2, self.p3, self.p4)
+            # 动态 import to avoid circular import
+            quad_shape_quality_func = _get_quadrilateral_shape_quality()
+            self.quality = quad_shape_quality_func(self.p1, self.p2, self.p3, self.p4)
         return self.quality
 
     def get_element_size(self):
@@ -333,9 +343,9 @@ class Quadrilateral:
 
     def get_aspect_ratio(self):
         """基于最大/最小边长的长宽比"""
-        # 动态导入质量计算函数，避免循环导入
-        from optimize.mesh_quality import quadrilateral_aspect_ratio
-        return quadrilateral_aspect_ratio(self.p1, self.p2, self.p3, self.p4)
+        # 动态 import to avoid circular import
+        quad_aspect_ratio_func = _get_quadrilateral_aspect_ratio()
+        return quad_aspect_ratio_func(self.p1, self.p2, self.p3, self.p4)
 
     def get_aspect_ratio2(self):
         """基于底边/侧边的长宽比"""

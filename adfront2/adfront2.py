@@ -1,22 +1,22 @@
 import heapq
 import matplotlib.pyplot as plt
 
-from geom_toolkit import (
+from utils.geom_toolkit import (
     is_left2d,
     calculate_distance2,
 )
-from mesh_quality import triangle_shape_quality
-from front2d import Front
-from basic_elements import (
+from optimize.mesh_quality import triangle_shape_quality
+from data_structure.front2d import Front
+from data_structure.basic_elements import (
     NodeElement,
     Triangle,
     Quadrilateral,
     Unstructured_Grid,
     LineSegment,
 )
-from timer import TimeSpan
-from message import info, debug, verbose, warning, error
-from rtree_space import (
+from utils.timer import TimeSpan
+from utils.message import info, debug, verbose, warning, error
+from data_structure.rtree_space import (
     build_space_index_with_RTree,
     add_elems_to_space_index_with_RTree,
     get_candidate_elements_id,

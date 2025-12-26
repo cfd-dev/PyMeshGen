@@ -7,7 +7,15 @@ from utils import geom_toolkit as geom_tool
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose, warning, error
 from data_structure.basic_elements import Triangle, Quadrilateral
-from .mesh_quality import quadrilateral_quality2
+import sys
+from pathlib import Path
+
+# Ensure the optimize module directory is in the path
+optimize_dir = str(Path(__file__).parent)
+if optimize_dir not in sys.path:
+    sys.path.insert(0, optimize_dir)
+
+from mesh_quality import quadrilateral_quality2
 
 def optimize_hybrid_grid(hybrid_grid):
     """调用外部混合网格优化软件进行优化"""  

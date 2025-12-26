@@ -137,8 +137,27 @@ def quadrilateral_shape_quality(p1, p2, p3, p4):
         return 0.0
 
     # 计算对角线交点
-    seg1 = LineSegment(p1, p3)
-    seg2 = LineSegment(p2, p4)
+    # Define a simple line segment class to avoid circular import
+    class SimpleLineSegment:
+        def __init__(self, p1, p2):
+            self.p1 = p1
+            self.p2 = p2
+            self.length = calculate_distance(self.p1, self.p2)
+            self.bbox = [
+                min(self.p1[0], self.p2[0]),
+                min(self.p1[1], self.p2[1]),
+                max(self.p1[0], self.p2[0]),
+                max(self.p1[1], self.p2[1]),
+            ]
+
+        def is_intersect(self, line):
+            """判断两条线段是否相交"""
+            p3 = line.p1
+            p4 = line.p2
+            return segments_intersect(self.p1, self.p2, p3, p4)
+
+    seg1 = SimpleLineSegment(p1, p3)
+    seg2 = SimpleLineSegment(p2, p4)
     if not seg1.is_intersect(seg2):
         return 0.0
 

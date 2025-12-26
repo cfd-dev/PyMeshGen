@@ -5,21 +5,20 @@ from pathlib import Path
 # 获取项目根目录
 project_root = str(Path(__file__).parent)
 
-# 将项目根目录和所有子目录添加到sys.path
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils"]:
-    sys.path.append(str(Path(project_root) / subdir))
+# 将项目根目录添加到sys.path - DO THIS FIRST before any imports
+sys.path.insert(0, project_root)  # Add project root first
 
-# 直接从文件导入，避免包导入问题
-from read_cas import parse_fluent_msh
-from front2d import construct_initial_front
+# Now import modules using proper package structure
+from fileIO.read_cas import parse_fluent_msh
+from data_structure.front2d import construct_initial_front
 from meshsize import QuadtreeSizing
-from adfront2 import Adfront2
-from adlayers2 import Adlayers2
-from mesh_visualization import Visualization
-from parameters import Parameters
-from optimize import edge_swap, laplacian_smooth
-from timer import TimeSpan
-from message import info
+from adfront2.adfront2 import Adfront2
+from adfront2.adlayers2 import Adlayers2
+from visualization.mesh_visualization import Visualization
+from data_structure.parameters import Parameters
+from optimize.optimize import edge_swap, laplacian_smooth
+from utils.timer import TimeSpan
+from utils.message import info
 
 
 def generate_mesh(parameters, mesh_data=None, gui_instance=None):

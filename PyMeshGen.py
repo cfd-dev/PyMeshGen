@@ -10,7 +10,7 @@ sys.path.append(project_root)
 
 # 导入核心网格生成模块
 from core import generate_mesh
-from parameters import Parameters
+from data_structure.parameters import Parameters
 
 
 # 全局GUI引用 - 保留用于向后兼容

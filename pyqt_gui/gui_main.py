@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
 
+# Setup project paths before any imports that might depend on other modules
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
@@ -32,6 +33,7 @@ for dir_path in SUB_DIRS:
     if dir_path not in sys.path:
         sys.path.insert(0, dir_path)
 
+# Import modules after setting up paths
 from pyqt_gui.gui_base import (
     StatusBar, InfoOutput, DialogBase,
     Splitter, PartListWidget
@@ -40,14 +42,8 @@ from pyqt_gui.ribbon_widget import RibbonWidget
 from pyqt_gui.mesh_display import MeshDisplayArea
 from pyqt_gui.ui_utils import UIStyles
 from data_structure.parameters import Parameters
-# 从core模块导入网格生成函数
-import sys
-import os
-from pathlib import Path
 
-# 获取项目根目录
-project_root = str(Path(__file__).parent.parent)
-sys.path.append(project_root)
+# 从core模块导入网格生成函数
 from core import generate_mesh
 
 
