@@ -527,18 +527,48 @@ class Unstructured_Grid:
 
     def quality_histogram(self, ax=None):
         """绘制质量直方图"""
-        # 绘制直方图
-        quality_values = [
-            c.quality for c in self.cell_container if c.quality is not None
-        ]
-        
+        # 计算所有单元的质量值（如果尚未计算）
+        quality_values = []
+        for c in self.cell_container:
+            if c.quality is None:
+                # 如果质量未计算，则计算它
+                c.quality = c.get_quality()
+            if c.quality is not None:
+                quality_values.append(c.quality)
+
+        if not quality_values:
+            # 如果没有有效的质量值，显示提示信息
+            if ax is None:
+                import matplotlib.pyplot as plt
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.text(0.5, 0.5, 'No quality data available',
+                        horizontalalignment='center', verticalalignment='center',
+                        transform=ax.transAxes, fontsize=14)
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.set_xlabel("Quality")
+                ax.set_ylabel("Number of Cells")
+                ax.set_title("Quality Histogram")
+                plt.show(block=False)
+            else:
+                ax.text(0.5, 0.5, 'No quality data available',
+                        horizontalalignment='center', verticalalignment='center',
+                        transform=ax.transAxes, fontsize=14)
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.set_xlabel("Quality")
+                ax.set_ylabel("Number of Cells")
+                ax.set_title("Quality Histogram")
+            return
+
         if ax is None:
             # 如果没有提供ax，则创建新的figure（用于命令行模式）
+            import matplotlib.pyplot as plt
             plt.figure(figsize=(10, 6))
             plt.hist(quality_values, bins=10, alpha=0.7, color="blue")
             plt.xlim(0, 1)
             plt.xticks(np.arange(0, 1.1, 0.1))
-            plt.xlabel("Skewness Quality")
+            plt.xlabel("Quality")
             plt.ylabel("Number of Cells")
             plt.title("Quality Histogram")
             plt.show(block=False)
@@ -547,9 +577,65 @@ class Unstructured_Grid:
             ax.hist(quality_values, bins=10, alpha=0.7, color="blue")
             ax.set_xlim(0, 1)
             ax.set_xticks(np.arange(0, 1.1, 0.1))
-            ax.set_xlabel("Skewness Quality")
+            ax.set_xlabel("Quality")
             ax.set_ylabel("Number of Cells")
             ax.set_title("Quality Histogram")
+
+    def skewness_histogram(self, ax=None):
+        """绘制偏斜度直方图"""
+        # 计算所有单元的偏斜度值（如果尚未计算）
+        skewness_values = []
+        for c in self.cell_container:
+            if c.skewness is None:
+                # 如果偏斜度未计算，则计算它
+                c.skewness = c.get_skewness()
+            if c.skewness is not None:
+                skewness_values.append(c.skewness)
+
+        if not skewness_values:
+            # 如果没有有效的偏斜度值，显示提示信息
+            if ax is None:
+                import matplotlib.pyplot as plt
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.text(0.5, 0.5, 'No skewness data available',
+                        horizontalalignment='center', verticalalignment='center',
+                        transform=ax.transAxes, fontsize=14)
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.set_xlabel("Skewness")
+                ax.set_ylabel("Number of Cells")
+                ax.set_title("Skewness Histogram")
+                plt.show(block=False)
+            else:
+                ax.text(0.5, 0.5, 'No skewness data available',
+                        horizontalalignment='center', verticalalignment='center',
+                        transform=ax.transAxes, fontsize=14)
+                ax.set_xlim(0, 1)
+                ax.set_ylim(0, 1)
+                ax.set_xlabel("Skewness")
+                ax.set_ylabel("Number of Cells")
+                ax.set_title("Skewness Histogram")
+            return
+
+        if ax is None:
+            # 如果没有提供ax，则创建新的figure（用于命令行模式）
+            import matplotlib.pyplot as plt
+            plt.figure(figsize=(10, 6))
+            plt.hist(skewness_values, bins=10, alpha=0.7, color="red")
+            plt.xlim(0, 1)
+            plt.xticks(np.arange(0, 1.1, 0.1))
+            plt.xlabel("Skewness")
+            plt.ylabel("Number of Cells")
+            plt.title("Skewness Histogram")
+            plt.show(block=False)
+        else:
+            # 如果提供了ax（用于GUI模式），则使用现有的axes
+            ax.hist(skewness_values, bins=10, alpha=0.7, color="red")
+            ax.set_xlim(0, 1)
+            ax.set_xticks(np.arange(0, 1.1, 0.1))
+            ax.set_xlabel("Skewness")
+            ax.set_ylabel("Number of Cells")
+            ax.set_title("Skewness Histogram")
 
     def visualize_unstr_grid_2d(self, visual_obj=None):
         """可视化二维网格"""

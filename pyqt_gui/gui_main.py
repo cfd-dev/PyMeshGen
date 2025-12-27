@@ -1189,8 +1189,70 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info("显示网格功能暂未实现")
 
     def check_mesh_quality(self):
-        """检查网格质量"""
-        self.log_info("检查网格质量功能暂未实现")
+        """检查网格质量 - 显示网格质量skewness直方图"""
+        try:
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "请先生成或导入网格")
+                self.log_info("未找到网格数据，无法检查质量")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查当前网格是否是Unstructured_Grid对象（包含quality_histogram方法）
+            if hasattr(self.current_mesh, 'quality_histogram'):
+                # 首先确保所有单元的质量和偏斜度值都已计算
+                if hasattr(self.current_mesh, 'cell_container'):
+                    for cell in self.current_mesh.cell_container:
+                        if hasattr(cell, 'init_metrics'):
+                            cell.init_metrics()  # 初始化质量指标
+
+                # 创建matplotlib figure
+                from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+                from matplotlib.figure import Figure
+                from PyQt5.QtWidgets import QDialog, QVBoxLayout
+                import matplotlib.pyplot as plt
+
+                # 创建对话框来显示直方图
+                dialog = QDialog(self)
+                dialog.setWindowTitle("网格质量分析")
+                dialog.setGeometry(100, 100, 800, 600)
+
+                layout = QVBoxLayout(dialog)
+
+                # 创建matplotlib figure
+                fig = Figure(figsize=(10, 6), dpi=100)
+                canvas = FigureCanvas(fig)
+
+                # 获取偏斜度直方图
+                ax = fig.add_subplot(111)
+                self.current_mesh.skewness_histogram(ax)
+
+                layout.addWidget(canvas)
+
+                # 添加关闭按钮
+                from PyQt5.QtWidgets import QPushButton
+                close_btn = QPushButton("关闭")
+                close_btn.clicked.connect(dialog.close)
+                layout.addWidget(close_btn)
+
+                # 显示对话框
+                dialog.exec_()
+
+                self.log_info("网格质量分析完成")
+                self.update_status("网格质量分析完成")
+            else:
+                # 如果current_mesh不是Unstructured_Grid对象，尝试从其他来源获取网格
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.information(self, "提示", "当前网格数据不支持质量分析功能")
+                self.log_info("当前网格数据不支持质量分析")
+                self.update_status("网格数据不支持质量分析")
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"网格质量分析失败：{str(e)}")
+            self.log_info(f"网格质量分析失败：{str(e)}")
+            self.update_status("网格质量分析失败")
 
     def smooth_mesh(self):
         """平滑网格"""
