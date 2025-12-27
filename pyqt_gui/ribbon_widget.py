@@ -220,6 +220,10 @@ class RibbonWidget(QWidget):
         self.buttons['view']['points'] = display_group.add_small_button("点云", tooltip="点云模式 (4键)")
         layout.addWidget(display_group)
 
+        background_group = RibbonGroup("")
+        self.buttons['view']['background'] = background_group.add_small_button("背景色", tooltip="设置背景色")
+        layout.addWidget(background_group)
+
         layout.addStretch(1)
 
         tab_widget.setLayout(layout)
@@ -323,6 +327,7 @@ class RibbonWidget(QWidget):
         self.buttons['view']['wireframe'].clicked.connect(lambda: main_window.set_render_mode("wireframe"))
         self.buttons['view']['mixed'].clicked.connect(lambda: main_window.set_render_mode("mixed"))
         self.buttons['view']['points'].clicked.connect(lambda: main_window.set_render_mode("points"))
+        self.buttons['view']['background'].clicked.connect(main_window.set_background_color)
 
         # Config tab callbacks
         self.buttons['config']['params'].clicked.connect(main_window.edit_params)

@@ -92,7 +92,10 @@ class MeshDisplayArea:
         self.frame = QVTKRenderWindowInteractor(parent)
 
         self.renderer = vtk.vtkRenderer()
-        self.renderer.SetBackground(1.0, 1.0, 1.0)
+        # 设置蓝色到白色的渐变背景
+        self.renderer.SetBackground(0.9, 0.9, 1.0)  # 浅蓝色背景
+        self.renderer.SetBackground2(1.0, 1.0, 1.0)  # 白色背景
+        self.renderer.SetGradientBackground(True)  # 启用渐变背景
 
         self.render_window = self.frame.GetRenderWindow()
         self.render_window.AddRenderer(self.renderer)
@@ -110,6 +113,9 @@ class MeshDisplayArea:
 
         self.mesh_actor = None
         self.boundary_actors = []
+        
+        # 在创建显示区域后立即添加坐标轴
+        self.add_axes()
 
         return self.frame
 
@@ -825,6 +831,30 @@ class MeshDisplayArea:
             # 更新渲染窗口
             self.render_window.Render()
     
+    def set_background_gradient(self, color1, color2):
+        """设置渐变背景色
+        
+        Args:
+            color1 (tuple): 第一个颜色 (R, G, B)，范围0-1
+            color2 (tuple): 第二个颜色 (R, G, B)，范围0-1
+        """
+        if self.renderer:
+            self.renderer.SetBackground(color1[0], color1[1], color1[2])
+            self.renderer.SetBackground2(color2[0], color2[1], color2[2])
+            self.renderer.SetGradientBackground(True)
+            self.render_window.Render()
+    
+    def set_background_color(self, color):
+        """设置单一背景色
+        
+        Args:
+            color (tuple): 颜色 (R, G, B)，范围0-1
+        """
+        if self.renderer:
+            self.renderer.SetBackground(color[0], color[1], color[2])
+            self.renderer.SetGradientBackground(False)
+            self.render_window.Render()
+
     def reset_view(self):
         """重置视图到xy平面"""
         if self.renderer:

@@ -2076,6 +2076,166 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
         QMessageBox.about(self, "快捷键", shortcuts_text)
 
+    def set_background_color(self):
+        """设置视图区背景色"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QColorDialog, QLabel, QComboBox, QGroupBox
+        
+        # 创建对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle("设置背景色")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        
+        # 创建布局
+        layout = QVBoxLayout(dialog)
+        
+        # 背景模式选择
+        mode_group = QGroupBox("背景模式")
+        mode_layout = QHBoxLayout(mode_group)
+        
+        mode_label = QLabel("背景模式:")
+        mode_combo = QComboBox()
+        mode_combo.addItems(["渐变背景", "单一颜色"])
+        mode_layout.addWidget(mode_label)
+        mode_layout.addWidget(mode_combo)
+        
+        # 颜色选择区域
+        color_group = QGroupBox("颜色设置")
+        color_layout = QVBoxLayout(color_group)
+        
+        # 第一个颜色选择
+        color1_layout = QHBoxLayout()
+        color1_label = QLabel("起始颜色:")
+        color1_button = QPushButton()
+        color1_button.setFixedSize(50, 30)
+        color1_button.setStyleSheet("background-color: rgb(230, 230, 255)")  # 浅蓝色
+        color1_layout.addWidget(color1_label)
+        color1_layout.addWidget(color1_button)
+        color1_layout.addStretch()
+        
+        # 第二个颜色选择
+        color2_layout = QHBoxLayout()
+        color2_label = QLabel("结束颜色:")
+        color2_button = QPushButton()
+        color2_button.setFixedSize(50, 30)
+        color2_button.setStyleSheet("background-color: rgb(255, 255, 255)")  # 白色
+        color2_layout.addWidget(color2_label)
+        color2_layout.addWidget(color2_button)
+        color2_layout.addStretch()
+        
+        color_layout.addLayout(color1_layout)
+        color_layout.addLayout(color2_layout)
+        
+        # 预设方案
+        preset_group = QGroupBox("预设方案")
+        preset_layout = QHBoxLayout(preset_group)
+        
+        def set_preset_blue_white():
+            nonlocal color1, color2
+            mode_combo.setCurrentIndex(0)  # 渐变背景
+            color1 = (0.9, 0.9, 1.0)  # 浅蓝色
+            color1_button.setStyleSheet("background-color: rgb(230, 230, 255)")
+            color2 = (1.0, 1.0, 1.0)  # 白色
+            color2_button.setStyleSheet("background-color: rgb(255, 255, 255)")
+            
+        def set_preset_black_white():
+            nonlocal color1, color2
+            mode_combo.setCurrentIndex(0)  # 渐变背景
+            color1 = (0.0, 0.0, 0.0)  # 黑色
+            color1_button.setStyleSheet("background-color: rgb(0, 0, 0)")
+            color2 = (1.0, 1.0, 1.0)  # 白色
+            color2_button.setStyleSheet("background-color: rgb(255, 255, 255)")
+            
+        def set_preset_white():
+            nonlocal color1, color2
+            mode_combo.setCurrentIndex(1)  # 单一颜色
+            color1 = (1.0, 1.0, 1.0)  # 白色
+            color1_button.setStyleSheet("background-color: rgb(255, 255, 255)")
+            color2 = (1.0, 1.0, 1.0)  # 白色
+            color2_button.setStyleSheet("background-color: rgb(255, 255, 255)")
+            
+        blue_white_btn = QPushButton("蓝-白渐变")
+        blue_white_btn.clicked.connect(set_preset_blue_white)
+        
+        black_white_btn = QPushButton("黑-白渐变")
+        black_white_btn.clicked.connect(set_preset_black_white)
+        
+        white_btn = QPushButton("纯白背景")
+        white_btn.clicked.connect(set_preset_white)
+        
+        preset_layout.addWidget(blue_white_btn)
+        preset_layout.addWidget(black_white_btn)
+        preset_layout.addWidget(white_btn)
+        
+        # 按钮区域
+        button_layout = QHBoxLayout()
+        apply_button = QPushButton("应用")
+        cancel_button = QPushButton("取消")
+        
+        button_layout.addStretch()
+        button_layout.addWidget(apply_button)
+        button_layout.addWidget(cancel_button)
+        
+        # 添加所有组件到主布局
+        layout.addWidget(mode_group)
+        layout.addWidget(color_group)
+        layout.addWidget(preset_group)
+        layout.addStretch()
+        layout.addLayout(button_layout)
+        
+        # 存储颜色值
+        color1 = (0.9, 0.9, 1.0)  # 默认浅蓝色
+        color2 = (1.0, 1.0, 1.0)  # 默认白色
+        
+        # 颜色选择事件
+        def choose_color1():
+            nonlocal color1
+            current_color = color1_button.palette().color(color1_button.backgroundRole())
+            color = QColorDialog.getColor(current_color, dialog, "选择起始颜色")
+            if color.isValid():
+                color1 = (color.redF(), color.greenF(), color.blueF())
+                color1_button.setStyleSheet(f"background-color: rgb({color.red()}, {color.green()}, {color.blue()})")
+        
+        def choose_color2():
+            nonlocal color2
+            current_color = color2_button.palette().color(color2_button.backgroundRole())
+            color = QColorDialog.getColor(current_color, dialog, "选择结束颜色")
+            if color.isValid():
+                color2 = (color.redF(), color.greenF(), color.blueF())
+                color2_button.setStyleSheet(f"background-color: rgb({color.red()}, {color.green()}, {color.blue()})")
+        
+        color1_button.clicked.connect(choose_color1)
+        color2_button.clicked.connect(choose_color2)
+        
+        # 模式切换事件
+        def on_mode_changed(index):
+            if index == 0:  # 渐变背景
+                color2_label.setEnabled(True)
+                color2_button.setEnabled(True)
+            else:  # 单一颜色
+                color2_label.setEnabled(False)
+                color2_button.setEnabled(False)
+        
+        mode_combo.currentIndexChanged.connect(on_mode_changed)
+        
+        # 应用按钮事件
+        def apply_background():
+            if hasattr(self, 'mesh_display'):
+                if mode_combo.currentIndex() == 0:  # 渐变背景
+                    self.mesh_display.set_background_gradient(color1, color2)
+                    self.log_info(f"已设置渐变背景色: 起始色{color1}, 结束色{color2}")
+                else:  # 单一颜色
+                    self.mesh_display.set_background_color(color1)
+                    self.log_info(f"已设置单一背景色: {color1}")
+                self.update_status("背景色已更新")
+            dialog.accept()
+        
+        apply_button.clicked.connect(apply_background)
+        cancel_button.clicked.connect(dialog.reject)
+        
+        # 显示对话框
+        dialog.exec_()
+
     def toggle_fullscreen(self):
         """切换全屏显示"""
         if self.isFullScreen():
