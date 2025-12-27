@@ -1424,12 +1424,243 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.update_status("网格优化失败")
 
     def show_mesh_statistics(self):
-        """显示网格统计信息"""
-        self.log_info("显示网格统计信息功能暂未实现")
+        """显示网格统计信息 - 包括网格单元信息和质量统计"""
+        try:
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "请先生成或导入网格")
+                self.log_info("未找到网格数据，无法显示统计信息")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查当前网格是否支持统计
+            if not hasattr(self.current_mesh, 'cell_container'):
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "当前网格格式不支持统计功能")
+                self.log_info("当前网格格式不支持统计功能")
+                self.update_status("网格格式不支持")
+                return
+
+            # 确保所有单元的质量和偏斜度值都已计算
+            if hasattr(self.current_mesh, 'cell_container'):
+                for cell in self.current_mesh.cell_container:
+                    if hasattr(cell, 'init_metrics'):
+                        cell.init_metrics()  # 初始化质量指标
+
+            # 收集网格统计信息
+            num_cells = len(self.current_mesh.cell_container)
+            num_nodes = len(self.current_mesh.node_coords)
+            num_boundary_nodes = len(self.current_mesh.boundary_nodes)
+
+            # 计算网格维度
+            if num_nodes > 0:
+                dim = len(self.current_mesh.node_coords[0])
+            else:
+                dim = 0
+
+            # 计算边数
+            self.current_mesh.calculate_edges()
+            num_edges = len(self.current_mesh.edges)
+
+            # 收集质量统计信息
+            quality_values = []
+            skewness_values = []
+            triangle_count = 0
+            quadrilateral_count = 0
+
+            for cell in self.current_mesh.cell_container:
+                if cell.quality is not None:
+                    quality_values.append(cell.quality)
+                if cell.skewness is not None:
+                    skewness_values.append(cell.skewness)
+
+                # 统计单元类型
+                if hasattr(cell, 'p3') and not hasattr(cell, 'p4'):  # Triangle
+                    triangle_count += 1
+                elif hasattr(cell, 'p4'):  # Quadrilateral
+                    quadrilateral_count += 1
+
+            # 构建统计信息字符串
+            stats_info = f"网格统计信息:\n"
+            stats_info += f"  维度: {dim}\n"
+            stats_info += f"  总单元数: {num_cells}\n"
+            stats_info += f"  节点数: {num_nodes}\n"
+            stats_info += f"  边界节点数: {num_boundary_nodes}\n"
+            stats_info += f"  边数: {num_edges}\n"
+            stats_info += f"  三角形单元数: {triangle_count}\n"
+            stats_info += f"  四边形单元数: {quadrilateral_count}\n"
+
+            # 添加质量统计信息
+            if quality_values:
+                stats_info += f"\n质量统计:\n"
+                stats_info += f"  最小质量值: {min(quality_values):.4f}\n"
+                stats_info += f"  最大质量值: {max(quality_values):.4f}\n"
+                stats_info += f"  平均质量值: {sum(quality_values)/len(quality_values):.4f}\n"
+                stats_info += f"  质量值样本数: {len(quality_values)}\n"
+            else:
+                stats_info += f"\n质量统计: 无质量数据\n"
+
+            # 添加偏斜度统计信息
+            if skewness_values:
+                stats_info += f"\n偏斜度统计:\n"
+                stats_info += f"  最小偏斜度: {min(skewness_values):.4f}\n"
+                stats_info += f"  最大偏斜度: {max(skewness_values):.4f}\n"
+                stats_info += f"  平均偏斜度: {sum(skewness_values)/len(skewness_values):.4f}\n"
+                stats_info += f"  偏斜度样本数: {len(skewness_values)}\n"
+            else:
+                stats_info += f"\n偏斜度统计: 无偏斜度数据\n"
+
+            # 输出统计信息到信息窗口
+            self.log_info(stats_info)
+            self.update_status("网格统计信息显示完成")
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"显示网格统计信息失败：{str(e)}")
+            self.log_info(f"显示网格统计信息失败：{str(e)}")
+            self.update_status("统计信息显示失败")
 
     def export_mesh_report(self):
-        """导出网格报告"""
-        self.log_info("导出网格报告功能暂未实现")
+        """导出网格报告 - 将网格生成的主要参数、部件参数和生成结果写到md文档中"""
+        try:
+            from PyQt5.QtWidgets import QFileDialog, QMessageBox
+            import os
+            import time
+
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                QMessageBox.warning(self, "警告", "请先生成或导入网格")
+                self.log_info("未找到网格数据，无法导出报告")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查是否有参数配置
+            has_params = hasattr(self, 'params') and self.params
+            has_parts = hasattr(self, 'parts_params') and self.parts_params
+
+            # 打开文件保存对话框
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "导出网格报告",
+                os.path.join(self.project_root, "reports", f"mesh_report_{int(time.time())}.md"),
+                "Markdown文件 (*.md)"
+            )
+
+            if not file_path:
+                self.log_info("网格报告导出已取消")
+                self.update_status("报告导出已取消")
+                return
+
+            # 构建报告内容
+            report_content = f"""# 网格生成报告\n\n"""
+
+            # 添加时间戳
+            report_content += f"**生成时间**: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+
+            # 添加网格基本信息
+            report_content += f"## 网格基本信息\n\n"
+            if hasattr(self.current_mesh, 'cell_container'):
+                report_content += f"- **总单元数**: {len(self.current_mesh.cell_container)}\n"
+            if hasattr(self.current_mesh, 'node_coords'):
+                report_content += f"- **节点数**: {len(self.current_mesh.node_coords)}\n"
+            if hasattr(self.current_mesh, 'boundary_nodes'):
+                report_content += f"- **边界节点数**: {len(self.current_mesh.boundary_nodes)}\n"
+
+            # 添加主要参数信息
+            report_content += f"\n## 主要参数配置\n\n"
+            if has_params:
+                report_content += f"- **调试级别**: {getattr(self.params, 'debug_level', 'N/A')}\n"
+                report_content += f"- **网格类型**: {getattr(self.params, 'mesh_type', 'N/A')}\n"
+                report_content += f"- **输入文件**: {getattr(self.params, 'input_file', 'N/A')}\n"
+                report_content += f"- **输出文件**: {getattr(self.params, 'output_file', 'N/A')}\n"
+                report_content += f"- **可视化启用**: {getattr(self.params, 'viz_enabled', 'N/A')}\n"
+            else:
+                report_content += f"- **参数配置**: 未找到参数配置\n"
+
+            # 添加部件参数信息
+            report_content += f"\n## 部件参数配置\n\n"
+            if has_parts and self.parts_params:
+                for i, part in enumerate(self.parts_params):
+                    report_content += f"### 部件 {i+1}: {part.get('part_name', 'Unknown')}\n"
+                    report_content += f"- **最大尺寸**: {part.get('max_size', 'N/A')}\n"
+                    report_content += f"- **PRISM开关**: {part.get('PRISM_SWITCH', 'N/A')}\n"
+                    report_content += f"- **第一层高度**: {part.get('first_height', 'N/A')}\n"
+                    report_content += f"- **增长比率**: {part.get('growth_rate', 'N/A')}\n"
+                    report_content += f"- **增长方法**: {part.get('growth_method', 'N/A')}\n"
+                    report_content += f"- **最大层数**: {part.get('max_layers', 'N/A')}\n"
+                    report_content += f"- **完整层数**: {part.get('full_layers', 'N/A')}\n"
+                    report_content += f"- **多方向**: {part.get('multi_direction', 'N/A')}\n\n"
+            else:
+                report_content += f"- **部件参数**: 未找到部件参数\n\n"
+
+            # 添加网格质量统计信息
+            report_content += f"## 网格质量统计\n\n"
+
+            # 计算质量统计
+            quality_values = []
+            skewness_values = []
+
+            if hasattr(self.current_mesh, 'cell_container'):
+                for cell in self.current_mesh.cell_container:
+                    if hasattr(cell, 'init_metrics'):
+                        cell.init_metrics()  # 确保计算了质量指标
+                    if cell.quality is not None:
+                        quality_values.append(cell.quality)
+                    if cell.skewness is not None:
+                        skewness_values.append(cell.skewness)
+
+            if quality_values:
+                report_content += f"- **最小质量值**: {min(quality_values):.4f}\n"
+                report_content += f"- **最大质量值**: {max(quality_values):.4f}\n"
+                report_content += f"- **平均质量值**: {sum(quality_values)/len(quality_values):.4f}\n"
+            else:
+                report_content += f"- **质量统计**: 无质量数据\n"
+
+            if skewness_values:
+                report_content += f"- **最小偏斜度**: {min(skewness_values):.4f}\n"
+                report_content += f"- **最大偏斜度**: {max(skewness_values):.4f}\n"
+                report_content += f"- **平均偏斜度**: {sum(skewness_values)/len(skewness_values):.4f}\n"
+            else:
+                report_content += f"- **偏斜度统计**: 无偏斜度数据\n"
+
+            # 添加生成结果信息
+            report_content += f"\n## 生成结果\n\n"
+            report_content += f"- **网格生成状态**: 成功完成\n"
+            report_content += f"- **网格格式**: Unstructured Grid\n"
+            if hasattr(self.current_mesh, 'cell_container'):
+                # 统计单元类型
+                triangle_count = 0
+                quadrilateral_count = 0
+                for cell in self.current_mesh.cell_container:
+                    # 检查单元类型：Triangle有p1, p2, p3; Quadrilateral有p1, p2, p3, p4
+                    if hasattr(cell, 'p4'):  # 四边形有4个点
+                        quadrilateral_count += 1
+                    elif hasattr(cell, 'p3'):  # 三角形有3个点
+                        triangle_count += 1
+                    # 如果既没有p4也没有p3，可能是其他类型的单元或无效单元
+
+                report_content += f"- **三角形单元数**: {triangle_count}\n"
+                report_content += f"- **四边形单元数**: {quadrilateral_count}\n"
+
+            # 添加备注信息
+            report_content += f"\n## 备注\n\n"
+            report_content += f"- 本报告由 PyMeshGen 自动生成\n"
+            report_content += f"- 如需更多信息，请查看控制台输出日志\n"
+
+            # 写入文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(report_content)
+
+            # 显示完成信息
+            QMessageBox.information(self, "成功", f"网格报告已成功导出到：\n{file_path}")
+            self.log_info(f"网格报告已导出到: {file_path}")
+            self.update_status("网格报告导出完成")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导出网格报告失败：{str(e)}")
+            self.log_info(f"网格报告导出失败：{str(e)}")
+            self.update_status("报告导出失败")
 
     def show_quick_start(self):
         """显示快速入门"""
