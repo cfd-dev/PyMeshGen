@@ -929,9 +929,80 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def import_config(self):
         """导入配置"""
-        QMessageBox.information(self, "待开发", "导入配置功能正在开发中...")
-        self.log_info("导入配置功能待开发")
-        self.update_status("导入配置功能待开发")
+        import json
+        import os
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+        # 打开文件选择对话框
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入配置文件",
+            os.path.join(self.project_root, "config"),
+            "JSON文件 (*.json)"
+        )
+
+        if file_path:
+            try:
+                # 使用 Parameters 类的 import_config 方法
+                if hasattr(self, 'params') and self.params:
+                    # 如果已有参数对象，直接导入配置
+                    self.params.import_config(file_path)
+                    self.log_info(f"配置已从 {file_path} 导入")
+                else:
+                    # 如果没有现有参数对象，创建新的参数对象
+                    from data_structure.parameters import Parameters
+                    self.params = Parameters('FROM_CASE_JSON', file_path)
+                    self.log_info(f"配置已从 {file_path} 导入")
+
+                # 将导入的参数转换为GUI期望的格式 (parts_params)
+                self.parts_params = []
+                for part_param in self.params.part_params:
+                    # 将 Part 对象转换为字典格式
+                    part_dict = {
+                        "part_name": part_param.part_name,
+                        "max_size": part_param.part_params.max_size,
+                        "PRISM_SWITCH": part_param.part_params.PRISM_SWITCH,
+                        "first_height": part_param.part_params.first_height,
+                        "growth_rate": part_param.part_params.growth_rate,
+                        "growth_method": part_param.part_params.growth_method,
+                        "max_layers": part_param.part_params.max_layers,
+                        "full_layers": part_param.part_params.full_layers,
+                        "multi_direction": part_param.part_params.multi_direction
+                    }
+                    self.parts_params.append(part_dict)
+
+                # 如果有部件参数列表，也需要更新显示
+                if hasattr(self, 'part_list_widget'):
+                    # Clear and repopulate the part list
+                    self.part_list_widget.clear()
+                    for part_param in self.params.part_params:
+                        item_text = f"{part_param.part_name} - Max Size: {part_param.part_params.max_size}, Prism: {part_param.part_params.PRISM_SWITCH}"
+                        self.part_list_widget.addItem(item_text)
+
+                # 询问用户是否直接生成网格
+                reply = QMessageBox.question(
+                    self,
+                    "配置导入成功",
+                    f"配置已成功从 {file_path} 导入\n是否立即开始生成网格？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+
+                if reply == QMessageBox.Yes:
+                    # 直接调用网格生成功能
+                    self.generate_mesh()
+                    self.update_status("配置导入并网格生成已启动")
+                else:
+                    QMessageBox.information(self, "成功", f"配置已成功从 {file_path} 导入")
+                    self.update_status("配置导入成功")
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导入配置失败：{str(e)}")
+                self.log_info(f"配置导入失败：{str(e)}")
+                self.update_status("配置导入失败")
+        else:
+            self.log_info("配置导入已取消")
+            self.update_status("配置导入已取消")
 
     def export_config(self):
         """导出配置"""

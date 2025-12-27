@@ -212,6 +212,54 @@ class Parameters:
         current_part = Part(params["part_name"], part_param, connectors)
         self.part_params.append(current_part)
 
+    def import_config(self, json_file_path):
+        """
+        从JSON文件中导入配置，并与相应部件进行关联
+        对于省略的参数，使用默认值
+
+        Args:
+            json_file_path: JSON配置文件路径
+        """
+        json_path = Path(json_file_path).resolve()
+
+        with open(json_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # 验证主要字段
+        self.check_main_fields(config)
+
+        # 更新主要参数（使用默认值如果未指定）
+        self.debug_level = config.get("debug_level", self.debug_level)
+        self.input_file = config.get("input_file", self.input_file)
+        self.output_file = config.get("output_file", self.output_file)
+        self.mesh_type = config.get("mesh_type", self.mesh_type)
+        self.viz_enabled = config.get("viz_enabled", self.viz_enabled)
+
+        # 保存原始的部件参数以便后续处理
+        original_part_params = {part.part_name: part for part in self.part_params}
+
+        # 重新创建部件参数列表
+        self.part_params = []
+
+        # 处理JSON中的部件配置
+        for part_config in config["parts"]:
+            # 检查是否已存在同名部件，如果存在则合并配置
+            if part_config["part_name"] in original_part_params:
+                # 如果存在同名部件，使用JSON配置覆盖，保留未指定的参数使用默认值
+                self._create_part_params(part_config)
+            else:
+                # 如果是新部件，直接创建
+                self._create_part_params(part_config)
+
+        # 对于JSON中未指定但原始配置中存在的部件，可以选择保留或移除
+        # 这里选择保留原始配置中的其他部件
+        existing_part_names = [part.part_name for part in self.part_params]
+        for part_name, part_obj in original_part_params.items():
+            if part_name not in existing_part_names:
+                self.part_params.append(part_obj)
+
+        print(f"成功从 {json_file_path} 导入配置，包含 {len(self.part_params)} 个部件")
+
 
 class MeshParameters:
     """网格生成参数"""
