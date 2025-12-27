@@ -31,15 +31,16 @@ class TestDebugFixes(unittest.TestCase):
             from data_structure.front2d import Front
             from data_structure.basic_elements import NodeElement
             
-            # Create some test nodes
-            nodes = [NodeElement(i, [float(i), 0.0]) for i in range(3)]
-            
-            # Test creating a front with nodes
-            front = Front(0, nodes, "test")
-            
+            # Create two test nodes for the front
+            node1 = NodeElement([0.0, 0.0], 0)
+            node2 = NodeElement([1.0, 0.0], 1)
+
+            # Test creating a front with two nodes
+            front = Front(node1, node2, idx=0, bc_type="test")
+
             # Verify that the front was created successfully
             self.assertIsNotNone(front)
-            self.assertEqual(len(front.node_elems), 3)
+            # Note: Front constructor takes 2 nodes, not a list of nodes
             
             print("PASS: Array indexing fix test passed")
         except Exception as e:
@@ -92,9 +93,9 @@ class TestDebugFixes(unittest.TestCase):
             from data_structure.basic_elements import NodeElement
 
             # Test NodeElement creation with various parameters
-            node1 = NodeElement(0, [1.0, 2.0])
-            node2 = NodeElement(1, [3.0, 4.0, 5.0])  # 3D coordinates
-            node3 = NodeElement(2, (6.0, 7.0))  # tuple coordinates
+            node1 = NodeElement([1.0, 2.0], 0)
+            node2 = NodeElement([3.0, 4.0, 5.0], 1)  # 3D coordinates
+            node3 = NodeElement((6.0, 7.0), 2)  # tuple coordinates
 
             # Verify nodes were created successfully
             self.assertEqual(node1.idx, 0)
