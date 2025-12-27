@@ -1312,12 +1312,116 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.update_status("网格质量分析失败")
 
     def smooth_mesh(self):
-        """平滑网格"""
-        self.log_info("平滑网格功能暂未实现")
+        """平滑网格 - 使用laplacian光滑算法"""
+        try:
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "请先生成或导入网格")
+                self.log_info("未找到网格数据，无法进行光滑处理")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查当前网格是否支持优化
+            if not hasattr(self.current_mesh, 'cell_container'):
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "当前网格格式不支持光滑处理")
+                self.log_info("当前网格格式不支持光滑处理")
+                self.update_status("网格格式不支持")
+                return
+
+            # 导入优化函数
+            from optimize.optimize import laplacian_smooth
+
+            # 显示开始信息
+            self.log_info("开始进行laplacian光滑处理...")
+            self.update_status("正在进行网格光滑处理...")
+
+            # 应用laplacian光滑算法
+            import time
+            start_time = time.time()
+
+            # 使用默认的迭代次数（可以根据需要调整）
+            self.current_mesh = laplacian_smooth(self.current_mesh, num_iter=3)
+
+            end_time = time.time()
+
+            # 更新网格显示
+            if hasattr(self, 'mesh_visualizer') and self.mesh_visualizer:
+                self.mesh_visualizer.update_mesh(self.current_mesh)
+
+            # 显示完成信息
+            self.log_info(f"laplacian光滑处理完成，耗时: {end_time - start_time:.3f}秒")
+            self.log_info(f"光滑后网格包含 {len(self.current_mesh.cell_container)} 个单元")
+            self.update_status("网格光滑处理完成")
+
+            # 刷新显示
+            if hasattr(self, 'canvas'):
+                self.canvas.draw()
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"网格光滑处理失败：{str(e)}")
+            self.log_info(f"网格光滑处理失败：{str(e)}")
+            self.update_status("网格光滑处理失败")
 
     def optimize_mesh(self):
-        """优化网格"""
-        self.log_info("优化网格功能暂未实现")
+        """优化网格 - 使用edge_swap和laplacian_smooth算法"""
+        try:
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "请先生成或导入网格")
+                self.log_info("未找到网格数据，无法进行优化")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查当前网格是否支持优化
+            if not hasattr(self.current_mesh, 'cell_container'):
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "当前网格格式不支持优化处理")
+                self.log_info("当前网格格式不支持优化处理")
+                self.update_status("网格格式不支持")
+                return
+
+            # 导入优化函数
+            from optimize.optimize import edge_swap, laplacian_smooth
+
+            # 显示开始信息
+            self.log_info("开始进行网格优化...")
+            self.update_status("正在进行网格优化...")
+
+            # 应用edge_swap优化
+            self.log_info("正在进行边交换优化...")
+            import time
+            start_time = time.time()
+
+            self.current_mesh = edge_swap(self.current_mesh)
+
+            # 应用laplacian光滑优化
+            self.log_info("正在进行laplacian光滑优化...")
+            self.current_mesh = laplacian_smooth(self.current_mesh, num_iter=3)
+
+            end_time = time.time()
+
+            # 更新网格显示
+            if hasattr(self, 'mesh_visualizer') and self.mesh_visualizer:
+                self.mesh_visualizer.update_mesh(self.current_mesh)
+
+            # 显示完成信息
+            self.log_info(f"网格优化完成，总耗时: {end_time - start_time:.3f}秒")
+            self.log_info(f"优化后网格包含 {len(self.current_mesh.cell_container)} 个单元")
+            self.update_status("网格优化完成")
+
+            # 刷新显示
+            if hasattr(self, 'canvas'):
+                self.canvas.draw()
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"网格优化失败：{str(e)}")
+            self.log_info(f"网格优化失败：{str(e)}")
+            self.update_status("网格优化失败")
 
     def show_mesh_statistics(self):
         """显示网格统计信息"""
