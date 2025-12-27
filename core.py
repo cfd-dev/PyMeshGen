@@ -23,19 +23,24 @@ from utils.message import info
 
 def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     """核心网格生成函数
-    
+
     调用底层算法生成网格，支持两种调用方式：
     1. 通过parameters参数传递配置文件路径，从文件中读取网格数据
     2. 直接通过mesh_data参数传递网格数据
-    
+
     Args:
         parameters: Parameters对象，包含网格生成的配置参数
         mesh_data: 可选，直接传入的网格数据对象，可以是MeshData对象、字典或其他类型
         gui_instance: 可选，GUI实例，用于在网格生成过程中输出信息和显示中间结果
-    
+
     Returns:
         生成的网格数据
     """
+    # 设置GUI实例到消息系统，确保所有info, error, warning等消息都能输出到GUI
+    if gui_instance:
+        from utils.message import set_gui_instance
+        set_gui_instance(gui_instance)
+
     # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
@@ -169,7 +174,7 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
         gui_instance.canvas.draw()
 
     # 输出网格信息
-    global_unstr_grid.summary()
+    global_unstr_grid.summary(gui_instance)
     # global_unstr_grid.quality_histogram(gui_instance.ax if gui_instance else None)
     
     # 输出信息到GUI
@@ -188,9 +193,14 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
 
     # 结束计时
     global_timer.show_to_console("程序运行正常退出.")
-    
+
     # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("程序运行正常退出")
+
+    # 重置消息系统中的GUI实例，避免影响后续操作
+    if gui_instance:
+        from utils.message import set_gui_instance
+        set_gui_instance(None)
     
     return global_unstr_grid

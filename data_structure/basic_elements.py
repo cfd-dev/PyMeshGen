@@ -486,20 +486,25 @@ class Unstructured_Grid:
         file_path = f"./out/debug_mesh_{status}.vtk"
         self.save_to_vtkfile(file_path)
 
-    def summary(self):
+    def summary(self, gui_instance=None):
         """输出网格信息"""
         self.num_cells = len(self.cell_container)
         self.num_nodes = len(self.node_coords)
         self.num_boundary_nodes = len(self.boundary_nodes)
         self.calculate_edges()
         self.num_edges = len(self.edges)
-        print(f"Mesh Summary:")
-        print(f"  Dimension: {self.dim}")
-        print(f"  Number of Cells: {self.num_cells}")
-        print(f"  Number of Nodes: {self.num_nodes}")
-        print(f"  Number of Boundary Nodes: {self.num_boundary_nodes}")
-        print(f"  Number of Edges: {self.num_edges}")
-        print(f"  Number of Faces: {self.num_faces}")
+
+        mesh_summary = f"Mesh Summary:\n"
+        mesh_summary += f"  Dimension: {self.dim}\n"
+        mesh_summary += f"  Number of Cells: {self.num_cells}\n"
+        mesh_summary += f"  Number of Nodes: {self.num_nodes}\n"
+        mesh_summary += f"  Number of Boundary Nodes: {self.num_boundary_nodes}\n"
+        mesh_summary += f"  Number of Edges: {self.num_edges}\n"
+        mesh_summary += f"  Number of Faces: {self.num_faces}\n"
+
+        print(mesh_summary.rstrip())  # Print to console
+        if gui_instance and hasattr(gui_instance, 'log_info'):
+            gui_instance.log_info(mesh_summary.rstrip())  # Output to GUI
 
         # 计算所有单元的质量
         for c in self.cell_container:
@@ -514,16 +519,27 @@ class Unstructured_Grid:
         skewness_values = [
             c.skewness for c in self.cell_container if c.skewness is not None
         ]
-        # 输出质量信息
-        print(f"Quality Statistics:")
-        print(f"  Min Quality: {min(quality_values):.4f}")
-        print(f"  Max Quality: {max(quality_values):.4f}")
-        print(f"  Mean Quality: {np.mean(quality_values):.4f}\n")
 
-        print(f"  Min Skewness: {min(skewness_values):.4f}")
-        print(f"  Max Skewness: {max(skewness_values):.4f}")
-        print(f"  Mean Skewness: {np.mean(skewness_values):.4f}")
-        print(f"  Min Area: {min(area_values):.4e}")
+        # 输出质量信息
+        if quality_values and skewness_values:
+            quality_stats = f"Quality Statistics:\n"
+            quality_stats += f"  Min Quality: {min(quality_values):.4f}\n"
+            quality_stats += f"  Max Quality: {max(quality_values):.4f}\n"
+            quality_stats += f"  Mean Quality: {np.mean(quality_values):.4f}\n\n"
+
+            quality_stats += f"  Min Skewness: {min(skewness_values):.4f}\n"
+            quality_stats += f"  Max Skewness: {max(skewness_values):.4f}\n"
+            quality_stats += f"  Mean Skewness: {np.mean(skewness_values):.4f}\n"
+            quality_stats += f"  Min Area: {min(area_values):.4e}\n"
+
+            print(quality_stats.rstrip())  # Print to console
+            if gui_instance and hasattr(gui_instance, 'log_info'):
+                gui_instance.log_info(quality_stats.rstrip())  # Output to GUI
+        else:
+            no_data_msg = "Quality Statistics:\n  No quality or skewness data available\n"
+            print(no_data_msg.rstrip())  # Print to console
+            if gui_instance and hasattr(gui_instance, 'log_info'):
+                gui_instance.log_info(no_data_msg.rstrip())  # Output to GUI
 
     def quality_histogram(self, ax=None):
         """绘制质量直方图"""
