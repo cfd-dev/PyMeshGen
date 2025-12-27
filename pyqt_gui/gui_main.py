@@ -284,83 +284,66 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _setup_ribbon_icons(self):
         """设置功能区图标"""
+        from pyqt_gui.icon_manager import get_icon
+
         for button_name, button in self.ribbon.buttons.get('file', {}).items():
-            button.setIcon(self._get_standard_icon({
+            icon_name = {
                 'new': 'document-new',
                 'open': 'document-open',
                 'save': 'document-save',
                 'import': 'document-import',
                 'export': 'document-export'
-            }.get(button_name, 'document-new')))
+            }.get(button_name, 'document-new')
+            button.setIcon(get_icon(icon_name))
 
         for button_name, button in self.ribbon.buttons.get('view', {}).items():
-            button.setIcon(self._get_standard_icon({
+            icon_name = {
                 'reset': 'view-refresh',
                 'fit': 'zoom-fit-best',
                 'zoom_in': 'zoom-in',
                 'zoom_out': 'zoom-out'
-            }.get(button_name, 'view-refresh')))
+            }.get(button_name, 'view-refresh')
+            button.setIcon(get_icon(icon_name))
 
         for button_name, button in self.ribbon.buttons.get('config', {}).items():
-            button.setIcon(self._get_standard_icon({
+            icon_name = {
                 'params': 'configure',
                 'mesh_params': 'configure',
                 'boundary': 'configure',
                 'import_config': 'document-properties',
                 'export_config': 'document-properties',
                 'reset': 'edit-clear'
-            }.get(button_name, 'configure')))
+            }.get(button_name, 'configure')
+            button.setIcon(get_icon(icon_name))
 
         for button_name, button in self.ribbon.buttons.get('mesh', {}).items():
-            button.setIcon(self._get_standard_icon({
-                'generate': 'system-run',
+            # Use specific optimized icons for mesh operations
+            icon_name = {
+                'generate': 'mesh-generate',
                 'display': 'view-fullscreen',
                 'clear': 'edit-delete',
-                'quality': 'tools-check-spelling',
-                'smooth': 'tools-check-spelling',
-                'optimize': 'tools-check-spelling',
-                'statistics': 'x-office-spreadsheet',
-                'report': 'x-office-spreadsheet'
-            }.get(button_name, 'system-run')))
+                'quality': 'mesh-quality',
+                'smooth': 'mesh-smooth',
+                'optimize': 'mesh-optimize',
+                'statistics': 'statistics',
+                'report': 'report'
+            }.get(button_name, 'system-run')
+            button.setIcon(get_icon(icon_name))
 
         for button_name, button in self.ribbon.buttons.get('help', {}).items():
-            button.setIcon(self._get_standard_icon({
+            icon_name = {
                 'manual': 'help-contents',
                 'quick_start': 'help-faq',
                 'shortcuts': 'help-keyboard-shortcuts',
                 'updates': 'help-about',
                 'about': 'help-about'
-            }.get(button_name, 'help-contents')))
+            }.get(button_name, 'help-contents')
+            button.setIcon(get_icon(icon_name))
 
     def _get_standard_icon(self, icon_name):
-        """获取标准图标"""
-        from PyQt5.QtWidgets import QStyle
-
-        icon_map = {
-            'document-new': QStyle.SP_FileIcon,
-            'document-open': QStyle.SP_DirOpenIcon,
-            'document-save': QStyle.SP_DialogSaveButton,
-            'document-import': QStyle.SP_ArrowUp,
-            'document-export': QStyle.SP_ArrowDown,
-            'zoom-fit-best': QStyle.SP_ComputerIcon,
-            'zoom-in': QStyle.SP_ArrowUp,
-            'zoom-out': QStyle.SP_ArrowDown,
-            'view-refresh': QStyle.SP_BrowserReload,
-            'configure': QStyle.SP_ToolBarHorizontalExtensionButton,
-            'document-properties': QStyle.SP_FileDialogDetailedView,
-            'edit-clear': QStyle.SP_LineEditClearButton,
-            'system-run': QStyle.SP_MediaPlay,
-            'view-fullscreen': QStyle.SP_TitleBarMaxButton,
-            'edit-delete': QStyle.SP_TrashIcon,
-            'tools-check-spelling': QStyle.SP_DialogApplyButton,
-            'x-office-spreadsheet': QStyle.SP_FileDialogContentsView,
-            'help-contents': QStyle.SP_MessageBoxInformation,
-            'help-faq': QStyle.SP_MessageBoxQuestion,
-            'help-keyboard-shortcuts': QStyle.SP_DialogHelpButton,
-            'help-about': QStyle.SP_MessageBoxQuestion,
-        }
-
-        return self.style().standardIcon(icon_map.get(icon_name, QStyle.SP_MessageBoxInformation))
+        """获取标准图标 - 现在使用优化的图标管理器"""
+        from pyqt_gui.icon_manager import get_icon
+        return get_icon(icon_name)
 
     def toggle_ribbon(self):
         """切换功能区显示"""
