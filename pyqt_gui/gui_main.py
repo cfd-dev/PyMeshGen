@@ -495,9 +495,149 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.update_status("操作已取消")
 
     def open_config(self):
-        """打开工程"""
-        self.log_info("打开工程功能暂未实现")
-        self.update_status("打开工程功能暂未实现")
+        """打开工程 - 读入相关参数和网格数据，并在视图区显示读入的网格"""
+        try:
+            from PyQt5.QtWidgets import QFileDialog, QMessageBox
+            import json
+            import os
+            import pickle
+
+            # 打开文件选择对话框
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "打开工程",
+                os.path.join(self.project_root, "projects"),
+                "PyMeshGen工程文件 (*.pymg)"
+            )
+
+            if not file_path:
+                self.log_info("打开工程操作已取消")
+                self.update_status("打开工程已取消")
+                return
+
+            # 读取项目文件
+            with open(file_path, 'r', encoding='utf-8') as f:
+                project_data = json.load(f)
+
+            # 从项目文件中读取配置信息
+            if "config" in project_data:
+                config_info = project_data["config"]
+
+                # 重建参数对象
+                from data_structure.parameters import Parameters
+                import tempfile
+
+                # 创建临时配置文件用于加载参数
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_config:
+                    # 重构完整的配置数据
+                    full_config = {
+                        "debug_level": config_info.get("debug_level", 0),
+                        "input_file": config_info.get("input_file", ""),
+                        "output_file": config_info.get("output_file", ""),
+                        "mesh_type": config_info.get("mesh_type", 1),
+                        "viz_enabled": config_info.get("viz_enabled", False),
+                        "parts": config_info.get("parts", [])
+                    }
+                    json.dump(full_config, temp_config, indent=2)
+                    temp_config_path = temp_config.name
+
+                # 加载参数
+                self.params = Parameters("FROM_CASE_JSON", temp_config_path)
+
+                # 清理临时文件
+                os.unlink(temp_config_path)
+
+                self.log_info("项目配置参数加载完成")
+            else:
+                self.log_info("项目文件中未找到配置信息")
+
+            # 读取网格文件路径（如果存在）
+            mesh_file_path = project_data.get("mesh_file_path", "")
+            if mesh_file_path and os.path.exists(mesh_file_path):
+                self.log_info(f"发现原始网格文件: {mesh_file_path}")
+                # 可以根据需要导入原始网格文件
+                # 但通常我们更关心生成的网格
+
+            # 读取生成的网格数据（如果存在）
+            generated_mesh_file = project_data.get("generated_mesh_file", "")
+            if generated_mesh_file and os.path.exists(generated_mesh_file):
+                try:
+                    # 尝试加载生成的网格数据
+                    if generated_mesh_file.endswith('.pymesh'):
+                        # 使用pickle加载
+                        with open(generated_mesh_file, 'rb') as f:
+                            self.current_mesh = pickle.load(f)
+                    elif generated_mesh_file.endswith('.vtk'):
+                        # 如果是VTK文件，使用相应的加载方法
+                        from fileIO.vtk_io import parse_vtk_msh
+                        self.current_mesh = parse_vtk_msh(generated_mesh_file)
+                    else:
+                        # 尝试作为pickle文件加载
+                        with open(generated_mesh_file, 'rb') as f:
+                            self.current_mesh = pickle.load(f)
+
+                    self.log_info(f"生成的网格数据已加载: {generated_mesh_file}")
+
+                    # 在视图区显示网格
+                    if hasattr(self, 'mesh_visualizer') and self.mesh_visualizer:
+                        self.mesh_visualizer.update_mesh(self.current_mesh)
+                        self.log_info("网格已在视图区显示")
+                    elif hasattr(self, 'mesh_display'):
+                        self.mesh_display.display_mesh(self.current_mesh)
+                        self.log_info("网格已在视图区显示")
+                    else:
+                        self.log_info("未找到网格显示组件")
+
+                    # 刷新显示
+                    if hasattr(self, 'canvas'):
+                        self.canvas.draw()
+
+                except Exception as e:
+                    self.log_info(f"加载生成的网格数据失败: {str(e)}")
+            else:
+                if generated_mesh_file:
+                    self.log_info(f"生成的网格文件不存在: {generated_mesh_file}")
+                else:
+                    self.log_info("项目文件中未找到生成的网格文件路径")
+
+            # 更新部件列表（如果存在部件参数）
+            if hasattr(self, 'parts_list_widget') and hasattr(self.parts_list_widget, 'parts_list') and "config" in project_data and "parts" in project_data["config"]:
+                # Clear the existing parts in the actual list widget
+                self.parts_list_widget.parts_list.clear()
+
+                # Add parts to the list widget
+                for part in project_data["config"]["parts"]:
+                    item_text = f"{part['part_name']} - Max Size: {part['max_size']}, Prism: {part['PRISM_SWITCH']}"
+                    self.parts_list_widget.parts_list.addItem(item_text)
+
+            # Also update parts_params if it exists
+            if hasattr(self, 'params') and hasattr(self, 'parts_params'):
+                if "config" in project_data and "parts" in project_data["config"]:
+                    self.parts_params = []
+                    for part in project_data["config"]["parts"]:
+                        # Create part parameter dict in the expected format
+                        part_param = {
+                            "part_name": part["part_name"],
+                            "max_size": part["max_size"],
+                            "PRISM_SWITCH": part["PRISM_SWITCH"],
+                            "first_height": part.get("first_height", 0.1),
+                            "growth_rate": part.get("growth_rate", 1.2),
+                            "growth_method": part.get("growth_method", "geometric"),
+                            "max_layers": part.get("max_layers", 3),
+                            "full_layers": part.get("full_layers", 0),
+                            "multi_direction": part.get("multi_direction", False)
+                        }
+                        self.parts_params.append(part_param)
+
+            # 更新状态
+            self.update_status("工程打开完成")
+            QMessageBox.information(self, "成功", f"工程已成功打开:\n{file_path}")
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"打开工程失败：{str(e)}")
+            self.log_info(f"打开工程失败：{str(e)}")
+            self.update_status("工程打开失败")
 
     def save_config(self):
         """保存工程 - 将JSON配置文件和导入网格文件的路径保存到.pymg工程文件中"""
