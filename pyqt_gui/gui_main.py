@@ -575,6 +575,40 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             if mesh_file_path:
                 project_data["mesh_file_path"] = mesh_file_path
 
+            # 保存生成的网格数据（如果存在）
+            if hasattr(self, 'current_mesh') and self.current_mesh:
+                try:
+                    import os
+                    # 生成网格文件的路径（与项目文件同目录，但使用.pymesh扩展名）
+                    project_dir = os.path.dirname(file_path)
+                    project_name = os.path.splitext(os.path.basename(file_path))[0]
+                    mesh_file = os.path.join(project_dir, f"{project_name}_mesh.pymesh")
+
+                    # 检查current_mesh是否是Unstructured_Grid对象（支持保存到文件）
+                    if hasattr(self.current_mesh, 'save_to_vtkfile'):
+                        # 保存为PyMesh格式（.pymesh）
+                        # 先尝试直接保存为pymesh格式，如果没有对应方法，则使用pickle
+                        import pickle
+                        with open(mesh_file, 'wb') as mf:
+                            pickle.dump(self.current_mesh, mf)
+                        project_data["generated_mesh_file"] = mesh_file
+                    elif hasattr(self.current_mesh, 'save_to_file'):
+                        # 如果有专门的保存方法
+                        self.current_mesh.save_to_file(mesh_file)
+                        project_data["generated_mesh_file"] = mesh_file
+                    else:
+                        # 如果current_mesh是字典或其他格式，尝试保存为pickle
+                        import pickle
+                        with open(mesh_file, 'wb') as mf:
+                            pickle.dump(self.current_mesh, mf)
+                        project_data["generated_mesh_file"] = mesh_file
+
+                    self.log_info(f"生成的网格已保存到: {project_data['generated_mesh_file']}")
+
+                except Exception as e:
+                    self.log_info(f"保存生成的网格数据时出现错误: {str(e)}")
+                    # 即使网格保存失败，也要继续保存项目文件
+
             # 保存项目文件
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(project_data, f, indent=2, ensure_ascii=False)
