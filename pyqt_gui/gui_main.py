@@ -500,9 +500,96 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.update_status("打开工程功能暂未实现")
 
     def save_config(self):
-        """保存工程"""
-        self.log_info("保存工程功能暂未实现")
-        self.update_status("保存工程功能暂未实现")
+        """保存工程 - 将JSON配置文件和导入网格文件的路径保存到.pymg工程文件中"""
+        try:
+            from PyQt5.QtWidgets import QFileDialog, QMessageBox
+            import json
+            import os
+
+            # 打开文件保存对话框
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "保存工程",
+                os.path.join(self.project_root, "projects"),
+                "PyMeshGen工程文件 (*.pymg)"
+            )
+
+            if not file_path:
+                self.log_info("保存工程操作已取消")
+                self.update_status("保存工程已取消")
+                return
+
+            # 确保文件扩展名为.pymg
+            if not file_path.endswith('.pymg'):
+                file_path += '.pymg'
+
+            # 构建项目数据
+            project_data = {
+                "version": "1.0",
+                "created_at": __import__('time').strftime('%Y-%m-%d %H:%M:%S'),
+                "project_type": "PyMeshGen_Project"
+            }
+
+            # 添加JSON配置信息（如果存在）
+            if hasattr(self, 'params') and self.params:
+                config_info = {
+                    "debug_level": getattr(self.params, 'debug_level', 0),
+                    "input_file": getattr(self.params, 'input_file', ''),
+                    "output_file": getattr(self.params, 'output_file', ''),
+                    "mesh_type": getattr(self.params, 'mesh_type', 1),
+                    "viz_enabled": getattr(self.params, 'viz_enabled', False)
+                }
+
+                # 添加部件参数
+                if hasattr(self.params, 'part_params'):
+                    part_configs = []
+                    for part_param in self.params.part_params:
+                        part_config = {
+                            "part_name": part_param.part_name,
+                            "max_size": part_param.part_params.max_size,
+                            "PRISM_SWITCH": part_param.part_params.PRISM_SWITCH,
+                            "first_height": part_param.part_params.first_height,
+                            "growth_rate": part_param.part_params.growth_rate,
+                            "growth_method": part_param.part_params.growth_method,
+                            "max_layers": part_param.part_params.max_layers,
+                            "full_layers": part_param.part_params.full_layers,
+                            "multi_direction": part_param.part_params.multi_direction
+                        }
+                        part_configs.append(part_config)
+                    config_info["parts"] = part_configs
+
+                project_data["config"] = config_info
+
+            # 添加导入网格文件路径（如果存在）
+            mesh_file_path = ""
+            if hasattr(self, 'current_mesh'):
+                if isinstance(self.current_mesh, dict) and 'file_path' in self.current_mesh:
+                    mesh_file_path = self.current_mesh['file_path']
+                elif hasattr(self.current_mesh, 'file_path'):
+                    mesh_file_path = self.current_mesh.file_path
+                # 如果 current_mesh 不包含文件路径，尝试从其他地方获取
+                if not mesh_file_path and hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                    # Look for file path in cas_parts_info if it stores the original file path
+                    pass
+
+            if mesh_file_path:
+                project_data["mesh_file_path"] = mesh_file_path
+
+            # 保存项目文件
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(project_data, f, indent=2, ensure_ascii=False)
+
+            # 记录操作
+            self.log_info(f"工程已保存到: {file_path}")
+            self.update_status("工程保存完成")
+
+            QMessageBox.information(self, "成功", f"工程已成功保存到:\n{file_path}")
+
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"保存工程失败：{str(e)}")
+            self.log_info(f"保存工程失败：{str(e)}")
+            self.update_status("工程保存失败")
 
     def import_mesh(self):
         """导入网格"""
