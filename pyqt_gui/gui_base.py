@@ -64,8 +64,30 @@ class InfoOutput:
         return self.frame
     
     def append_info_output(self, message):
-        """添加信息到输出窗口"""
-        self.info_text.append(message)
+        """添加信息到输出窗口，确保格式统一：[timestamp] [LEVEL] message"""
+        import re
+
+        # 检查消息是否已经包含时间戳格式 [HH:MM:SS] [LEVEL]
+        timestamp_pattern = r'^\[\d{1,2}:\d{1,2}:\d{1,2}\] \[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\]'
+        if re.match(timestamp_pattern, message):
+            # 如果消息已经包含时间戳和级别，直接添加
+            self.info_text.append(message)
+        else:
+            # 如果消息没有时间戳，添加当前时间戳
+            timestamp = time.strftime("%H:%M:%S")
+            # 尝试从消息中提取可能的级别信息
+            level_pattern = r'^\[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\] '
+            match = re.match(level_pattern, message)
+            if match:
+                # 消息以 [LEVEL] 开头，添加时间戳
+                level = match.group(1)
+                clean_message = message[len(match.group(0)):]  # Remove matched part [LEVEL]
+                formatted_message = f"[{timestamp}] [{level}] {clean_message}"
+                self.info_text.append(formatted_message)
+            else:
+                # 消息没有级别信息，使用INFO级别
+                formatted_message = f"[{timestamp}] [INFO] {message}"
+                self.info_text.append(formatted_message)
     
     def log_info(self, message):
         """记录信息"""

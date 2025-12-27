@@ -1143,7 +1143,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         self.ax = None  # 添加ax属性，设置为None，因为我们使用VTK而不是matplotlib
                     
                     def append_info_output(self, message):
-                        self.gui.log_info(message)
+                        self.gui.info_output.append_info_output(message)
                 
                 # 创建临时GUI对象
                 temp_gui_obj = GUITempObject(self)
@@ -1228,9 +1228,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     quality_stats += f"  平均质量值: {quality_avg:.4f}\n"
                     quality_stats += f"  总单元数: {len(quality_values)}"
 
-                    self.log_info(quality_stats)
+                    # Use append_info_output to avoid double prefix
+                    if hasattr(self, 'info_output'):
+                        self.info_output.append_info_output(quality_stats)
+                    else:
+                        self.log_info(quality_stats)  # Fallback
                 else:
-                    self.log_info("质量统计信息: 无质量数据")
+                    # Use append_info_output to avoid double prefix
+                    if hasattr(self, 'info_output'):
+                        self.info_output.append_info_output("质量统计信息: 无质量数据")
+                    else:
+                        self.log_info("质量统计信息: 无质量数据")
 
                 # 输出偏斜度统计信息到GUI信息窗口
                 if skewness_values:
@@ -1244,9 +1252,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     skewness_stats += f"  平均偏斜度: {skewness_avg:.4f}\n"
                     skewness_stats += f"  总单元数: {len(skewness_values)}"
 
-                    self.log_info(skewness_stats)
+                    # Use append_info_output to avoid double prefix
+                    if hasattr(self, 'info_output'):
+                        self.info_output.append_info_output(skewness_stats)
+                    else:
+                        self.log_info(skewness_stats)  # Fallback
                 else:
-                    self.log_info("偏斜度统计信息: 无偏斜度数据")
+                    # Use append_info_output to avoid double prefix
+                    if hasattr(self, 'info_output'):
+                        self.info_output.append_info_output("偏斜度统计信息: 无偏斜度数据")
+                    else:
+                        self.log_info("偏斜度统计信息: 无偏斜度数据")
 
                 # 创建matplotlib figure
                 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
