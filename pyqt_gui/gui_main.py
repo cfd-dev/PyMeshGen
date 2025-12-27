@@ -820,9 +820,56 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         QMessageBox.about(self, "关于", about_text)
 
     def show_user_manual(self):
-        """显示用户手册"""
-        manual_text = """PyMeshGen 用户手册\n\n1. 文件菜单\n   - 新建工程：创建新的工程\n   - 打开工程：打开已保存的工程\n   - 保存工程：保存当前工程\n   - 导入网格：从外部文件导入网格数据\n   - 导出网格：将当前网格导出到文件\n\n2. 视图菜单\n   - 重置视图：将视图恢复到初始状态\n   - 适应视图：自动调整视图以适应整个网格\n   - 放大/缩小：缩放网格显示\n   - 显示工具栏：切换工具栏的显示/隐藏\n   - 显示状态栏：切换状态栏的显示/隐藏\n\n3. 配置菜单\n   - 参数设置：配置网格生成参数\n   - 网格参数：配置网格相关参数\n   - 边界条件：配置边界条件\n   - 导入配置：导入配置文件\n   - 导出配置：导出配置文件\n   - 重置配置：重置配置\n   - 清空网格：清除当前显示的网格\n\n4. 网格菜单\n   - 生成网格：根据当前配置生成网格\n   - 显示网格：显示/隐藏网格\n   - 清空网格：清除当前显示的网格\n   - 检查质量：检查网格质量\n   - 平滑网格：平滑网格\n   - 优化网格：优化网格\n   - 统计信息：显示网格统计信息\n   - 导出报告：导出网格报告\n\n5. 工具栏\n   - 提供常用功能的快速访问按钮\n\n6. 主界面\n   - 左侧：部件信息区域，包含部件列表和属性面板\n   - 右侧：网格视图交互区域，支持缩放、平移和选择操作\n   - 底部：状态栏显示系统状态和信息输出窗口"""
-        QMessageBox.about(self, "用户手册", manual_text)
+        """显示用户手册 - 打开UserGuide.pdf或UserGuide.md文件"""
+        import os
+        import subprocess
+        import sys
+        from PyQt5.QtWidgets import QMessageBox
+
+        try:
+            # 首先尝试PDF文件
+            pdf_path = os.path.join(self.project_root, "docs", "UserGuide.pdf")
+
+            # 检查PDF文件是否存在
+            if not os.path.exists(pdf_path):
+                # 尝试 with parent directory
+                pdf_path = os.path.join(self.project_root, "..", "docs", "UserGuide.pdf")
+                if not os.path.exists(pdf_path):
+                    # 如果PDF不存在，尝试MD文件
+                    md_path = os.path.join(self.project_root, "docs", "UserGuide.md")
+                    if os.path.exists(md_path):
+                        pdf_path = md_path
+                    else:
+                        # 尝试 MD file with parent directory
+                        md_path = os.path.join(self.project_root, "..", "docs", "UserGuide.md")
+                        if os.path.exists(md_path):
+                            pdf_path = md_path
+                        else:
+                            # Both PDF and MD files don't exist
+                            QMessageBox.warning(self, "警告", f"用户手册文件不存在:\n{os.path.join('docs', 'UserGuide.pdf')}")
+                            self.log_info("用户手册文件不存在")
+                            self.update_status("手册文件不存在")
+                            return
+
+            # 尝试打开文件
+            if sys.platform.startswith('darwin'):  # macOS
+                subprocess.call(['open', pdf_path])
+            elif sys.platform.startswith('win'):   # Windows
+                os.startfile(pdf_path)
+            elif sys.platform.startswith('linux'): # Linux
+                subprocess.call(['xdg-open', pdf_path])
+            else:
+                # 如果是其他平台，尝试使用默认程序打开
+                subprocess.call(['xdg-open', pdf_path])
+
+            self.log_info(f"已打开用户手册: {pdf_path}")
+            self.update_status("用户手册已打开")
+
+        except Exception as e:
+            # 如果打开失败，显示错误信息
+            QMessageBox.critical(self, "错误", f"无法打开用户手册:\n{str(e)}")
+            self.log_info(f"打开用户手册失败: {str(e)}")
+            self.update_status("手册打开失败")
 
     def zoom_in(self):
         """放大视图"""
