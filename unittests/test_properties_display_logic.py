@@ -25,7 +25,8 @@ class TestPropertiesDisplayLogic(unittest.TestCase):
         """测试Part类的get_properties方法"""
         try:
             # 导入必要的类
-            from data_structure.parameters import Parameters, Part
+            from data_structure.parameters import Parameters
+            from data_structure.basic_elements import Part
             
             # 创建Parameters对象
             params = Parameters("FROM_MAIN_JSON")

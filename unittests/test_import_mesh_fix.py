@@ -16,8 +16,8 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # 导入自定义模块
-from gui.gui_main import SimplifiedPyMeshGenGUI
-from gui.mesh_display import MeshDisplayArea
+from pyqt_gui.gui_main import SimplifiedPyMeshGenGUI
+from pyqt_gui.mesh_display import MeshDisplayArea
 
 class TestImportMesh(unittest.TestCase):
     """测试导入网格功能"""
@@ -51,7 +51,7 @@ class TestImportMesh(unittest.TestCase):
     def test_gui_initialization(self):
         """测试GUI初始化过程"""
         # 模拟GUI初始化过程
-        with patch('gui.gui_main.SimplifiedPyMeshGenGUI') as mock_gui_class:
+        with patch('pyqt_gui.gui_main.SimplifiedPyMeshGenGUI') as mock_gui_class:
             mock_instance = Mock()
             mock_instance.mesh_display = Mock(spec=MeshDisplayArea)
             mock_gui_class.return_value = mock_instance

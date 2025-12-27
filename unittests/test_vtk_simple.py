@@ -13,7 +13,7 @@ current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, current_dir)
 
 from data_structure.basic_elements import Unstructured_Grid, Triangle, NodeElement
-from gui.mesh_display import MeshDisplayArea
+from pyqt_gui.mesh_display import MeshDisplayArea
 import tkinter as tk
 
 

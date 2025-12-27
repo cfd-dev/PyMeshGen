@@ -16,7 +16,7 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 # 导入自定义模块
-from gui.gui_main import SimplifiedPyMeshGenGUI
+from pyqt_gui.gui_main import SimplifiedPyMeshGenGUI
 
 class TestImportCasFile(unittest.TestCase):
     """测试导入CAS文件功能"""
