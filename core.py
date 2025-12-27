@@ -187,9 +187,12 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
-        
+
+        # 保留原始部件信息以便后续修改部件参数
         # 将优化后的网格对象设置到GUI实例中
         gui_instance.mesh_data = global_unstr_grid
+        # 保存原始参数配置，以便后续可以重新配置部件参数
+        gui_instance.original_parameters = parameters
 
     # 结束计时
     global_timer.show_to_console("程序运行正常退出.")

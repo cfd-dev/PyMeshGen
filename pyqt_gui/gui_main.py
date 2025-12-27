@@ -940,7 +940,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 })
         
         self.log_info(f"已准备 {len(parts_params)} 个部件的参数")
-        
+
+        # 确保current_row在有效范围内，防止索引超出范围
+        if current_row >= len(parts_params):
+            current_row = 0  # 如果超出范围，选择第一个部件
+        elif current_row < 0:
+            current_row = 0  # 如果没有选中任何部件，选择第一个部件
+
         # 创建并显示对话框，默认选中当前部件
         dialog = PartParamsDialog(self, parts=parts_params, current_part=current_row)
         if dialog.exec_() == QDialog.Accepted:
