@@ -394,9 +394,78 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.update_status(f"边界显示: {'开启' if new_state else '关闭'} (O键)")
 
     def new_config(self):
-        """新建工程"""
-        self.log_info("新建工程功能暂未实现")
-        self.update_status("新建工程功能暂未实现")
+        """新建工程 - 清空当前所有数据，包括网格、配置参数等"""
+        from PyQt5.QtWidgets import QMessageBox
+
+        # 询问用户确认
+        reply = QMessageBox.question(
+            self,
+            "确认新建工程",
+            "确定要新建工程吗？当前所有数据（网格、配置参数等）将被清空。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            try:
+                # 清空当前网格数据
+                if hasattr(self, 'current_mesh'):
+                    self.current_mesh = None
+
+                # 清空参数配置
+                if hasattr(self, 'params'):
+                    self.params = None
+
+                # 清空部件参数
+                if hasattr(self, 'parts_params'):
+                    self.parts_params = []
+
+                # 清空部件列表显示
+                if hasattr(self, 'part_list_widget'):
+                    self.part_list_widget.clear()
+
+                # 清空内部部件列表（如果存在）
+                if hasattr(self, 'parts_list_widget') and hasattr(self.parts_list_widget, 'parts_list'):
+                    self.parts_list_widget.parts_list.clear()
+
+                # 清空网格显示
+                if hasattr(self, 'mesh_visualizer'):
+                    self.mesh_visualizer.clear_mesh()
+
+                # 清空信息输出窗口
+                if hasattr(self, 'info_output') and hasattr(self.info_output, 'info_text'):
+                    self.info_output.info_text.clear()
+
+                # 清空状态栏
+                self.statusBar().clearMessage()
+
+                # 重置相关属性
+                if hasattr(self, 'cas_parts_info'):
+                    self.cas_parts_info = {}
+
+                if hasattr(self, 'json_config'):
+                    self.json_config = {}
+
+                # 清空网格显示区域
+                if hasattr(self, 'mesh_display'):
+                    self.mesh_display.clear()
+
+                # 如果有画布，也清空
+                if hasattr(self, 'canvas'):
+                    self.canvas.figure.clear()
+                    self.canvas.draw()
+
+                # 记录操作
+                self.log_info("已新建工程，所有数据已清空")
+                self.update_status("新工程创建完成")
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"新建工程失败：{str(e)}")
+                self.log_info(f"新建工程失败：{str(e)}")
+                self.update_status("新建工程失败")
+        else:
+            self.log_info("新建工程操作已取消")
+            self.update_status("操作已取消")
 
     def open_config(self):
         """打开工程"""
