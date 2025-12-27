@@ -1465,31 +1465,35 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             
             # 获取输入文件路径
             input_file = ""
-            
+
             if isinstance(self.current_mesh, dict):
                 if 'file_path' in self.current_mesh:
                     input_file = self.current_mesh['file_path']
             elif hasattr(self.current_mesh, 'file_path'):
                 input_file = self.current_mesh.file_path
-            
+
             # 确保文件路径是绝对路径
             if input_file:
                 input_file = os.path.abspath(input_file)
-            
+
             # 检查当前网格是否有网格数据
             has_mesh_data = False
             if isinstance(self.current_mesh, dict):
                 has_mesh_data = 'node_coords' in self.current_mesh and 'cells' in self.current_mesh
-            elif hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cells'):
+            elif hasattr(self, 'current_mesh') and hasattr(self.current_mesh, 'node_coords') and hasattr(self.current_mesh, 'cells'):
                 has_mesh_data = True
-            
-            # 只有当没有网格数据且没有有效输入文件时，才显示错误
-            if not has_mesh_data and (not input_file or not os.path.exists(input_file)):
-                QMessageBox.warning(self, "警告", "无法获取有效的输入网格文件路径")
-                self.log_info("无法获取有效的输入网格文件路径")
-                self.update_status("无法获取有效的输入网格文件路径")
+
+            # 检查是否有导入的部件信息（这 is what we need to use）
+            has_parts_info = hasattr(self, 'cas_parts_info') and self.cas_parts_info
+
+            # 我们可以使用内存中的网格数据进行重新生成，不需要原始文件路径
+            # 如果没有网格数据 but have parts info, we can proceed with the stored information
+            if not has_mesh_data and not has_parts_info:
+                QMessageBox.warning(self, "警告", "无法获取有效的输入网格数据或部件信息")
+                self.log_info("无法获取有效的输入网格数据或部件信息")
+                self.update_status("无法获取有效的输入网格数据或部件信息")
                 return
-            
+
             # 构建配置数据
             config_data = {
                 "debug_level": 0,
