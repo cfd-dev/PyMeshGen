@@ -1207,6 +1207,47 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         if hasattr(cell, 'init_metrics'):
                             cell.init_metrics()  # 初始化质量指标
 
+                # 计算质量统计信息并输出到信息窗口
+                quality_values = []
+                skewness_values = []
+                for cell in self.current_mesh.cell_container:
+                    if cell.quality is not None:
+                        quality_values.append(cell.quality)
+                    if cell.skewness is not None:
+                        skewness_values.append(cell.skewness)
+
+                # 输出质量统计信息到GUI信息窗口
+                if quality_values:
+                    quality_min = min(quality_values)
+                    quality_max = max(quality_values)
+                    quality_avg = sum(quality_values) / len(quality_values)
+
+                    quality_stats = f"质量统计信息:\n"
+                    quality_stats += f"  最小质量值: {quality_min:.4f}\n"
+                    quality_stats += f"  最大质量值: {quality_max:.4f}\n"
+                    quality_stats += f"  平均质量值: {quality_avg:.4f}\n"
+                    quality_stats += f"  总单元数: {len(quality_values)}"
+
+                    self.log_info(quality_stats)
+                else:
+                    self.log_info("质量统计信息: 无质量数据")
+
+                # 输出偏斜度统计信息到GUI信息窗口
+                if skewness_values:
+                    skewness_min = min(skewness_values)
+                    skewness_max = max(skewness_values)
+                    skewness_avg = sum(skewness_values) / len(skewness_values)
+
+                    skewness_stats = f"偏斜度统计信息:\n"
+                    skewness_stats += f"  最小偏斜度: {skewness_min:.4f}\n"
+                    skewness_stats += f"  最大偏斜度: {skewness_max:.4f}\n"
+                    skewness_stats += f"  平均偏斜度: {skewness_avg:.4f}\n"
+                    skewness_stats += f"  总单元数: {len(skewness_values)}"
+
+                    self.log_info(skewness_stats)
+                else:
+                    self.log_info("偏斜度统计信息: 无偏斜度数据")
+
                 # 创建matplotlib figure
                 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
                 from matplotlib.figure import Figure
