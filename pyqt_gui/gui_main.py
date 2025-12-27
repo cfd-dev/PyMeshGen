@@ -68,36 +68,22 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """设置窗口大小和标题"""
         self.setWindowTitle("PyMeshGen - 基于Python的网格生成工具")
 
-        # Try multiple possible paths for the icon, prioritizing the new mixed grid icons
-        icon_paths = [
-            # Primary icon location (contains the best mixed grid icon)
-            os.path.join(PROJECT_ROOT, "resources", "app_icon.ico"),
-            os.path.join(PROJECT_ROOT, "resources", "app_icon.png"),
+        # Use only the docs/icon.png file as requested
+        icon_path = os.path.join(PROJECT_ROOT, "docs", "icon.png")
 
-            # Mixed grid icons
-            os.path.join(PROJECT_ROOT, "resources", "icon1", "app_icon_mixed_1.ico"),
-            os.path.join(PROJECT_ROOT, "resources", "icon1", "app_icon_mixed_1.png"),
-            os.path.join(PROJECT_ROOT, "resources", "icon2", "app_icon_mixed_2.ico"),
-            os.path.join(PROJECT_ROOT, "resources", "icon2", "app_icon_mixed_2.png"),
-
-            # Fallbacks
-            os.path.join(PROJECT_ROOT, "gui", "icons", "app_icon.png")
-        ]
-
-        icon_set = False
-        for icon_path in icon_paths:
+        # Try to set the icon from the docs directory
+        try:
+            from PyQt5.QtGui import QIcon
             if os.path.exists(icon_path):
-                try:
-                    from PyQt5.QtGui import QIcon
-                    self.setWindowIcon(QIcon(icon_path))
-                    icon_set = True
-                    break
-                except Exception:
-                    continue
-
-        if not icon_set:
-            # If no icon file is found, we can create a simple fallback
-            pass
+                self.setWindowIcon(QIcon(icon_path))
+            else:
+                # If the icon file doesn't exist, try alternative path
+                alt_icon_path = os.path.join(PROJECT_ROOT, "..", "docs", "icon.png")
+                if os.path.exists(alt_icon_path):
+                    self.setWindowIcon(QIcon(alt_icon_path))
+        except Exception as e:
+            # If icon setting fails, log the error but continue
+            print(f"Could not set application icon: {e}")
 
         screen = QApplication.primaryScreen()
         screen_size = screen.size()
