@@ -7,3 +7,8 @@ try:
 except ImportError:
     # Functions will be available when modules are properly loaded with path manipulation
     pass
+
+try:
+    from . import mesh_quality
+except ImportError:
+    pass

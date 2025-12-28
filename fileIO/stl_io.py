@@ -1,7 +1,14 @@
 import numpy as np
 
-from vtk_io import VTK_ELEMENT_TYPE
-from basic_elements import Unstructured_Grid, NodeElement, Triangle
+try:
+    from vtk_io import VTK_ELEMENT_TYPE
+except (ImportError, ModuleNotFoundError):
+    from fileIO.vtk_io import VTK_ELEMENT_TYPE
+
+try:
+    from basic_elements import Unstructured_Grid, NodeElement, Triangle
+except (ImportError, ModuleNotFoundError):
+    from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle
 
 
 def read_stl(filename):

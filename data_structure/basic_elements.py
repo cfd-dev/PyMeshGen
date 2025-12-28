@@ -19,27 +19,47 @@ from utils.message import info, debug, warning, verbose
 # Import mesh_quality functions using lazy import to avoid circular imports
 def _get_quadrilateral_skewness():
     """Lazy import for quadrilateral_skewness to avoid circular imports"""
-    from optimize.mesh_quality import quadrilateral_skewness
+    try:
+        from optimize.mesh_quality import quadrilateral_skewness
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        quadrilateral_skewness = mesh_quality.quadrilateral_skewness
     return quadrilateral_skewness
 
 def _get_quadrilateral_shape_quality():
     """Lazy import for quadrilateral_shape_quality to avoid circular imports"""
-    from optimize.mesh_quality import quadrilateral_shape_quality
+    try:
+        from optimize.mesh_quality import quadrilateral_shape_quality
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        quadrilateral_shape_quality = mesh_quality.quadrilateral_shape_quality
     return quadrilateral_shape_quality
 
 def _get_quadrilateral_aspect_ratio():
     """Lazy import for quadrilateral_aspect_ratio to avoid circular imports"""
-    from optimize.mesh_quality import quadrilateral_aspect_ratio
+    try:
+        from optimize.mesh_quality import quadrilateral_aspect_ratio
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        quadrilateral_aspect_ratio = mesh_quality.quadrilateral_aspect_ratio
     return quadrilateral_aspect_ratio
 
 def _get_triangle_shape_quality():
     """Lazy import for triangle_shape_quality to avoid circular imports"""
-    from optimize.mesh_quality import triangle_shape_quality
+    try:
+        from optimize.mesh_quality import triangle_shape_quality
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        triangle_shape_quality = mesh_quality.triangle_shape_quality
     return triangle_shape_quality
 
 def _get_triangle_skewness():
     """Lazy import for triangle_skewness to avoid circular imports"""
-    from optimize.mesh_quality import triangle_skewness
+    try:
+        from optimize.mesh_quality import triangle_skewness
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        triangle_skewness = mesh_quality.triangle_skewness
     return triangle_skewness
 
 
