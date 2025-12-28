@@ -42,13 +42,18 @@ To get started with PyMeshGen, you need:
 # Install dependencies
 pip install -r requirements.txt
 ```
-3. Run the main script 
+3. Run the main script (Command Line Mode)
 ```bash
 # Generate sample mesh
 python PyMeshGen.py --case "./config/30p30n.json"
 ```
-4. The generated mesh will be saved in the `./out` directory.
-   
+4. Or run the GUI (Graphical User Interface Mode)
+```bash
+# Launch the PyMeshGen GUI
+python start_gui.py
+```
+5. The generated mesh will be saved in the `./out` directory.
+
 `Note`: The configuration file `./config/30p30n.json` is used to specify the mesh generation parameters. You can modify this file to change the mesh generation parameters.
 
 `./config/30p30n.json` is a JSON file that specifies the mesh generation parameters. The following is an example of a configuration file:
@@ -87,6 +92,8 @@ For developers, you may use VS Code and the python extensions to debug the code.
 ## Chapter 3: Framework and Core Modules
 PyMeshGen is built around a modular architecture, allowing you to easily extend its functionality. The core modules include:
 - **PyMeshGen.py**: The main script for the project. It is responsible for parsing the configuration file and calling the appropriate functions to generate the mesh.
+- **start_gui.py**: GUI launcher script that initializes the PyMeshGen graphical user interface.
+- **core.py**: Core module that provides the main mesh generation interface (`generate_mesh` function).
 - **adfront2**: 2D core algorithms including:
   - **`adfront2.py`**: advancing front method(AFT) for pure triangular mesh.
   - **`adlayers2.py`**: advance layer method(ALM) for anisotropic layers.
@@ -96,13 +103,26 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
   - **`basic_elements.py`**: define class for node, line segment, triangle, quadrilateral elements, connector, part and unstructured grid.
   - **`front2d.py`**: basic front data used in advancing front method and advance layer method.
   - **`mesh_reconstruction.py`**: mesh topology reconstruction functions.
+  - **`mesh_data.py`**: universal mesh data structure for handling different mesh formats (VTK, STL, CAS, etc.).
   - **`parameters.py`**: define class for global parameters management.
   - **`rtree_space.py`**: define class for rtree space used to accelerate searching.
 - **docs**: the user guide and other documents of the project.
+- **dynamic**: Contains dynamic mesh generation and deformation algorithms:
+  - **`fish_swim.py`**: dynamic mesh generation for swimming fish simulation using RBF (Radial Basis Function) deformation methods.
 - **fileIO**: Handles input and output operations for meshes.
   - **`read_cas.py`**: read fluent `.cas` file format.
   - **`stl_io.py`**: read and write `.stl` grid file format and parse the grid to a UnstructuredGrid object.
   - **`vtk_io.py`**: read and write `.vtk` grid file format and parse the grid to a UnstructuredGrid object.
+- **gui**: Graphical User Interface for PyMeshGen:
+  - **`gui_main.py`**: main GUI application window with PyQt5.
+  - **`gui_base.py`**: base classes and components for GUI.
+  - **`ribbon_widget.py`**: ribbon-style toolbar for mesh generation operations.
+  - **`mesh_display.py`**: mesh visualization and display widgets.
+  - **`config_manager.py`**: configuration file management.
+  - **`file_operations.py`**: file I/O operations in GUI.
+  - **`part_params_dialog.py`**: dialog for setting part parameters.
+  - **`icon_manager.py`**: icon and resource management.
+  - **`ui_utils.py`**: utility functions for UI styling and layout.
 - **meshsize**: Contains quadtree-based mesh sizing method.
 - **neural**: Contains AI-driven mesh generation and smoothing methods including:
   - `DataSet`: Grid sampling and dataset construction.
@@ -118,8 +138,11 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
   - **`message.py`**: message print functions.
   - **`timer.py`**: timer functions.
   - **`geom_normalization.py`**: geometric normalization functions.
-  - **`naca4digits.py`**: NACA 4 digits airfoil generation functions.
+  - **`naca4digits_foil.py`**: NACA 4 digits airfoil generation functions.
+  - **`data_converter.py`**: data conversion utilities.
 - **visualization**: Contains visualization functions for the project.
+  - **`mesh_visualization.py`**: mesh visualization functions.
+  - **`visualization.py`**: general visualization utilities.
 
 The module framework of PyMeshGen is shown in the following figure:
 ![Module Framework](./images/module_framework.png)
