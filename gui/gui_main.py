@@ -34,13 +34,13 @@ for dir_path in SUB_DIRS:
         sys.path.insert(0, dir_path)
 
 # Import modules after setting up paths
-from pyqt_gui.gui_base import (
+from gui.gui_base import (
     StatusBar, InfoOutput, DialogBase,
     Splitter, PartListWidget
 )
-from pyqt_gui.ribbon_widget import RibbonWidget
-from pyqt_gui.mesh_display import MeshDisplayArea
-from pyqt_gui.ui_utils import UIStyles
+from gui.ribbon_widget import RibbonWidget
+from gui.mesh_display import MeshDisplayArea
+from gui.ui_utils import UIStyles
 from data_structure.parameters import Parameters
 
 # 从core模块导入网格生成函数
@@ -284,7 +284,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _setup_ribbon_icons(self):
         """设置功能区图标"""
-        from pyqt_gui.icon_manager import get_icon
+        from gui.icon_manager import get_icon
 
         for button_name, button in self.ribbon.buttons.get('file', {}).items():
             icon_name = {
@@ -342,7 +342,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _get_standard_icon(self, icon_name):
         """获取标准图标 - 现在使用优化的图标管理器"""
-        from pyqt_gui.icon_manager import get_icon
+        from gui.icon_manager import get_icon
         return get_icon(icon_name)
 
     def toggle_ribbon(self):
@@ -736,7 +736,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def import_mesh(self):
         """导入网格"""
-        from pyqt_gui.file_operations import FileOperations
+        from gui.file_operations import FileOperations
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -766,7 +766,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def export_mesh(self):
         """导出网格"""
-        from pyqt_gui.file_operations import FileOperations
+        from gui.file_operations import FileOperations
 
         if not self.current_mesh:
             QMessageBox.warning(self, "警告", "没有可导出的网格")
@@ -856,7 +856,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def edit_part(self):
         """编辑部件参数（从右键菜单调用）"""
         from PyQt5.QtWidgets import QDialog
-        from pyqt_gui.part_params_dialog import PartParamsDialog
+        from gui.part_params_dialog import PartParamsDialog
         
         # 获取当前选中的部件索引
         current_row = self.parts_list_widget.parts_list.currentRow()
@@ -1244,7 +1244,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def edit_mesh_params(self):
         """编辑部件参数"""
         from PyQt5.QtWidgets import QDialog
-        from pyqt_gui.part_params_dialog import PartParamsDialog
+        from gui.part_params_dialog import PartParamsDialog
         
         # 检查是否有导入的网格数据
         if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:

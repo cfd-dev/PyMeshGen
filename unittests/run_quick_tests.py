@@ -13,7 +13,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "pyqt_gui"]:
+for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))

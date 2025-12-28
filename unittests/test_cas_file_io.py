@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fileIO.read_cas import parse_cas_to_unstr_grid, parse_fluent_msh, reconstruct_mesh_from_cas
 from data_structure.basic_elements import Unstructured_Grid
-from pyqt_gui.file_operations import FileOperations
+from gui.file_operations import FileOperations
 from data_structure.mesh_data import MeshData
 
 
@@ -160,7 +160,7 @@ class TestCASImportFixes(unittest.TestCase):
         self.mesh_display = Mock()
         self.mesh_display.mesh_data = None
 
-        from pyqt_gui.gui_main import SimplifiedPyMeshGenGUI
+        from gui.gui_main import SimplifiedPyMeshGenGUI
         self.app = Mock(spec=SimplifiedPyMeshGenGUI)
         self.app.mesh_display = self.mesh_display
         self.app.mesh_status_label = self.mesh_status_label

@@ -18,7 +18,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "pyqt_gui"]:
+for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
@@ -50,7 +50,7 @@ class TestCoreFunctionality(unittest.TestCase):
     def test_gui_import(self):
         """测试GUI模块导入"""
         try:
-            from pyqt_gui.gui_main import SimplifiedPyMeshGenGUI
+            from gui.gui_main import SimplifiedPyMeshGenGUI
             self.assertTrue(True, "GUI模块导入成功")
         except Exception as e:
             self.fail(f"GUI模块导入失败: {e}")
@@ -58,7 +58,7 @@ class TestCoreFunctionality(unittest.TestCase):
     def test_file_operations(self):
         """测试文件操作功能"""
         try:
-            from pyqt_gui.file_operations import FileOperations
+            from gui.file_operations import FileOperations
             self.assertTrue(True, "文件操作模块导入成功")
         except Exception as e:
             self.fail(f"文件操作模块导入失败: {e}")
@@ -222,8 +222,8 @@ class TestBackupFunctionalities(unittest.TestCase):
     def test_gui_components_available(self):
         """测试GUI组件可用性"""
         try:
-            from pyqt_gui.gui_main import SimplifiedPyMeshGenGUI
-            from pyqt_gui.mesh_display import MeshDisplayArea
+            from gui.gui_main import SimplifiedPyMeshGenGUI
+            from gui.mesh_display import MeshDisplayArea
 
             self.assertIsNotNone(SimplifiedPyMeshGenGUI)
             self.assertIsNotNone(MeshDisplayArea)

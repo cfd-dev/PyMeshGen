@@ -21,7 +21,7 @@ SUBDIRS = [
     "adfront2",
     "optimize",
     "utils",
-    "pyqt_gui"
+    "gui"
 ]
 
 for subdir in SUBDIRS:

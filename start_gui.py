@@ -15,7 +15,7 @@ project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
 # 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "pyqt_gui"]:
+for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
@@ -28,9 +28,9 @@ def main():
     # Launch the PyQt version
     try:
         print("启动GUI...")
-        from pyqt_gui.gui_main import main as pyqt_main
+        from gui.gui_main import main as gui_main
         print("GUI加载成功，正在启动...")
-        pyqt_main()
+        gui_main()
 
     except ImportError as e:
         print(f"GUI加载失败: {e}")
