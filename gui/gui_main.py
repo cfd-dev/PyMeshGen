@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QSplitter, QGroupBox, QLabel, QTextEdit, QPushButton,
     QListWidget, QTabWidget, QFrame, QMenuBar, QStatusBar,
     QToolBar, QAction, QFileDialog, QMessageBox, QScrollArea,
-    QDockWidget, QSizePolicy
+    QDockWidget, QSizePolicy, QProgressDialog
 )
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
@@ -139,6 +139,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.parts_params = []  # 初始化部件参数列表
         self.render_mode = "wireframe"
         self.show_boundary = True
+        self.mesh_generation_thread = None  # 网格生成线程
+        self.progress_dialog = None  # 进度对话框
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -1470,22 +1472,27 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info("重置配置功能暂未实现")
 
     def generate_mesh(self):
-        """生成网格"""
+        """生成网格 - 使用异步线程避免UI冻结"""
         try:
+            # 检查是否已有线程在运行
+            if self.mesh_generation_thread and self.mesh_generation_thread.isRunning():
+                QMessageBox.warning(self, "警告", "网格生成任务正在进行中，请稍候...")
+                return
+
             # 检查是否有导入的网格文件
             if not hasattr(self, 'current_mesh') or not self.current_mesh:
                 QMessageBox.warning(self, "警告", "请先导入网格文件")
                 self.log_info("未导入网格文件，无法生成网格")
                 self.update_status("未导入网格文件")
                 return
-            
+
             # 检查是否有配置好的部件参数
             if not hasattr(self, 'parts_params') or not self.parts_params:
                 QMessageBox.warning(self, "警告", "请先配置部件参数")
                 self.log_info("未配置部件参数，无法生成网格")
                 self.update_status("未配置部件参数")
                 return
-            
+
             # 获取输入文件路径
             input_file = ""
 
@@ -1539,73 +1546,130 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         "full_layers": 5,
                         "multi_direction": False
                     })
-            
+
             # 总是添加input_file字段，即使为空字符串
             config_data["input_file"] = input_file if input_file else ""
-            
+
             # 创建临时配置文件
             import json
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
                 json.dump(config_data, temp_file, indent=2)
                 temp_file_path = temp_file.name
-            
+
             try:
                 # 构建参数对象
                 self.log_info("正在构建网格生成参数...")
                 self.update_status("正在构建网格生成参数...")
-                
+
                 # 创建参数对象
                 from data_structure.parameters import Parameters
                 params = Parameters("FROM_CASE_JSON", temp_file_path)
-                
-                # 创建一个包含PyMeshGen所需属性的临时对象
-                class GUITempObject:
-                    def __init__(self, gui):
-                        self.gui = gui
-                        self.ax = None  # 添加ax属性，设置为None，因为我们使用VTK而不是matplotlib
-                    
-                    def append_info_output(self, message):
-                        self.gui.info_output.append_info_output(message)
-                
-                # 创建临时GUI对象
-                temp_gui_obj = GUITempObject(self)
-                
-                # 调用核心网格生成函数
-                self.log_info("正在生成网格...")
-                self.update_status("正在生成网格...")
-                
-                # 直接将当前网格数据传递给generate_mesh函数
-                generate_mesh(params, self.current_mesh, temp_gui_obj)
-                
-                # 更新状态
-                self.log_info("网格生成完成!")
-                self.update_status("网格生成完成")
-                
-                # 加载生成的网格文件并显示
-                self.log_info("正在加载生成的网格文件...")
-                self.update_status("正在加载生成的网格文件...")
-                
-                # 从输出文件加载生成的网格
-                from fileIO.vtk_io import parse_vtk_msh
-                generated_mesh = parse_vtk_msh("./out/mesh.vtk")
-                
-                # 显示生成的网格
-                if hasattr(self, 'mesh_display') and generated_mesh:
-                    self.current_mesh = generated_mesh
-                    self.mesh_display.display_mesh(generated_mesh)
-                    self.log_info("已显示生成的网格")
-                    self.update_status("已显示生成的网格")
-            
-            finally:
-                # 删除临时文件
-                if os.path.exists(temp_file_path):
-                    os.remove(temp_file_path)
-                    
+
+                # 创建进度对话框
+                self.progress_dialog = QProgressDialog("正在生成网格...", "取消", 0, 100, self)
+                self.progress_dialog.setWindowTitle("网格生成进度")
+                self.progress_dialog.setWindowModality(Qt.WindowModal)
+                self.progress_dialog.setMinimumDuration(0)
+                self.progress_dialog.setAutoClose(False)
+                self.progress_dialog.setAutoReset(False)
+                self.progress_dialog.show()
+
+                # 创建网格生成线程
+                from gui.mesh_generation_thread import MeshGenerationThread
+                self.mesh_generation_thread = MeshGenerationThread(params, self.current_mesh, self)
+
+                # 连接信号
+                self.mesh_generation_thread.signals.progress.connect(self._on_mesh_progress)
+                self.mesh_generation_thread.signals.finished.connect(self._on_mesh_finished)
+                self.mesh_generation_thread.signals.error.connect(self._on_mesh_error)
+                self.mesh_generation_thread.signals.log.connect(self._on_mesh_log)
+
+                # 连接取消按钮
+                self.progress_dialog.canceled.connect(self._cancel_mesh_generation)
+
+                # 启动线程
+                self.mesh_generation_thread.start()
+
+                self.log_info("网格生成任务已启动...")
+                self.update_status("网格生成中...")
+
+            except Exception as e:
+                if self.progress_dialog:
+                    self.progress_dialog.close()
+                raise e
+
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"生成网格失败: {str(e)}")
-            self.log_error(f"生成网格失败: {str(e)}")
-            self.update_status("网格生成失败")
+            QMessageBox.critical(self, "错误", f"启动网格生成失败: {str(e)}")
+            self.log_error(f"启动网格生成失败: {str(e)}")
+            self.update_status("启动网格生成失败")
+            if self.progress_dialog:
+                self.progress_dialog.close()
+
+    def _on_mesh_progress(self, progress, description):
+        """处理网格生成进度更新"""
+        if self.progress_dialog:
+            self.progress_dialog.setValue(progress)
+            self.progress_dialog.setLabelText(description)
+        self.update_status(f"网格生成: {description} ({progress}%)")
+
+    def _on_mesh_finished(self, result_mesh):
+        """处理网格生成完成"""
+        try:
+            self.log_info("网格生成完成!")
+            self.update_status("网格生成完成")
+
+            # 关闭进度对话框
+            if self.progress_dialog:
+                self.progress_dialog.setValue(100)
+                self.progress_dialog.close()
+
+            # 加载生成的网格文件并显示
+            self.log_info("正在加载生成的网格文件...")
+            self.update_status("正在加载生成的网格文件...")
+
+            # 从输出文件加载生成的网格
+            from fileIO.vtk_io import parse_vtk_msh
+            generated_mesh = parse_vtk_msh("./out/mesh.vtk")
+
+            # 显示生成的网格
+            if hasattr(self, 'mesh_display') and generated_mesh:
+                self.current_mesh = generated_mesh
+                self.mesh_display.display_mesh(generated_mesh)
+                self.log_info("已显示生成的网格")
+                self.update_status("已显示生成的网格")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"加载生成的网格失败: {str(e)}")
+            self.log_error(f"加载生成的网格失败: {str(e)}")
+            self.update_status("加载生成的网格失败")
+
+    def _on_mesh_error(self, error_msg):
+        """处理网格生成错误"""
+        if self.progress_dialog:
+            self.progress_dialog.close()
+        QMessageBox.critical(self, "错误", error_msg)
+        self.log_error(error_msg)
+        self.update_status("网格生成失败")
+
+    def _on_mesh_log(self, message):
+        """处理网格生成日志"""
+        # 检查消息是否已经包含前缀，避免重复添加
+        if message.startswith('[INFO]') or message.startswith('[ERROR]') or message.startswith('[WARNING]'):
+            # 消息已包含前缀，直接输出
+            self.info_output.append_info_output(message)
+        else:
+            # 消息不包含前缀，使用 log_info 添加前缀
+            self.log_info(message)
+
+    def _cancel_mesh_generation(self):
+        """取消网格生成"""
+        if self.mesh_generation_thread and self.mesh_generation_thread.isRunning():
+            self.log_info("正在取消网格生成...")
+            self.mesh_generation_thread.stop()
+            self.update_status("网格生成已取消")
+            if self.progress_dialog:
+                self.progress_dialog.close()
 
     def display_mesh(self):
         """显示网格"""
@@ -2270,6 +2334,22 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def closeEvent(self, event):
         """窗口关闭事件"""
+        # 检查是否有网格生成任务正在运行
+        if self.mesh_generation_thread and self.mesh_generation_thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                '网格生成中',
+                '网格生成任务正在进行中，确定要退出吗？任务将被强制终止。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                # 停止网格生成任务
+                self.mesh_generation_thread.stop()
+            else:
+                event.ignore()
+                return
+
         reply = QMessageBox.question(
             self,
             '退出',

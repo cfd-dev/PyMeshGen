@@ -45,7 +45,7 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
     # 建立可视化对象
-    if gui_instance and hasattr(gui_instance, 'ax'):
+    if gui_instance and hasattr(gui_instance, 'ax') and gui_instance.ax:
         # 在GUI模式下，传入GUI的绘图区域
         visual_obj = Visualization(parameters.viz_enabled, gui_instance.ax)
     else:
@@ -170,7 +170,7 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
     
     # 在GUI模式下更新画布
-    if gui_instance and hasattr(gui_instance, 'canvas'):
+    if gui_instance and hasattr(gui_instance, 'canvas') and gui_instance.canvas:
         gui_instance.canvas.draw()
 
     # 输出网格信息
