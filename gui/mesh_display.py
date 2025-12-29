@@ -860,9 +860,18 @@ class MeshDisplayArea:
             except:
                 pass  # 忽略移除演员时的错误
         self.boundary_actors.clear()
-        
+
         # 清除高亮演员
         self.clear_highlights()
+
+        # 清除额外演员（由display_part方法添加的）
+        if hasattr(self, 'additional_actors'):
+            for actor in self.additional_actors:
+                try:
+                    self.renderer.RemoveActor(actor)
+                except:
+                    pass  # 忽略移除演员时的错误
+            self.additional_actors.clear()
     
     def set_render_mode(self, mode):
         """设置渲染模式"""
@@ -949,16 +958,13 @@ class MeshDisplayArea:
             self.render_window.Render()
     
     def display_part(self, part_name, parts_info=None):
-        """只显示指定的部件，清空其他内容
+        """显示指定的部件，保留其他已显示的内容
 
         Args:
             part_name (str): 要显示的部件名称
             parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
         """
         try:
-            # 首先清空所有演员
-            self.clear_mesh_actors()
-
             # 检查渲染器和渲染窗口是否可用
             if not self.renderer or not self.render_window:
                 return False
@@ -966,6 +972,9 @@ class MeshDisplayArea:
             # 检查网格数据是否可用
             if not self.mesh_data:
                 return False
+
+            # Extract the actual part name from formatted text (e.g., "部件1 - Max Size: 1.0, Prism: True" -> "部件1")
+            actual_part_name = part_name.split(' - ')[0] if ' - ' in part_name else part_name
 
             # 获取边界信息
             boundary_info = self._get_boundary_info()
@@ -975,20 +984,55 @@ class MeshDisplayArea:
 
             # 优先使用传递的parts_info
             if parts_info:
-                if isinstance(parts_info, dict) and part_name in parts_info:
-                    part_faces = parts_info[part_name].get('faces', [])
+                if isinstance(parts_info, dict):
+                    # Try exact match first
+                    if actual_part_name in parts_info:
+                        part_faces = parts_info[actual_part_name].get('faces', [])
+                    # If not found, try to find by partial match or key that starts with the part name
+                    else:
+                        for key in parts_info:
+                            if key == actual_part_name or key.startswith(actual_part_name):
+                                part_faces = parts_info[key].get('faces', [])
+                                break
             # 然后检查mesh_data中是否有parts_info
             elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
                 parts_info = self.mesh_data['parts_info']
-                if isinstance(parts_info, dict) and part_name in parts_info:
-                    part_faces = parts_info[part_name].get('faces', [])
+                if isinstance(parts_info, dict):
+                    # Try exact match first
+                    if actual_part_name in parts_info:
+                        part_faces = parts_info[actual_part_name].get('faces', [])
+                    # If not found, try to find by partial match or key that starts with the part name
+                    else:
+                        for key in parts_info:
+                            if key == actual_part_name or key.startswith(actual_part_name):
+                                part_faces = parts_info[key].get('faces', [])
+                                break
             # 检查是否有边界信息
-            elif boundary_info and part_name in boundary_info:
-                part_data = boundary_info[part_name]
-                part_faces = part_data.get("faces", [])
+            elif boundary_info and isinstance(boundary_info, dict):
+                # Try exact match first
+                if actual_part_name in boundary_info:
+                    part_data = boundary_info[actual_part_name]
+                    part_faces = part_data.get("faces", [])
+                # If not found, try to find by partial match or key that starts with the part name
+                else:
+                    for key in boundary_info:
+                        if key == actual_part_name or key.startswith(actual_part_name):
+                            part_data = boundary_info[key]
+                            part_faces = part_data.get("faces", [])
+                            break
             # 检查是否有直接的部件数据
-            elif isinstance(self.mesh_data, dict) and part_name in self.mesh_data:
-                part_faces = self.mesh_data[part_name].get('faces', [])
+            elif isinstance(self.mesh_data, dict):
+                # Try exact match first
+                if actual_part_name in self.mesh_data:
+                    part_data = self.mesh_data[actual_part_name]
+                    part_faces = part_data.get('faces', []) if isinstance(part_data, dict) else []
+                # If not found, try to find by partial match or key that starts with the part name
+                else:
+                    for key in self.mesh_data:
+                        if key == actual_part_name or key.startswith(actual_part_name):
+                            part_data = self.mesh_data[key]
+                            part_faces = part_data.get('faces', []) if isinstance(part_data, dict) else []
+                            break
 
             # 检查是否有面数据
             if part_faces:
@@ -1010,8 +1054,11 @@ class MeshDisplayArea:
                     # 添加部件演员
                     self.renderer.AddActor(part_actor)
 
-                    # 保存部件演员引用
-                    self.mesh_actor = part_actor
+                    # Note: We don't set self.mesh_actor here to preserve existing actors
+                    # 保存额外演员引用 for potential cleanup later
+                    if not hasattr(self, 'additional_actors'):
+                        self.additional_actors = []
+                    self.additional_actors.append(part_actor)
             else:
                 # 如果没有找到特定部件的数据，尝试显示整个网格
                 vtk_mesh = self.create_vtk_mesh()
@@ -1019,25 +1066,27 @@ class MeshDisplayArea:
                     mapper = vtk.vtkPolyDataMapper()
                     mapper.SetInputData(vtk_mesh)
 
-                    self.mesh_actor = vtk.vtkActor()
-                    self.mesh_actor.SetMapper(mapper)
+                    additional_actor = vtk.vtkActor()
+                    additional_actor.SetMapper(mapper)
 
                     self._apply_default_mesh_properties()
-                    self._apply_render_mode()
+                    additional_actor.GetProperty().SetColor(1.0, 1.0, 0.0)  # Highlight in yellow
+                    additional_actor.GetProperty().SetLineWidth(4.0)
 
-                    self.renderer.AddActor(self.mesh_actor)
+                    self.renderer.AddActor(additional_actor)
 
-            # 添加坐标轴
-            self.add_axes()
+                    # 保存额外演员引用 for potential cleanup later
+                    if not hasattr(self, 'additional_actors'):
+                        self.additional_actors = []
+                    self.additional_actors.append(additional_actor)
 
-            # 重置相机并渲染
-            self.renderer.ResetCamera()
+            # 重渲染
             self.render_window.Render()
-            self.enable_interaction()
 
             return True
 
         except Exception as e:
+            print(f"显示部件时出错: {str(e)}")
             return False
 
     def show_only_selected_part(self, part_name, parts_info=None):

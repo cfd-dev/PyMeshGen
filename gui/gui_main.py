@@ -189,7 +189,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             remove_callback=self.remove_part,
             edit_callback=self.edit_part,
             show_callback=self.show_selected_part,
-            show_only_callback=self.show_only_selected_part
+            show_only_callback=self.show_only_selected_part,
+            show_all_callback=self.show_all_parts
         )
 
         self._apply_parts_list_styling()
@@ -1009,6 +1010,37 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             selected_part_name = selected_part_item.text()
             self._execute_part_operation("只显示选中部件", self.mesh_display.show_only_selected_part, selected_part_name)
 
+
+    def show_all_parts(self):
+        """显示所有部件（从右键菜单调用）"""
+        # 在日志中显示操作信息
+        self.log_info("显示所有部件")
+
+        # 更新状态栏
+        self.update_status("显示所有部件")
+
+        # 如果有3D显示区域，重新显示整个网格
+        if hasattr(self, 'mesh_display'):
+            try:
+                # Clear any additional actors that might have been added by display_part
+                if hasattr(self.mesh_display, 'additional_actors'):
+                    self.mesh_display.additional_actors.clear()
+
+                # Clear highlights as well
+                self.mesh_display.clear_highlights()
+
+                # Display the full mesh
+                if hasattr(self, 'current_mesh'):
+                    success = self.mesh_display.display_mesh(self.current_mesh)
+                else:
+                    success = self.mesh_display.display_mesh()
+
+                if success:
+                    self.log_info("成功显示所有部件")
+                else:
+                    self.log_error("显示所有部件失败")
+            except Exception as e:
+                self.log_error(f"显示所有部件失败: {str(e)}")
 
 
     def update_params_display(self):

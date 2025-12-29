@@ -501,7 +501,7 @@ class ConfigDialog(DialogBase):
 class PartListWidget:
     """部件列表组件"""
 
-    def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None, show_callback=None, show_only_callback=None):
+    def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None, show_callback=None, show_only_callback=None, show_all_callback=None):
         from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QWidget, QMenu
         from PyQt5.QtCore import pyqtSignal, Qt
         from PyQt5.QtWidgets import QAction
@@ -524,6 +524,7 @@ class PartListWidget:
         self.edit_callback = edit_callback or self.edit_part
         self.show_callback = show_callback or self.show_selected_part
         self.show_only_callback = show_only_callback or self.show_only_selected_part
+        self.show_all_callback = show_all_callback or self.show_all_parts
 
         # 添加右键菜单
         self.parts_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -541,10 +542,15 @@ class PartListWidget:
             edit_action.triggered.connect(self.edit_callback)
             menu.addAction(edit_action)
 
-            # 添加显示选中部件菜单项
-            show_action = QAction("显示选中部件", self.widget)
-            show_action.triggered.connect(self.show_callback)
-            menu.addAction(show_action)
+            # 添加只显示选中部件菜单项
+            show_only_action = QAction("只显示选中部件", self.widget)
+            show_only_action.triggered.connect(self.show_only_callback)
+            menu.addAction(show_only_action)
+
+            # 添加显示所有部件菜单项
+            show_all_action = QAction("显示所有部件", self.widget)
+            show_all_action.triggered.connect(self.show_all_callback)
+            menu.addAction(show_all_action)
 
             # 显示菜单
             menu.exec_(self.parts_list.mapToGlobal(position))
@@ -567,4 +573,8 @@ class PartListWidget:
 
     def show_only_selected_part(self):
         """只显示选中部件 - 需要在主类中重写"""
+        pass
+
+    def show_all_parts(self):
+        """显示所有部件 - 需要在主类中重写"""
         pass
