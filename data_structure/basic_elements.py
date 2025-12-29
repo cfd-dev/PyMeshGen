@@ -719,12 +719,13 @@ class Unstructured_Grid:
         """将网格保存到VTK文件"""
         cell_idx_container = []
         cell_type_container = []
+        cell_part_names = []
         for cell in self.cell_container:
             # 跳过None单元格
             if cell is None:
                 continue
             cell_idx_container.append(cell.node_ids)
-        
+
             # 初始化vtk_cell_type为None，避免未定义错误
             vtk_cell_type = None
             # if isinstance(cell, Quadrilateral):
@@ -733,7 +734,7 @@ class Unstructured_Grid:
             #     vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
             # 使用类名字符串进行类型判断，避免导入问题
             cell_class_name = cell.__class__.__name__
-        
+
             if cell_class_name == 'Quadrilateral':
                 vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
             elif cell_class_name == 'Triangle':
@@ -741,10 +742,14 @@ class Unstructured_Grid:
             else:
                 # 如果遇到未知类型的单元，可以选择跳过或抛出错误
                 warning(f"未知单元类型: {type(cell)}, 跳过保存")
-                continue            
-            
+                continue
+
             cell_type_container.append(vtk_cell_type)
-    
+
+            # 获取单元的部件名称，如果没有则默认为'Fluid'
+            part_name = getattr(cell, 'part_name', 'Fluid')
+            cell_part_names.append(part_name)
+
         # 只有在有有效单元时才写入文件
         if cell_idx_container and cell_type_container:
             write_vtk(
@@ -753,6 +758,7 @@ class Unstructured_Grid:
             cell_idx_container,
             self.boundary_nodes_list,
             cell_type_container,
+            cell_part_names,
             )
         else:
             warning("没有有效的单元可以保存到VTK文件")

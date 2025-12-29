@@ -367,13 +367,13 @@ def reconstruct_mesh_from_cas(cas_data):
     
     # 创建边界信息字典，用于可视化
     boundary_info = {}
-    
+
     # 按边界类型和区域名称组织边界信息
     for zone_id, zone in cas_data["zones"].items():
         if zone["type"] == "faces":
             bc_type = zone.get("bc_type", "unspecified")
             part_name = zone.get("part_name", f"zone_{zone_id}")
-            
+
             # 收集该边界的所有面
             boundary_faces = []
             for face in zone["data"]:
@@ -382,21 +382,24 @@ def reconstruct_mesh_from_cas(cas_data):
                     "left_cell": face["left_cell"],
                     "right_cell": face["right_cell"]
                 })
-            
+
             # 添加到边界信息
             boundary_info[part_name] = {
                 "type": bc_type,
                 "faces": boundary_faces
             }
-    
+
     # 创建Unstructured_Grid对象
     unstr_grid = Unstructured_Grid(
         cell_container, node_coords, boundary_nodes
     )
-    
+
     # 设置边界信息
     unstr_grid.boundary_info = boundary_info
-    
+
+    # 保存原始部件信息以便后续使用
+    unstr_grid.parts_info = boundary_info
+
     return unstr_grid
 
 

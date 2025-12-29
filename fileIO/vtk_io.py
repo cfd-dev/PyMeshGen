@@ -19,7 +19,7 @@ class VTK_ELEMENT_TYPE(IntEnum):
 
 
 def write_vtk(
-    filename, node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+    filename, node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_names=None
 ):
     """
     将网格数据写入VTK文件。暂只支持二维三角形、四边形单元。
@@ -30,6 +30,7 @@ def write_vtk(
         cell_idx_container (list): 单元索引列表，每个元素为一个包含节点索引的列表。
         boundary_nodes_idx (list): 边界节点索引列表。
         cell_type_container (list): 单元类型列表，每个元素为一个整数。
+        cell_part_names (list, optional): 单元部件名称列表，每个元素为一个字符串。
     """
 
     num_nodes = len(node_coords)
@@ -77,9 +78,27 @@ def write_vtk(
             file.write(f"{1 if i in boundary_nodes_idx else 0}\n")  # 标记边界节点
 
         file.write(f"CELL_DATA {total_cells}\n")
+
+        # 写入单元ID
         file.write("SCALARS cell_id int 1\n")
         file.write("LOOKUP_TABLE default\n")
         file.write("\n".join(map(str, range(total_cells))) + "\n")
+
+        # 写入部件信息（如果提供）
+        if cell_part_names and len(cell_part_names) == total_cells:
+            # 创建部件名称到整数的映射
+            unique_part_names = list(set(cell_part_names))
+            part_name_to_id = {name: idx for idx, name in enumerate(unique_part_names)}
+
+            # 写入部件ID
+            file.write("SCALARS part_id int 1\n")
+            file.write("LOOKUP_TABLE default\n")
+            part_ids = [part_name_to_id[name] for name in cell_part_names]
+            file.write("\n".join(map(str, part_ids)) + "\n")
+
+            # 写入部件名称
+            file.write("SCALARS part_name string\n")
+            file.write("\n".join([f'"{name}"' for name in cell_part_names]) + "\n")
 
     info(f"网格已保存到 {filename}")
 

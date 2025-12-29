@@ -316,7 +316,7 @@ class Adfront2:
         self.update_nodes()
 
         # 获取当前基准阵面的部件信息
-        part_name = getattr(self.base_front, 'part_name', 'default')
+        part_name = getattr(self.base_front, 'part_name', 'Fluid')  # 默认为'Fluid'
 
         # 更新阵面
         new_front1 = Front(
@@ -349,7 +349,12 @@ class Adfront2:
         )
 
         # 为新单元添加部件信息
-        new_cell.part_name = part_name
+        # 如果当前阵面是边界阵面（part_name不是'Fluid'），则使用阵面的part_name
+        # 否则，新生成的内部单元默认为'Fluid'
+        if part_name != 'Fluid':
+            new_cell.part_name = part_name
+        else:
+            new_cell.part_name = 'Fluid'
 
         self.update_cells(new_cell)
 
@@ -537,7 +542,7 @@ class Adfront2:
             ]
 
         # 创建节点时考虑部件信息
-        part_name = getattr(self.base_front, 'part_name', 'default')
+        part_name = getattr(self.base_front, 'part_name', 'Fluid')  # 默认为'Fluid'
         self.pbest = NodeElement(
             pbest,
             self.num_nodes,
