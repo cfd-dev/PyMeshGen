@@ -104,12 +104,13 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self,
         coords,
         idx,
+        part_name=None,
         bc_type=None,
         match_bound=None,
         convex_flag=False,
         concav_flag=False,
     ):
-        super().__init__(coords, idx, bc_type)  # 调用父类构造函数
+        super().__init__(coords, idx, part_name=part_name, bc_type=bc_type)  # 调用父类构造函数，正确传递参数
 
         self.marching_direction = []  # 节点推进方向
         self.marching_distance = 0.0  # 节点处的推进距离
@@ -126,6 +127,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         new_node = cls(
             node_elem.coords,
             node_elem.idx,
+            part_name=node_elem.part_name,
             bc_type=node_elem.bc_type,
         )
         return new_node
@@ -748,6 +750,8 @@ class Unstructured_Grid:
 
             # 获取单元的部件名称，如果没有则默认为'Fluid'
             part_name = getattr(cell, 'part_name', 'Fluid')
+            # Ensure part_name is always a string to avoid comparison issues
+            part_name = str(part_name) if part_name is not None else 'Fluid'
             cell_part_names.append(part_name)
 
         # 只有在有有效单元时才写入文件

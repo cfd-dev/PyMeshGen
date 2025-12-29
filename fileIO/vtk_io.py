@@ -87,18 +87,14 @@ def write_vtk(
         # 写入部件信息（如果提供）
         if cell_part_names and len(cell_part_names) == total_cells:
             # 创建部件名称到整数的映射
-            unique_part_names = list(set(cell_part_names))
+            unique_part_names = list(set(str(name) for name in cell_part_names))  # Ensure all are strings
+            unique_part_names.sort()  # Sort to ensure consistent mapping
             part_name_to_id = {name: idx for idx, name in enumerate(unique_part_names)}
 
             # 写入部件ID
             file.write("SCALARS part_id int 1\n")
-            file.write("LOOKUP_TABLE default\n")
             part_ids = [part_name_to_id[name] for name in cell_part_names]
             file.write("\n".join(map(str, part_ids)) + "\n")
-
-            # 写入部件名称
-            file.write("SCALARS part_name string\n")
-            file.write("\n".join([f'"{name}"' for name in cell_part_names]) + "\n")
 
     info(f"网格已保存到 {filename}")
 
@@ -186,13 +182,29 @@ def read_vtk(filename):
                         i += 1
                         val = int(lines[i])
                         Cell_ID.append(val)
+            elif lines[i].startswith("SCALARS part_id"):
+                i += 1  # 跳过LOOKUP_TABLE行
+                if lines[i].startswith("LOOKUP_TABLE"):
+                    i += 1  # 跳过LOOKUP_TABLE part_name_lut line
+                    part_ids = []
+                    for _ in range(nCells):
+                        i += 1
+                        val = int(lines[i])
+                        part_ids.append(val)
         i += 1
 
-    return node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+    # Return part_ids if available, otherwise return None
+    result = node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+    if 'part_ids' in locals():
+        result = result + (part_ids,)
+    else:
+        result = result + (None,)
+
+    return result
 
 
 def reconstruct_mesh_from_vtk(
-    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids=None
 ):
     from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
 
@@ -207,22 +219,22 @@ def reconstruct_mesh_from_vtk(
         # 检查单元索引是否有效
         if idx >= len(cell_idx_container):
             raise ValueError(f"单元索引 {idx} 超出范围 {len(cell_idx_container)}")
-        
+
         # 检查单元是否有足够的节点
         if len(cell_idx_container[idx]) < 3:
             raise ValueError(f"单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
-        
+
         # 检查节点索引是否有效，如果无效则跳过该单元
         valid_nodes = True
         for node_idx in cell_idx_container[idx]:
             if node_idx >= len(node_container):
                 valid_nodes = False
                 break
-        
+
         if not valid_nodes:
             # 跳过无效单元，不创建网格对象
             continue
-        
+
         node1 = node_container[cell_idx_container[idx][0]]
         node2 = node_container[cell_idx_container[idx][1]]
         node3 = node_container[cell_idx_container[idx][2]]
@@ -237,6 +249,14 @@ def reconstruct_mesh_from_vtk(
             cell = Quadrilateral(node1, node2, node3, node4, idx)
         else:
             raise ValueError(f"Unsupported cell type: {cell_type_container[idx]}")
+
+        # 如果有部件ID信息，设置部件名称
+        if cell_part_ids and idx < len(cell_part_ids):
+            # 这里我们只是存储ID，实际的名称映射需要在更高层处理
+            cell.part_name = f"part_{cell_part_ids[idx]}"  # Convert to string format
+        else:
+            cell.part_name = "Fluid"  # 默认为Fluid
+
         cell_container[idx] = cell
 
     boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx if idx < len(node_container)]
@@ -247,10 +267,13 @@ def reconstruct_mesh_from_vtk(
 
 
 def parse_vtk_msh(filename):
-    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container = read_vtk(
-        filename
-    )
+    result = read_vtk(filename)
+    if len(result) == 5:
+        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = result
+    else:
+        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = result + (None,)
+
     unstr_grid = reconstruct_mesh_from_vtk(
-        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids
     )
     return unstr_grid
