@@ -424,10 +424,11 @@ class MeshDisplayArea:
         return boundary_info
 
     def _create_boundary_polydata(self, faces):
-        """创建边界多边形数据"""
+        """创建边界多边形数据 - 支持2D线段和3D面"""
         try:
             boundary_points = vtk.vtkPoints()
-            boundary_polys = vtk.vtkCellArray()
+            boundary_polys = vtk.vtkCellArray()  # For polygons (3+ nodes)
+            boundary_lines = vtk.vtkCellArray()  # For line segments (2 nodes)
             point_map = {}
 
             for face in faces:
@@ -438,39 +439,80 @@ class MeshDisplayArea:
                 if not nodes or len(nodes) < 2:
                     continue
 
-                polygon = vtk.vtkPolygon()
-                polygon.GetPointIds().SetNumberOfIds(len(nodes))
+                num_nodes = len(nodes)
 
-                for i, node_id in enumerate(nodes):
-                    if node_id not in point_map:
-                        try:
-                            node_id_int = int(node_id)
-                        except (ValueError, TypeError):
-                            print(f"无效的节点ID: {node_id}")
-                            continue
+                # Handle 2-node cases as line segments (for 2D boundaries)
+                if num_nodes == 2:
+                    line = vtk.vtkLine()
+                    line.GetPointIds().SetNumberOfIds(2)
 
-                        node_id_0 = node_id_int - 1
-                        coord = self._get_node_coord(node_id_0)
+                    for i, node_id in enumerate(nodes):
+                        if node_id not in point_map:
+                            try:
+                                node_id_int = int(node_id)
+                            except (ValueError, TypeError):
+                                print(f"无效的节点ID: {node_id}")
+                                continue
 
-                        if coord is None:
-                            print(f"无法获取节点坐标: {node_id}")
-                            continue
+                            node_id_0 = node_id_int - 1
+                            coord = self._get_node_coord(node_id_0)
 
-                        if len(coord) == 2:
-                            point_id = boundary_points.InsertNextPoint(coord[0], coord[1], 0.0)
+                            if coord is None:
+                                print(f"无法获取节点坐标: {node_id}")
+                                continue
+
+                            if len(coord) == 2:
+                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], 0.0)
+                            else:
+                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], coord[2])
+                            point_map[node_id] = point_id
                         else:
-                            point_id = boundary_points.InsertNextPoint(coord[0], coord[1], coord[2])
-                        point_map[node_id] = point_id
-                    else:
-                        point_id = point_map[node_id]
+                            point_id = point_map[node_id]
 
-                    polygon.GetPointIds().SetId(i, point_id)
+                        line.GetPointIds().SetId(i, point_id)
 
-                boundary_polys.InsertNextCell(polygon)
+                    boundary_lines.InsertNextCell(line)
+
+                # Handle 3+ node cases as polygons (for 3D boundaries)
+                else:
+                    polygon = vtk.vtkPolygon()
+                    polygon.GetPointIds().SetNumberOfIds(num_nodes)
+
+                    for i, node_id in enumerate(nodes):
+                        if node_id not in point_map:
+                            try:
+                                node_id_int = int(node_id)
+                            except (ValueError, TypeError):
+                                print(f"无效的节点ID: {node_id}")
+                                continue
+
+                            node_id_0 = node_id_int - 1
+                            coord = self._get_node_coord(node_id_0)
+
+                            if coord is None:
+                                print(f"无法获取节点坐标: {node_id}")
+                                continue
+
+                            if len(coord) == 2:
+                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], 0.0)
+                            else:
+                                point_id = boundary_points.InsertNextPoint(coord[0], coord[1], coord[2])
+                            point_map[node_id] = point_id
+                        else:
+                            point_id = point_map[node_id]
+
+                        polygon.GetPointIds().SetId(i, point_id)
+
+                    boundary_polys.InsertNextCell(polygon)
 
             boundary_polydata = vtk.vtkPolyData()
             boundary_polydata.SetPoints(boundary_points)
-            boundary_polydata.SetPolys(boundary_polys)
+
+            # Add both polygons and lines to the polydata
+            if boundary_polys.GetNumberOfCells() > 0:
+                boundary_polydata.SetPolys(boundary_polys)
+            if boundary_lines.GetNumberOfCells() > 0:
+                boundary_polydata.SetLines(boundary_lines)
 
             return boundary_polydata
         except Exception as e:

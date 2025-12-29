@@ -984,20 +984,35 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if selected_part_item:
             selected_part_name = selected_part_item.text()
 
+            # Extract the actual part name from formatted text (e.g., "部件1 - Max Size: 1.0, Prism: True" -> "部件1")
+            actual_part_name = selected_part_name.split(' - ')[0] if ' - ' in selected_part_name else selected_part_name
+
             # 在日志中显示部件信息
-            self.log_info(f"只显示选中部件: {selected_part_name}")
+            self.log_info(f"只显示选中部件: {selected_part_name} (实际名称: {actual_part_name})")
 
             # 更新状态栏
-            self.update_status(f"只显示部件: {selected_part_name}")
+            self.update_status(f"只显示部件: {actual_part_name}")
 
             # 如果有3D显示区域，只显示选中的部件
             if hasattr(self, 'mesh_display'):
                 try:
-                    success = self.mesh_display.show_only_selected_part(selected_part_name, parts_info=self.cas_parts_info)
-                    if success:
-                        self.log_info(f"成功只显示部件: {selected_part_name}")
+                    # First try with cas_parts_info if available
+                    if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                        success = self.mesh_display.show_only_selected_part(actual_part_name, parts_info=self.cas_parts_info)
                     else:
-                        self.log_error(f"只显示部件失败: {selected_part_name}")
+                        # If cas_parts_info is not available, try with no parts_info to let the display method handle fallbacks
+                        success = self.mesh_display.show_only_selected_part(actual_part_name, parts_info=None)
+
+                    if success:
+                        self.log_info(f"成功只显示部件: {actual_part_name}")
+                    else:
+                        self.log_error(f"只显示部件失败: {actual_part_name}")
+                        # If show_only_selected_part fails, try to highlight the part instead as a fallback
+                        self.log_info(f"尝试高亮部件作为备选方案: {actual_part_name}")
+                        if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                            self.mesh_display.highlight_part(actual_part_name, highlight=True, parts_info=self.cas_parts_info)
+                        else:
+                            self.mesh_display.highlight_part(actual_part_name, highlight=True)
                 except Exception as e:
                     self.log_error(f"只显示部件失败: {str(e)}")
 
