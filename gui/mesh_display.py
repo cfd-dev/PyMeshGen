@@ -289,12 +289,7 @@ class MeshDisplayArea:
                             add_cell(cell)
 
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
-                # 对于CAS类型的MeshData对象，优先使用unstr_grid属性
-                if hasattr(self.mesh_data, 'mesh_type') and self.mesh_data.mesh_type == 'cas':
-                    if hasattr(self.mesh_data, 'unstr_grid') and self.mesh_data.unstr_grid:
-                        return self.create_vtk_mesh_from_unstr_grid(self.mesh_data.unstr_grid)
-                
-                # 其他类型的MeshData对象，使用node_coords和cells属性
+                # 对于CAS类型的MeshData对象，直接使用node_coords和cells属性
                 node_coords = self.mesh_data.node_coords
                 cells = self.mesh_data.cells
 
@@ -305,7 +300,30 @@ class MeshDisplayArea:
                     add_cell(cell)
 
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
-                return self.create_vtk_mesh_from_unstr_grid(self.mesh_data)
+                # 对于Unstructured_Grid对象，直接使用node_coords和cell_container属性
+                node_coords = self.mesh_data.node_coords
+                cell_container = self.mesh_data.cell_container
+
+                for coord in node_coords:
+                    add_point(coord)
+
+                for cell in cell_container:
+                    if cell is None:
+                        continue
+                    node_ids = cell.node_ids
+                    if len(node_ids) == 3:
+                        triangle = vtk.vtkTriangle()
+                        triangle.GetPointIds().SetId(0, node_ids[0])
+                        triangle.GetPointIds().SetId(1, node_ids[1])
+                        triangle.GetPointIds().SetId(2, node_ids[2])
+                        polys.InsertNextCell(triangle)
+                    elif len(node_ids) == 4:
+                        quad = vtk.vtkQuad()
+                        quad.GetPointIds().SetId(0, node_ids[0])
+                        quad.GetPointIds().SetId(1, node_ids[1])
+                        quad.GetPointIds().SetId(2, node_ids[2])
+                        quad.GetPointIds().SetId(3, node_ids[3])
+                        polys.InsertNextCell(quad)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")

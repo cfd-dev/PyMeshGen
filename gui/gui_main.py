@@ -2180,9 +2180,135 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         has_boundary_info = True
                         boundary_info['parts_info'] = extracted_parts
 
-            # TODO 根据parts_info提取边界信息
-            if 'parts_info' in boundary_info:
-                boundary_info['boundary_faces'] = self._extract_boundary_faces(boundary_info['parts_info'])
+            # 根据parts_info提取边界信息，将self.current_mesh中不属于边界部件的部件删除，同步更新节点坐标和索引
+            if 'parts_info' in boundary_info and boundary_info['parts_info']:
+                parts_info = boundary_info['parts_info']
+                
+                # 收集所有边界部件名称（排除interior）
+                boundary_part_names = set()
+                for part_name in parts_info.keys():
+                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        part_data = parts_info[part_name]
+                        bc_type = part_data.get('type', part_data.get('bc_type', 'unknown'))
+                        if bc_type != 'interior':
+                            boundary_part_names.add(part_name)
+                
+                if boundary_part_names:
+                    self.log_info(f"检测到边界部件: {list(boundary_part_names)}")
+                    
+                    # 过滤单元：只保留属于边界部件的单元，从parts_info中将边界部件取出来存储到current_mesh
+                    # parts_info中已经存储了边界部件的信息，直接从parts_info中提取边界部件的单元即可
+                    
+                    # 收集所有边界faces和节点索引
+                    all_faces = []
+                    kept_node_indices = set()
+                    
+                    for part_name in boundary_part_names:
+                        if part_name in parts_info:
+                            part_data = parts_info[part_name]
+                            faces = part_data.get('faces', [])
+                            for face in faces:
+                                nodes = face.get('nodes', [])
+                                if nodes:
+                                    all_faces.append({
+                                        'nodes': nodes,
+                                        'part_name': part_name
+                                    })
+                                    kept_node_indices.update(nodes)
+                    
+                    if all_faces and kept_node_indices:
+                        # 创建节点索引映射（旧索引 -> 新索引）
+                        old_to_new_node_map = {old_idx: new_idx for new_idx, old_idx in enumerate(sorted(kept_node_indices))}
+                        
+                        # 提取节点坐标
+                        new_node_coords = []
+                        if hasattr(self.current_mesh, 'node_coords'):
+                            for old_idx in sorted(kept_node_indices):
+                                if old_idx < len(self.current_mesh.node_coords):
+                                    new_node_coords.append(self.current_mesh.node_coords[old_idx])
+                        
+                        # 从faces创建新的单元
+                        from data_structure.basic_elements import NodeElement, Triangle, Quadrilateral
+                        new_node_container = [NodeElement(new_node_coords[i], i) for i in range(len(new_node_coords))]
+                        new_cell_container = []
+                        
+                        for face in all_faces:
+                            nodes = face['nodes']
+                            part_name = face['part_name']
+                            
+                            # 将旧节点索引映射到新索引
+                            new_node_indices = [old_to_new_node_map[nid] for nid in nodes if nid in old_to_new_node_map]
+                            
+                            if len(new_node_indices) == 3:
+                                # 创建三角形单元
+                                cell = Triangle(
+                                    new_node_container[new_node_indices[0]],
+                                    new_node_container[new_node_indices[1]],
+                                    new_node_container[new_node_indices[2]],
+                                    idx=len(new_cell_container)
+                                )
+                                cell.part_name = part_name
+                                new_cell_container.append(cell)
+                            elif len(new_node_indices) == 4:
+                                # 创建四边形单元
+                                cell = Quadrilateral(
+                                    new_node_container[new_node_indices[0]],
+                                    new_node_container[new_node_indices[1]],
+                                    new_node_container[new_node_indices[2]],
+                                    new_node_container[new_node_indices[3]],
+                                    idx=len(new_cell_container)
+                                )
+                                cell.part_name = part_name
+                                new_cell_container.append(cell)
+                        
+                        # 创建新的boundary_nodes
+                        new_boundary_nodes = []
+                        for node in new_node_container:
+                            node.bc_type = 'boundary'
+                            new_boundary_nodes.append(node)
+                        
+                        # 更新current_mesh
+                        self.current_mesh.cells = new_cell_container
+                        self.current_mesh.num_cells = len(new_cell_container)
+                        self.current_mesh.node_coords = new_node_coords
+                        self.current_mesh.num_points = len(new_node_coords)
+                        self.current_mesh.boundary_nodes = new_boundary_nodes
+                        self.current_mesh.boundary_nodes_list = [node.idx for node in new_boundary_nodes]
+                        self.current_mesh.num_boundary_nodes = len(new_boundary_nodes)
+                        self.current_mesh.unstr_grid = None
+                        
+                        # 更新parts_info，只保留边界部件
+                        new_parts_info = {}
+                        for part_name in boundary_part_names:
+                            if part_name in parts_info:
+                                new_parts_info[part_name] = parts_info[part_name]
+                        self.current_mesh.parts_info = new_parts_info
+                        self.current_mesh.boundary_info = new_parts_info
+
+                        # 更新GUI的cas_parts_info
+                        self.cas_parts_info = new_parts_info
+                        
+                        # 刷新部件列表和视图区
+                        self.update_parts_list_from_cas(new_parts_info)
+                        
+                        # 重新显示网格
+                        if hasattr(self, 'mesh_display'):
+                            self.mesh_display.clear_mesh_actors()
+                            self.mesh_display.set_mesh_data(self.current_mesh)
+                            self.mesh_display.display_mesh()
+                        
+                        self.log_info(f"边界提取完成: 保留 {len(new_cell_container)} 个单元, {len(new_node_coords)} 个节点, {len(boundary_part_names)} 个边界部件")
+                        self.update_status(f"边界提取完成: {len(boundary_part_names)} 个边界部件")
+                    else:
+                        self.log_info("未找到边界faces或节点")
+                        self.update_status("未找到边界数据")
+                else:
+                    self.log_info("未检测到边界部件")
+                    self.update_status("未检测到边界部件")
+            else:
+                self.log_info("未找到部件信息")
+                self.update_status("未找到部件信息")
+
         except Exception as e:
             from PyQt5.QtWidgets import QMessageBox
             QMessageBox.critical(self, "错误", f"提取边界信息失败：{str(e)}")
