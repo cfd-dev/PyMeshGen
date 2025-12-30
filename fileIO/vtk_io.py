@@ -252,9 +252,15 @@ def reconstruct_mesh_from_vtk(
 
         # 如果有部件ID信息，设置部件名称
         if cell_part_ids and idx < len(cell_part_ids):
-            # 这里我们只是存储ID，实际的名称映射需要在更高层处理
-            cell.part_name = f"part_{cell_part_ids[idx]}"  # Convert to string format
-        else:
+            # 检查cell_part_ids中的值是否是实际的part名称（字符串）还是ID（数字）
+            part_id = cell_part_ids[idx]
+            if isinstance(part_id, str) and part_id:  # 如果是字符串，直接使用
+                cell.part_name = part_id
+            else:  # 如果是数字ID，转换为part名称格式
+                cell.part_name = f"part_{part_id}"  # Convert to string format
+        # 否则保持单元原有的part_name（如果已存在），避免覆盖有意义的part名称
+        # 只有在part_name为None或空的情况下才设置默认值
+        elif not hasattr(cell, 'part_name') or cell.part_name is None or cell.part_name == '':
             cell.part_name = "Fluid"  # 默认为Fluid
 
         cell_container[idx] = cell

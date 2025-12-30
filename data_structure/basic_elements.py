@@ -502,6 +502,16 @@ class Unstructured_Grid:
         self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
         self.num_boundary_nodes = len(self.boundary_nodes)
 
+        # 保留原始的parts_info信息（如果存在）
+        if hasattr(other_grid, 'parts_info') and other_grid.parts_info:
+            if not hasattr(self, 'parts_info') or not self.parts_info:
+                self.parts_info = other_grid.parts_info
+            else:
+                # 如果两个网格都有parts_info，合并它们
+                for part_name, part_data in other_grid.parts_info.items():
+                    if part_name not in self.parts_info:
+                        self.parts_info[part_name] = part_data
+
     def save_debug_file(self, status):
         """保存调试文件"""
         self.num_cells = len(self.cell_container)

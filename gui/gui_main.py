@@ -1650,42 +1650,85 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def _update_parts_list_from_generated_mesh(self, generated_mesh):
         """从生成的网格更新部件列表"""
         try:
-            # 保留原始的部件信息（边界信息）并添加新生成的内部部件
+            # 从新生成的网格中提取实际的部件信息
             updated_parts_info = {}
 
-            # 首先添加原始的边界部件信息（如果存在）
+            # 首先，尝试从原始导入的部件信息中获取边界部件信息（这些应该保留原始名称如"wall"）
             if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                # 复制原始边界部件信息
                 for part_name, part_data in self.cas_parts_info.items():
                     if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        # 保留原始边界部件信息
                         updated_parts_info[part_name] = part_data
 
-            # 检查生成的网格是否包含额外的部件信息
+            # 方法1: 从网格的单元中提取部件信息
+            if hasattr(generated_mesh, 'cell_container') and generated_mesh.cell_container:
+                for cell in generated_mesh.cell_container:
+                    part_name = getattr(cell, 'part_name', 'interior')
+                    if part_name is None or part_name == '':
+                        part_name = 'interior'  # 默认为内部单元
+
+                    # 确保part_name是字符串
+                    part_name = str(part_name) if part_name is not None else 'interior'
+
+                    # 过滤掉纯数字的part_name，这些通常是VTK加载时的错误ID
+                    if part_name.isdigit():
+                        # 如果是数字，这可能是VTK加载时的错误，跳过
+                        continue
+
+                    # 只有当part_name不是"interior"且不在已有的边界部件中时，才添加
+                    if part_name != 'interior' and part_name not in updated_parts_info:
+                        updated_parts_info[part_name] = {
+                            'part_name': part_name,
+                            'bc_type': 'boundary',
+                            'node_count': 0,
+                            'nodes': []
+                        }
+
+                    # 更新计数
+                    if part_name in updated_parts_info:
+                        updated_parts_info[part_name]['node_count'] += 1
+
+            # 方法2: 如果有parts_info属性，也合并进来
             if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
-                # 合并生成网格的部件信息
                 for part_name, part_data in generated_mesh.parts_info.items():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
-                        if part_name not in updated_parts_info:  # 避免覆盖原始部件
-                            updated_parts_info[part_name] = part_data
-            elif hasattr(generated_mesh, 'boundary_nodes') and generated_mesh.boundary_nodes:
-                # 从边界节点提取部件信息（作为备选方案）
+                    # 确保 part_name 是字符串
+                    part_name_str = str(part_name) if part_name is not None else 'unknown'
+                    if part_name_str not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        # 过滤掉纯数字的part_name
+                        if part_name_str.isdigit():
+                            continue
+
+                        if part_name_str not in updated_parts_info:
+                            updated_parts_info[part_name_str] = part_data
+                        else:
+                            # 如果已存在，更新信息
+                            if isinstance(part_data, dict):
+                                updated_parts_info[part_name_str].update(part_data)
+
+            # 方法3: 如果没有从单元中提取到信息，从边界节点提取
+            if hasattr(generated_mesh, 'boundary_nodes') and generated_mesh.boundary_nodes:
                 extracted_parts = self._extract_parts_from_boundary_nodes(generated_mesh.boundary_nodes)
                 if extracted_parts:
                     for part_name, part_data in extracted_parts.items():
-                        if part_name not in updated_parts_info and part_name != 'Unknown':
-                            updated_parts_info[part_name] = part_data
+                        # 确保 part_name 是字符串
+                        part_name_str = str(part_name) if part_name is not None else 'unknown'
+                        # 过滤掉纯数字的part_name和"Unknown"
+                        if (not part_name_str.isdigit() and
+                            part_name_str != 'Unknown' and
+                            part_name_str not in updated_parts_info):
+                            updated_parts_info[part_name_str] = part_data
 
             # 确保包含"interior"部件（新生成的内部单元）
             if 'interior' not in updated_parts_info:
                 updated_parts_info['interior'] = {
                     'part_name': 'interior',
                     'bc_type': 'interior',
-                    'node_count': 0,  # 这个值会在显示时更新
+                    'node_count': 0,
                     'nodes': []
                 }
 
             if updated_parts_info:
-                # 更新cas_parts_info以包含完整的部件信息
+                # 更新cas_parts_info以包含新网格的实际部件信息
                 self.cas_parts_info = updated_parts_info
                 # 更新部件列表显示
                 self.update_parts_list_from_cas(updated_parts_info)

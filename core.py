@@ -173,6 +173,11 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
 
     # 合并各向同性网格和边界层网格
     global_unstr_grid = unstr_grid_list[0]
+
+    # 确保原始网格的parts_info被保留（包含原始边界部件信息）
+    if hasattr(input_grid, 'parts_info') and input_grid.parts_info:
+        global_unstr_grid.parts_info = input_grid.parts_info
+
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
     
