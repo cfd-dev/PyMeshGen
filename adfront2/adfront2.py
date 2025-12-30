@@ -350,11 +350,11 @@ class Adfront2:
 
         # 为新单元添加部件信息
         # 如果当前阵面是边界阵面（part_name不是'Fluid'），则使用阵面的part_name
-        # 否则，新生成的内部单元默认为'Fluid'
+        # 否则，新生成的内部单元默认为'interior'
         if part_name != 'Fluid':
             new_cell.part_name = part_name
         else:
-            new_cell.part_name = 'Fluid'
+            new_cell.part_name = 'interior'
 
         self.update_cells(new_cell)
 

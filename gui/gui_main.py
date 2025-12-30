@@ -1639,10 +1639,103 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.log_info("已显示生成的网格")
                 self.update_status("已显示生成的网格")
 
+            # 更新部件列表以显示新网格的部件信息
+            self._update_parts_list_from_generated_mesh(generated_mesh)
+
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载生成的网格失败: {str(e)}")
             self.log_error(f"加载生成的网格失败: {str(e)}")
             self.update_status("加载生成的网格失败")
+
+    def _update_parts_list_from_generated_mesh(self, generated_mesh):
+        """从生成的网格更新部件列表"""
+        try:
+            # 保留原始的部件信息（边界信息）并添加新生成的内部部件
+            updated_parts_info = {}
+
+            # 首先添加原始的边界部件信息（如果存在）
+            if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                # 复制原始边界部件信息
+                for part_name, part_data in self.cas_parts_info.items():
+                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        updated_parts_info[part_name] = part_data
+
+            # 检查生成的网格是否包含额外的部件信息
+            if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
+                # 合并生成网格的部件信息
+                for part_name, part_data in generated_mesh.parts_info.items():
+                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        if part_name not in updated_parts_info:  # 避免覆盖原始部件
+                            updated_parts_info[part_name] = part_data
+            elif hasattr(generated_mesh, 'boundary_nodes') and generated_mesh.boundary_nodes:
+                # 从边界节点提取部件信息（作为备选方案）
+                extracted_parts = self._extract_parts_from_boundary_nodes(generated_mesh.boundary_nodes)
+                if extracted_parts:
+                    for part_name, part_data in extracted_parts.items():
+                        if part_name not in updated_parts_info and part_name != 'Unknown':
+                            updated_parts_info[part_name] = part_data
+
+            # 确保包含"interior"部件（新生成的内部单元）
+            if 'interior' not in updated_parts_info:
+                updated_parts_info['interior'] = {
+                    'part_name': 'interior',
+                    'bc_type': 'interior',
+                    'node_count': 0,  # 这个值会在显示时更新
+                    'nodes': []
+                }
+
+            if updated_parts_info:
+                # 更新cas_parts_info以包含完整的部件信息
+                self.cas_parts_info = updated_parts_info
+                # 更新部件列表显示
+                self.update_parts_list_from_cas(updated_parts_info)
+                self.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
+            else:
+                # 如果没有部件信息，保持原有部件列表
+                self.log_info("生成的网格中未检测到部件信息，保持原有部件列表")
+
+        except Exception as e:
+            self.log_error(f"更新部件列表失败: {str(e)}")
+
+    def _extract_parts_from_boundary_nodes(self, boundary_nodes):
+        """从边界节点提取部件信息"""
+        try:
+            # 创建一个字典来存储每个部件的节点信息
+            parts_dict = {}
+
+            for node in boundary_nodes:
+                # 获取节点的部件名称
+                part_name = getattr(node, 'part_name', 'Unknown')
+                if part_name is None or part_name == '':
+                    part_name = 'Unknown'
+
+                # 如果部件名称不存在于字典中，创建新的条目
+                if part_name not in parts_dict:
+                    parts_dict[part_name] = {
+                        'nodes': [],
+                        'type': getattr(node, 'bc_type', 'boundary'),
+                        'count': 0
+                    }
+
+                # 添加节点到对应部件
+                parts_dict[part_name]['nodes'].append(node)
+                parts_dict[part_name]['count'] += 1
+
+            # 转换为GUI期望的格式
+            extracted_parts_info = {}
+            for part_name, part_data in parts_dict.items():
+                extracted_parts_info[part_name] = {
+                    'part_name': part_name,
+                    'bc_type': part_data['type'],
+                    'node_count': part_data['count'],
+                    'nodes': part_data['nodes']
+                }
+
+            return extracted_parts_info
+
+        except Exception as e:
+            self.log_error(f"从边界节点提取部件信息失败: {str(e)}")
+            return None
 
     def _on_mesh_error(self, error_msg):
         """处理网格生成错误"""
