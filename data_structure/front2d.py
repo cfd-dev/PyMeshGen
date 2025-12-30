@@ -129,7 +129,7 @@ def process_initial_front(grid):
     front_count = 0
     for face in grid["faces"]:
         # 仅处理有两个节点的线性面（边界面）
-        if len(face["nodes"]) == 2 and (face["right_cell"] == 0):
+        if len(face["nodes"]) == 2 and (face["right_cell"] <= 0):
             # 获取原始节点顺序
             u, v = face["nodes"]
 
@@ -139,7 +139,8 @@ def process_initial_front(grid):
                 continue
             processed_edges.add(edge_key)
 
-            # 获取节点坐标，fluent网格从1开始计数
+            # TODO 获取节点坐标，为了统一考虑从fluent网格读入和从现有网格读入，以下从1开始计数
+            # 待后续改进
             node1 = grid["nodes"][u - 1]
             node2 = grid["nodes"][v - 1]
 

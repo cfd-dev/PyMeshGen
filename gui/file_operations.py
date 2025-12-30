@@ -285,8 +285,7 @@ class FileOperations:
                         for cell in unstr_grid.cell_container:
                             if cell is not None:  # 确保cell不为None
                                 if hasattr(cell, 'node_ids'):
-                                    # 将1基索引转换为0基索引
-                                    cell_ids = [nid - 1 if isinstance(nid, int) and nid > 0 else nid
+                                    cell_ids = [nid if isinstance(nid, int) and nid > 0 else nid
                                                for nid in cell.node_ids]
                                     cells.append(cell_ids)
                                 elif hasattr(cell, 'nodes'):
@@ -294,7 +293,7 @@ class FileOperations:
                                     cell_ids = []
                                     for node in cell.nodes:
                                         if hasattr(node, 'id'):
-                                            cell_ids.append(node.id - 1)  # 转换为0基索引
+                                            cell_ids.append(node.id) 
                                     if cell_ids:
                                         cells.append(cell_ids)
 

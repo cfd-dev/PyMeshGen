@@ -378,9 +378,9 @@ def reconstruct_mesh_from_cas(cas_data):
             boundary_faces = []
             for face in zone["data"]:
                 boundary_faces.append({
-                    "nodes": face["nodes"],
-                    "left_cell": face["left_cell"],
-                    "right_cell": face["right_cell"]
+                    "nodes": [node - 1 for node in face["nodes"]],  # 转换为0基索引
+                    "left_cell": face["left_cell"] - 1,  # 转换为0基索引
+                    "right_cell": face["right_cell"] - 1  # 转换为0基索引
                 })
 
             # 添加到边界信息

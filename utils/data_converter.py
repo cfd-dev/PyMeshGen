@@ -82,9 +82,7 @@ def convert_to_internal_mesh_format(mesh_data):
                 if isinstance(part_data, dict) and 'faces' in part_data and part_data['faces']:
                     for face_data in part_data['faces']:
                         if isinstance(face_data, dict) and 'nodes' in face_data:
-                            # 确保节点索引是0基的（项目内部格式）
-                            # 如果节点索引是1基的，转换为0基索引
-                            nodes = [n if isinstance(n, int) and n > 0 else n for n in face_data['nodes']]  # 转换为0基索引
+                            nodes = [n + 1 if isinstance(n, int) and n >= 0 else n for n in face_data['nodes']]  # 转换为1基索引
                             face = {
                                 "nodes": nodes,
                                 "left_cell": face_data.get('left_cell', 0),
@@ -110,9 +108,9 @@ def convert_to_internal_mesh_format(mesh_data):
                             node1_idx = cell[j]
                             node2_idx = cell[(j + 1) % 3]
                             face = {
-                                "nodes": [node1_idx + 1, node2_idx + 1],  # fluent网格从1开始计数
-                                "left_cell": i + 1,  # 当前单元
-                                "right_cell": 0,  # 边界face，右侧无单元
+                                "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
+                                "left_cell": i,  # 当前单元
+                                "right_cell": -1,  # 边界face，右侧无单元
                                 "bc_type": "wall",  # 默认边界类型
                                 "part_name": part_name if 'part_name' in locals() else "default"  # 使用part名称或默认
                             }
@@ -128,9 +126,9 @@ def convert_to_internal_mesh_format(mesh_data):
                         node1_idx = cell[j]
                         node2_idx = cell[(j + 1) % 3]
                         face = {
-                                    "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
+                                    "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
                                     "left_cell": i,  # 当前单元
-                                    "right_cell": 0,  # 边界face，右侧无单元
+                                    "right_cell": -1,  # 边界face，右侧无单元
                                     "bc_type": "wall",  # 默认边界类型
                                     "part_name": "default"  # 默认部件名称
                                 }
@@ -141,9 +139,9 @@ def convert_to_internal_mesh_format(mesh_data):
                         node1_idx = cell[j]
                         node2_idx = cell[(j + 1) % 4]
                         face = {
-                                    "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
+                                    "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
                                     "left_cell": i,  # 当前单元
-                                    "right_cell": 0,  # 边界face，右侧无单元
+                                    "right_cell": -1,  # 边界face，右侧无单元
                                     "bc_type": "wall",  # 默认边界类型
                                     "part_name": "default"  # 默认部件名称
                                 }
@@ -216,7 +214,7 @@ def convert_to_internal_mesh_format(mesh_data):
                         if isinstance(face_data, dict) and 'nodes' in face_data:
                             # 确保节点索引是0基的（项目内部格式）
                             # 如果节点索引是1基的，转换为0基索引
-                            nodes = [n if isinstance(n, int) and n > 0 else n for n in face_data['nodes']]  # 转换为0基索引
+                            nodes = [n + 1 if isinstance(n, int) and n > 0 else n for n in face_data['nodes']]
                             face = {
                                 "nodes": nodes,
                                 "left_cell": face_data.get('left_cell', 0),
@@ -241,9 +239,9 @@ def convert_to_internal_mesh_format(mesh_data):
                                 node1_idx = cell[j]
                                 node2_idx = cell[(j + 1) % 3]
                                 face = {
-                                    "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
+                                    "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
                                     "left_cell": i,  # 当前单元
-                                    "right_cell": 0,  # 边界face，右侧无单元
+                                    "right_cell": -1,  # 边界face，右侧无单元
                                     "bc_type": "wall",  # 默认边界类型
                                     "part_name": part_name if 'part_name' in locals() else "default"  # 使用part名称或默认
                                 }
@@ -253,9 +251,9 @@ def convert_to_internal_mesh_format(mesh_data):
                                 node1_idx = cell[j]
                                 node2_idx = cell[(j + 1) % 4]
                                 face = {
-                                    "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
+                                    "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
                                     "left_cell": i,  # 当前单元
-                                    "right_cell": 0,  # 边界face，右侧无单元
+                                    "right_cell": -1,  # 边界face，右侧无单元
                                     "bc_type": "wall",  # 默认边界类型
                                     "part_name": part_name if 'part_name' in locals() else "default"  # 使用part名称或默认
                                 }
@@ -273,9 +271,9 @@ def convert_to_internal_mesh_format(mesh_data):
                             node1_idx = cell[j]
                             node2_idx = cell[(j + 1) % 3]
                             face = {
-                                    "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
+                                    "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
                                     "left_cell": i,  # 当前单元
-                                    "right_cell": 0,  # 边界face，右侧无单元
+                                    "right_cell": -1,  # 边界face，右侧无单元
                                     "bc_type": "wall",  # 默认边界类型
                                     "part_name": mesh_data.get('part_name', 'default')  # 默认部件名称
                                 }
@@ -287,7 +285,7 @@ def convert_to_internal_mesh_format(mesh_data):
                             face = {
                                 "nodes": [node1_idx, node2_idx],  # 项目内部使用0基索引
                                 "left_cell": i,  # 当前单元
-                                "right_cell": 0,  # 边界face，右侧无单元
+                                "right_cell": -1,  # 边界face，右侧无单元
                                 "bc_type": "wall",  # 默认边界类型
                                 "part_name": mesh_data.get('part_name', 'default')  # 默认部件名称
                             }

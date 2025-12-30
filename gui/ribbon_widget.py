@@ -279,6 +279,11 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告")
         layout.addWidget(analysis_group)
 
+        # Add boundary extraction group
+        boundary_group = RibbonGroup("")
+        self.buttons['mesh']['extract_boundary'] = boundary_group.add_large_button("提取边界", tooltip="提取边界网格及部件信息")
+        layout.addWidget(boundary_group)
+
         layout.addStretch(1)
 
         tab_widget.setLayout(layout)
@@ -344,6 +349,7 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['optimize'].clicked.connect(main_window.optimize_mesh)
         self.buttons['mesh']['statistics'].clicked.connect(main_window.show_mesh_statistics)
         self.buttons['mesh']['report'].clicked.connect(main_window.export_mesh_report)
+        self.buttons['mesh']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
 
         # Help tab callbacks
         self.buttons['help']['manual'].clicked.connect(main_window.show_user_manual)

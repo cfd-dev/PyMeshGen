@@ -315,39 +315,29 @@ class Adfront2:
         # 更新节点
         self.update_nodes()
 
-        # 获取当前基准阵面的部件信息
-        part_name = getattr(self.base_front, 'part_name', 'Fluid')  # 默认为'Fluid'
-
         # 更新阵面
         new_front1 = Front(
             self.base_front.node_elems[0],
             self.pselected,
             -1,
             "interior",
-            part_name,  # 使用当前阵面的部件信息
         )
         new_front2 = Front(
             self.pselected,
             self.base_front.node_elems[1],
             -1,
             "interior",
-            part_name,  # 使用当前阵面的部件信息
         )
 
         self.update_fronts([new_front1, new_front2])
         heapq.heapify(self.front_list)  # 重新堆化
-
-        # 为新单元添加部件信息
-        # 如果当前阵面是边界阵面（part_name不是'Fluid'），则使用阵面的part_name
-        # 否则，新生成的内部单元默认为'interior'
-        cell_part_name = part_name if part_name != 'Fluid' else 'interior'
 
         # 更新单元
         new_cell = Triangle(
             self.base_front.node_elems[0],
             self.base_front.node_elems[1],
             self.pselected,
-            part_name=cell_part_name,  # 直接设置部件名称
+            part_name='interior-triangle',  # 直接设置部件名称
             idx=self.num_cells,
             node_ids=[self.base_front.node_elems[0].idx,
                      self.base_front.node_elems[1].idx,

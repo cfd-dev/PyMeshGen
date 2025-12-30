@@ -2144,6 +2144,51 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.log_info(f"显示网格统计信息失败：{str(e)}")
             self.update_status("统计信息显示失败")
 
+    def extract_boundary_mesh_info(self):
+        """提取边界网格及部件信息"""
+        try:
+            # 检查是否有当前网格
+            if not hasattr(self, 'current_mesh') or not self.current_mesh:
+                from PyQt5.QtWidgets import QMessageBox
+                QMessageBox.warning(self, "警告", "请先导入网格")
+                self.log_info("未找到网格数据，无法提取边界信息")
+                self.update_status("未找到网格数据")
+                return
+
+            # 检查网格是否包含边界信息
+            has_boundary_info = False
+            boundary_info = {}
+
+            # 检查是否有边界节点信息
+            if hasattr(self.current_mesh, 'boundary_nodes') and self.current_mesh.boundary_nodes:
+                has_boundary_info = True
+                # 提取边界节点信息
+                boundary_info['boundary_nodes'] = self.current_mesh.boundary_nodes
+
+            # 检查是否有部件信息
+            if hasattr(self.current_mesh, 'parts_info') and self.current_mesh.parts_info:
+                has_boundary_info = True
+                boundary_info['parts_info'] = self.current_mesh.parts_info
+            elif hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                has_boundary_info = True
+                boundary_info['parts_info'] = self.cas_parts_info
+            else:
+                # 尝试从边界节点提取部件信息
+                if hasattr(self.current_mesh, 'boundary_nodes') and self.current_mesh.boundary_nodes:
+                    extracted_parts = self._extract_parts_from_boundary_nodes(self.current_mesh.boundary_nodes)
+                    if extracted_parts:
+                        has_boundary_info = True
+                        boundary_info['parts_info'] = extracted_parts
+
+            # TODO 根据parts_info提取边界信息
+            if 'parts_info' in boundary_info:
+                boundary_info['boundary_faces'] = self._extract_boundary_faces(boundary_info['parts_info'])
+        except Exception as e:
+            from PyQt5.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "错误", f"提取边界信息失败：{str(e)}")
+            self.log_info(f"提取边界信息失败：{str(e)}")
+            self.update_status("边界信息提取失败")
+
     def export_mesh_report(self):
         """导出网格报告 - 将网格生成的主要参数、部件参数和生成结果写到md文档中"""
         try:

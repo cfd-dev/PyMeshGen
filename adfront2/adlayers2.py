@@ -305,14 +305,12 @@ class Adlayers2:
             self.current_part.part_name,
         )
 
-        # 创建新单元，使用front的part_name来保留原始边界部件信息
-        part_name = getattr(front, 'part_name', 'wall')  # 使用front的part_name，如果不存在则默认为'wall'
         new_cell = Quadrilateral(
             new_cell_nodes[0],
             new_cell_nodes[1],
             new_cell_nodes[3],
             new_cell_nodes[2],
-            part_name=part_name,  # 保留原始边界部件信息
+            part_name="interior-blayers",
             idx=self.num_cells,
         )
 

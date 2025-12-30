@@ -454,8 +454,7 @@ class MeshDisplayArea:
                                 print(f"无效的节点ID: {node_id}")
                                 continue
 
-                            node_id_0 = node_id_int - 1
-                            coord = self._get_node_coord(node_id_0)
+                            coord = self._get_node_coord(node_id_int)
 
                             if coord is None:
                                 print(f"无法获取节点坐标: {node_id}")
@@ -486,8 +485,7 @@ class MeshDisplayArea:
                                 print(f"无效的节点ID: {node_id}")
                                 continue
 
-                            node_id_0 = node_id_int - 1
-                            coord = self._get_node_coord(node_id_0)
+                            coord = self._get_node_coord(node_id_int)
 
                             if coord is None:
                                 print(f"无法获取节点坐标: {node_id}")
