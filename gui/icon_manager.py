@@ -126,6 +126,8 @@ class IconManager:
             self._draw_config_export_icon(painter, size, secondary_color)
         elif icon_name in ['boundary-condition', 'boundary']:
             self._draw_boundary_condition_icon(painter, size, accent_color)
+        elif icon_name in ['extract-boundary', 'extract_boundary']:
+            self._draw_extract_boundary_icon(painter, size, primary_color)
         elif icon_name in ['statistics', 'stats']:
             self._draw_statistics_icon(painter, size, primary_color)
         elif icon_name == 'report':
@@ -304,6 +306,57 @@ class IconManager:
         painter.setBrush(color)
         for x, y in marker_positions:
             painter.drawRect(int(x) - 2, int(y) - 2, 4, 4)
+    
+    def _draw_extract_boundary_icon(self, painter, size, color):
+        """Draw extract boundary icon"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        # Draw a simple mesh (two triangles)
+        pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(pen)
+        
+        # Define mesh points
+        p1 = (size//4, size//4)
+        p2 = (size*3//4, size//4)
+        p3 = (size//2, size*3//4)
+        
+        # Draw mesh triangles
+        painter.drawLine(p1[0], p1[1], p2[0], p2[1])
+        painter.drawLine(p2[0], p2[1], p3[0], p3[1])
+        painter.drawLine(p3[0], p3[1], p1[0], p1[1])
+        
+        # Draw boundary edges with highlight color
+        boundary_pen = QPen(color, 3)
+        painter.setPen(boundary_pen)
+        
+        # Draw outer boundary (highlighted)
+        painter.drawLine(p1[0], p1[1], p2[0], p2[1])
+        painter.drawLine(p2[0], p2[1], p3[0], p3[1])
+        painter.drawLine(p3[0], p3[1], p1[0], p1[1])
+        
+        # Draw extraction arrow pointing outward
+        arrow_pen = QPen(color, 2)
+        painter.setPen(arrow_pen)
+        painter.setBrush(color)
+        
+        # Draw arrow from center to right
+        center_x, center_y = size//2, size//2
+        arrow_start_x = center_x + 5
+        arrow_end_x = size - 8
+        
+        # Arrow shaft
+        painter.drawLine(arrow_start_x, center_y, arrow_end_x, center_y)
+        
+        # Arrow head
+        arrow_points = [
+            (arrow_end_x, center_y),
+            (arrow_end_x - 4, center_y - 4),
+            (arrow_end_x - 4, center_y + 4)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in arrow_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
     
     def _draw_statistics_icon(self, painter, size, color):
         """Draw statistics icon"""

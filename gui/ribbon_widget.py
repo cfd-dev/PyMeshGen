@@ -15,6 +15,7 @@ from PyQt5.QtGui import QIcon, QFont, QPainter, QColor, QPalette
 from .ui_utils import (UIStyles, LayoutConfig, create_tool_button,
                        create_horizontal_layout, create_vertical_layout,
                        RibbonGroupContent)
+from .icon_manager import get_icon
 
 
 class RibbonTabBar(QTabWidget):
@@ -186,6 +187,7 @@ class RibbonWidget(QWidget):
 
         io_group = RibbonGroup("")
         self.buttons['file']['import'] = io_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['file']['extract_boundary'] = io_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
         self.buttons['file']['export'] = io_group.add_large_button("导出网格", tooltip="导出网格 (Ctrl+E)")
         layout.addWidget(io_group)
 
@@ -279,11 +281,6 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告")
         layout.addWidget(analysis_group)
 
-        # Add boundary extraction group
-        boundary_group = RibbonGroup("")
-        self.buttons['mesh']['extract_boundary'] = boundary_group.add_large_button("提取边界", tooltip="提取边界网格及部件信息")
-        layout.addWidget(boundary_group)
-
         layout.addStretch(1)
 
         tab_widget.setLayout(layout)
@@ -349,7 +346,7 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['optimize'].clicked.connect(main_window.optimize_mesh)
         self.buttons['mesh']['statistics'].clicked.connect(main_window.show_mesh_statistics)
         self.buttons['mesh']['report'].clicked.connect(main_window.export_mesh_report)
-        self.buttons['mesh']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
+        self.buttons['file']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
 
         # Help tab callbacks
         self.buttons['help']['manual'].clicked.connect(main_window.show_user_manual)
