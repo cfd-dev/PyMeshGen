@@ -59,6 +59,11 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
             gui_instance._update_progress(0)  # 初始化参数
 
     # 读入边界网格
+    if gui_instance:
+        gui_instance.append_info_output("开始读取输入网格数据...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(1)  # 开始读取输入网格数据
+
     input_grid = None
     
     # 导入数据转换模块
@@ -96,22 +101,26 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
         
     visual_obj.plot_mesh(input_grid, boundary_only=True)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output(f"已读取输入网格文件: {parameters.input_file}")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(1)  # 读取输入网格数据
 
     # 构造初始阵面
+    if gui_instance:
+        gui_instance.append_info_output("开始构造初始阵面...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(2)  # 开始构造初始阵面
+
     front_heap = construct_initial_front(input_grid)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("初始阵面构造完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(2)  # 构造初始阵面
 
     # 计算网格尺寸场
+    if gui_instance:
+        gui_instance.append_info_output("开始计算网格尺寸场...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(3)  # 开始计算网格尺寸场
+
     sizing_system = QuadtreeSizing(
         initial_front=front_heap,
         max_size=4,
@@ -121,14 +130,16 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     )
     # sizing_system.draw_bgmesh()
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("网格尺寸场计算完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(3)  # 计算网格尺寸场
 
     unstr_grid_list = []
     # 推进生成边界层网格
+    if gui_instance:
+        gui_instance.append_info_output("开始生成边界层网格...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(4)  # 开始生成边界层网格
+
     adlayers = Adlayers2(
         boundary_front=front_heap,
         sizing_system=sizing_system,
@@ -138,13 +149,15 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     boundary_grid, front_heap = adlayers.generate_elements()
     unstr_grid_list.append(boundary_grid)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("边界层网格生成完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(4)  # 生成边界层网格
 
     # 推进生成网格
+    if gui_instance:
+        gui_instance.append_info_output("开始推进生成网格...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(5)  # 开始推进生成网格
+
     adfront2 = Adfront2(
         boundary_front=front_heap,
         sizing_system=sizing_system,
@@ -154,24 +167,28 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     )
     triangular_grid = adfront2.generate_elements()
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("网格生成完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(5)  # 推进生成网格
 
     # 网格质量优化
+    if gui_instance:
+        gui_instance.append_info_output("开始优化网格质量...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(6)  # 开始优化网格质量
+
     triangular_grid = edge_swap(triangular_grid)
     triangular_grid = laplacian_smooth(triangular_grid, 3)
     unstr_grid_list.append(triangular_grid)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("网格质量优化完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(6)  # 优化网格质量
 
     # 合并各向同性网格和边界层网格
+    if gui_instance:
+        gui_instance.append_info_output("开始合并网格...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(7)  # 开始合并网格
+
     global_unstr_grid = unstr_grid_list[0]
 
     # 确保原始网格的parts_info被保留（包含原始边界部件信息）
@@ -181,11 +198,8 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("网格合并完成")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(7)  # 合并网格
 
     # 可视化
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
@@ -198,18 +212,19 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     global_unstr_grid.summary(gui_instance)
     # global_unstr_grid.quality_histogram(gui_instance.ax if gui_instance else None)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output("网格信息输出完成")
 
     # 输出网格文件
+    if gui_instance:
+        gui_instance.append_info_output("开始保存网格文件...")
+        if hasattr(gui_instance, '_update_progress'):
+            gui_instance._update_progress(8)  # 开始保存网格文件
+
     global_unstr_grid.save_to_vtkfile(parameters.output_file)
     
-    # 输出信息到GUI
     if gui_instance:
         gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(8)  # 保存网格文件
 
         # 保留原始部件信息以便后续修改部件参数
         # 将优化后的网格对象设置到GUI实例中
