@@ -216,17 +216,38 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
         gui_instance.append_info_output("网格信息输出完成")
 
     # 输出网格文件
-    if gui_instance:
-        gui_instance.append_info_output("开始保存网格文件...")
-        if hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(8)  # 开始保存网格文件
-
-    global_unstr_grid.save_to_vtkfile(parameters.output_file)
+    # 对于非GUI运行，默认要输出网格
+    should_save = parameters.auto_output or gui_instance is None
     
-    if gui_instance:
-        gui_instance.append_info_output(f"网格文件已保存至: {parameters.output_file}")
+    if should_save:
+        # 如果输出路径为空，设置默认路径
+        output_path = parameters.output_file
+        # 处理output_path可能是列表的情况
+        if isinstance(output_path, list):
+            if not output_path or not output_path[0]:
+                output_path = ["./out/mesh.vtk"]
+        else:
+            if not output_path:
+                output_path = ["./out/mesh.vtk"]
+        
+        if gui_instance:
+            gui_instance.append_info_output("开始保存网格文件...")
+            if hasattr(gui_instance, '_update_progress'):
+                gui_instance._update_progress(8)  # 开始保存网格文件
 
-        # 保留原始部件信息以便后续修改部件参数
+        global_unstr_grid.save_to_vtkfile(output_path)
+        
+        if gui_instance:
+            gui_instance.append_info_output(f"网格文件已保存至: {output_path}")
+        else:
+            # 非GUI运行时，输出到控制台
+            print(f"网格文件已保存至: {output_path}")
+    else:
+        if gui_instance:
+            gui_instance.append_info_output("自动输出网格已禁用，未保存网格文件")
+
+    # 保留原始部件信息以便后续修改部件参数
+    if gui_instance:
         # 将优化后的网格对象设置到GUI实例中
         gui_instance.mesh_data = global_unstr_grid
         # 保存原始参数配置，以便后续可以重新配置部件参数

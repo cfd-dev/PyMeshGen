@@ -40,6 +40,7 @@ class Parameters:
         self.output_file = []
         self.mesh_type = 1 # 1-三角形triangular，2-直角三角形right_trianglar，3-三角形/四边形混合2d_mixed
         self.viz_enabled = False
+        self.auto_output = True  # 是否自动输出网格
 
         self.load_cofig()
         set_debug_level(self.debug_level)
@@ -104,6 +105,7 @@ class Parameters:
         self.output_file = config["output_file"]
         self.mesh_type = config.get("mesh_type", 1)
         self.viz_enabled = config["viz_enabled"]
+        self.auto_output = config.get("auto_output", True)
 
         self.part_params = []
         for part in config["parts"]:
@@ -238,6 +240,7 @@ class Parameters:
         self.output_file = config.get("output_file", self.output_file)
         self.mesh_type = config.get("mesh_type", self.mesh_type)
         self.viz_enabled = config.get("viz_enabled", self.viz_enabled)
+        self.auto_output = config.get("auto_output", self.auto_output)
 
         # 保存原始的部件参数以便后续处理
         original_part_params = {part.part_name: part for part in self.part_params}

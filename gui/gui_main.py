@@ -1296,9 +1296,71 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def edit_params(self):
         """编辑全局参数"""
-        QMessageBox.information(self, "待开发", "全局参数配置功能正在开发中...")
-        self.log_info("全局参数配置功能待开发")
-        self.update_status("全局参数配置功能待开发")
+        from PyQt5.QtWidgets import QDialog
+        from gui.global_params_dialog import GlobalParamsDialog
+        
+        # 准备当前参数
+        current_params = {}
+        if hasattr(self, 'params') and self.params:
+            current_params["debug_level"] = self.params.debug_level
+            current_params["output_file"] = self.params.output_file
+            current_params["mesh_type"] = self.params.mesh_type
+            current_params["auto_output"] = getattr(self.params, 'auto_output', True)
+            
+            # 从部件参数中获取全局最大尺寸（如果有）
+            if hasattr(self.params, 'part_params') and self.params.part_params:
+                # 假设第一个部件的max_size作为全局尺寸
+                current_params["global_max_size"] = self.params.part_params[0].param.max_size
+        
+        # 创建并显示对话框
+        dialog = GlobalParamsDialog(self, current_params)
+        if dialog.exec_() == QDialog.Accepted:
+            # 获取用户设置的参数
+            new_params = dialog.get_params()
+            
+            # 如果params实例不存在，初始化它
+            if not hasattr(self, 'params') or not self.params:
+                from data_structure.parameters import Parameters
+                # 创建临时配置文件来初始化Parameters实例
+                import json
+                import tempfile
+                import os
+                
+                # 创建默认配置
+                default_config = {
+                    "debug_level": new_params["debug_level"],
+                    "input_file": [],
+                    "output_file": new_params["output_file"],
+                    "viz_enabled": False,
+                    "parts": []
+                }
+                
+                # 写入临时文件
+                temp_config_path = os.path.join(tempfile.gettempdir(), "temp_config.json")
+                with open(temp_config_path, 'w') as f:
+                    json.dump(default_config, f)
+                
+                # 初始化Parameters实例
+                self.params = Parameters("FROM_CASE_JSON", temp_config_path)
+                
+                # 删除临时文件
+                os.remove(temp_config_path)
+                
+                self.log_info("全局参数实例已初始化")
+            
+            # 更新全局参数实例
+            self.params.debug_level = new_params["debug_level"]
+            self.params.output_file = new_params["output_file"]
+            self.params.mesh_type = new_params["mesh_type"]
+            self.params.auto_output = new_params["auto_output"]
+            
+            # 更新所有部件的最大尺寸为全局尺寸
+            if hasattr(self.params, 'part_params') and self.params.part_params:
+                for part in self.params.part_params:
+                    part.param.max_size = new_params["global_max_size"]
+            
+            self.log_info(f"全局参数已更新: 自动输出={new_params['auto_output']}, 网格类型={new_params['mesh_type']}, 输出路径={new_params['output_file'][0]}")
+            self.update_status("全局参数已更新")
 
     def edit_mesh_params(self):
         """编辑部件参数"""
@@ -1542,11 +1604,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 return
 
             # 构建配置数据
+            # 使用用户设置的全局参数
             config_data = {
-                "debug_level": 0,
-                "output_file": "./out/mesh.vtk",
+                "debug_level": self.params.debug_level if hasattr(self, 'params') and self.params else 0,
+                "output_file": self.params.output_file if hasattr(self, 'params') and self.params else ["./out/mesh.vtk"],
                 "viz_enabled": False,  # 禁用matplotlib可视化，使用VTK
-                "parts": self.parts_params
+                "parts": self.parts_params,
+                "mesh_type": self.params.mesh_type if hasattr(self, 'params') and self.params else 1,
+                "auto_output": self.params.auto_output if hasattr(self, 'params') and self.params else True
             }
 
             # 如果有导入的部件信息，但没有设置参数，则使用默认参数
