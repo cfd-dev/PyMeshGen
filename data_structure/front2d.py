@@ -2,7 +2,7 @@ import heapq
 import matplotlib.pyplot as plt
 
 from utils.geom_toolkit import calculate_distance
-from data_structure.basic_elements import NodeElement, NodeElementALM
+from data_structure.basic_elements import NodeElement, NodeElementALM, is_node_element
 from utils.timer import TimeSpan
 
 
@@ -26,8 +26,8 @@ class Front:
     ]
 
     def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0):
-        if not isinstance(node_elem1, NodeElement) or not isinstance(
-            node_elem2, NodeElement
+        if not is_node_element(node_elem1) or not is_node_element(
+            node_elem2
         ):
             raise TypeError("node1 和 node2 必须是 NodeElement 类型")
 

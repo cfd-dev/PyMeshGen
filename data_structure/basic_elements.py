@@ -101,6 +101,8 @@ class NodeElement:
             return self.hash == other.hash
         return False
 
+def is_node_element(obj):
+    return hasattr(obj, 'coords') and hasattr(obj, 'idx') and hasattr(obj, 'hash')
 
 # 继承自NodeElement，用于存储额外的信息
 class NodeElementALM(NodeElement):  # 添加父类继承
@@ -136,10 +138,11 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         )
         return new_node
 
-
 class LineSegment:
     def __init__(self, p1, p2):
-        if isinstance(p1, NodeElement) and isinstance(p2, NodeElement):
+        # 改用属性检查，因为isinstance可能由于导入路径问题而失败
+        # 检查对象是否有coords属性，而不是使用isinstance检查        
+        if is_node_element(p1) and is_node_element(p2):
             self.p1 = p1.coords
             self.p2 = p2.coords
         else:
@@ -164,9 +167,9 @@ class LineSegment:
 class Triangle:
     def __init__(self, p1, p2, p3, part_name=None, idx=None, node_ids=None):
         if (
-            isinstance(p1, NodeElement)
-            and isinstance(p2, NodeElement)
-            and isinstance(p3, NodeElement)
+            is_node_element(p1)
+            and is_node_element(p2)
+            and is_node_element(p3)
         ):
             self.p1 = p1.coords
             self.p2 = p2.coords
@@ -270,10 +273,10 @@ class Triangle:
 class Quadrilateral:
     def __init__(self, p1, p2, p3, p4, part_name=None, idx=None, node_ids=None):
         if (
-            isinstance(p1, NodeElement)
-            and isinstance(p2, NodeElement)
-            and isinstance(p3, NodeElement)
-            and isinstance(p4, NodeElement)
+            is_node_element(p1)
+            and is_node_element(p2)
+            and is_node_element(p3)
+            and is_node_element(p4)
         ):
             self.p1 = p1.coords
             self.p2 = p2.coords

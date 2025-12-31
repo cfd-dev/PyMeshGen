@@ -13,6 +13,7 @@ from data_structure.basic_elements import (
     Quadrilateral,
     Unstructured_Grid,
     LineSegment,
+    is_node_element,
 )
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose, warning, error
@@ -292,7 +293,7 @@ class Adfront2:
             info(f"当前节点数量：{self.num_nodes}")
             info(f"当前单元数量：{self.num_cells}\n")
 
-            self.debug_save()
+            # self.debug_save()
 
     def add_elems_to_space_index(self, elems, space_index, elem_dict):
         """将新阵面和节点添加到空间索引"""
@@ -546,7 +547,7 @@ class Adfront2:
         # 注意不能直接将self.pselected转换为list，应该后面update_fronts时还需要使用self.pselected
         pselected = (
             [self.pselected]
-            if isinstance(self.pselected, NodeElement)
+            if is_node_element(self.pselected)
             else self.pselected
         )
 

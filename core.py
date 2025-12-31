@@ -20,6 +20,10 @@ from optimize.optimize import edge_swap, laplacian_smooth
 from utils.timer import TimeSpan
 from utils.message import info
 
+# 混合网格生成相关导入
+from adfront2.adfront2_hybrid import Adfront2Hybrid
+from optimize.optimize import merge_elements, optimize_hybrid_grid
+
 
 def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     """核心网格生成函数
@@ -54,7 +58,8 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     
     # 输出信息到GUI
     if gui_instance:
-        gui_instance.append_info_output("开始生成三角形网格...")
+        mesh_type_str = "三角形/四边形混合网格" if parameters.mesh_type == 3 else "三角形网格"
+        gui_instance.append_info_output(f"开始生成{mesh_type_str}...")
         if hasattr(gui_instance, '_update_progress'):
             gui_instance._update_progress(0)  # 初始化参数
 
@@ -158,14 +163,25 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
         if hasattr(gui_instance, '_update_progress'):
             gui_instance._update_progress(5)  # 开始推进生成网格
 
-    adfront2 = Adfront2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        node_coords=boundary_grid.node_coords,
-        param_obj=parameters,
-        visual_obj=visual_obj,
-    )
-    triangular_grid = adfront2.generate_elements()
+    # 根据网格类型选择不同的生成算法
+    if parameters.mesh_type == 3:  # 三角形/四边形混合网格
+        adfront2 = Adfront2Hybrid(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+        triangular_grid = adfront2.generate_elements()
+    else:  # 三角形网格
+        adfront2 = Adfront2(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+        triangular_grid = adfront2.generate_elements()
     
     if gui_instance:
         gui_instance.append_info_output("网格生成完成")
@@ -177,8 +193,16 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
             gui_instance._update_progress(6)  # 开始优化网格质量
 
     triangular_grid = edge_swap(triangular_grid)
-    triangular_grid = laplacian_smooth(triangular_grid, 3)
-    unstr_grid_list.append(triangular_grid)
+    
+    if parameters.mesh_type == 3:  # 三角形/四边形混合网格
+        # 合并三角形生成混合网格
+        hybrid_grid = merge_elements(triangular_grid)
+        # 优化混合网格
+        hybrid_grid = optimize_hybrid_grid(hybrid_grid)
+        unstr_grid_list.append(hybrid_grid)
+    else:  # 三角形网格
+        triangular_grid = laplacian_smooth(triangular_grid, 3)
+        unstr_grid_list.append(triangular_grid)
     
     if gui_instance:
         gui_instance.append_info_output("网格质量优化完成")

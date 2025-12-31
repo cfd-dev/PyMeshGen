@@ -129,7 +129,7 @@ class Adfront2Hybrid(Adfront2):
 
             self.search_candidates(self.base_front.al * spacing)
 
-            self.debug_draw()
+            # self.debug_draw()
 
             self.select_point_for_quad(spacing)
 
