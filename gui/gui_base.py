@@ -93,12 +93,17 @@ class InfoOutput:
         """记录信息"""
         timestamp = time.strftime("%H:%M:%S")
         self.info_text.append(f"[{timestamp}] [INFO] {message}")
-    
+
     def log_error(self, message):
         """记录错误"""
         timestamp = time.strftime("%H:%M:%S")
         self.info_text.append(f"[{timestamp}] [ERROR] {message}")
-    
+
+    def log_warning(self, message):
+        """记录警告"""
+        timestamp = time.strftime("%H:%M:%S")
+        self.info_text.append(f"[{timestamp}] [WARNING] {message}")
+
     def clear_info_output(self):
         """清除信息输出"""
         self.info_text.clear()

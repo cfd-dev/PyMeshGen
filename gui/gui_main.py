@@ -136,11 +136,12 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.mesh_generator = None
         self.current_mesh = None
         self.cas_parts_info = None
-        self.parts_params = []  # 初始化部件参数列表
+        self.original_node_coords = None
+        self.parts_params = []
         self.render_mode = "wireframe"
         self.show_boundary = True
-        self.mesh_generation_thread = None  # 网格生成线程
-        self.progress_dialog = None  # 进度对话框
+        self.mesh_generation_thread = None
+        self.progress_dialog = None
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -757,6 +758,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.display_mesh(mesh_data)
 
+                # 保存原始节点坐标用于后续的节点映射
+                if hasattr(mesh_data, 'node_coords'):
+                    self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
+
                 # 从MeshData对象中获取部件信息
                 if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
                     self.update_parts_list_from_cas(mesh_data.parts_info)
@@ -1182,6 +1187,11 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """记录错误日志"""
         if hasattr(self, 'info_output'):
             self.info_output.log_error(message)
+
+    def log_warning(self, message):
+        """记录警告日志"""
+        if hasattr(self, 'info_output'):
+            self.info_output.log_warning(message)
 
     def update_status(self, message):
         """更新状态栏信息"""
@@ -1662,19 +1672,45 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 从新生成的网格中提取实际的部件信息
             updated_parts_info = {}
 
+            # 获取新网格的节点坐标
+            new_node_coords = None
+            if hasattr(generated_mesh, 'node_coords'):
+                new_node_coords = generated_mesh.node_coords
+
+            # 创建节点索引映射（如果存在原始节点坐标）
+            node_mapping = None
+            if self.original_node_coords and new_node_coords:
+                node_mapping = self._create_node_index_mapping(
+                    self.original_node_coords,
+                    new_node_coords
+                )
+                if node_mapping:
+                    self.log_info(f"已创建节点索引映射，映射了 {len(node_mapping)} 个节点")
+
             # 首先，尝试从原始导入的部件信息中获取边界部件信息（这些应该保留原始名称如"wall"）
+            # 使用节点映射将原始部件信息映射到新网格
             if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                for part_name, part_data in self.cas_parts_info.items():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
-                        # 保留原始边界部件信息
-                        updated_parts_info[part_name] = part_data
+                if node_mapping:
+                    # 使用映射后的部件信息
+                    mapped_parts_info = self._map_parts_info_to_new_mesh(
+                        self.cas_parts_info,
+                        node_mapping
+                    )
+                    for part_name, part_data in mapped_parts_info.items():
+                        if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                            updated_parts_info[part_name] = part_data
+                else:
+                    # 如果没有映射，直接使用原始部件信息
+                    for part_name, part_data in self.cas_parts_info.items():
+                        if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                            updated_parts_info[part_name] = part_data
 
             # 方法1: 从网格的单元中提取部件信息
             if hasattr(generated_mesh, 'cell_container') and generated_mesh.cell_container:
                 for cell in generated_mesh.cell_container:
                     part_name = getattr(cell, 'part_name', 'interior')
                     if part_name is None or part_name == '':
-                        part_name = 'interior'  # 默认为内部单元
+                        part_name = 'interior'
 
                     if part_name not in updated_parts_info:
                         updated_parts_info[part_name] = {
@@ -1684,7 +1720,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                             'nodes': []
                         }
 
-                    # 更新计数
                     if part_name in updated_parts_info:
                         updated_parts_info[part_name]['node_count'] += 1
 
@@ -1695,7 +1730,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         if part_name not in updated_parts_info:
                             updated_parts_info[part_name] = part_data
                         else:
-                            # 如果已存在，更新信息
                             if isinstance(part_data, dict):
                                 updated_parts_info[part_name].update(part_data)
 
@@ -1759,6 +1793,110 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         except Exception as e:
             self.log_error(f"从边界节点提取部件信息失败: {str(e)}")
             return None
+
+    def _create_node_index_mapping(self, original_coords, new_coords, tolerance=1e-6):
+        """
+        基于坐标创建原始节点到新节点的索引映射
+
+        Args:
+            original_coords: 原始节点坐标列表
+            new_coords: 新节点坐标列表
+            tolerance: 坐标匹配的容差（未使用，保留参数以保持兼容性）
+
+        Returns:
+            字典：{original_index: new_index}，如果找不到匹配则返回None
+        """
+        if not original_coords or not new_coords:
+            return None
+
+        from data_structure.basic_elements import NodeElement
+
+        # 将原始坐标和新坐标转换为 NodeElement 对象
+        original_nodes = [NodeElement(coord, idx) for idx, coord in enumerate(original_coords)]
+        new_nodes = [NodeElement(coord, idx) for idx, coord in enumerate(new_coords)]
+
+        # 创建新节点的 hash 到索引的映射
+        new_node_hash_map = {}
+        for new_node in new_nodes:
+            new_node_hash_map[new_node.hash] = new_node.idx
+
+        # 创建原始节点到新节点的索引映射
+        mapping = {}
+        for orig_idx, orig_node in enumerate(original_nodes):
+            if orig_node.hash in new_node_hash_map:
+                mapping[orig_idx] = new_node_hash_map[orig_node.hash]
+
+        return mapping
+
+    def _map_parts_info_to_new_mesh(self, original_parts_info, node_mapping):
+        """
+        将原始部件信息中的节点索引映射到新网格的节点索引
+
+        Args:
+            original_parts_info: 原始部件信息
+            node_mapping: 节点索引映射字典 {original_index: new_index}
+
+        Returns:
+            映射后的部件信息
+        """
+        if not original_parts_info or not node_mapping:
+            return original_parts_info
+
+        mapped_parts_info = {}
+
+        for part_name, part_data in original_parts_info.items():
+            if part_name in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                mapped_parts_info[part_name] = part_data
+                continue
+
+            if not isinstance(part_data, dict):
+                mapped_parts_info[part_name] = part_data
+                continue
+
+            mapped_part_data = part_data.copy()
+
+            # 映射节点索引
+            if 'nodes' in part_data and isinstance(part_data['nodes'], list):
+                mapped_nodes = []
+                for node_idx in part_data['nodes']:
+                    try:
+                        if isinstance(node_idx, int) and node_idx in node_mapping:
+                            mapped_nodes.append(node_mapping[node_idx])
+                        else:
+                            mapped_nodes.append(node_idx)
+                    except Exception as e:
+                        self.log_warning(f"映射节点索引 {node_idx} 时出错: {str(e)}")
+                        mapped_nodes.append(node_idx)
+                mapped_part_data['nodes'] = mapped_nodes
+
+            # 映射面中的节点索引
+            if 'faces' in part_data and isinstance(part_data['faces'], list):
+                mapped_faces = []
+                for face in part_data['faces']:
+                    if isinstance(face, dict) and 'nodes' in face:
+                        mapped_face = face.copy()
+                        mapped_face_nodes = []
+                        if isinstance(face['nodes'], list):
+                            for node_idx in face['nodes']:
+                                try:
+                                    if isinstance(node_idx, int) and node_idx in node_mapping:
+                                        mapped_face_nodes.append(node_mapping[node_idx])
+                                    else:
+                                        mapped_face_nodes.append(node_idx)
+                                except Exception as e:
+                                    self.log_warning(f"映射面节点索引 {node_idx} 时出错: {str(e)}")
+                                    mapped_face_nodes.append(node_idx)
+                        else:
+                            mapped_face_nodes = face['nodes']
+                        mapped_face['nodes'] = mapped_face_nodes
+                        mapped_faces.append(mapped_face)
+                    else:
+                        mapped_faces.append(face)
+                mapped_part_data['faces'] = mapped_faces
+
+            mapped_parts_info[part_name] = mapped_part_data
+
+        return mapped_parts_info
 
     def _on_mesh_error(self, error_msg):
         """处理网格生成错误"""

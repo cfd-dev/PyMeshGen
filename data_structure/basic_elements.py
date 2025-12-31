@@ -70,6 +70,10 @@ class NodeElement:
         else:
             raise TypeError(f"坐标格式错误，期望可迭代类型，实际类型：{type(coords)}")
 
+        # 将坐标统一为2维坐标
+        if len(self.coords) == 3:
+            self.coords = self.coords[:2]
+
         self.idx = idx
         self.part_name = part_name
         self.bc_type = bc_type
@@ -79,7 +83,7 @@ class NodeElement:
 
         # 使用处理后的坐标生成哈希
         # 此处注意！！！hash(-1.0)和hash(-2.0)的结果是一样的！！！因此必须使用字符串
-        self.hash = hash(tuple(f"{coord:.6f}" for coord in coords))
+        self.hash = hash(tuple(f"{coord:.6f}" for coord in self.coords))
 
         self.bbox = [
             min(self.coords[0], self.coords[0]),
