@@ -66,7 +66,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _setup_window(self):
         """设置窗口大小和标题"""
-        self.setWindowTitle("PyMeshGen - 基于Python的网格生成工具")
+        self.setWindowTitle("PyMeshGen V1.0 - 基于Python的网格生成工具")
 
         # Use only the docs/icon.png file as requested
         icon_path = os.path.join(PROJECT_ROOT, "docs", "icon.png")
@@ -1207,7 +1207,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def show_about(self):
         """显示关于对话框"""
-        about_text = """PyMeshGen v1.0\n\n基于Python的网格生成工具\n\n© 2025 HighOrderMesh"""
+        about_text = """PyMeshGen v1.0\n\n基于Python的网格生成工具\n\n© 2025 CFD Dev"""
         QMessageBox.about(self, "关于", about_text)
 
     def show_user_manual(self):

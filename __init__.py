@@ -34,5 +34,5 @@ from .core import generate_mesh
 from .data_structure.parameters import Parameters
 
 __version__ = "1.0.0"
-__author__ = "HighOrderMesh"
+__author__ = "CFD_Dev"
 __all__ = ["generate_mesh", "Parameters"]
