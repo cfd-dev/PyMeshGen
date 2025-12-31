@@ -133,12 +133,44 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertLess(cost, 35)
 
     def test_convex_match_generation(self):
-        """测试convex匹配边界网格生成"""
-        self.skipTest("Skipping test_convex_match_generation due to known issue with matching boundaries NodeElement type checking")
+        """测试anw网格生成"""
+        # 模拟参数配置
+        case_file = self.test_dir / "convex_match120.json"
+        output_file = self.output_dir / "test_convex120.vtk"
 
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
+
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+
+        self.assertAlmostEqual(grid.num_cells, 356, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_nodes, 281, delta=10)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 4)  # 预期耗时
+        
     def test_concave_match_generation(self):
-        """测试concave匹配边界网格生成"""
-        self.skipTest("Skipping test_concave_match_generation due to known issue with matching boundaries NodeElement type checking")
+        """测试anw网格生成"""
+        # 模拟参数配置
+        case_file = self.test_dir / "concav_match120.json"
+        output_file = self.output_dir / "test_concav120.vtk"
+
+        # 执行主函数
+        start = time.time()
+        PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
+
+        # 验证单元数、节点数
+        grid = parse_vtk_msh(output_file)
+
+        self.assertAlmostEqual(grid.num_cells, 368, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_nodes, 298, delta=10)  # 预期节点数
+        # 耗时比较
+        self.assertLess(cost, 4)  # 预期耗时
 
     def test_30p30n_4wall_generation(self):
         """测试30p30n四壁面网格生成"""

@@ -308,11 +308,6 @@ class Adfront2:
         if self.pselected is None:
             return
 
-        # Safety check: ensure base front has at least 2 nodes
-        if len(self.base_front.node_elems) < 2:
-            warning(f"阵面{self.base_front.node_ids}节点数量不足，无法更新数据！")
-            return
-
         # 更新节点
         self.update_nodes()
 
@@ -322,12 +317,14 @@ class Adfront2:
             self.pselected,
             -1,
             "interior",
+            "internal",
         )
         new_front2 = Front(
             self.pselected,
             self.base_front.node_elems[1],
             -1,
             "interior",
+            "internal",
         )
 
         self.update_fronts([new_front1, new_front2])
@@ -340,21 +337,11 @@ class Adfront2:
             self.pselected,
             part_name='interior-triangle',  # 直接设置部件名称
             idx=self.num_cells,
-            node_ids=[self.base_front.node_elems[0].idx,
-                     self.base_front.node_elems[1].idx,
-                     self.pselected.idx]
         )
 
         self.update_cells(new_cell)
 
     def select_point(self):
-        # Safety check: ensure base front has at least 2 nodes
-        if len(self.base_front.node_elems) < 2:
-            warning(f"阵面{self.base_front.node_ids}节点数量不足，无法进行选择！")
-            self.base_front.al *= 1.2
-            heapq.heappush(self.front_list, self.base_front)
-            return None
-
         # 预计算基准点坐标
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
@@ -402,9 +389,9 @@ class Adfront2:
             heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
             # self.debug_level = 1
 
-        if self.base_front.al > 200:
-            # 异常退出
-            raise Exception("基准阵面搜索半径超过20，可能存在问题")
+        # if self.base_front.al > 20:
+        #     # 异常退出
+        #     raise Exception("基准阵面搜索半径超过20，可能存在问题")
 
         return self.pselected
 
@@ -416,10 +403,6 @@ class Adfront2:
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
     def is_cross(self, node_elem):
-        # Safety check: ensure base front has at least 2 nodes
-        if len(self.base_front.node_elems) < 2:
-            return False  # Can't form a segment with less than 2 nodes
-
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
 
@@ -427,9 +410,6 @@ class Adfront2:
         line2 = LineSegment(node_elem, p1)
 
         for front in self.front_candidates:
-            # Safety check: ensure front has at least 2 nodes
-            if len(front.node_elems) < 2:
-                continue  # Skip fronts with insufficient nodes
             front_line = LineSegment(front.node_elems[0], front.node_elems[1])
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
@@ -529,13 +509,11 @@ class Adfront2:
                 fc[0] + normal_vec[0] * spacing,
                 fc[1] + normal_vec[1] * spacing,
             ]
-
-        # 创建节点时考虑部件信息
-        part_name = getattr(self.base_front, 'part_name', 'Fluid')  # 默认为'Fluid'
+        
         self.pbest = NodeElement(
             pbest,
             self.num_nodes,
-            part_name=part_name,  # 传递部件信息
+            part_name="interior-node", 
             bc_type="interior",
         )
 
