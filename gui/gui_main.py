@@ -334,6 +334,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }.get(button_name, 'system-run')
             button.setIcon(get_icon(icon_name))
 
+        for button_name, button in self.ribbon.buttons.get('geometry', {}).items():
+            icon_name = {
+                'import': 'document-import',
+                'extract_boundary': 'extract_boundary'
+            }.get(button_name, 'document-import')
+            button.setIcon(get_icon(icon_name))
+
         for button_name, button in self.ribbon.buttons.get('help', {}).items():
             icon_name = {
                 'manual': 'help-contents',

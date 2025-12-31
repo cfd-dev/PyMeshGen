@@ -83,6 +83,7 @@ class RibbonWidget(QWidget):
 
         self.buttons = {
             'file': {},
+            'geometry': {},
             'view': {},
             'config': {},
             'mesh': {},
@@ -94,14 +95,17 @@ class RibbonWidget(QWidget):
         self.file_tab = self.create_file_tab()
         self.ribbon_tabs.addTab(self.file_tab, "文件")
 
-        self.view_tab = self.create_view_tab()
-        self.ribbon_tabs.addTab(self.view_tab, "视图")
+        self.geometry_tab = self.create_geometry_tab()
+        self.ribbon_tabs.addTab(self.geometry_tab, "几何")
 
         self.config_tab = self.create_config_tab()
         self.ribbon_tabs.addTab(self.config_tab, "配置")
 
         self.mesh_tab = self.create_mesh_tab()
         self.ribbon_tabs.addTab(self.mesh_tab, "网格")
+
+        self.view_tab = self.create_view_tab()
+        self.ribbon_tabs.addTab(self.view_tab, "视图")
 
         self.help_tab = self.create_help_tab()
         self.ribbon_tabs.addTab(self.help_tab, "帮助")
@@ -187,7 +191,6 @@ class RibbonWidget(QWidget):
 
         io_group = RibbonGroup("")
         self.buttons['file']['import'] = io_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
-        self.buttons['file']['extract_boundary'] = io_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
         self.buttons['file']['export'] = io_group.add_large_button("导出网格", tooltip="导出网格 (Ctrl+E)")
         layout.addWidget(io_group)
 
@@ -286,6 +289,25 @@ class RibbonWidget(QWidget):
         tab_widget.setLayout(layout)
         return tab_widget
 
+    def create_geometry_tab(self):
+        """Create the geometry ribbon tab"""
+        tab_widget = QWidget()
+        layout = create_horizontal_layout(
+            margins=LayoutConfig.RIBBON_TAB_MARGINS,
+            spacing=LayoutConfig.RIBBIN_TAB_SPACING,
+            alignment=Qt.AlignLeft
+        )
+
+        geometry_group = RibbonGroup("")
+        self.buttons['geometry']['import'] = geometry_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['geometry']['extract_boundary'] = geometry_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
+        layout.addWidget(geometry_group)
+
+        layout.addStretch(1)
+
+        tab_widget.setLayout(layout)
+        return tab_widget
+
     def create_help_tab(self):
         """Create the help ribbon tab"""
         tab_widget = QWidget()
@@ -320,6 +342,10 @@ class RibbonWidget(QWidget):
         self.buttons['file']['import'].clicked.connect(main_window.import_mesh)
         self.buttons['file']['export'].clicked.connect(main_window.export_mesh)
 
+        # Geometry tab callbacks
+        self.buttons['geometry']['import'].clicked.connect(main_window.import_mesh)
+        self.buttons['geometry']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
+
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(main_window.reset_view)
         self.buttons['view']['fit'].clicked.connect(main_window.fit_view)
@@ -346,7 +372,6 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['optimize'].clicked.connect(main_window.optimize_mesh)
         self.buttons['mesh']['statistics'].clicked.connect(main_window.show_mesh_statistics)
         self.buttons['mesh']['report'].clicked.connect(main_window.export_mesh_report)
-        self.buttons['file']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
 
         # Help tab callbacks
         self.buttons['help']['manual'].clicked.connect(main_window.show_user_manual)
