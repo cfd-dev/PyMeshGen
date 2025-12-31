@@ -1628,19 +1628,28 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.log_info("正在加载生成的网格文件...")
             self.update_status("正在加载生成的网格文件...")
 
-            # 从输出文件加载生成的网格
-            from fileIO.vtk_io import parse_vtk_msh
-            generated_mesh = parse_vtk_msh("./out/mesh.vtk")
-
-            # 显示生成的网格
-            if hasattr(self, 'mesh_display') and generated_mesh:
-                self.current_mesh = generated_mesh
-                self.mesh_display.display_mesh(generated_mesh)
+            # 优先从result_mesh加载网格
+            if result_mesh:
+                self.current_mesh = result_mesh
+                self.mesh_display.display_mesh(result_mesh)
                 self.log_info("已显示生成的网格")
                 self.update_status("已显示生成的网格")
+                # 更新部件列表以显示新网格的部件信息
+                self._update_parts_list_from_generated_mesh(result_mesh)
+            else:
+                self.log_info("未找到result_mesh，尝试从输出文件加载...")
+                # 从输出文件加载生成的网格
+                from fileIO.vtk_io import parse_vtk_msh
+                generated_mesh = parse_vtk_msh("./out/mesh.vtk")
 
-            # 更新部件列表以显示新网格的部件信息
-            self._update_parts_list_from_generated_mesh(generated_mesh)
+                if hasattr(self, 'mesh_display') and generated_mesh:
+                    self.current_mesh = generated_mesh
+                    self.mesh_display.display_mesh(generated_mesh)
+                    self.log_info("已显示生成的网格")
+                    self.update_status("已显示生成的网格")
+
+                # 更新部件列表以显示新网格的部件信息
+                self._update_parts_list_from_generated_mesh(generated_mesh)
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载生成的网格失败: {str(e)}")
@@ -1667,16 +1676,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     if part_name is None or part_name == '':
                         part_name = 'interior'  # 默认为内部单元
 
-                    # 确保part_name是字符串
-                    part_name = str(part_name) if part_name is not None else 'interior'
-
-                    # 过滤掉纯数字的part_name，这些通常是VTK加载时的错误ID
-                    if part_name.isdigit():
-                        # 如果是数字，这可能是VTK加载时的错误，跳过
-                        continue
-
-                    # 只有当part_name不是"interior"且不在已有的边界部件中时，才添加
-                    if part_name != 'interior' and part_name not in updated_parts_info:
+                    if part_name not in updated_parts_info:
                         updated_parts_info[part_name] = {
                             'part_name': part_name,
                             'bc_type': 'boundary',
@@ -1691,41 +1691,21 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 方法2: 如果有parts_info属性，也合并进来
             if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
                 for part_name, part_data in generated_mesh.parts_info.items():
-                    # 确保 part_name 是字符串
-                    part_name_str = str(part_name) if part_name is not None else 'unknown'
-                    if part_name_str not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
-                        # 过滤掉纯数字的part_name
-                        if part_name_str.isdigit():
-                            continue
-
-                        if part_name_str not in updated_parts_info:
-                            updated_parts_info[part_name_str] = part_data
+                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        if part_name not in updated_parts_info:
+                            updated_parts_info[part_name] = part_data
                         else:
                             # 如果已存在，更新信息
                             if isinstance(part_data, dict):
-                                updated_parts_info[part_name_str].update(part_data)
+                                updated_parts_info[part_name].update(part_data)
 
             # 方法3: 如果没有从单元中提取到信息，从边界节点提取
             if hasattr(generated_mesh, 'boundary_nodes') and generated_mesh.boundary_nodes:
                 extracted_parts = self._extract_parts_from_boundary_nodes(generated_mesh.boundary_nodes)
                 if extracted_parts:
                     for part_name, part_data in extracted_parts.items():
-                        # 确保 part_name 是字符串
-                        part_name_str = str(part_name) if part_name is not None else 'unknown'
-                        # 过滤掉纯数字的part_name和"Unknown"
-                        if (not part_name_str.isdigit() and
-                            part_name_str != 'Unknown' and
-                            part_name_str not in updated_parts_info):
-                            updated_parts_info[part_name_str] = part_data
-
-            # 确保包含"interior"部件（新生成的内部单元）
-            if 'interior' not in updated_parts_info:
-                updated_parts_info['interior'] = {
-                    'part_name': 'interior',
-                    'bc_type': 'interior',
-                    'node_count': 0,
-                    'nodes': []
-                }
+                        if (part_name not in updated_parts_info):
+                            updated_parts_info[part_name] = part_data
 
             if updated_parts_info:
                 # 更新cas_parts_info以包含新网格的实际部件信息
@@ -2245,6 +2225,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                                     new_node_container[new_node_indices[0]],
                                     new_node_container[new_node_indices[1]],
                                     new_node_container[new_node_indices[2]],
+                                    "interior-triangle",
                                     idx=len(new_cell_container)
                                 )
                                 cell.part_name = part_name
@@ -2256,6 +2237,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                                     new_node_container[new_node_indices[1]],
                                     new_node_container[new_node_indices[2]],
                                     new_node_container[new_node_indices[3]],
+                                    "interior-quadrilateral",
                                     idx=len(new_cell_container)
                                 )
                                 cell.part_name = part_name

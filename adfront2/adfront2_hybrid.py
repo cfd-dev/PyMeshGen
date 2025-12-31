@@ -207,7 +207,7 @@ class Adfront2Hybrid(Adfront2):
             p1=self.base_front.node_elems[0],
             p2=self.base_front.node_elems[1],
             p3=self.pselected,
-            part_name="interior",
+            part_name="interior-triangle",
             idx=self.num_cells,
         )
 

@@ -241,12 +241,12 @@ def reconstruct_mesh_from_vtk(
 
         cell_type = VTK_ELEMENT_TYPE(cell_type_container[idx])
         if cell_type == VTK_ELEMENT_TYPE.TRI:  # 三角形
-            cell = Triangle(node1, node2, node3, idx)
+            cell = Triangle(node1, node2, node3, "interior-triangle", idx)
         elif cell_type == VTK_ELEMENT_TYPE.QUAD:  # 四边形
             if len(cell_idx_container[idx]) < 4:
                 raise ValueError(f"四边形单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
-            cell = Quadrilateral(node1, node2, node3, node4, idx)
+            cell = Quadrilateral(node1, node2, node3, node4, "interior-quadrilateral", idx)
         else:
             raise ValueError(f"Unsupported cell type: {cell_type_container[idx]}")
 

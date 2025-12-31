@@ -323,7 +323,7 @@ def reconstruct_mesh_from_cas(cas_data):
             node1 = node_container[cell_nodes[0]]
             node2 = node_container[cell_nodes[1]]
             node3 = node_container[cell_nodes[2]]
-            cell = Triangle(node1, node2, node3, idx=len(cell_container))
+            cell = Triangle(node1, node2, node3, "interior-triangle", idx=len(cell_container))
             cell_container.append(cell)
             cell_type_container.append(5)  # VTK_TRIANGLE
         elif len(cell_nodes) == 4:
@@ -332,7 +332,7 @@ def reconstruct_mesh_from_cas(cas_data):
             node2 = node_container[cell_nodes[1]]
             node3 = node_container[cell_nodes[2]]
             node4 = node_container[cell_nodes[3]]
-            cell = Quadrilateral(node1, node2, node3, node4, idx=len(cell_container))
+            cell = Quadrilateral(node1, node2, node3, node4, "interior-quadrilateral", idx=len(cell_container))
             cell_container.append(cell)
             cell_type_container.append(9)  # VTK_QUAD
         else:

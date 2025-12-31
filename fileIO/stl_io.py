@@ -115,7 +115,7 @@ def reconstruct_mesh_from_stl(
         zip(cell_idx_container, cell_type_container)
     ):
         nodes = [node_elements[i] for i in cell_nodes]
-        cell = Triangle(nodes[0], nodes[1], nodes[2], idx)
+        cell = Triangle(nodes[0], nodes[1], nodes[2], "interior-triangle", idx)
         cell_container.append(cell)
 
     # 创建边界节点列表

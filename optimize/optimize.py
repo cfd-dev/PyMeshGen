@@ -343,6 +343,7 @@ def edge_swap(unstr_grid):
                     node_coords[swapped_cell1[0]],
                     node_coords[swapped_cell1[1]],
                     node_coords[swapped_cell1[2]],
+                    cell1.part_name,
                     cell1.idx,
                     node_ids=swapped_cell1,
                 )
@@ -350,6 +351,7 @@ def edge_swap(unstr_grid):
                     node_coords[swapped_cell2[0]],
                     node_coords[swapped_cell2[1]],
                     node_coords[swapped_cell2[2]],
+                    cell2.part_name,
                     cell2.idx,
                     node_ids=swapped_cell2,
                 )
