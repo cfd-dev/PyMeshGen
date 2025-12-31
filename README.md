@@ -42,11 +42,20 @@ python start_gui.py
 ```
 
 ## GUI Usage
-The GUI branch provides a graphical interface for easier mesh generation:
-- Parameter configuration through intuitive controls
-- Visual mesh display with boundary type differentiation
-- File import/export capabilities
-- Interactive mesh generation workflow
+The GUI provides a graphical interface for easier mesh generation with the following workflow:
+1. **Import CAS Mesh**: Load Fluent `.cas` files through the File tab
+2. **Extract Boundary**: Extract boundary mesh and part information using the Geometry tab
+3. **Configure Parameters**: Set global and part-specific mesh parameters in the Configuration tab
+4. **Generate Mesh**: Create mesh using the Mesh tab's Generate button
+5. **Export Mesh**: Save the generated mesh in various formats
+
+The Ribbon interface includes 6 tabs:
+- **File**: Project management and file operations
+- **Geometry**: Mesh import and boundary extraction
+- **View**: Camera controls and rendering options
+- **Configuration**: Global and part parameter settings
+- **Mesh**: Mesh generation and optimization operations
+- **Help**: Documentation and support
 
 See `gui/README.md` for detailed GUI usage instructions.
 

@@ -52,7 +52,48 @@ python PyMeshGen.py --case "./config/30p30n.json"
 # Launch the PyMeshGen GUI
 python start_gui.py
 ```
-5. The generated mesh will be saved in the `./out` directory.
+
+## GUI Operation Workflow
+
+The basic workflow for mesh generation using the PyMeshGen GUI follows these steps:
+
+1. **Import CAS Mesh**
+   - Click on the **文件** (File) tab in the ribbon
+   - Select **导入网格** (Import Mesh) button
+   - Browse and select your Fluent `.cas` format file
+   - The system will automatically parse the geometry and display it in the 3D view
+
+2. **Extract Boundary**
+   - Click on the **几何** (Geometry) tab in the ribbon
+   - Select **提取边界** (Extract Boundary) button
+   - The system will extract boundary mesh and part information from the imported geometry
+   - Parts information will be displayed in the left panel
+
+3. **Configure Parameters**
+   - Click on the **配置** (Configuration) tab in the ribbon
+   - Set **全局参数** (Global Parameters) if needed
+   - Click **部件参数** (Part Parameters) to configure mesh settings for each part:
+     - Max mesh size (max_size)
+     - Prism layer switch (PRISM_SWITCH: wall/off/match)
+     - First layer height (first_height)
+     - Growth rate (growth_rate)
+     - Max layers (max_layers)
+     - Full layers (full_layers)
+     - Multi-direction option (multi_direction)
+
+4. **Generate Mesh**
+   - Click on the **网格** (Mesh) tab in the ribbon
+   - Click **生成** (Generate) button or press F5
+   - Observe the progress in the information output window
+   - The generated mesh will be displayed automatically upon completion
+
+5. **Export Mesh**
+   - Click on the **文件** (File) tab in the ribbon
+   - Select **导出网格** (Export Mesh) button
+   - Choose the output file path and format (VTK recommended)
+   - Click **保存** (Save) to export the mesh
+
+5. The generated mesh will be saved in the specified output directory (default: `./out`).
 
 `Note`: The configuration file `./config/30p30n.json` is used to specify the mesh generation parameters. You can modify this file to change the mesh generation parameters.
 
