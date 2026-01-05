@@ -88,31 +88,31 @@ def process_single_file(file_path, visualize=False):
 
     # 解析网格文件
     try:
-        grid = parse_fluent_msh(file_path)
+        raw_cas_grid = parse_fluent_msh(file_path)
     except Exception as e:
         error(f"Error parsing file {file_path}: {e}")
         return None
 
     # 预处理网格
-    preprocess_grid(grid)
+    preprocess_grid(raw_cas_grid)
 
     # === 新增归一化预处理 ===
     # 获取所有节点坐标
-    all_nodes = grid["nodes"]
+    all_nodes = raw_cas_grid["nodes"]
     if not all_nodes:
         warning("No nodes found in grid.")
         return None
 
     # 以wall_faces的节点坐标范围进行归一化，取出所有wall面的节点
     wall_nodes_1based = []
-    for zone in grid["zones"].values():
+    for zone in raw_cas_grid["zones"].values():
         if zone["type"] == "faces" and zone.get("bc_type") == "wall":
             for face in zone["data"]:
                 wall_nodes_1based.extend(face["nodes"])
     wall_nodes_1based = list(set(wall_nodes_1based))
 
     # 计算wall_nodes_1based各维度范围
-    wall_nodes_coord = [grid["nodes"][n - 1] for n in wall_nodes_1based]
+    wall_nodes_coord = [raw_cas_grid["nodes"][n - 1] for n in wall_nodes_1based]
     x_min, x_max = min(n[0] for n in wall_nodes_coord), max(
         n[0] for n in wall_nodes_coord
     )
@@ -157,7 +157,7 @@ def process_single_file(file_path, visualize=False):
     node_dict = {}  # 使用字典暂存节点信息，避免重复
 
     # 遍历所有区域
-    for zone in grid["zones"].values():
+    for zone in raw_cas_grid["zones"].values():
         # 检查是否为面区域且边界类型为wall
         if zone["type"] == "faces" and zone.get("bc_type") == "wall":
             # 遍历该区域的所有面
@@ -190,7 +190,7 @@ def process_single_file(file_path, visualize=False):
         if node_info["node_wall_faces"]:
             face = node_info["node_wall_faces"][0]
             try:
-                node_info["march_vector"] = get_march_vector(grid, node_1based, face)
+                node_info["march_vector"] = get_march_vector(raw_cas_grid, node_1based, face)
             except Exception as e:
                 error(f"Error calculating vector for node {node_1based}: {e}")
 
@@ -203,11 +203,11 @@ def process_single_file(file_path, visualize=False):
     info(f"Valid vectors: {len(valid_wall_nodes)}")
 
     if visualize:
-        visualize_wall_structure_2d(grid, valid_wall_nodes)
+        visualize_wall_structure_2d(raw_cas_grid, valid_wall_nodes)
 
     return {
         "file_path": file_path,
-        "grid": grid,
+        "raw_cas_grid": raw_cas_grid,
         "wall_faces": wall_faces,
         "wall_nodes": wall_nodes,
         "valid_wall_nodes": valid_wall_nodes,
