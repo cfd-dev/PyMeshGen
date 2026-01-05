@@ -309,7 +309,7 @@ class FileOperations:
                         for part_name, part_data in boundary_info.items():
                             # Create part info with essential properties
                             parts_info[part_name] = {
-                                'type': part_data.get('type', 'unknown'),
+                                'bc_type': part_data.get('bc_type', 'unspecified'),
                                 'faces': part_data.get('faces', []),
                                 'face_count': len(part_data.get('faces', [])),
                                 'part_name': part_name
@@ -346,7 +346,7 @@ class FileOperations:
                             parts_info = {}
                             for part_name, part_data in boundary_info.items():
                                 parts_info[part_name] = {
-                                    'type': part_data.get('type', 'unknown'),
+                                    'bc_type': part_data.get('bc_type', 'unspecified'),
                                     'faces': part_data.get('faces', []),
                                     'face_count': len(part_data.get('faces', [])),
                                     'part_name': part_name
@@ -365,7 +365,7 @@ class FileOperations:
                             parts_info = {}
                             for part_name, part_data in boundary_info.items():
                                 parts_info[part_name] = {
-                                    'type': part_data.get('type', 'unknown'),
+                                    'bc_type': part_data.get('bc_type', 'unspecified'),
                                     'faces': part_data.get('faces', []),
                                     'face_count': len(part_data.get('faces', [])),
                                     'part_name': part_name

@@ -250,6 +250,8 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
         if isinstance(output_path, list):
             if not output_path or not output_path[0]:
                 output_path = ["./out/mesh.vtk"]
+            else:
+                output_path = output_path[0]
         else:
             if not output_path:
                 output_path = ["./out/mesh.vtk"]

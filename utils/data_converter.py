@@ -87,7 +87,7 @@ def convert_to_internal_mesh_format(mesh_data):
                                 "nodes": nodes,
                                 "left_cell": face_data.get('left_cell', 0),
                                 "right_cell": face_data.get('right_cell', 0),
-                                "bc_type": part_data.get('type', 'wall'),
+                                "bc_type": part_data.get('bc_type', 'wall'),
                                 "part_name": part_name
                             }
                             faces.append(face)
@@ -219,7 +219,7 @@ def convert_to_internal_mesh_format(mesh_data):
                                 "nodes": nodes,
                                 "left_cell": face_data.get('left_cell', 0),
                                 "right_cell": face_data.get('right_cell', 0),
-                                "bc_type": part_data.get('type', 'wall'),
+                                "bc_type": part_data.get('bc_type', 'wall'),
                                 "part_name": part_name
                             }
                             faces.append(face)

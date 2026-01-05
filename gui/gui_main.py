@@ -1632,6 +1632,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 总是添加input_file字段，即使为空字符串
             config_data["input_file"] = input_file if input_file else ""
 
+            # 确保output_file是绝对路径
+            if config_data["output_file"]:
+                if isinstance(config_data["output_file"], list):
+                    config_data["output_file"] = [os.path.abspath(f) for f in config_data["output_file"]]
+                else:
+                    config_data["output_file"] = os.path.abspath(config_data["output_file"])  
+            
             # 创建临时配置文件
             import json
             import tempfile
@@ -1787,7 +1794,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     if part_name not in updated_parts_info:
                         updated_parts_info[part_name] = {
                             'part_name': part_name,
-                            'bc_type': 'boundary',
+                            'bc_type': 'interior',
                             'node_count': 0,
                             'nodes': []
                         }
@@ -1815,7 +1822,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
             if updated_parts_info:
                 # 更新cas_parts_info以包含新网格的实际部件信息
-                self.cas_parts_info = updated_parts_info
+                # self.cas_parts_info = updated_parts_info
                 # 更新部件列表显示
                 self.update_parts_list_from_cas(updated_parts_info)
                 self.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
@@ -1842,7 +1849,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if part_name not in parts_dict:
                     parts_dict[part_name] = {
                         'nodes': [],
-                        'type': getattr(node, 'bc_type', 'boundary'),
+                        'bc_type': getattr(node, 'bc_type', 'boundary'),
                         'count': 0
                     }
 
@@ -1855,7 +1862,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             for part_name, part_data in parts_dict.items():
                 extracted_parts_info[part_name] = {
                     'part_name': part_name,
-                    'bc_type': part_data['type'],
+                    'bc_type': part_data['bc_type'],
                     'node_count': part_data['count'],
                     'nodes': part_data['nodes']
                 }
@@ -2379,7 +2386,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 for part_name in parts_info.keys():
                     if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
                         part_data = parts_info[part_name]
-                        bc_type = part_data.get('type', part_data.get('bc_type', 'unknown'))
+                        bc_type = part_data.get('bc_type', 'unspecified')
                         if bc_type != 'interior':
                             boundary_part_names.add(part_name)
                 

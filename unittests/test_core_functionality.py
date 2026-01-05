@@ -114,7 +114,7 @@ class TestCoreFunctionality(unittest.TestCase):
             mesh_data = MeshData()
             mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
             mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
-            mesh_data.parts_info = {"test_part": {"type": "wall", "faces": []}}
+            mesh_data.parts_info = {"test_part": {"bc_type": "wall", "faces": []}}
 
             params = Parameters("FROM_MAIN_JSON")
 
@@ -135,7 +135,7 @@ class TestCoreFunctionality(unittest.TestCase):
             mesh_data = MeshData()
             mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
             mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
-            mesh_data.parts_info = {"test_part": {"type": "wall", "faces": []}}
+            mesh_data.parts_info = {"test_part": {"bc_type": "wall", "faces": []}}
 
             internal_format = convert_to_internal_mesh_format(mesh_data)
 
@@ -178,7 +178,7 @@ class TestDebugFixes(unittest.TestCase):
             mesh_data = MeshData()
             mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
             mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
-            mesh_data.parts_info = {"wall": {"type": "wall", "faces": []}}
+            mesh_data.parts_info = {"wall": {"bc_type": "wall", "faces": []}}
 
             self.assertIsNotNone(mesh_data)
             self.assertEqual(len(mesh_data.node_coords), 4)

@@ -403,7 +403,7 @@ class MeshDisplayArea:
             }
 
             for zone_name, zone_data in boundary_info.items():
-                bc_type = zone_data.get("type", zone_data.get("bc_type", "unspecified"))
+                bc_type = zone_data.get("bc_type", "unspecified")
                 faces = zone_data.get("faces", [])
 
                 if not faces:
