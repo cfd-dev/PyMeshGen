@@ -1,3 +1,3 @@
 [submodule "neural/GNN_ALM"]
 	path = neural/GNN_ALM
-	url = file:///C:/Users/HighOrderMesh/.vscode/PyMeshGen/GNN_ALM_temp_repo
+	url = ./GNN_ALM_repo
