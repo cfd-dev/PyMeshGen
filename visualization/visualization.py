@@ -54,33 +54,34 @@ def visualize_predictions(
     pred_norm = np.linalg.norm(pred, axis=1, keepdims=True)
     pred = np.divide(pred, pred_norm, out=np.zeros_like(pred), where=pred_norm != 0)
 
-    # 对坐标进行反归一化
-    if coords.shape[1] == 3:
-        coords = coords * np.array(
-            [
-                normalize_coeff["x_range"],
-                normalize_coeff["y_range"],
-                normalize_coeff["z_range"],
-            ]
-        ) + np.array(
-            [
-                normalize_coeff["x_min"],
-                normalize_coeff["y_min"],
-                normalize_coeff["z_min"],
-            ]
-        )
-    else:
-        coords = coords * np.array(
-            [
-                normalize_coeff["x_range"],
-                normalize_coeff["y_range"],
-            ]
-        ) + np.array(
-            [
-                normalize_coeff["x_min"],
-                normalize_coeff["y_min"],
-            ]
-        )
+    if normalize_coeff is not None:
+        # 对坐标进行反归一化
+        if coords.shape[1] == 3:
+            coords = coords * np.array(
+                [
+                    normalize_coeff["x_range"],
+                    normalize_coeff["y_range"],
+                    normalize_coeff["z_range"],
+                ]
+            ) + np.array(
+                [
+                    normalize_coeff["x_min"],
+                    normalize_coeff["y_min"],
+                    normalize_coeff["z_min"],
+                ]
+            )
+        else:
+            coords = coords * np.array(
+                [
+                    normalize_coeff["x_range"],
+                    normalize_coeff["y_range"],
+                ]
+            ) + np.array(
+                [
+                    normalize_coeff["x_min"],
+                    normalize_coeff["y_min"],
+                ]
+            )
 
     # 绘制节点位置
     fig, ax = plt.subplots(figsize=(12, 10))
