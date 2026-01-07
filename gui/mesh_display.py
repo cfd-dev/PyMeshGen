@@ -399,6 +399,9 @@ class MeshDisplayArea:
                 "pressure-outlet": (0.0, 0.0, 1.0),
                 "symmetry": (1.0, 1.0, 0.0),
                 "pressure-far-field": (0.0, 1.0, 1.0),
+                "velocity-inlet": (1.0, 0.0, 1.0),
+                "interface": (1.0, 0.5, 0.0),
+                "outflow": (0.0, 1.0, 1.0),
                 "unspecified": (0.5, 0.5, 0.5),
             }
 

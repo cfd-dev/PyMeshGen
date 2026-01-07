@@ -1,6 +1,7 @@
 import re
 
 from utils.timer import TimeSpan
+from utils.geom_toolkit import sort_quadrilateral_nodes
 
 # Fluent网格类型定义
 FLUENT_FACE_TYPES = {"MIXED": 0, "LINEAR": 2, "TRI": 3, "QUAD": 4}
@@ -345,10 +346,12 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 cell_type_container.append(5)  # VTK_TRIANGLE
             elif num_nodes == 4 and num_faces == 4:
                 # 四边形单元
-                node1 = node_container[cell_nodes[0]]
-                node2 = node_container[cell_nodes[1]]
-                node3 = node_container[cell_nodes[2]]
-                node4 = node_container[cell_nodes[3]]
+                # 对节点进行排序，确保逆时针顺序和正确的法向量方向
+                sorted_node_indices = sort_quadrilateral_nodes(cell_nodes, node_container)
+                node1 = node_container[sorted_node_indices[0]]
+                node2 = node_container[sorted_node_indices[1]]
+                node3 = node_container[sorted_node_indices[2]]
+                node4 = node_container[sorted_node_indices[3]]
                 cell = Quadrilateral(
                     node1,
                     node2,

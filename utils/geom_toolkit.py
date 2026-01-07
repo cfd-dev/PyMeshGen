@@ -440,6 +440,53 @@ def is_valid_quadrilateral(p1, p2, p3, p4):
     return area > 1e-10
 
 
+def sort_quadrilateral_nodes(nodes, node_container):
+    """
+    对四边形的四个节点进行排序，确保：
+    1. 节点按逆时针顺序排列
+    2. 法向量指向z轴正方向（右手定则）
+
+    Args:
+        nodes: 四个节点的索引列表（0基索引）
+        node_container: 节点容器（每个节点必须有coords属性）
+
+    Returns:
+        list: 排序后的节点索引列表
+    """
+    if len(nodes) != 4:
+        raise ValueError(f"四边形必须有4个节点，当前有{len(nodes)}个节点")
+
+    # 获取节点坐标
+    coords = [node_container[idx].coords for idx in nodes]
+
+    # 计算质心
+    centroid = np.mean(coords, axis=0)
+
+    # 计算每个节点相对于质心的角度
+    angles = []
+    for i, (x, y) in enumerate(coords):
+        angle = np.arctan2(y - centroid[1], x - centroid[0])
+        angles.append((angle, i))
+
+    # 按角度排序（逆时针方向）
+    angles.sort()
+    sorted_indices = [nodes[idx] for _, idx in angles]
+
+    # 检查法向量方向
+    # 使用鞋带公式计算有向面积
+    x = [node_container[idx].coords[0] for idx in sorted_indices]
+    y = [node_container[idx].coords[1] for idx in sorted_indices]
+
+    # 计算有向面积（鞋带公式）
+    area = 0.5 * sum(x[i] * y[(i + 1) % 4] - x[(i + 1) % 4] * y[i] for i in range(4))
+
+    # 如果面积为负，说明节点是顺时针排列，需要反转
+    if area < 0:
+        sorted_indices = sorted_indices[::-1]
+
+    return sorted_indices
+
+
 def is_point_inside_quad(p, quad_points):
     """
     判断点p是否在四边形内部（不包括边界）
