@@ -59,7 +59,7 @@ def parse_fluent_msh(file_path):
     hex_pattern = re.compile(r"[0-9a-fA-F]+")
     node_section_pattern = re.compile(r"\(10 \(1")
     face_section_pattern = re.compile(
-        r"\(\s*13\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)"
+        r"\(\s*13\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)"
     )
     cell_section_pattern = re.compile(
         r"\(\s*12\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)"
@@ -120,7 +120,7 @@ def parse_fluent_msh(file_path):
             face_start_idx = int(face_match.group(2), 16)
             face_end_idx = int(face_match.group(3), 16)
             face_count_section = face_end_idx - face_start_idx + 1
-            bc_type = int(face_match.group(4))
+            bc_type = int(face_match.group(4), 16)
             face_type = int(face_match.group(5))
             current_zone = {
                 "type": "faces",
@@ -316,6 +316,8 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 cell_faces[right_cell] = []
             cell_faces[right_cell].append(face)
 
+    # 首先确定网格维度
+    grid_dimension = raw_cas_data.get("dimensions", 2)
     # 根据面连接关系构建单元
     for cell_id, faces in cell_faces.items():
         # 收集单元的所有节点
@@ -326,34 +328,70 @@ def reconstruct_mesh_from_cas(raw_cas_data):
 
         # 转换为列表
         cell_nodes = list(cell_nodes)
+        num_nodes = len(cell_nodes)
+        num_faces = len(faces)
 
-        # 根据节点数量确定单元类型
-        if len(cell_nodes) == 3:
-            # 三角形单元
-            node1 = node_container[cell_nodes[0]]
-            node2 = node_container[cell_nodes[1]]
-            node3 = node_container[cell_nodes[2]]
-            cell = Triangle(
-                node1, node2, node3, "interior-triangle", idx=len(cell_container)
-            )
-            cell_container.append(cell)
-            cell_type_container.append(5)  # VTK_TRIANGLE
-        elif len(cell_nodes) == 4:
-            # 四边形单元
-            node1 = node_container[cell_nodes[0]]
-            node2 = node_container[cell_nodes[1]]
-            node3 = node_container[cell_nodes[2]]
-            node4 = node_container[cell_nodes[3]]
-            cell = Quadrilateral(
-                node1,
-                node2,
-                node3,
-                node4,
-                "interior-quadrilateral",
-                idx=len(cell_container),
-            )
-            cell_container.append(cell)
-            cell_type_container.append(9)  # VTK_QUAD
+        if grid_dimension == 2:
+            # 根据节点数量确定单元类型
+            if num_nodes == 3 and num_faces == 3:
+                # 三角形单元
+                node1 = node_container[cell_nodes[0]]
+                node2 = node_container[cell_nodes[1]]
+                node3 = node_container[cell_nodes[2]]
+                cell = Triangle(
+                    node1, node2, node3, "interior-triangle", idx=len(cell_container)
+                )
+                cell_container.append(cell)
+                cell_type_container.append(5)  # VTK_TRIANGLE
+            elif num_nodes == 4 and num_faces == 4:
+                # 四边形单元
+                node1 = node_container[cell_nodes[0]]
+                node2 = node_container[cell_nodes[1]]
+                node3 = node_container[cell_nodes[2]]
+                node4 = node_container[cell_nodes[3]]
+                cell = Quadrilateral(
+                    node1,
+                    node2,
+                    node3,
+                    node4,
+                    "interior-quadrilateral",
+                    idx=len(cell_container),
+                )
+                cell_container.append(cell)
+                cell_type_container.append(9)  # VTK_QUAD
+        elif grid_dimension == 3:
+            # 根据节点数量确定单元类型
+            if num_nodes == 4 and num_faces == 4:
+                # 四面体 (Tetrahedron)
+                node1 = node_container[cell_nodes[0]]
+                node2 = node_container[cell_nodes[1]]
+                node3 = node_container[cell_nodes[2]]
+                node4 = node_container[cell_nodes[3]]
+                cell = None # Tetrahedron(
+                    # node1, node2, node3, node4, "tetrahedron", idx=len(cell_container)
+                # )
+                cell_container.append(cell)
+                cell_type_container.append(10)  # VTK_TETRA
+
+            elif num_nodes == 8 and num_faces == 6:
+                # 六面体 (Hexahedron)
+                nodes = [node_container[idx] for idx in cell_nodes]
+                cell = None # Hexahedron(*nodes, "hexahedron", idx=len(cell_container))
+                cell_container.append(cell)
+                cell_type_container.append(12)  # VTK_HEXAHEDRON
+
+            elif num_nodes == 5 and num_faces == 5:
+                # 金字塔 (Pyramid)
+                nodes = [node_container[idx] for idx in cell_nodes]
+                cell = None # Pyramid(*nodes, "pyramid", idx=len(cell_container))
+                cell_container.append(cell)
+                cell_type_container.append(14)  # VTK_PYRAMID
+            elif num_nodes == 6 and num_faces == 5:
+                # 棱柱 (Prism/Wedge)
+                nodes = [node_container[idx] for idx in cell_nodes]
+                cell = None # Prism(*nodes, "prism", idx=len(cell_container))
+                cell_container.append(cell)
+                cell_type_container.append(13)  # VTK_WEDGE
         else:
             # 其他类型暂时不支持
             print(f"Warning: Unsupported cell with {len(cell_nodes)} nodes, skipping")
