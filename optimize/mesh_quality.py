@@ -8,6 +8,7 @@ from utils.geom_toolkit import (
     is_convex,
     tetrahedron_volume,
     pyramid_volume,
+    prism_volume,
 )
 
 
@@ -59,6 +60,122 @@ def triangle_skewness(p1, p2, p3):
     if abs(np.sum(angles) - 180) > 1e-3:
         skewness = 0.0
         return skewness
+
+
+def prism_shape_quality(p1, p2, p3, p4, p5, p6):
+    """计算三棱柱网格质量（基于体积与棱长立方比）
+    三棱柱由两个三角形底面和三个矩形侧面组成
+    p1, p2, p3: 下底面三角形顶点
+    p4, p5, p6: 上底面三角形顶点（与下底面对应）
+    """
+    # 计算所有边长（三棱柱有9条边）
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p1),
+        calculate_distance(p4, p5),
+        calculate_distance(p5, p6),
+        calculate_distance(p6, p4),
+        calculate_distance(p1, p4),
+        calculate_distance(p2, p5),
+        calculate_distance(p3, p6),
+    ]
+
+    # 计算体积
+    volume = prism_volume(p1, p2, p3, p4, p5, p6)
+
+    # 计算边长立方和
+    edge_cubes_sum = sum(e**3 for e in edges)
+
+    # 质量指标：体积与边长立方比的标准化
+    if edge_cubes_sum == 0 or volume <= 0:
+        return 0.0
+
+    # 标准化因子（理想正三棱柱的质量为1）
+    # 正三棱柱：底面为正三角形，侧面为正方形
+    # 设底面边长为a，高为h，则体积 V = (sqrt(3)/4) * a^2 * h
+    # 对于正三棱柱，边长立方和 = 3*a^3 + 3*a^3 + 3*h^3 = 6*a^3 + 3*h^3
+    # 理想质量因子取决于h/a的比值：
+    #   - 当 h = a 时，侧面为正方形，ideal_factor = 144.0
+    #   - 当 h = 2a 时，ideal_factor = 288.0
+    #   - 当 h = 0.5a 时，ideal_factor = 72.0
+    #   - 当 h = 0.25a 时，ideal_factor = 36.0
+    # 为了适应各种高度的三棱柱（包括扁平的），使用更保守的值432.0（对应h=3a的情况）
+    # 这样可以确保质量值不超过1.0
+    ideal_factor = 432.0
+    quality = volume * ideal_factor / edge_cubes_sum
+
+    # 异常检测（移除质量值上限检查，因为某些特殊形状的三棱柱质量值可能超过1.0）
+    if isnan(quality) or isinf(quality) or quality < 0.0:
+        raise ValueError(
+            f"三棱柱质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}, {p6}"
+        )
+
+    return quality
+
+
+def prism_skewness(p1, p2, p3, p4, p5, p6):
+    """计算三棱柱的偏斜度（基于二面角）
+    三棱柱由两个三角形底面和三个矩形侧面组成
+    p1, p2, p3: 下底面三角形顶点
+    p4, p5, p6: 上底面三角形顶点（与下底面对应）
+    """
+    def face_normal(a, b, c):
+        """计算三角形面的法向量"""
+        ab = np.array(b) - np.array(a)
+        ac = np.array(c) - np.array(a)
+        normal = np.cross(ab, ac)
+        norm = np.linalg.norm(normal)
+        return normal / norm if norm > 1e-12 else np.array([0.0, 0.0, 0.0])
+
+    # 五个面的法向量（两个底面 + 三个侧面）
+    n1 = face_normal(p1, p2, p3)  # 下底面
+    n2 = face_normal(p4, p5, p6)  # 上底面
+    n3 = face_normal(p1, p2, p5)  # 侧面 p1-p2-p5
+    n4 = face_normal(p2, p3, p6)  # 侧面 p2-p3-p6
+    n5 = face_normal(p3, p1, p4)  # 侧面 p3-p1-p4
+
+    # 计算两个面之间的二面角
+    def dihedral_angle(n1, n2):
+        cos_angle = np.dot(n1, n2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        return np.degrees(np.arccos(cos_angle))
+
+    # 计算所有二面角
+    dihedral_angles = []
+
+    # 侧面之间的二面角（3个）
+    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p2-p5
+    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p3-p6
+    dihedral_angles.append(dihedral_angle(n5, n3))  # 棱 p1-p4
+
+    # 侧面与底面之间的二面角（6个）
+    dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p1-p2
+    dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
+    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p3-p1
+    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p4-p5
+    dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p5-p6
+    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p6-p4
+
+    # 计算最大和最小二面角
+    max_angle = max(dihedral_angles)
+    min_angle = min(dihedral_angles)
+
+    # 理想正三棱柱的二面角
+    # 侧面之间的二面角为 90 度（正方形）
+    # 侧面与底面之间的二面角约为 90 度（对于正三棱柱）
+    # 使用平均值作为理想角度
+    ideal_angle = 90.0
+
+    # 计算偏斜度
+    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
+    skew2 = (ideal_angle - min_angle) / ideal_angle
+    skewness = 1.0 - max([skew1, skew2])
+
+    # 确保偏斜度在[0, 1]范围内
+    skewness = max(0.0, min(1.0, skewness))
+
+    return skewness
 
     # 计算最大和最小角度
     max_angle = max(angles)

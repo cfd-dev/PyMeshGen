@@ -41,6 +41,7 @@ def write_vtk(
     num_quad = 0
     num_tetra = 0
     num_pyramid = 0
+    num_prism = 0
     for i, cell in enumerate(cell_idx_container):
         if cell_type_container[i] == VTK_ELEMENT_TYPE.TRI.value:  # 三角形
             cell_data.append(f"3 {cell[0]} {cell[1]} {cell[2]}")
@@ -54,6 +55,9 @@ def write_vtk(
         elif cell_type_container[i] == VTK_ELEMENT_TYPE.PYRAMID.value:  # 金字塔
             cell_data.append(f"5 {cell[0]} {cell[1]} {cell[2]} {cell[3]} {cell[4]}")
             num_pyramid += 1
+        elif cell_type_container[i] == VTK_ELEMENT_TYPE.PRISM.value:  # 三棱柱
+            cell_data.append(f"6 {cell[0]} {cell[1]} {cell[2]} {cell[3]} {cell[4]} {cell[5]}")
+            num_prism += 1
 
     with open(filename, "w") as file:
         file.write("# vtk DataFile Version 2.0\n")
@@ -68,10 +72,10 @@ def write_vtk(
             file.write(" ".join(map(str, coord_tmp)) + "\n")
 
         # 写入单元信息
-        total_cells = num_tri + num_quad + num_tetra + num_pyramid
+        total_cells = num_tri + num_quad + num_tetra + num_pyramid + num_prism
         if total_cells != num_cells:
             raise ValueError("单元数量与指定的不一致!")
-        total_data_size = num_tri * 4 + num_quad * 5 + num_tetra * 5 + num_pyramid * 6  # 3+1, 4+1, 4+1 和 5+1
+        total_data_size = num_tri * 4 + num_quad * 5 + num_tetra * 5 + num_pyramid * 6 + num_prism * 7  # 3+1, 4+1, 4+1, 5+1 和 6+1
         file.write(f"CELLS {total_cells} {total_data_size}\n")
         file.write("\n".join(cell_data) + "\n")
 

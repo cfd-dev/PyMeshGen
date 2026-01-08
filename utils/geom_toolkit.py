@@ -213,6 +213,21 @@ def pyramid_volume(p1, p2, p3, p4, p5):
     return vol1 + vol2
 
 
+def prism_volume(p1, p2, p3, p4, p5, p6):
+    """计算三棱柱体积（支持3D点）
+    三棱柱由两个三角形底面和三个矩形侧面组成
+    将三棱柱分解为三个四面体计算体积
+    p1, p2, p3: 下底面三角形顶点
+    p4, p5, p6: 上底面三角形顶点（与下底面对应）
+    """
+    # 将三棱柱分解为三个四面体：
+    # T1(p1,p2,p3,p4), T2(p2,p3,p4,p5), T3(p3,p4,p5,p6)
+    vol1 = tetrahedron_volume(p1, p2, p3, p4)
+    vol2 = tetrahedron_volume(p2, p3, p4, p5)
+    vol3 = tetrahedron_volume(p3, p4, p5, p6)
+    return vol1 + vol2 + vol3
+
+
 def is_left2d(p1, p2, p3):
     """判断点p3是否在p1-p2向量的左侧"""
     v1 = (p2[0] - p1[0], p2[1] - p1[1])

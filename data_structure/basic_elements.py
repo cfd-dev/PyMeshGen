@@ -14,6 +14,7 @@ from utils.geom_toolkit import (
     quad_intersects_quad,
     tetrahedron_volume,
     pyramid_volume,
+    prism_volume,
 )
 from utils.message import info, debug, warning, verbose
 
@@ -99,6 +100,24 @@ def _get_pyramid_skewness():
         import mesh_quality
         pyramid_skewness = mesh_quality.pyramid_skewness
     return pyramid_skewness
+
+def _get_prism_shape_quality():
+    """Lazy import for prism_shape_quality to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import prism_shape_quality
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        prism_shape_quality = mesh_quality.prism_shape_quality
+    return prism_shape_quality
+
+def _get_prism_skewness():
+    """Lazy import for prism_skewness to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import prism_skewness
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        prism_skewness = mesh_quality.prism_skewness
+    return prism_skewness
 
 
 class NodeElement:
@@ -648,6 +667,109 @@ class Pyramid:
         if self.skewness is None:
             pyramid_skewness = _get_pyramid_skewness()
             self.skewness = pyramid_skewness(self.p1, self.p2, self.p3, self.p4, self.p5)
+        return self.skewness
+
+    def get_element_size(self):
+        if self.volume is None:
+            self.get_volume()
+        return self.volume ** (1/3)
+
+
+class Prism:
+    def __init__(self, p1, p2, p3, p4, p5, p6, part_name=None, idx=None, node_ids=None):
+        if (
+            is_node_element(p1)
+            and is_node_element(p2)
+            and is_node_element(p3)
+            and is_node_element(p4)
+            and is_node_element(p5)
+            and is_node_element(p6)
+        ):
+            self.p1 = p1.coords
+            self.p2 = p2.coords
+            self.p3 = p3.coords
+            self.p4 = p4.coords
+            self.p5 = p5.coords
+            self.p6 = p6.coords
+            self.node_ids = [p1.idx, p2.idx, p3.idx, p4.idx, p5.idx, p6.idx]
+        else:
+            self.p1 = p1
+            self.p2 = p2
+            self.p3 = p3
+            self.p4 = p4
+            self.p5 = p5
+            self.p6 = p6
+            self.node_ids = node_ids
+
+        self.part_name = part_name
+        self.idx = idx
+        # 生成几何级哈希
+        coord_hash = hash(
+            (
+                tuple(f"{coord:.6f}" for coord in self.p1),
+                tuple(f"{coord:.6f}" for coord in self.p2),
+                tuple(f"{coord:.6f}" for coord in self.p3),
+                tuple(f"{coord:.6f}" for coord in self.p4),
+                tuple(f"{coord:.6f}" for coord in self.p5),
+                tuple(f"{coord:.6f}" for coord in self.p6),
+            )
+        )
+        # 生成逻辑级哈希
+        id_hash = hash(tuple(sorted(self.node_ids))) if self.node_ids else 0
+        # 组合哈希
+        self.hash = hash((coord_hash, id_hash))
+
+        self.volume = None
+        self.quality = None
+        self.skewness = None
+        self.bbox = [
+            min(self.p1[0], self.p2[0], self.p3[0], self.p4[0], self.p5[0], self.p6[0]),  # (min_x, min_y, min_z, max_x, max_y, max_z)
+            min(self.p1[1], self.p2[1], self.p3[1], self.p4[1], self.p5[1], self.p6[1]),
+            min(self.p1[2], self.p2[2], self.p3[2], self.p4[2], self.p5[2], self.p6[2]),
+            max(self.p1[0], self.p2[0], self.p3[0], self.p4[0], self.p5[0], self.p6[0]),
+            max(self.p1[1], self.p2[1], self.p3[1], self.p4[1], self.p5[1], self.p6[1]),
+            max(self.p1[2], self.p2[2], self.p3[2], self.p4[2], self.p5[2], self.p6[2]),
+        ]
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, other):
+        if isinstance(other, Prism):
+            return self.hash == other.hash
+        return False
+
+    def init_metrics(self, force_update=False):
+        if self.volume is None or force_update:
+            self.volume = prism_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+            if self.volume == 0.0:
+                raise ValueError(
+                    f"三棱柱体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}, {self.p5}, {self.p6}"
+                )
+        
+        if self.quality is None or force_update:
+            prism_shape_quality = _get_prism_shape_quality()
+            self.quality = prism_shape_quality(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+        
+        if self.skewness is None or force_update:
+            prism_skewness = _get_prism_skewness()
+            self.skewness = prism_skewness(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+
+    def get_volume(self):
+        if self.volume is None:
+            self.volume = prism_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+        return self.volume
+
+    def get_quality(self):
+        if self.quality is None:
+            prism_shape_quality = _get_prism_shape_quality()
+            self.quality = prism_shape_quality(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+        return self.quality
+
+    def get_skewness(self):
+        if self.skewness is None:
+            prism_skewness = _get_prism_skewness()
+            self.skewness = prism_skewness(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
         return self.skewness
 
     def get_element_size(self):

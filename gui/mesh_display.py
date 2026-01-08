@@ -342,6 +342,18 @@ class MeshDisplayArea:
                             pyramid.GetPointIds().SetId(3, node_ids[3])
                             pyramid.GetPointIds().SetId(4, node_ids[4])
                             polys.InsertNextCell(pyramid)
+                    elif len(node_ids) == 6:
+                        # 三棱柱单元
+                        from data_structure.basic_elements import Prism
+                        if isinstance(cell, Prism):
+                            wedge = vtk.vtkWedge()
+                            wedge.GetPointIds().SetId(0, node_ids[0])
+                            wedge.GetPointIds().SetId(1, node_ids[1])
+                            wedge.GetPointIds().SetId(2, node_ids[2])
+                            wedge.GetPointIds().SetId(3, node_ids[3])
+                            wedge.GetPointIds().SetId(4, node_ids[4])
+                            wedge.GetPointIds().SetId(5, node_ids[5])
+                            polys.InsertNextCell(wedge)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
@@ -409,6 +421,18 @@ class MeshDisplayArea:
                         pyramid.GetPointIds().SetId(3, node_ids[3])
                         pyramid.GetPointIds().SetId(4, node_ids[4])
                         polys.InsertNextCell(pyramid)
+                elif len(node_ids) == 6:
+                    # 三棱柱单元
+                    from data_structure.basic_elements import Prism
+                    if isinstance(cell, Prism):
+                        wedge = vtk.vtkWedge()
+                        wedge.GetPointIds().SetId(0, node_ids[0])
+                        wedge.GetPointIds().SetId(1, node_ids[1])
+                        wedge.GetPointIds().SetId(2, node_ids[2])
+                        wedge.GetPointIds().SetId(3, node_ids[3])
+                        wedge.GetPointIds().SetId(4, node_ids[4])
+                        wedge.GetPointIds().SetId(5, node_ids[5])
+                        polys.InsertNextCell(wedge)
 
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(points)

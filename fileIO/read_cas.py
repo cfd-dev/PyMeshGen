@@ -1,4 +1,5 @@
 import re
+import numpy as np
 
 from utils.timer import TimeSpan
 from utils.geom_toolkit import sort_quadrilateral_nodes
@@ -273,6 +274,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         Quadrilateral,
         Tetrahedron,
         Pyramid,
+        Prism,
     )
     from data_structure.unstructured_grid import Unstructured_Grid
 
@@ -397,8 +399,68 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 cell_type_container.append(14)  # VTK_PYRAMID
             elif num_nodes == 6 and num_faces == 5:
                 # 棱柱 (Prism/Wedge)
-                nodes = [node_container[idx] for idx in cell_nodes]
-                cell = None # Prism(*nodes, "prism", idx=len(cell_container))
+                # 三棱柱由两个三角形底面和三个矩形侧面组成
+                # 需要识别哪个三角形是底面，哪个是顶面
+                # 计算所有节点的z坐标，将节点分为两组
+                nodes_z = [(node_container[idx].coords[2], idx) for idx in cell_nodes]
+                nodes_z.sort(key=lambda x: x[0])
+                
+                # 取z坐标最小的3个节点作为底面，最大的3个节点作为顶面
+                bottom_nodes = [nodes_z[i][1] for i in range(3)]
+                top_nodes = [nodes_z[i][1] for i in range(3, 6)]
+                
+                # 对底面和顶面的节点进行排序，确保正确的对应关系
+                # 使用三角形的质心来确定节点顺序
+                def get_triangle_center(nodes):
+                    center = [0.0, 0.0, 0.0]
+                    for idx in nodes:
+                        coords = node_container[idx].coords
+                        center[0] += coords[0]
+                        center[1] += coords[1]
+                        center[2] += coords[2]
+                    center[0] /= 3
+                    center[1] /= 3
+                    center[2] /= 3
+                    return center
+                
+                bottom_center = get_triangle_center(bottom_nodes)
+                top_center = get_triangle_center(top_nodes)
+                
+                # 计算从底面中心到顶面中心的方向向量
+                direction = [
+                    top_center[0] - bottom_center[0],
+                    top_center[1] - bottom_center[1],
+                    top_center[2] - bottom_center[2],
+                ]
+                
+                # 对底面节点按角度排序
+                def sort_triangle_nodes(nodes, center):
+                    def angle_from_reference(node_idx):
+                        coords = node_container[node_idx].coords
+                        dx = coords[0] - center[0]
+                        dy = coords[1] - center[1]
+                        return np.arctan2(dy, dx)
+                    
+                    sorted_nodes = sorted(nodes, key=angle_from_reference)
+                    return sorted_nodes
+                
+                bottom_nodes_sorted = sort_triangle_nodes(bottom_nodes, bottom_center)
+                top_nodes_sorted = sort_triangle_nodes(top_nodes, top_center)
+                
+                # 创建三棱柱对象
+                # p1, p2, p3: 底面三角形（逆时针顺序）
+                # p4, p5, p6: 顶面三角形（与底面对应）
+                node1 = node_container[bottom_nodes_sorted[0]]
+                node2 = node_container[bottom_nodes_sorted[1]]
+                node3 = node_container[bottom_nodes_sorted[2]]
+                node4 = node_container[top_nodes_sorted[0]]
+                node5 = node_container[top_nodes_sorted[1]]
+                node6 = node_container[top_nodes_sorted[2]]
+                
+                cell = Prism(
+                    node1, node2, node3, node4, node5, node6,
+                    "prism", idx=len(cell_container)
+                )
                 cell_container.append(cell)
                 cell_type_container.append(13)  # VTK_WEDGE
         else:
