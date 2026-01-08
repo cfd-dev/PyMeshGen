@@ -63,6 +63,24 @@ def _get_triangle_skewness():
         triangle_skewness = mesh_quality.triangle_skewness
     return triangle_skewness
 
+def _get_tetrahedron_shape_quality():
+    """Lazy import for tetrahedron_shape_quality to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import tetrahedron_shape_quality
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        tetrahedron_shape_quality = mesh_quality.tetrahedron_shape_quality
+    return tetrahedron_shape_quality
+
+def _get_tetrahedron_skewness():
+    """Lazy import for tetrahedron_skewness to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import tetrahedron_skewness
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        tetrahedron_skewness = mesh_quality.tetrahedron_skewness
+    return tetrahedron_skewness
+
 
 class NodeElement:
     def __init__(self, coords, idx, part_name=None, bc_type=None):
@@ -475,6 +493,7 @@ class Tetrahedron:
 
         self.volume = None
         self.quality = None
+        self.skewness = None
         self.bbox = [
             min(self.p1[0], self.p2[0], self.p3[0], self.p4[0]),  # (min_x, min_y, min_z, max_x, max_y, max_z)
             min(self.p1[1], self.p2[1], self.p3[1], self.p4[1]),
@@ -499,6 +518,14 @@ class Tetrahedron:
                 raise ValueError(
                     f"四面体体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
+        
+        if self.quality is None or force_update:
+            tetrahedron_shape_quality = _get_tetrahedron_shape_quality()
+            self.quality = tetrahedron_shape_quality(self.p1, self.p2, self.p3, self.p4)
+        
+        if self.skewness is None or force_update:
+            tetrahedron_skewness = _get_tetrahedron_skewness()
+            self.skewness = tetrahedron_skewness(self.p1, self.p2, self.p3, self.p4)
 
     def get_volume(self):
         if self.volume is None:

@@ -39,6 +39,7 @@ def write_vtk(
     cell_data = []
     num_tri = 0
     num_quad = 0
+    num_tetra = 0
     for i, cell in enumerate(cell_idx_container):
         if cell_type_container[i] == VTK_ELEMENT_TYPE.TRI.value:  # 三角形
             cell_data.append(f"3 {cell[0]} {cell[1]} {cell[2]}")
@@ -46,6 +47,9 @@ def write_vtk(
         elif cell_type_container[i] == VTK_ELEMENT_TYPE.QUAD.value:  # 四边形
             cell_data.append(f"4 {cell[0]} {cell[1]} {cell[2]} {cell[3]}")
             num_quad += 1
+        elif cell_type_container[i] == VTK_ELEMENT_TYPE.TETRA.value:  # 四面体
+            cell_data.append(f"4 {cell[0]} {cell[1]} {cell[2]} {cell[3]}")
+            num_tetra += 1
 
     with open(filename, "w") as file:
         file.write("# vtk DataFile Version 2.0\n")
@@ -60,10 +64,10 @@ def write_vtk(
             file.write(" ".join(map(str, coord_tmp)) + "\n")
 
         # 写入单元信息
-        total_cells = num_tri + num_quad
+        total_cells = num_tri + num_quad + num_tetra
         if total_cells != num_cells:
             raise ValueError("单元数量与指定的不一致!")
-        total_data_size = num_tri * 4 + num_quad * 5  # 3+1 和 4+1
+        total_data_size = num_tri * 4 + num_quad * 5 + num_tetra * 5  # 3+1, 4+1 和 4+1
         file.write(f"CELLS {total_cells} {total_data_size}\n")
         file.write("\n".join(cell_data) + "\n")
 
@@ -205,7 +209,7 @@ def read_vtk(filename):
 def reconstruct_mesh_from_vtk(
     node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids=None
 ):
-    from data_structure.basic_elements import NodeElement, Triangle, Quadrilateral
+    from data_structure.basic_elements import NodeElement, Triangle, Quadrilateral, Tetrahedron
     from data_structure.unstructured_grid import Unstructured_Grid
 
     num_nodes = len(node_coords)
@@ -247,6 +251,11 @@ def reconstruct_mesh_from_vtk(
                 raise ValueError(f"四边形单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             cell = Quadrilateral(node1, node2, node3, node4, "interior-quadrilateral", idx)
+        elif cell_type == VTK_ELEMENT_TYPE.TETRA:  # 四面体
+            if len(cell_idx_container[idx]) < 4:
+                raise ValueError(f"四面体单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
+            node4 = node_container[cell_idx_container[idx][3]]
+            cell = Tetrahedron(node1, node2, node3, node4, "interior-tetrahedron", idx)
         else:
             raise ValueError(f"Unsupported cell type: {cell_type_container[idx]}")
 

@@ -138,7 +138,8 @@ class Unstructured_Grid:
             c.quality for c in self.cell_container if c.quality is not None
         ]
 
-        area_values = [c.area for c in self.cell_container if c.area is not None]
+        area_values = [c.area for c in self.cell_container if hasattr(c, 'area') and c.area is not None]
+        volume_values = [c.volume for c in self.cell_container if hasattr(c, 'volume') and c.volume is not None]
 
         skewness_values = [
             c.skewness for c in self.cell_container if c.skewness is not None
@@ -154,7 +155,11 @@ class Unstructured_Grid:
             quality_stats += f"  Min Skewness: {min(skewness_values):.4f}\n"
             quality_stats += f"  Max Skewness: {max(skewness_values):.4f}\n"
             quality_stats += f"  Mean Skewness: {np.mean(skewness_values):.4f}\n"
-            quality_stats += f"  Min Area: {min(area_values):.4e}\n"
+            
+            if area_values:
+                quality_stats += f"  Min Area: {min(area_values):.4e}\n"
+            if volume_values:
+                quality_stats += f"  Min Volume: {min(volume_values):.4e}\n"
 
             print(quality_stats.rstrip())  # Print to console
             if gui_instance and hasattr(gui_instance, 'log_info'):

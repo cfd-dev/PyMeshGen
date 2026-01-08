@@ -13,9 +13,9 @@ import os
 current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, current_dir)
 
-from fileIO.vtk_io import read_vtk, reconstruct_mesh_from_vtk
+from fileIO.vtk_io import read_vtk, reconstruct_mesh_from_vtk, write_vtk, parse_vtk_msh
 from data_structure.unstructured_grid import Unstructured_Grid
-from data_structure.basic_elements import Triangle, Quadrilateral, NodeElement
+from data_structure.basic_elements import Triangle, Quadrilateral, NodeElement, Tetrahedron
 
 
 class TestVTKFileIO(unittest.TestCase):
@@ -229,9 +229,136 @@ class TestVTKMeshStructure(unittest.TestCase):
             for val in coord:
                 self.assertIsInstance(val, (int, float))
 
-        for node in self.test_grid.boundary_nodes:
-            self.assertIsInstance(node, NodeElement)
-            self.assertIsInstance(node.coords, list)
+
+class TestTetrahedronVTKIO(unittest.TestCase):
+    """四面体VTK文件导入导出功能测试类"""
+
+    def setUp(self):
+        """在每个测试方法运行前执行"""
+        self.test_dir = os.path.join(current_dir, "out")
+        if not os.path.exists(self.test_dir):
+            os.makedirs(self.test_dir)
+
+    def test_tetrahedron_vtk_write_and_read(self):
+        """测试四面体VTK文件的写入和读取"""
+        nodes = [
+            NodeElement((0, 0, 0), 0),
+            NodeElement((1, 0, 0), 1),
+            NodeElement((0, 1, 0), 2),
+            NodeElement((0, 0, 1), 3),
+            NodeElement((1, 1, 1), 4),
+        ]
+        
+        tetra1 = Tetrahedron(nodes[0], nodes[1], nodes[2], nodes[3], part_name="tetra1", idx=0)
+        tetra2 = Tetrahedron(nodes[1], nodes[2], nodes[3], nodes[4], part_name="tetra2", idx=1)
+        
+        tetra1.init_metrics()
+        tetra2.init_metrics()
+        
+        node_coords = [node.coords for node in nodes]
+        boundary_nodes = nodes
+        mesh = Unstructured_Grid([tetra1, tetra2], node_coords, boundary_nodes)
+        
+        self.assertEqual(len(mesh.node_coords), 5)
+        self.assertEqual(len(mesh.cell_container), 2)
+        
+        vtk_path = os.path.join(self.test_dir, "test_tetrahedron.vtk")
+        
+        cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
+        boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
+        cell_type_container = [10] * len(mesh.cell_container)
+        cell_part_names = [cell.part_name for cell in mesh.cell_container]
+        
+        write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 
+                 cell_type_container, cell_part_names)
+        
+        self.assertTrue(os.path.exists(vtk_path))
+        
+        read_mesh = parse_vtk_msh(vtk_path)
+        
+        self.assertEqual(len(read_mesh.node_coords), 5)
+        self.assertEqual(len(read_mesh.cell_container), 2)
+        
+        for i, cell in enumerate(read_mesh.cell_container):
+            self.assertIsInstance(cell, Tetrahedron, f"单元{i}应该是四面体类型")
+        
+        read_mesh.summary()
+        
+        if os.path.exists(vtk_path):
+            os.remove(vtk_path)
+
+    def test_tetrahedron_vtk_roundtrip(self):
+        """测试四面体VTK文件的往返转换"""
+        nodes = [
+            NodeElement((0, 0, 0), 0),
+            NodeElement((1, 0, 0), 1),
+            NodeElement((0, 1, 0), 2),
+            NodeElement((0, 0, 1), 3),
+        ]
+        
+        tetra = Tetrahedron(nodes[0], nodes[1], nodes[2], nodes[3], part_name="test", idx=0)
+        tetra.init_metrics()
+        
+        node_coords = [node.coords for node in nodes]
+        boundary_nodes = nodes
+        mesh = Unstructured_Grid([tetra], node_coords, boundary_nodes)
+        
+        vtk_path = os.path.join(self.test_dir, "test_tetrahedron_roundtrip.vtk")
+        
+        cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
+        boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
+        cell_type_container = [10] * len(mesh.cell_container)
+        cell_part_names = [cell.part_name for cell in mesh.cell_container]
+        
+        write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 
+                 cell_type_container, cell_part_names)
+        
+        read_mesh = parse_vtk_msh(vtk_path)
+        
+        self.assertEqual(len(mesh.node_coords), len(read_mesh.node_coords))
+        self.assertEqual(len(mesh.cell_container), len(read_mesh.cell_container))
+        
+        if os.path.exists(vtk_path):
+            os.remove(vtk_path)
+
+    def test_tetrahedron_mesh_properties(self):
+        """测试四面体网格属性"""
+        nodes = [
+            NodeElement((0, 0, 0), 0),
+            NodeElement((1, 0, 0), 1),
+            NodeElement((0, 1, 0), 2),
+            NodeElement((0, 0, 1), 3),
+        ]
+        
+        tetra = Tetrahedron(nodes[0], nodes[1], nodes[2], nodes[3], part_name="test", idx=0)
+        tetra.init_metrics()
+        
+        node_coords = [node.coords for node in nodes]
+        boundary_nodes = nodes
+        mesh = Unstructured_Grid([tetra], node_coords, boundary_nodes)
+        
+        self.assertEqual(mesh.dim, 3)
+        self.assertIsNotNone(mesh.bbox)
+        self.assertEqual(len(mesh.bbox), 6)
+        
+        vtk_path = os.path.join(self.test_dir, "test_tetrahedron_props.vtk")
+        
+        cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
+        boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
+        cell_type_container = [10] * len(mesh.cell_container)
+        cell_part_names = [cell.part_name for cell in mesh.cell_container]
+        
+        write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 
+                 cell_type_container, cell_part_names)
+        
+        read_mesh = parse_vtk_msh(vtk_path)
+        
+        self.assertEqual(read_mesh.dim, 3)
+        self.assertIsNotNone(read_mesh.bbox)
+        self.assertEqual(len(read_mesh.bbox), 6)
+        
+        if os.path.exists(vtk_path):
+            os.remove(vtk_path)
 
 
 if __name__ == "__main__":

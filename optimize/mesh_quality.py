@@ -6,6 +6,7 @@ from utils.geom_toolkit import (
     calculate_angle,
     is_valid_quadrilateral,
     is_convex,
+    tetrahedron_volume,
 )
 
 
@@ -181,3 +182,98 @@ def quadrilateral_shape_quality(p1, p2, p3, p4):
         raise ValueError(f"四边形质量异常：{quality}，顶点：{p1}, {p2}, {p3}, {p4}")
 
     return quality
+
+
+def tetrahedron_shape_quality(p1, p2, p3, p4):
+    """计算四面体网格质量（基于体积与棱长立方比）"""
+    # 计算所有边长
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p1),
+        calculate_distance(p1, p4),
+        calculate_distance(p2, p4),
+        calculate_distance(p3, p4),
+    ]
+
+    # 计算体积
+    volume = tetrahedron_volume(p1, p2, p3, p4)
+
+    # 计算边长立方和
+    edge_cubes_sum = sum(e**3 for e in edges)
+
+    # 质量指标：体积与边长立方比的标准化
+    if edge_cubes_sum == 0 or volume <= 0:
+        return 0.0
+
+    # 标准化因子（理想正四面体的质量为1）
+    # 正四面体的体积 V = a^3 / (6*sqrt(2))，其中a为边长
+    # 对于正四面体，edge_cubes_sum = 6*a^3
+    # 因此理想质量 = (a^3 / (6*sqrt(2))) / (6*a^3) = 1 / (36*sqrt(2))
+    ideal_factor = 36.0 * sqrt(2.0)
+    quality = volume * ideal_factor / edge_cubes_sum
+
+    # 异常检测
+    if isnan(quality) or isinf(quality) or quality < 0.0 or quality > 1.0:
+        raise ValueError(
+            f"四面体质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}"
+        )
+
+    return quality
+
+
+def tetrahedron_skewness(p1, p2, p3, p4):
+    """计算四面体的偏斜度（基于二面角）"""
+    # 计算四面体的六个二面角
+    # 二面角是两个面之间的夹角，通过面法向量计算
+
+    def face_normal(a, b, c):
+        """计算三角形面的法向量"""
+        ab = np.array(b) - np.array(a)
+        ac = np.array(c) - np.array(a)
+        normal = np.cross(ab, ac)
+        norm = np.linalg.norm(normal)
+        return normal / norm if norm > 1e-12 else np.array([0.0, 0.0, 0.0])
+
+    # 四个面的法向量
+    n1 = face_normal(p2, p3, p4)  # 面 p2-p3-p4
+    n2 = face_normal(p1, p3, p4)  # 面 p1-p3-p4
+    n3 = face_normal(p1, p2, p4)  # 面 p1-p2-p4
+    n4 = face_normal(p1, p2, p3)  # 面 p1-p2-p3
+
+    # 计算六个二面角（通过相邻面的法向量夹角）
+    dihedral_angles = []
+
+    # 计算两个面之间的二面角
+    def dihedral_angle(n1, n2):
+        cos_angle = np.dot(n1, n2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        return np.degrees(np.arccos(cos_angle))
+
+    # 六条棱对应的二面角
+    dihedral_angles.append(dihedral_angle(n1, n2))  # 棱 p3-p4
+    dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p2-p4
+    dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
+    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p1-p4
+    dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p1-p3
+    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p1-p2
+
+    # 检查二面角和（理想正四面体的二面角约为70.53度，六个二面角和约为423.18度）
+    # 这里不做严格检查，因为四面体的二面角和不是固定值
+
+    # 计算最大和最小二面角
+    max_angle = max(dihedral_angles)
+    min_angle = min(dihedral_angles)
+
+    # 理想正四面体的二面角约为70.53度
+    ideal_angle = 70.53
+
+    # 计算偏斜度
+    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
+    skew2 = (ideal_angle - min_angle) / ideal_angle
+    skewness = 1.0 - max([skew1, skew2])
+
+    # 确保偏斜度在[0, 1]范围内
+    skewness = max(0.0, min(1.0, skewness))
+
+    return skewness

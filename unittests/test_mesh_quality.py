@@ -40,7 +40,12 @@ triangle_skewness = mesh_quality_module.triangle_skewness
 quadrilateral_skewness = mesh_quality_module.quadrilateral_skewness
 quadrilateral_aspect_ratio = mesh_quality_module.quadrilateral_aspect_ratio
 quadrilateral_shape_quality = mesh_quality_module.quadrilateral_shape_quality
+tetrahedron_shape_quality = mesh_quality_module.tetrahedron_shape_quality
+tetrahedron_skewness = mesh_quality_module.tetrahedron_skewness
 parse_stl_msh = stl_io_module.parse_stl_msh
+
+from data_structure.basic_elements import Tetrahedron, NodeElement
+from utils.geom_toolkit import tetrahedron_volume
 
 
 class TestMeshQuality(unittest.TestCase):
@@ -138,6 +143,122 @@ class TestMeshQuality(unittest.TestCase):
             unstr_grid.summary()
         else:
             self.skipTest("STL测试文件不存在")
+
+    def test_tetrahedron_quality(self):
+        """测试四面体质量计算"""
+        p1 = (1, 1, 1)
+        p2 = (1, -1, -1)
+        p3 = (-1, 1, -1)
+        p4 = (-1, -1, 1)
+        
+        quality = tetrahedron_shape_quality(p1, p2, p3, p4)
+        self.assertGreater(quality, 0.9, f"正四面体质量应该接近1.0，实际为{quality}")
+        
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0.5, 0.5, 0.001)
+        
+        quality = tetrahedron_shape_quality(p1, p2, p3, p4)
+        self.assertLess(quality, 0.1, f"扁平四面体质量应该接近0，实际为{quality}")
+        
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0, 0, 1)
+        
+        quality = tetrahedron_shape_quality(p1, p2, p3, p4)
+        self.assertTrue(0 < quality < 1, f"普通四面体质量应该在0和1之间，实际为{quality}")
+
+    def test_tetrahedron_skewness(self):
+        """测试四面体偏斜度计算"""
+        p1 = (1, 1, 1)
+        p2 = (1, -1, -1)
+        p3 = (-1, 1, -1)
+        p4 = (-1, -1, 1)
+        
+        skewness = tetrahedron_skewness(p1, p2, p3, p4)
+        self.assertGreater(skewness, 0.6, f"正四面体偏斜度应该较高，实际为{skewness}")
+        
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0.5, 0.5, 0.001)
+        
+        skewness = tetrahedron_skewness(p1, p2, p3, p4)
+        self.assertLess(skewness, 0.1, f"扁平四面体偏斜度应该接近0，实际为{skewness}")
+
+    def test_tetrahedron_volume(self):
+        """测试四面体体积计算"""
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0, 0, 1)
+        
+        volume = tetrahedron_volume(p1, p2, p3, p4)
+        expected = 1.0 / 6.0
+        self.assertAlmostEqual(volume, expected, delta=0.001, msg=f"体积应该为{expected}，实际为{volume}")
+
+    def test_tetrahedron_class(self):
+        """测试Tetrahedron类初始化和指标计算"""
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0, 0, 1)
+        
+        tetra = Tetrahedron(p1, p2, p3, p4, part_name="test", idx=0)
+        
+        self.assertIsNone(tetra.volume)
+        self.assertIsNone(tetra.quality)
+        self.assertIsNone(tetra.skewness)
+        
+        tetra.init_metrics()
+        
+        self.assertIsNotNone(tetra.volume, "体积应该被计算")
+        self.assertIsNotNone(tetra.quality, "质量应该被计算")
+        self.assertIsNotNone(tetra.skewness, "偏斜度应该被计算")
+        
+        tetra.init_metrics(force_update=True)
+
+    def test_tetrahedron_with_nodes(self):
+        """测试使用Node对象创建四面体"""
+        node1 = NodeElement((0, 0, 0), 0)
+        node2 = NodeElement((1, 0, 0), 1)
+        node3 = NodeElement((0, 1, 0), 2)
+        node4 = NodeElement((0, 0, 1), 3)
+        
+        tetra = Tetrahedron(node1, node2, node3, node4, part_name="test", idx=0)
+        tetra.init_metrics()
+        
+        self.assertIsNotNone(tetra.volume)
+        self.assertIsNotNone(tetra.quality)
+        self.assertIsNotNone(tetra.skewness)
+        self.assertEqual(tetra.node_ids, [0, 1, 2, 3], "节点ID应该正确")
+
+    def test_tetrahedron_bbox(self):
+        """测试四面体边界框"""
+        p1 = (0, 0, 0)
+        p2 = (2, 0, 0)
+        p3 = (0, 3, 0)
+        p4 = (0, 0, 4)
+        
+        tetra = Tetrahedron(p1, p2, p3, p4)
+        
+        expected_bbox = [0, 0, 0, 2, 3, 4]
+        self.assertEqual(tetra.bbox, expected_bbox, f"边界框应该为{expected_bbox}，实际为{tetra.bbox}")
+
+    def test_tetrahedron_hash(self):
+        """测试四面体哈希"""
+        p1 = (0, 0, 0)
+        p2 = (1, 0, 0)
+        p3 = (0, 1, 0)
+        p4 = (0, 0, 1)
+        
+        tetra1 = Tetrahedron(p1, p2, p3, p4, idx=0)
+        tetra2 = Tetrahedron(p1, p2, p3, p4, idx=1)
+        
+        self.assertEqual(tetra1, tetra2, "相同几何形状的四面体应该相等")
+        self.assertEqual(hash(tetra1), hash(tetra2), "相同几何形状的四面体哈希应该相同")
 
 
 if __name__ == "__main__":
