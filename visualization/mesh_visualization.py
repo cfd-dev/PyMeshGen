@@ -12,10 +12,10 @@ sys.path.append(data_structure_dir)
 
 try:
     # Try direct import (when run as part of package)
-    from basic_elements import Unstructured_Grid
+    from unstructured_grid import Unstructured_Grid
 except ImportError:
     # Fallback for standalone use
-    from data_structure.basic_elements import Unstructured_Grid
+    from data_structure.unstructured_grid import Unstructured_Grid
 
 
 class Visualization:

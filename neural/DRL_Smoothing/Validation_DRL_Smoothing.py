@@ -17,7 +17,7 @@ import numpy as np
 from DRL_Smoothing import Actor, DRLSmoothingEnv
 from stl_io import parse_stl_msh
 from mesh_visualization import Visualization
-from basic_elements import Unstructured_Grid
+from unstructured_grid import Unstructured_Grid
 from mesh_visualization import visualize_unstr_grid_2d
 from message import info
 

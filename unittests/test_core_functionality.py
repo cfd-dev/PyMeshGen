@@ -18,7 +18,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
+for subdir in ["fileIO", "data_structure", "meshsize", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
@@ -129,7 +129,8 @@ class TestCoreFunctionality(unittest.TestCase):
         try:
             from data_structure.mesh_data import MeshData
             from data_structure.parameters import Parameters
-            from data_structure.basic_elements import Unstructured_Grid, Triangle, Quadrilateral
+            from data_structure.unstructured_grid import Unstructured_Grid
+            from data_structure.basic_elements import Triangle, Quadrilateral
             from utils.data_converter import convert_to_internal_mesh_format
 
             mesh_data = MeshData()
@@ -210,7 +211,8 @@ class TestBackupFunctionalities(unittest.TestCase):
     def test_vtk_display_functionality(self):
         """测试VTK显示功能"""
         try:
-            from data_structure.basic_elements import Unstructured_Grid, Triangle, NodeElement
+            from data_structure.unstructured_grid import Unstructured_Grid
+            from data_structure.basic_elements import Triangle, NodeElement
 
             self.assertIsNotNone(Unstructured_Grid)
             self.assertIsNotNone(Triangle)
@@ -246,8 +248,9 @@ class TestBackupFunctionalities(unittest.TestCase):
     def test_basic_elements_functionality(self):
         """测试基本元素功能"""
         try:
+            from data_structure.unstructured_grid import Unstructured_Grid
             from data_structure.basic_elements import (
-                Unstructured_Grid, Triangle, Quadrilateral, NodeElement
+                Triangle, Quadrilateral, NodeElement
             )
 
             node1 = NodeElement([0.0, 0.0], 0)
@@ -277,10 +280,11 @@ class TestBackupFunctionalities(unittest.TestCase):
     def test_mesh_display_components(self):
         """测试网格显示组件功能"""
         try:
-            from visualization.visualization import Visualization
-            from data_structure.basic_elements import Unstructured_Grid, NodeElement
+            from visualization.mesh_visualization import Visualization
+            from data_structure.unstructured_grid import Unstructured_Grid
+            from data_structure.basic_elements import NodeElement
 
-            vis = Visualization(viz_enabled=False)
+            vis = Visualization(SWITCH=False)
             self.assertIsNotNone(vis)
 
             node1 = NodeElement([0.0, 0.0], 0)
@@ -291,7 +295,7 @@ class TestBackupFunctionalities(unittest.TestCase):
             self.assertIsNotNone(grid)
 
         except ImportError as e:
-            self.skipTest(f"Import error: {e}")
+            self.fail(f"Import error: {e}")
         except Exception as e:
             self.fail(f"Mesh display components test failed: {e}")
 
@@ -373,8 +377,8 @@ class TestFileIO(unittest.TestCase):
     def test_unstructured_grid_visualization(self):
         """测试Unstructured_Grid对象的可视化"""
         try:
-            from data_structure.basic_elements import Unstructured_Grid
-            from visualization.mesh_visualization import visualize_unstr_grid_2d
+            from data_structure.unstructured_grid import Unstructured_Grid
+            import visualization.mesh_visualization as viz
             import matplotlib.pyplot as plt
 
             test_nodes = [
@@ -391,7 +395,7 @@ class TestFileIO(unittest.TestCase):
             self.assertEqual(len(grid.node_coords), 5)
 
             fig, ax = plt.subplots()
-            visualize_unstr_grid_2d(grid, ax)
+            viz.visualize_unstr_grid_2d(grid, ax)
             plt.close(fig)
 
             self.assertTrue(True)

@@ -13,8 +13,8 @@ from data_structure.basic_elements import (
     NodeElement,
     NodeElementALM,
     Quadrilateral,
-    Unstructured_Grid,
 )
+from data_structure.unstructured_grid import Unstructured_Grid
 from data_structure.front2d import Front
 from utils.message import info, debug, verbose, warning
 from utils.timer import TimeSpan

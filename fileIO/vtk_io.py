@@ -119,11 +119,10 @@ def read_vtk(filename):
             node_coords = []
             for _ in range(nNodes):
                 i += 1
-                # coords = list(map(float, lines[i].split()))
-                # # 如果只有两个坐标，添加z=0
-                # if len(coords) == 2:
-                #     coords.append(0.0)
-                coords = list(map(float, lines[i].split()))[:2]  # 只取前2个坐标
+                coords = list(map(float, lines[i].split()))
+                # 如果只有两个坐标，添加z=0.0
+                if len(coords) == 2:
+                    coords.append(0.0)
                 node_coords.append(coords)
         elif line.startswith("CELLS"):
             _, nCells, dataLength = line.split()
@@ -206,7 +205,8 @@ def read_vtk(filename):
 def reconstruct_mesh_from_vtk(
     node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids=None
 ):
-    from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle, Quadrilateral
+    from data_structure.basic_elements import NodeElement, Triangle, Quadrilateral
+    from data_structure.unstructured_grid import Unstructured_Grid
 
     num_nodes = len(node_coords)
     num_cells = len(cell_idx_container)

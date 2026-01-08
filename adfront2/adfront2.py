@@ -11,10 +11,10 @@ from data_structure.basic_elements import (
     NodeElement,
     Triangle,
     Quadrilateral,
-    Unstructured_Grid,
     LineSegment,
     is_node_element,
 )
+from data_structure.unstructured_grid import Unstructured_Grid
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose, warning, error
 from data_structure.rtree_space import (

@@ -268,11 +268,11 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         Unstructured_Grid: 转换后的非结构化网格对象
     """
     from data_structure.basic_elements import (
-        Unstructured_Grid,
         NodeElement,
         Triangle,
         Quadrilateral,
     )
+    from data_structure.unstructured_grid import Unstructured_Grid
 
     # 提取节点坐标
     node_coords = raw_cas_data["nodes"]

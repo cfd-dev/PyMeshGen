@@ -445,6 +445,7 @@ def sort_quadrilateral_nodes(nodes, node_container):
     对四边形的四个节点进行排序，确保：
     1. 节点按逆时针顺序排列
     2. 法向量指向z轴正方向（右手定则）
+    3. 支持三维坐标
 
     Args:
         nodes: 四个节点的索引列表（0基索引）
@@ -459,30 +460,100 @@ def sort_quadrilateral_nodes(nodes, node_container):
     # 获取节点坐标
     coords = [node_container[idx].coords for idx in nodes]
 
+    # 检查坐标维度
+    coord_dim = len(coords[0])
+    if coord_dim < 2:
+        raise ValueError(f"坐标维度至少为2维，当前为{coord_dim}维")
+
     # 计算质心
     centroid = np.mean(coords, axis=0)
 
-    # 计算每个节点相对于质心的角度
-    angles = []
-    for i, (x, y) in enumerate(coords):
-        angle = np.arctan2(y - centroid[1], x - centroid[0])
-        angles.append((angle, i))
+    if coord_dim == 2:
+        # 2D情况：使用xy平面上的角度排序
+        angles = []
+        for i, coord in enumerate(coords):
+            x, y = coord[0], coord[1]
+            angle = np.arctan2(y - centroid[1], x - centroid[0])
+            angles.append((angle, i))
 
-    # 按角度排序（逆时针方向）
-    angles.sort()
-    sorted_indices = [nodes[idx] for _, idx in angles]
+        # 按角度排序（逆时针方向）
+        angles.sort()
+        sorted_indices = [nodes[idx] for _, idx in angles]
 
-    # 检查法向量方向
-    # 使用鞋带公式计算有向面积
-    x = [node_container[idx].coords[0] for idx in sorted_indices]
-    y = [node_container[idx].coords[1] for idx in sorted_indices]
+        # 使用鞋带公式计算有向面积
+        x = [node_container[idx].coords[0] for idx in sorted_indices]
+        y = [node_container[idx].coords[1] for idx in sorted_indices]
 
-    # 计算有向面积（鞋带公式）
-    area = 0.5 * sum(x[i] * y[(i + 1) % 4] - x[(i + 1) % 4] * y[i] for i in range(4))
+        # 计算有向面积（鞋带公式）
+        area = 0.5 * sum(x[i] * y[(i + 1) % 4] - x[(i + 1) % 4] * y[i] for i in range(4))
 
-    # 如果面积为负，说明节点是顺时针排列，需要反转
-    if area < 0:
-        sorted_indices = sorted_indices[::-1]
+        # 如果面积为负，说明节点是顺时针排列，需要反转
+        if area < 0:
+            sorted_indices = sorted_indices[::-1]
+    else:
+        # 3D情况：首先计算四边形的法向量
+        p0 = np.array(coords[0])
+        p1 = np.array(coords[1])
+        p2 = np.array(coords[2])
+
+        # 计算法向量
+        v1 = p1 - p0
+        v2 = p2 - p0
+        normal = np.cross(v1, v2)
+        normal = normal / np.linalg.norm(normal)  # 归一化
+
+        # 选择一个与法向量不平行的投影轴
+        # 如果法向量不与x轴平行，使用x轴；否则使用y轴
+        if abs(normal[0]) < 0.9:
+            proj_axis = np.array([1.0, 0.0, 0.0])
+        else:
+            proj_axis = np.array([0.0, 1.0, 0.0])
+
+        # 计算第二个轴（与法向量和投影轴都垂直）
+        second_axis = np.cross(normal, proj_axis)
+        second_axis = second_axis / np.linalg.norm(second_axis)
+
+        # 计算每个节点在投影平面上的角度
+        angles = []
+        for i, coord in enumerate(coords):
+            coord_vec = np.array(coord) - centroid
+            # 投影到与法向量垂直的平面上
+            proj_vec = coord_vec - np.dot(coord_vec, normal) * normal
+            # 计算角度（相对于second_axis）
+            angle = np.arctan2(np.dot(proj_vec, proj_axis), np.dot(proj_vec, second_axis))
+            angles.append((angle, i))
+
+        # 按角度排序
+        angles.sort()
+        sorted_indices = [nodes[idx] for _, idx in angles]
+
+        # 计算面积向量（用于确定方向）
+        p0 = np.array(node_container[sorted_indices[0]].coords)
+        p1 = np.array(node_container[sorted_indices[1]].coords)
+        p2 = np.array(node_container[sorted_indices[2]].coords)
+        p3 = np.array(node_container[sorted_indices[3]].coords)
+
+        area_vec1 = np.cross(p1 - p0, p2 - p0)
+        area_vec2 = np.cross(p2 - p0, p3 - p0)
+        total_area_vec = area_vec1 + area_vec2
+
+        # 计算法向量与z轴正方向的点积
+        z_axis = np.array([0.0, 0.0, 1.0])
+        dot_product_z = np.dot(total_area_vec, z_axis)
+
+        # 如果点积接近0，说明法向量与z轴垂直（xz平面或yz平面）
+        # 此时使用y轴作为参考方向
+        if abs(dot_product_z) < 1e-10:
+            y_axis = np.array([0.0, 1.0, 0.0])
+            dot_product_y = np.dot(total_area_vec, y_axis)
+            # 如果y轴点积为负，说明法向量与y轴正方向相反，需要反转节点顺序
+            if dot_product_y < 0:
+                sorted_indices = sorted_indices[::-1]
+        else:
+            # 如果z轴点积为负，说明法向量与z轴正方向相反，需要反转节点顺序
+            # 这样可以确保法向量指向z轴正方向（右手定则）
+            if dot_product_z < 0:
+                sorted_indices = sorted_indices[::-1]
 
     return sorted_indices
 

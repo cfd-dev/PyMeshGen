@@ -6,9 +6,11 @@ except (ImportError, ModuleNotFoundError):
     from fileIO.vtk_io import VTK_ELEMENT_TYPE
 
 try:
-    from basic_elements import Unstructured_Grid, NodeElement, Triangle
+    from basic_elements import NodeElement, Triangle
+    from unstructured_grid import Unstructured_Grid
 except (ImportError, ModuleNotFoundError):
-    from data_structure.basic_elements import Unstructured_Grid, NodeElement, Triangle
+    from data_structure.basic_elements import NodeElement, Triangle
+    from data_structure.unstructured_grid import Unstructured_Grid
 
 
 def read_stl(filename):

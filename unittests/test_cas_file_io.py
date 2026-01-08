@@ -13,7 +13,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fileIO.read_cas import parse_cas_to_unstr_grid, parse_fluent_msh, reconstruct_mesh_from_cas
-from data_structure.basic_elements import Unstructured_Grid
+from data_structure.unstructured_grid import Unstructured_Grid
 from gui.file_operations import FileOperations
 from data_structure.mesh_data import MeshData
 
@@ -112,7 +112,7 @@ class TestCASParts(unittest.TestCase):
         if parts_info:
             for part_name, part_data in parts_info.items():
                 self.assertIsInstance(part_data, dict, f"部件 {part_name} 应该是字典类型")
-                self.assertIn('type', part_data, f"部件 {part_name} 应包含type字段")
+                self.assertIn('bc_type', part_data, f"部件 {part_name} 应包含bc_type字段")
                 self.assertIn('face_count', part_data, f"部件 {part_name} 应包含face_count字段")
                 self.assertIn('part_name', part_data, f"部件 {part_name} 应包含part_name字段")
                 self.assertEqual(part_data['part_name'], part_name, f"part_name字段应与键名一致")

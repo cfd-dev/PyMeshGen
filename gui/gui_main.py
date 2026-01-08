@@ -1890,6 +1890,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         from data_structure.basic_elements import NodeElement
 
+        # 确保所有节点都是3D坐标 FIXME
+        if original_coords and len(original_coords[0]) == 2:
+            original_coords = [list(coord) + [0.0] for coord in original_coords]
+        
+        if new_coords and len(new_coords[0]) == 2:
+            new_coords = [list(coord) + [0.0] for coord in new_coords]
+            
         # 将原始坐标和新坐标转换为 NodeElement 对象
         original_nodes = [NodeElement(coord, idx) for idx, coord in enumerate(original_coords)]
         new_nodes = [NodeElement(coord, idx) for idx, coord in enumerate(new_coords)]

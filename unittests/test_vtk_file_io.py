@@ -14,7 +14,8 @@ current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, current_dir)
 
 from fileIO.vtk_io import read_vtk, reconstruct_mesh_from_vtk
-from data_structure.basic_elements import Unstructured_Grid, Triangle, Quadrilateral, NodeElement
+from data_structure.unstructured_grid import Unstructured_Grid
+from data_structure.basic_elements import Triangle, Quadrilateral, NodeElement
 
 
 class TestVTKFileIO(unittest.TestCase):
@@ -22,27 +23,34 @@ class TestVTKFileIO(unittest.TestCase):
 
     def setUp(self):
         """测试前的准备工作"""
-        # 查找VTK文件，但排除临时文件和输出文件
+        # 查找VTK文件，优先使用unittests/test_files目录下的文件
         self.vtk_files = []
-        for root, dirs, files in os.walk(current_dir):
-            if 'out' not in root and 'tmp' not in root and 'test_' not in root:
-                for file in files:
-                    if file.endswith('.vtk'):
-                        if not any(exclude in file for exclude in ['_test_roundtrip', 'tmp_', 'temp_']):
-                            full_path = os.path.join(root, file)
-                            if os.path.getsize(full_path) > 100:
-                                self.vtk_files.append(full_path)
 
+        # 首先检查unittests/test_files目录下的VTK文件
+        test_files_dir = os.path.join(current_dir, "unittests", "test_files")
+        if os.path.exists(test_files_dir):
+            for file in os.listdir(test_files_dir):
+                if file.endswith('.vtk'):
+                    full_path = os.path.join(test_files_dir, file)
+                    if os.path.getsize(full_path) > 100:
+                        self.vtk_files.append(full_path)
+
+        # 如果没有找到，再搜索整个项目目录（排除out和tmp目录）
         if not self.vtk_files:
-            test_vtk_path = os.path.join(current_dir, "unittests", "test_files", "sample.vtk")
-            if os.path.exists(test_vtk_path):
-                self.vtk_files.append(test_vtk_path)
+            for root, dirs, files in os.walk(current_dir):
+                if 'out' not in root and 'tmp' not in root and 'test_' not in root:
+                    for file in files:
+                        if file.endswith('.vtk'):
+                            if not any(exclude in file for exclude in ['_test_roundtrip', 'tmp_', 'temp_']):
+                                full_path = os.path.join(root, file)
+                                if os.path.getsize(full_path) > 100:
+                                    self.vtk_files.append(full_path)
 
     def test_read_vtk(self):
         """测试read_vtk函数"""
         for vtk_file in self.vtk_files:
             with self.subTest(file=vtk_file):
-                node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container = read_vtk(vtk_file)
+                node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, part_ids = read_vtk(vtk_file)
 
                 self.assertIsInstance(node_coords, list)
                 self.assertIsInstance(cell_idx_container, list)
@@ -52,19 +60,16 @@ class TestVTKFileIO(unittest.TestCase):
                 self.assertGreater(len(node_coords), 0)
                 for i in range(min(3, len(node_coords))):
                     coords = node_coords[i]
-                    self.assertEqual(len(coords), 2, f"节点{i}坐标应该是2D的")
+                    self.assertGreaterEqual(len(coords), 2, f"节点{i}坐标至少应该是2D的")
 
                 self.assertGreater(len(cell_idx_container), 0)
 
     def test_reconstruct_mesh_from_vtk(self):
         """测试reconstruct_mesh_from_vtk函数"""
-        if not self.vtk_files:
-            self.skipTest("没有找到合适的VTK文件进行测试")
-
         for vtk_file in self.vtk_files:
             with self.subTest(file=vtk_file):
                 try:
-                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container = read_vtk(vtk_file)
+                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, part_ids = read_vtk(vtk_file)
                     mesh = reconstruct_mesh_from_vtk(node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container)
 
                     self.assertIsInstance(mesh, Unstructured_Grid)
@@ -81,13 +86,10 @@ class TestVTKFileIO(unittest.TestCase):
 
     def test_mesh_properties(self):
         """测试网格属性"""
-        if not self.vtk_files:
-            self.skipTest("没有找到合适的VTK文件进行测试")
-
         for vtk_file in self.vtk_files:
             with self.subTest(file=vtk_file):
                 try:
-                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container = read_vtk(vtk_file)
+                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, part_ids = read_vtk(vtk_file)
                     mesh = reconstruct_mesh_from_vtk(node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container)
 
                     self.assertIn(mesh.dim, [2, 3])
@@ -106,18 +108,10 @@ class TestVTKFileIO(unittest.TestCase):
 
     def test_vtk_roundtrip(self):
         """测试VTK文件的往返转换"""
-        test_files = []
         for vtk_file in self.vtk_files:
-            if os.path.exists(vtk_file):
-                test_files.append(vtk_file)
-
-        if not test_files:
-            self.skipTest("没有找到可测试的VTK文件")
-
-        for vtk_file in test_files:
             with self.subTest(file=vtk_file):
                 try:
-                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container = read_vtk(vtk_file)
+                    node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, part_ids = read_vtk(vtk_file)
                     mesh = reconstruct_mesh_from_vtk(node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container)
 
                     test_vtk_file = vtk_file.replace('.vtk', '_test_roundtrip.vtk')
@@ -125,7 +119,7 @@ class TestVTKFileIO(unittest.TestCase):
 
                     self.assertTrue(os.path.exists(test_vtk_file))
 
-                    new_node_coords, new_cell_idx_container, new_boundary_nodes_idx, new_cell_type_container = read_vtk(test_vtk_file)
+                    new_node_coords, new_cell_idx_container, new_boundary_nodes_idx, new_cell_type_container, new_part_ids = read_vtk(test_vtk_file)
                     new_mesh = reconstruct_mesh_from_vtk(new_node_coords, new_cell_idx_container, new_boundary_nodes_idx, new_cell_type_container)
 
                     self.assertEqual(len(mesh.node_coords), len(new_mesh.node_coords))
@@ -137,7 +131,7 @@ class TestVTKFileIO(unittest.TestCase):
                         os.remove(test_vtk_file)
                 except ValueError as e:
                     if "节点数量不足" in str(e):
-                        continue
+                        self.skipTest(f"VTK文件 {vtk_file} 包含无效单元，跳过测试: {e}")
                     else:
                         raise
 
