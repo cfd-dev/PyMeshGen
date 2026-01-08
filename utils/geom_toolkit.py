@@ -223,7 +223,7 @@ def is_left2d(p1, p2, p3):
 
 
 def is_convex(a, b, c, d, node_coords):
-    """改进的凸性检查，支持节点索引或坐标"""
+    """改进的凸性检查，支持节点索引或坐标（仅适用于2D平面四边形）"""
 
     # 确保顶点按顺序排列（如a→b→c→d→a）
     def get_coord(x):
@@ -240,6 +240,12 @@ def is_convex(a, b, c, d, node_coords):
         v1 = np.array(p2) - np.array(p1)
         v2 = np.array(p3) - np.array(p2)
         cross = np.cross(v1, v2)
+        
+        # 在3D情况下，使用叉积的z分量（假设四边形在xy平面或平行于xy平面）
+        # 在2D情况下，np.cross返回标量（0维数组），直接使用
+        if np.ndim(cross) > 0:
+            cross = cross[2] if len(cross) >= 3 else cross
+        
         cross_products.append(cross)
 
     # 检查所有叉积符号是否一致（全为正或全为负）
@@ -250,19 +256,17 @@ def is_convex(a, b, c, d, node_coords):
     first_sign = cross_products[0]
     
     # 检查所有叉积是否与第一个叉积符号相同
-    # 使用numpy的all方法处理数组比较
     cross_products_array = np.array(cross_products)
     return np.all(cross_products_array * first_sign > 0)
 
 
 def fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
-    """快速距离检查"""
+    """快速距离检查（支持2D/3D坐标）"""
     # 线段端点距离检查
     for p in [p0, p1]:
         for q in [q0, q1]:
-            dx = p[0] - q[0]
-            dy = p[1] - q[1]
-            if dx * dx + dy * dy < safe_distance_sq:
+            dist_sq = sum((p[i] - q[i]) ** 2 for i in range(len(p)))
+            if dist_sq < safe_distance_sq:
                 return True
 
     # 线段间距离检查
@@ -304,16 +308,20 @@ def is_valid_triangle(cell, node_coords):
         return False
     p1, p2, p3 = cell
 
-    # 面积计算
+    # 面积计算（支持2D/3D坐标）
     v1 = np.array(node_coords[p2]) - np.array(node_coords[p1])
     v2 = np.array(node_coords[p3]) - np.array(node_coords[p1])
-    area = 0.5 * np.abs(np.cross(v1, v2))  # 使用向量叉积计算面积
+    
+    # 使用向量叉积计算面积（2D返回标量，3D返回向量）
+    cross = np.cross(v1, v2)
+    area = 0.5 * np.linalg.norm(cross)  # 使用范数计算面积
     return area > 1e-10
 
 
 # 检查两点是否重合 TODO: epsilon取值对实际问题的影响
 def points_equal(p1, p2, epsilon=1e-6):
-    return abs(p1[0] - p2[0]) < epsilon and abs(p1[1] - p2[1]) < epsilon
+    """检查两点是否重合（支持2D/3D坐标）"""
+    return all(abs(p1[i] - p2[i]) < epsilon for i in range(len(p1)))
 
 
 def segments_intersect(a1, a2, b1, b2):
@@ -809,14 +817,28 @@ def quad_intersects_quad(q1, q2):
 
 
 def is_point_on_segment(p, a, b):
-    cross = (p[0] - a[0]) * (b[1] - a[1]) - (p[1] - a[1]) * (b[0] - a[0])
-    if abs(cross) > 1e-8:
+    """判断点p是否在线段ab上（支持2D/3D坐标）"""
+    p = np.array(p)
+    a = np.array(a)
+    b = np.array(b)
+    
+    # 计算向量
+    ab = b - a
+    ap = p - a
+    
+    # 检查向量是否共线（叉积接近0）
+    cross = np.cross(ab, ap)
+    if np.linalg.norm(cross) > 1e-8:
         return False
-    min_x = min(a[0], b[0]) - 1e-8
-    max_x = max(a[0], b[0]) + 1e-8
-    min_y = min(a[1], b[1]) - 1e-8
-    max_y = max(a[1], b[1]) + 1e-8
-    return (min_x <= p[0] <= max_x) and (min_y <= p[1] <= max_y)
+    
+    # 检查点是否在线段范围内（点积在0到|ab|^2之间）
+    dot_product = np.dot(ap, ab)
+    ab_length_sq = np.dot(ab, ab)
+    
+    if ab_length_sq < 1e-10:  # a和b重合
+        return np.linalg.norm(ap) < 1e-8
+    
+    return -1e-8 <= dot_product <= ab_length_sq + 1e-8
 
 
 def point_in_polygon(p, polygon):
@@ -873,9 +895,12 @@ def point_in_polygon(p, polygon):
 
 
 def centroid(polygon_points):
-    # 计算多边形的形心
+    """计算多边形的形心（支持2D/3D坐标）"""
     x = np.mean(polygon_points[:, 0])
     y = np.mean(polygon_points[:, 1])
+    if polygon_points.shape[1] >= 3:
+        z = np.mean(polygon_points[:, 2])
+        return np.array([x, y, z])
     return np.array([x, y])
 
 

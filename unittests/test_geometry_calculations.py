@@ -678,5 +678,212 @@ class TestPointInPolygon(unittest.TestCase):
         self.assertFalse(geom_tool.point_in_polygon([0.5 - 1e-9, 0.5 - 1e-9], polygon))
 
 
+class Test3DGeometry(unittest.TestCase):
+    """测试3D几何计算功能"""
+
+    def test_fast_distance_check_3d(self):
+        """测试3D快速距离检查"""
+        p0, p1 = [0, 0, 0], [1, 0, 0]
+        q0, q1 = [0, 0, 1], [1, 0, 1]
+        safe_distance_sq = 2.0
+        self.assertTrue(geom_tool.fast_distance_check(p0, p1, q0, q1, safe_distance_sq))
+        
+        p0, p1 = [0, 0, 0], [1, 0, 0]
+        q0, q1 = [0, 10, 0], [1, 10, 0]
+        safe_distance_sq = 50
+        self.assertFalse(geom_tool.fast_distance_check(p0, p1, q0, q1, safe_distance_sq))
+
+    def test_points_equal_3d(self):
+        """测试3D点相等判断"""
+        p1 = [1.0, 2.0, 3.0]
+        p2 = [1.0, 2.0, 3.0]
+        self.assertTrue(geom_tool.points_equal(p1, p2))
+        
+        p2 = [1.0 + 1e-7, 2.0, 3.0]
+        self.assertTrue(geom_tool.points_equal(p1, p2))
+        
+        p2 = [1.0 + 1e-5, 2.0, 3.0]
+        self.assertFalse(geom_tool.points_equal(p1, p2))
+        
+        p2 = [1.0, 2.0, 3.0 + 1e-7]
+        self.assertTrue(geom_tool.points_equal(p1, p2))
+
+    def test_is_point_on_segment_3d(self):
+        """测试3D点在线段上判断"""
+        a = [0, 0, 0]
+        b = [1, 0, 0]
+        p = [0.5, 0, 0]
+        self.assertTrue(geom_tool.is_point_on_segment(p, a, b))
+        
+        p = [0, 0, 0]
+        self.assertTrue(geom_tool.is_point_on_segment(p, a, b))
+        
+        p = [1, 0, 0]
+        self.assertTrue(geom_tool.is_point_on_segment(p, a, b))
+        
+        p = [0.5, 0.5, 0]
+        self.assertFalse(geom_tool.is_point_on_segment(p, a, b))
+        
+        p = [0.5, 0, 0.5]
+        self.assertFalse(geom_tool.is_point_on_segment(p, a, b))
+
+    def test_is_valid_triangle_3d(self):
+        """测试3D三角形有效性检查"""
+        node_coords = {
+            0: [0, 0, 0],
+            1: [1, 0, 0],
+            2: [0, 1, 0],
+            3: [0, 0, 1],
+            4: [0, 0, 0],
+            5: [1, 0, 0]
+        }
+        
+        self.assertTrue(geom_tool.is_valid_triangle([0, 1, 2], node_coords))
+        self.assertTrue(geom_tool.is_valid_triangle([0, 1, 3], node_coords))
+        
+        self.assertFalse(geom_tool.is_valid_triangle([0, 1, 4], node_coords))
+        self.assertFalse(geom_tool.is_valid_triangle([0, 4, 5], node_coords))
+
+    def test_centroid_3d(self):
+        """测试3D多边形形心计算"""
+        points_3d = np.array([
+            [0, 0, 0],
+            [1, 0, 0],
+            [1, 1, 1],
+            [0, 1, 0]
+        ])
+        centroid = geom_tool.centroid(points_3d)
+        self.assertEqual(len(centroid), 3)
+        self.assertAlmostEqual(centroid[0], 0.5, places=6)
+        self.assertAlmostEqual(centroid[1], 0.5, places=6)
+        self.assertAlmostEqual(centroid[2], 0.25, places=6)
+        
+        points_2d = np.array([
+            [0, 0],
+            [1, 0],
+            [1, 1],
+            [0, 1]
+        ])
+        centroid = geom_tool.centroid(points_2d)
+        self.assertEqual(len(centroid), 2)
+        self.assertAlmostEqual(centroid[0], 0.5, places=6)
+        self.assertAlmostEqual(centroid[1], 0.5, places=6)
+
+    def test_calculate_angle_3d(self):
+        """测试3D角度计算"""
+        p1 = [0, 0, 0]
+        p2 = [1, 0, 0]
+        p3 = [1, 1, 0]
+        angle = geom_tool.calculate_angle(p1, p2, p3)
+        self.assertAlmostEqual(angle, 90.0, places=6)
+        
+        p1 = [0, 0, 0]
+        p2 = [1, 0, 0]
+        p3 = [2, 0, 0]
+        angle = geom_tool.calculate_angle(p1, p2, p3)
+        self.assertAlmostEqual(angle, 180.0, places=6)
+        
+        p1 = [0, 0, 0]
+        p2 = [1, 0, 0]
+        p3 = [1, 0, 1]
+        angle = geom_tool.calculate_angle(p1, p2, p3)
+        self.assertAlmostEqual(angle, 90.0, places=6)
+
+    def test_calculate_min_angle_3d(self):
+        """测试3D三角形最小角计算"""
+        node_coords = {
+            0: [0, 0, 0],
+            1: [1, 0, 0],
+            2: [0.5, 1, 0]
+        }
+        min_angle = geom_tool.calculate_min_angle([0, 1, 2], node_coords)
+        self.assertGreater(min_angle, 0)
+        self.assertLess(min_angle, 90)
+        
+        node_coords = {
+            0: [0, 0, 0],
+            1: [1, 0, 0],
+            2: [0.5, 0.866, 0]
+        }
+        min_angle = geom_tool.calculate_min_angle([0, 1, 2], node_coords)
+        self.assertAlmostEqual(min_angle, 60.0, places=1)
+
+    def test_point_to_segment_distance_3d(self):
+        """测试3D点到线段距离"""
+        point = [0, 0, 0]
+        seg_start = [1, 0, 0]
+        seg_end = [2, 0, 0]
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, places=6)
+        
+        point = [1.5, 0, 0]
+        seg_start = [1, 0, 0]
+        seg_end = [2, 0, 0]
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 0.0, places=6)
+        
+        point = [1.5, 0, 1]
+        seg_start = [1, 0, 0]
+        seg_end = [2, 0, 0]
+        distance = geom_tool.point_to_segment_distance(point, seg_start, seg_end)
+        self.assertAlmostEqual(distance, 1.0, places=6)
+
+    def test_segments_closest_distance_3d(self):
+        """测试3D线段间最小距离"""
+        seg1_start = [0, 0, 0]
+        seg1_end = [1, 0, 0]
+        seg2_start = [0, 0, 1]
+        seg2_end = [1, 0, 1]
+        distance = geom_tool.segments_closest_distance(seg1_start, seg1_end, seg2_start, seg2_end)
+        self.assertAlmostEqual(distance, 1.0, places=6)
+        
+        seg1_start = [0, 0, 0]
+        seg1_end = [1, 0, 0]
+        seg2_start = [0.5, 0, 0]
+        seg2_end = [0.5, 1, 0]
+        distance = geom_tool.segments_closest_distance(seg1_start, seg1_end, seg2_start, seg2_end)
+        self.assertAlmostEqual(distance, 0.0, places=6)
+
+    def test_min_distance_between_segments_3d(self):
+        """测试3D线段间最小距离（包装函数）"""
+        A = [0, 0, 0]
+        B = [1, 0, 0]
+        C = [0, 0, 1]
+        D = [1, 0, 1]
+        distance = geom_tool.min_distance_between_segments(A, B, C, D)
+        self.assertAlmostEqual(distance, 1.0, places=6)
+        
+        A = [0, 0, 0]
+        B = [1, 0, 0]
+        C = [0.5, 0, 0]
+        D = [0.5, 1, 0]
+        distance = geom_tool.min_distance_between_segments(A, B, C, D)
+        self.assertAlmostEqual(distance, 0.0, places=6)
+
+    def test_unit_direction_vector_3d(self):
+        """测试3D单位方向向量"""
+        node1 = [0, 0, 0]
+        node2 = [1, 0, 0]
+        direction = geom_tool.unit_direction_vector(node1, node2)
+        self.assertEqual(len(direction), 3)
+        self.assertAlmostEqual(direction[0], 1.0, places=6)
+        self.assertAlmostEqual(direction[1], 0.0, places=6)
+        self.assertAlmostEqual(direction[2], 0.0, places=6)
+        
+        node1 = [0, 0, 0]
+        node2 = [0, 1, 0]
+        direction = geom_tool.unit_direction_vector(node1, node2)
+        self.assertAlmostEqual(direction[0], 0.0, places=6)
+        self.assertAlmostEqual(direction[1], 1.0, places=6)
+        self.assertAlmostEqual(direction[2], 0.0, places=6)
+        
+        node1 = [0, 0, 0]
+        node2 = [0, 0, 1]
+        direction = geom_tool.unit_direction_vector(node1, node2)
+        self.assertAlmostEqual(direction[0], 0.0, places=6)
+        self.assertAlmostEqual(direction[1], 0.0, places=6)
+        self.assertAlmostEqual(direction[2], 1.0, places=6)
+
+
 if __name__ == "__main__":
     unittest.main()
