@@ -318,12 +318,22 @@ class MeshDisplayArea:
                         triangle.GetPointIds().SetId(2, node_ids[2])
                         polys.InsertNextCell(triangle)
                     elif len(node_ids) == 4:
-                        quad = vtk.vtkQuad()
-                        quad.GetPointIds().SetId(0, node_ids[0])
-                        quad.GetPointIds().SetId(1, node_ids[1])
-                        quad.GetPointIds().SetId(2, node_ids[2])
-                        quad.GetPointIds().SetId(3, node_ids[3])
-                        polys.InsertNextCell(quad)
+                        # 检查单元类型：四边形(2D)或四面体(3D)
+                        from data_structure.basic_elements import Quadrilateral, Tetrahedron
+                        if isinstance(cell, Tetrahedron):
+                            tetra = vtk.vtkTetra()
+                            tetra.GetPointIds().SetId(0, node_ids[0])
+                            tetra.GetPointIds().SetId(1, node_ids[1])
+                            tetra.GetPointIds().SetId(2, node_ids[2])
+                            tetra.GetPointIds().SetId(3, node_ids[3])
+                            polys.InsertNextCell(tetra)
+                        elif isinstance(cell, Quadrilateral):
+                            quad = vtk.vtkQuad()
+                            quad.GetPointIds().SetId(0, node_ids[0])
+                            quad.GetPointIds().SetId(1, node_ids[1])
+                            quad.GetPointIds().SetId(2, node_ids[2])
+                            quad.GetPointIds().SetId(3, node_ids[3])
+                            polys.InsertNextCell(quad)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
@@ -364,12 +374,22 @@ class MeshDisplayArea:
                     triangle.GetPointIds().SetId(2, node_ids[2])
                     polys.InsertNextCell(triangle)
                 elif len(node_ids) == 4:
-                    quad = vtk.vtkQuad()
-                    quad.GetPointIds().SetId(0, node_ids[0])
-                    quad.GetPointIds().SetId(1, node_ids[1])
-                    quad.GetPointIds().SetId(2, node_ids[2])
-                    quad.GetPointIds().SetId(3, node_ids[3])
-                    polys.InsertNextCell(quad)
+                    # 检查单元类型：四边形(2D)或四面体(3D)
+                    from data_structure.basic_elements import Quadrilateral, Tetrahedron
+                    if isinstance(cell, Tetrahedron):
+                        tetra = vtk.vtkTetra()
+                        tetra.GetPointIds().SetId(0, node_ids[0])
+                        tetra.GetPointIds().SetId(1, node_ids[1])
+                        tetra.GetPointIds().SetId(2, node_ids[2])
+                        tetra.GetPointIds().SetId(3, node_ids[3])
+                        polys.InsertNextCell(tetra)
+                    elif isinstance(cell, Quadrilateral):
+                        quad = vtk.vtkQuad()
+                        quad.GetPointIds().SetId(0, node_ids[0])
+                        quad.GetPointIds().SetId(1, node_ids[1])
+                        quad.GetPointIds().SetId(2, node_ids[2])
+                        quad.GetPointIds().SetId(3, node_ids[3])
+                        polys.InsertNextCell(quad)
 
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(points)
