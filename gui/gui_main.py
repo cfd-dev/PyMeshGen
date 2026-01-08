@@ -138,7 +138,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.cas_parts_info = None
         self.original_node_coords = None
         self.parts_params = []
-        self.render_mode = "wireframe"
+        self.render_mode = "surface"
         self.show_boundary = True
         self.mesh_generation_thread = None
         self.progress_dialog = None
@@ -370,9 +370,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         mode_messages = {
             "surface": "渲染模式: 实体模式 (1键)",
             "wireframe": "渲染模式: 线框模式 (2键)",
-            "mixed": "渲染模式: 混合模式 (3键)",
-            "surface-wireframe": "渲染模式: 混合模式 (3键)",
-            "points": "渲染模式: 点云模式 (4键)"
+            "surface-wireframe": "渲染模式: 实体+线框模式 (3键)",
         }
         self.update_status(mode_messages.get(mode, f"渲染模式: {mode}"))
 
@@ -385,8 +383,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             Qt.Key_O: self._toggle_boundary_display,
             Qt.Key_1: lambda: self.set_render_mode("surface"),
             Qt.Key_2: lambda: self.set_render_mode("wireframe"),
-            Qt.Key_3: lambda: self.set_render_mode("mixed"),
-            Qt.Key_4: lambda: self.set_render_mode("points"),
+            Qt.Key_3: lambda: self.set_render_mode("surface-wireframe"),
         }
 
         action = key_actions.get(key)

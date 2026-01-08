@@ -36,7 +36,7 @@ class MeshDisplayArea:
         # 显示控制变量
         self.show_boundary = True
         self.wireframe = False
-        self.render_mode = "wireframe"
+        self.render_mode = "surface"
 
         # 渲染状态标志
         self._render_in_progress = False
@@ -210,12 +210,9 @@ class MeshDisplayArea:
         mode = self.render_mode
         if mode == "wireframe":
             self.mesh_actor.GetProperty().SetRepresentationToWireframe()
-            self.mesh_actor.GetProperty().EdgeVisibilityOn()
+            self.mesh_actor.GetProperty().EdgeVisibilityOff()
             self.mesh_actor.GetProperty().SetLineWidth(2.0)
-        elif mode == "points":
-            self.mesh_actor.GetProperty().SetRepresentationToPoints()
-            self.mesh_actor.GetProperty().SetPointSize(4.0)
-        elif mode == "surface-wireframe" or mode == "mixed":
+        elif mode == "surface-wireframe":
             self.mesh_actor.GetProperty().SetRepresentationToSurface()
             self.mesh_actor.GetProperty().EdgeVisibilityOn()
             self.mesh_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
@@ -913,8 +910,15 @@ class MeshDisplayArea:
             self.additional_actors.clear()
     
     def set_render_mode(self, mode):
-        """设置渲染模式"""
-        if mode in ["surface", "wireframe", "points"]:
+        """设置渲染模式
+        
+        Args:
+            mode: 渲染模式，可选值:
+                - "surface": 实体模式
+                - "wireframe": 线框模式
+                - "surface-wireframe": 实体+线框模式
+        """
+        if mode in ["surface", "wireframe", "surface-wireframe"]:
             self.render_mode = mode
             self._apply_render_mode()
             

@@ -221,8 +221,7 @@ class RibbonWidget(QWidget):
         display_group = RibbonGroup("")
         self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)")
         self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)")
-        self.buttons['view']['mixed'] = display_group.add_small_button("混合", tooltip="混合模式 (3键)")
-        self.buttons['view']['points'] = display_group.add_small_button("点云", tooltip="点云模式 (4键)")
+        self.buttons['view']['surface-wireframe'] = display_group.add_small_button("实体+线框", tooltip="实体+线框模式 (3键)")
         layout.addWidget(display_group)
 
         background_group = RibbonGroup("")
@@ -353,8 +352,7 @@ class RibbonWidget(QWidget):
         self.buttons['view']['zoom_out'].clicked.connect(main_window.zoom_out)
         self.buttons['view']['surface'].clicked.connect(lambda: main_window.set_render_mode("surface"))
         self.buttons['view']['wireframe'].clicked.connect(lambda: main_window.set_render_mode("wireframe"))
-        self.buttons['view']['mixed'].clicked.connect(lambda: main_window.set_render_mode("mixed"))
-        self.buttons['view']['points'].clicked.connect(lambda: main_window.set_render_mode("points"))
+        self.buttons['view']['surface-wireframe'].clicked.connect(lambda: main_window.set_render_mode("surface-wireframe"))
         self.buttons['view']['background'].clicked.connect(main_window.set_background_color)
 
         # Config tab callbacks
