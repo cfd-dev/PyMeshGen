@@ -145,9 +145,11 @@ def calculate_angle(p1, p2, p3):
     # 计算夹角（弧度制）
     theta = np.arccos(cos_theta)
 
-    cross_z = v1[0] * v2[1] - v1[1] * v2[0]
-    if cross_z < 0:
-        theta = 2 * np.pi - theta
+    # 只有在二维情况下才根据叉积方向调整角度
+    if len(p1) == 2 and len(p2) == 2 and len(p3) == 2:
+        cross_z = v1[0] * v2[1] - v1[1] * v2[0]
+        if cross_z < 0:
+            theta = 2 * np.pi - theta
 
     return np.degrees(theta)
 
@@ -198,6 +200,17 @@ def tetrahedron_volume(p1, p2, p3, p4):
     )
     
     return abs(det) / 6.0
+
+
+def pyramid_volume(p1, p2, p3, p4, p5):
+    """计算金字塔体积（支持3D点）
+    金字塔由一个四边形底面和一个顶点组成
+    将金字塔分解为两个四面体计算体积
+    """
+    # 将金字塔分解为两个四面体：T1(p1,p2,p3,p5) 和 T2(p1,p3,p4,p5)
+    vol1 = tetrahedron_volume(p1, p2, p3, p5)
+    vol2 = tetrahedron_volume(p1, p3, p4, p5)
+    return vol1 + vol2
 
 
 def is_left2d(p1, p2, p3):

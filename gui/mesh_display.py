@@ -331,6 +331,17 @@ class MeshDisplayArea:
                             quad.GetPointIds().SetId(2, node_ids[2])
                             quad.GetPointIds().SetId(3, node_ids[3])
                             polys.InsertNextCell(quad)
+                    elif len(node_ids) == 5:
+                        # 金字塔单元
+                        from data_structure.basic_elements import Pyramid
+                        if isinstance(cell, Pyramid):
+                            pyramid = vtk.vtkPyramid()
+                            pyramid.GetPointIds().SetId(0, node_ids[0])
+                            pyramid.GetPointIds().SetId(1, node_ids[1])
+                            pyramid.GetPointIds().SetId(2, node_ids[2])
+                            pyramid.GetPointIds().SetId(3, node_ids[3])
+                            pyramid.GetPointIds().SetId(4, node_ids[4])
+                            polys.InsertNextCell(pyramid)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
@@ -387,6 +398,17 @@ class MeshDisplayArea:
                         quad.GetPointIds().SetId(2, node_ids[2])
                         quad.GetPointIds().SetId(3, node_ids[3])
                         polys.InsertNextCell(quad)
+                elif len(node_ids) == 5:
+                    # 金字塔单元
+                    from data_structure.basic_elements import Pyramid
+                    if isinstance(cell, Pyramid):
+                        pyramid = vtk.vtkPyramid()
+                        pyramid.GetPointIds().SetId(0, node_ids[0])
+                        pyramid.GetPointIds().SetId(1, node_ids[1])
+                        pyramid.GetPointIds().SetId(2, node_ids[2])
+                        pyramid.GetPointIds().SetId(3, node_ids[3])
+                        pyramid.GetPointIds().SetId(4, node_ids[4])
+                        polys.InsertNextCell(pyramid)
 
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(points)

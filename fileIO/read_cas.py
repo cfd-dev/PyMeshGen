@@ -272,6 +272,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         Triangle,
         Quadrilateral,
         Tetrahedron,
+        Pyramid,
     )
     from data_structure.unstructured_grid import Unstructured_Grid
 
@@ -386,8 +387,12 @@ def reconstruct_mesh_from_cas(raw_cas_data):
 
             elif num_nodes == 5 and num_faces == 5:
                 # 金字塔 (Pyramid)
-                nodes = [node_container[idx] for idx in cell_nodes]
-                cell = None # Pyramid(*nodes, "pyramid", idx=len(cell_container))
+                node1 = node_container[cell_nodes[0]]
+                node2 = node_container[cell_nodes[1]]
+                node3 = node_container[cell_nodes[2]]
+                node4 = node_container[cell_nodes[3]]
+                node5 = node_container[cell_nodes[4]]
+                cell = Pyramid(node1, node2, node3, node4, node5, "pyramid", idx=len(cell_container))
                 cell_container.append(cell)
                 cell_type_container.append(14)  # VTK_PYRAMID
             elif num_nodes == 6 and num_faces == 5:

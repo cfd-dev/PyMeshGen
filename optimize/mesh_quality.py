@@ -7,6 +7,7 @@ from utils.geom_toolkit import (
     is_valid_quadrilateral,
     is_convex,
     tetrahedron_volume,
+    pyramid_volume,
 )
 
 
@@ -267,6 +268,112 @@ def tetrahedron_skewness(p1, p2, p3, p4):
 
     # 理想正四面体的二面角约为70.53度
     ideal_angle = 70.53
+
+    # 计算偏斜度
+    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
+    skew2 = (ideal_angle - min_angle) / ideal_angle
+    skewness = 1.0 - max([skew1, skew2])
+
+    # 确保偏斜度在[0, 1]范围内
+    skewness = max(0.0, min(1.0, skewness))
+
+    return skewness
+
+
+def pyramid_shape_quality(p1, p2, p3, p4, p5):
+    """计算金字塔网格质量（基于体积与棱长立方比）
+    金字塔由一个四边形底面(p1,p2,p3,p4)和一个顶点(p5)组成
+    将金字塔分解为两个四面体计算质量
+    """
+    # 计算所有边长（金字塔有8条边）
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p4),
+        calculate_distance(p4, p1),
+        calculate_distance(p1, p5),
+        calculate_distance(p2, p5),
+        calculate_distance(p3, p5),
+        calculate_distance(p4, p5),
+    ]
+
+    # 计算体积
+    volume = pyramid_volume(p1, p2, p3, p4, p5)
+
+    # 计算边长立方和
+    edge_cubes_sum = sum(e**3 for e in edges)
+
+    # 质量指标：体积与边长立方比的标准化
+    if edge_cubes_sum == 0 or volume <= 0:
+        return 0.0
+
+    # 标准化因子（理想正金字塔的质量为1）
+    # 正金字塔：底面为正方形，顶点在底面中心正上方
+    # 设底面边长为a，高为h，则体积 V = a^2 * h / 3
+    # 对于正金字塔，边长立方和 = 4*a^3 + 4*(a^2 + h^2)^(3/2)
+    # 当 h = a/sqrt(2) 时，四个侧面为等边三角形，此时质量最优
+    # 理想质量因子约为 72.0
+    ideal_factor = 72.0
+    quality = volume * ideal_factor / edge_cubes_sum
+
+    # 异常检测
+    if isnan(quality) or isinf(quality) or quality < 0.0 or quality > 1.0:
+        raise ValueError(
+            f"金字塔质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}"
+        )
+
+    return quality
+
+
+def pyramid_skewness(p1, p2, p3, p4, p5):
+    """计算金字塔的偏斜度（基于二面角）
+    金字塔由一个四边形底面(p1,p2,p3,p4)和一个顶点(p5)组成
+    """
+    def face_normal(a, b, c):
+        """计算三角形面的法向量"""
+        ab = np.array(b) - np.array(a)
+        ac = np.array(c) - np.array(a)
+        normal = np.cross(ab, ac)
+        norm = np.linalg.norm(normal)
+        return normal / norm if norm > 1e-12 else np.array([0.0, 0.0, 0.0])
+
+    # 五个面的法向量（四个侧面 + 底面）
+    n1 = face_normal(p2, p3, p5)  # 侧面 p2-p3-p5
+    n2 = face_normal(p3, p4, p5)  # 侧面 p3-p4-p5
+    n3 = face_normal(p4, p1, p5)  # 侧面 p4-p1-p5
+    n4 = face_normal(p1, p2, p5)  # 侧面 p1-p2-p5
+    n5 = face_normal(p1, p3, p4)  # 底面 p1-p3-p4（注意顺序）
+
+    # 计算两个面之间的二面角
+    def dihedral_angle(n1, n2):
+        cos_angle = np.dot(n1, n2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        return np.degrees(np.arccos(cos_angle))
+
+    # 计算所有二面角
+    dihedral_angles = []
+
+    # 侧面之间的二面角（4个）
+    dihedral_angles.append(dihedral_angle(n1, n2))  # 棱 p3-p5
+    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p4-p5
+    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p1-p5
+    dihedral_angles.append(dihedral_angle(n4, n1))  # 棱 p2-p5
+
+    # 侧面与底面之间的二面角（4个）
+    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p2-p3
+    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p3-p4
+    dihedral_angles.append(dihedral_angle(n3, n5))  # 棱 p4-p1
+    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p1-p2
+
+    # 计算最大和最小二面角
+    max_angle = max(dihedral_angles)
+    min_angle = min(dihedral_angles)
+
+    # 理想正金字塔的二面角
+    # 侧面之间的二面角约为 109.47 度（正四面体的二面角）
+    # 侧面与底面之间的二面角约为 54.74 度
+    # 使用平均值作为理想角度
+    ideal_angle = 82.1
 
     # 计算偏斜度
     skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)

@@ -10,3 +10,4 @@ __pycache__/
 /neural/GNN_ALM/sample_grids/training/naca4digits/
 /neural/GNN_ALM/model
 neural/GNN_ALM/sample_grids/validation
+temp*

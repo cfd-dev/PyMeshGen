@@ -2023,18 +2023,23 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("未找到网格数据")
                 return
 
+            # 获取实际的网格对象（可能是Unstructured_Grid或MeshData）
+            mesh_obj = self.current_mesh
+            if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                mesh_obj = self.current_mesh.unstr_grid
+
             # 检查当前网格是否是Unstructured_Grid对象（包含quality_histogram方法）
-            if hasattr(self.current_mesh, 'quality_histogram'):
+            if hasattr(mesh_obj, 'quality_histogram'):
                 # 首先确保所有单元的质量和偏斜度值都已计算
-                if hasattr(self.current_mesh, 'cell_container'):
-                    for cell in self.current_mesh.cell_container:
+                if hasattr(mesh_obj, 'cell_container'):
+                    for cell in mesh_obj.cell_container:
                         if hasattr(cell, 'init_metrics'):
                             cell.init_metrics()  # 初始化质量指标
 
                 # 计算质量统计信息并输出到信息窗口
                 quality_values = []
                 skewness_values = []
-                for cell in self.current_mesh.cell_container:
+                for cell in mesh_obj.cell_container:
                     if cell.quality is not None:
                         quality_values.append(cell.quality)
                     if cell.skewness is not None:
@@ -2107,7 +2112,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 # 获取偏斜度直方图
                 ax = fig.add_subplot(111)
-                self.current_mesh.skewness_histogram(ax)
+                mesh_obj.skewness_histogram(ax)
 
                 layout.addWidget(canvas)
 
@@ -2146,8 +2151,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("未找到网格数据")
                 return
 
+            # 获取实际的网格对象（可能是Unstructured_Grid或MeshData）
+            mesh_obj = self.current_mesh
+            if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                mesh_obj = self.current_mesh.unstr_grid
+
             # 检查当前网格是否支持优化
-            if not hasattr(self.current_mesh, 'cell_container'):
+            if not hasattr(mesh_obj, 'cell_container'):
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.warning(self, "警告", "当前网格格式不支持光滑处理")
                 self.log_info("当前网格格式不支持光滑处理")
@@ -2166,7 +2176,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             start_time = time.time()
 
             # 使用默认的迭代次数（可以根据需要调整）
-            self.current_mesh = laplacian_smooth(self.current_mesh, num_iter=3)
+            smoothed_mesh = laplacian_smooth(mesh_obj, num_iter=3)
+
+            # 如果原始网格是MeshData，更新其unstr_grid属性
+            if hasattr(self.current_mesh, 'unstr_grid'):
+                self.current_mesh.unstr_grid = smoothed_mesh
+            else:
+                self.current_mesh = smoothed_mesh
 
             end_time = time.time()
 
@@ -2176,7 +2192,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
             # 显示完成信息
             self.log_info(f"laplacian光滑处理完成，耗时: {end_time - start_time:.3f}秒")
-            self.log_info(f"光滑后网格包含 {len(self.current_mesh.cell_container)} 个单元")
+            self.log_info(f"光滑后网格包含 {len(smoothed_mesh.cell_container)} 个单元")
             self.update_status("网格光滑处理完成")
 
             # 刷新显示
@@ -2200,8 +2216,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("未找到网格数据")
                 return
 
+            # 获取实际的网格对象（可能是Unstructured_Grid或MeshData）
+            mesh_obj = self.current_mesh
+            if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                mesh_obj = self.current_mesh.unstr_grid
+
             # 检查当前网格是否支持优化
-            if not hasattr(self.current_mesh, 'cell_container'):
+            if not hasattr(mesh_obj, 'cell_container'):
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.warning(self, "警告", "当前网格格式不支持优化处理")
                 self.log_info("当前网格格式不支持优化处理")
@@ -2220,11 +2241,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             import time
             start_time = time.time()
 
-            self.current_mesh = edge_swap(self.current_mesh)
+            optimized_mesh = edge_swap(mesh_obj)
 
             # 应用laplacian光滑优化
             self.log_info("正在进行laplacian光滑优化...")
-            self.current_mesh = laplacian_smooth(self.current_mesh, num_iter=3)
+            optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=3)
+
+            # 如果原始网格是MeshData，更新其unstr_grid属性
+            if hasattr(self.current_mesh, 'unstr_grid'):
+                self.current_mesh.unstr_grid = optimized_mesh
+            else:
+                self.current_mesh = optimized_mesh
 
             end_time = time.time()
 
@@ -2234,7 +2261,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
             # 显示完成信息
             self.log_info(f"网格优化完成，总耗时: {end_time - start_time:.3f}秒")
-            self.log_info(f"优化后网格包含 {len(self.current_mesh.cell_container)} 个单元")
+            self.log_info(f"优化后网格包含 {len(optimized_mesh.cell_container)} 个单元")
             self.update_status("网格优化完成")
 
             # 刷新显示
@@ -2258,8 +2285,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("未找到网格数据")
                 return
 
+            # 获取实际的网格对象（可能是Unstructured_Grid或MeshData）
+            mesh_obj = self.current_mesh
+            if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                mesh_obj = self.current_mesh.unstr_grid
+
             # 检查当前网格是否支持统计
-            if not hasattr(self.current_mesh, 'cell_container'):
+            if not hasattr(mesh_obj, 'cell_container'):
                 from PyQt5.QtWidgets import QMessageBox
                 QMessageBox.warning(self, "警告", "当前网格格式不支持统计功能")
                 self.log_info("当前网格格式不支持统计功能")
@@ -2267,42 +2299,48 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 return
 
             # 确保所有单元的质量和偏斜度值都已计算
-            if hasattr(self.current_mesh, 'cell_container'):
-                for cell in self.current_mesh.cell_container:
+            if hasattr(mesh_obj, 'cell_container'):
+                for cell in mesh_obj.cell_container:
                     if hasattr(cell, 'init_metrics'):
                         cell.init_metrics()  # 初始化质量指标
 
             # 收集网格统计信息
-            num_cells = len(self.current_mesh.cell_container)
-            num_nodes = len(self.current_mesh.node_coords)
-            num_boundary_nodes = len(self.current_mesh.boundary_nodes)
+            num_cells = len(mesh_obj.cell_container)
+            num_nodes = len(mesh_obj.node_coords)
+            num_boundary_nodes = len(mesh_obj.boundary_nodes)
 
             # 计算网格维度
             if num_nodes > 0:
-                dim = len(self.current_mesh.node_coords[0])
+                dim = len(mesh_obj.node_coords[0])
             else:
                 dim = 0
 
             # 计算边数
-            self.current_mesh.calculate_edges()
-            num_edges = len(self.current_mesh.edges)
+            mesh_obj.calculate_edges()
+            num_edges = len(mesh_obj.edges)
 
             # 收集质量统计信息
             quality_values = []
             skewness_values = []
             triangle_count = 0
             quadrilateral_count = 0
+            tetrahedron_count = 0
+            pyramid_count = 0
 
-            for cell in self.current_mesh.cell_container:
+            for cell in mesh_obj.cell_container:
                 if cell.quality is not None:
                     quality_values.append(cell.quality)
                 if cell.skewness is not None:
                     skewness_values.append(cell.skewness)
 
                 # 统计单元类型
-                if hasattr(cell, 'p3') and not hasattr(cell, 'p4'):  # Triangle
+                if hasattr(cell, 'p5'):  # Pyramid (5个顶点)
+                    pyramid_count += 1
+                elif hasattr(cell, 'p4') and not hasattr(cell, 'p5'):  # Tetrahedron (4个顶点)
+                    tetrahedron_count += 1
+                elif hasattr(cell, 'p3') and not hasattr(cell, 'p4'):  # Triangle (3个顶点)
                     triangle_count += 1
-                elif hasattr(cell, 'p4'):  # Quadrilateral
+                elif hasattr(cell, 'p4') and hasattr(cell, 'p3'):  # Quadrilateral (4个顶点，但不是四面体)
                     quadrilateral_count += 1
 
             # 构建统计信息字符串
@@ -2314,6 +2352,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             stats_info += f"  边数: {num_edges}\n"
             stats_info += f"  三角形单元数: {triangle_count}\n"
             stats_info += f"  四边形单元数: {quadrilateral_count}\n"
+            stats_info += f"  四面体单元数: {tetrahedron_count}\n"
+            stats_info += f"  金字塔单元数: {pyramid_count}\n"
 
             # 添加质量统计信息
             if quality_values:
@@ -2532,6 +2572,11 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("未找到网格数据")
                 return
 
+            # 获取实际的网格对象（可能是Unstructured_Grid或MeshData）
+            mesh_obj = self.current_mesh
+            if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                mesh_obj = self.current_mesh.unstr_grid
+
             # 检查是否有参数配置
             has_params = hasattr(self, 'params') and self.params
             has_parts = hasattr(self, 'parts_params') and self.parts_params
@@ -2557,12 +2602,12 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
             # 添加网格基本信息
             report_content += f"## 网格基本信息\n\n"
-            if hasattr(self.current_mesh, 'cell_container'):
-                report_content += f"- **总单元数**: {len(self.current_mesh.cell_container)}\n"
-            if hasattr(self.current_mesh, 'node_coords'):
-                report_content += f"- **节点数**: {len(self.current_mesh.node_coords)}\n"
-            if hasattr(self.current_mesh, 'boundary_nodes'):
-                report_content += f"- **边界节点数**: {len(self.current_mesh.boundary_nodes)}\n"
+            if hasattr(mesh_obj, 'cell_container'):
+                report_content += f"- **总单元数**: {len(mesh_obj.cell_container)}\n"
+            if hasattr(mesh_obj, 'node_coords'):
+                report_content += f"- **节点数**: {len(mesh_obj.node_coords)}\n"
+            if hasattr(mesh_obj, 'boundary_nodes'):
+                report_content += f"- **边界节点数**: {len(mesh_obj.boundary_nodes)}\n"
 
             # 添加主要参数信息
             report_content += f"\n## 主要参数配置\n\n"
@@ -2598,8 +2643,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             quality_values = []
             skewness_values = []
 
-            if hasattr(self.current_mesh, 'cell_container'):
-                for cell in self.current_mesh.cell_container:
+            if hasattr(mesh_obj, 'cell_container'):
+                for cell in mesh_obj.cell_container:
                     if hasattr(cell, 'init_metrics'):
                         cell.init_metrics()  # 确保计算了质量指标
                     if cell.quality is not None:
@@ -2625,11 +2670,11 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             report_content += f"\n## 生成结果\n\n"
             report_content += f"- **网格生成状态**: 成功完成\n"
             report_content += f"- **网格格式**: Unstructured Grid\n"
-            if hasattr(self.current_mesh, 'cell_container'):
+            if hasattr(mesh_obj, 'cell_container'):
                 # 统计单元类型
                 triangle_count = 0
                 quadrilateral_count = 0
-                for cell in self.current_mesh.cell_container:
+                for cell in mesh_obj.cell_container:
                     # 检查单元类型：Triangle有p1, p2, p3; Quadrilateral有p1, p2, p3, p4
                     if hasattr(cell, 'p4'):  # 四边形有4个点
                         quadrilateral_count += 1
