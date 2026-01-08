@@ -271,6 +271,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         NodeElement,
         Triangle,
         Quadrilateral,
+        Tetrahedron,
     )
     from data_structure.unstructured_grid import Unstructured_Grid
 
@@ -370,9 +371,9 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 node2 = node_container[cell_nodes[1]]
                 node3 = node_container[cell_nodes[2]]
                 node4 = node_container[cell_nodes[3]]
-                cell = None # Tetrahedron(
-                    # node1, node2, node3, node4, "tetrahedron", idx=len(cell_container)
-                # )
+                cell = Tetrahedron(
+                    node1, node2, node3, node4, "tetrahedron", idx=len(cell_container)
+                )
                 cell_container.append(cell)
                 cell_type_container.append(10)  # VTK_TETRA
 
