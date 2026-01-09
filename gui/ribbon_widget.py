@@ -69,6 +69,14 @@ class RibbonGroup(QFrame):
         self.content_widget.add_button(button)
         return button
 
+    def add_button_column(self, buttons):
+        """Add buttons in a vertical column layout
+        
+        Args:
+            buttons: List of buttons to add in column
+        """
+        return self.content_widget.add_button_column(buttons)
+
 
 class RibbonWidget(QWidget):
     """Main ribbon widget that contains tabs and groups"""
@@ -226,12 +234,36 @@ class RibbonWidget(QWidget):
         self.buttons['view']['view_z_pos'] = camera_group.add_small_button("Z+", icon=get_icon('view-z-pos'), tooltip="Z轴正向视图")
         self.buttons['view']['view_z_neg'] = camera_group.add_small_button("Z-", icon=get_icon('view-z-neg'), tooltip="Z轴负向视图")
         self.buttons['view']['view_iso'] = camera_group.add_small_button("等轴测", icon=get_icon('view-iso'), tooltip="等轴测视图")
+        
+        camera_group.add_button_column([
+            self.buttons['view']['view_x_pos'],
+            self.buttons['view']['view_x_neg']
+        ])
+        camera_group.add_button_column([
+            self.buttons['view']['view_y_pos'],
+            self.buttons['view']['view_y_neg']
+        ])
+        camera_group.add_button_column([
+            self.buttons['view']['view_z_pos'],
+            self.buttons['view']['view_z_neg']
+        ])
+        camera_group.add_button_column([
+            self.buttons['view']['view_iso']
+        ])
         layout.addWidget(camera_group)
 
         display_group = RibbonGroup("")
         self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)")
         self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)")
         self.buttons['view']['surface-wireframe'] = display_group.add_small_button("实体+线框", tooltip="实体+线框模式 (3键)")
+        
+        display_group.add_button_column([
+            self.buttons['view']['surface'],
+            self.buttons['view']['wireframe']
+        ])
+        display_group.add_button_column([
+            self.buttons['view']['surface-wireframe']
+        ])
         layout.addWidget(display_group)
 
         background_group = RibbonGroup("")

@@ -390,12 +390,13 @@ def create_horizontal_layout(margins=None, spacing=None, alignment=None):
     return layout
 
 
-def create_vertical_layout(margins=None, spacing=None):
+def create_vertical_layout(margins=None, spacing=None, alignment=None):
     """Create a vertical layout with common settings
 
     Args:
         margins: Tuple (left, top, right, bottom) for margins
         spacing: Spacing between items
+        alignment: Alignment for the layout
 
     Returns:
         QVBoxLayout instance
@@ -407,6 +408,9 @@ def create_vertical_layout(margins=None, spacing=None):
 
     if spacing is not None:
         layout.setSpacing(spacing)
+
+    if alignment is not None:
+        layout.setAlignment(alignment)
 
     return layout
 
@@ -432,3 +436,24 @@ class RibbonGroupContent(QWidget):
         """Add a widget to the content layout"""
         self.layout.addWidget(widget)
         return widget
+
+    def add_button_column(self, buttons, rows=2):
+        """Add buttons in a vertical column layout
+        
+        Args:
+            buttons: List of buttons to add in column
+            rows: Number of rows per column (default: 2)
+        """
+        column_layout = create_vertical_layout(
+            margins=(0, 0, 0, 0),
+            spacing=2,
+            alignment=Qt.AlignTop
+        )
+        
+        for button in buttons:
+            column_layout.addWidget(button)
+        
+        column_widget = QWidget()
+        column_widget.setLayout(column_layout)
+        self.layout.addWidget(column_widget)
+        return column_widget
