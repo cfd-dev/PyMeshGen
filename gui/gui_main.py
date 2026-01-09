@@ -2327,6 +2327,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             tetrahedron_count = 0
             pyramid_count = 0
             prism_count = 0
+            hexahedron_count = 0
 
             for cell in mesh_obj.cell_container:
                 if cell.quality is not None:
@@ -2335,7 +2336,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     skewness_values.append(cell.skewness)
 
                 # 统计单元类型
-                if hasattr(cell, 'p6'):  # Prism (6个顶点)
+                if hasattr(cell, 'p8'):  # Hexahedron (8个顶点)
+                    hexahedron_count += 1
+                elif hasattr(cell, 'p6'):  # Prism (6个顶点)
                     prism_count += 1
                 elif hasattr(cell, 'p5'):  # Pyramid (5个顶点)
                     pyramid_count += 1
@@ -2358,6 +2361,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             stats_info += f"  四面体单元数: {tetrahedron_count}\n"
             stats_info += f"  金字塔单元数: {pyramid_count}\n"
             stats_info += f"  三棱柱单元数: {prism_count}\n"
+            stats_info += f"  六面体单元数: {hexahedron_count}\n"
 
             # 添加质量统计信息
             if quality_values:

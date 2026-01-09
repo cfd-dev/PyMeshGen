@@ -275,6 +275,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         Tetrahedron,
         Pyramid,
         Prism,
+        Hexahedron,
     )
     from data_structure.unstructured_grid import Unstructured_Grid
 
@@ -383,7 +384,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
             elif num_nodes == 8 and num_faces == 6:
                 # 六面体 (Hexahedron)
                 nodes = [node_container[idx] for idx in cell_nodes]
-                cell = None # Hexahedron(*nodes, "hexahedron", idx=len(cell_container))
+                cell = Hexahedron(*nodes, "hexahedron", idx=len(cell_container))
                 cell_container.append(cell)
                 cell_type_container.append(12)  # VTK_HEXAHEDRON
 
@@ -463,6 +464,67 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 )
                 cell_container.append(cell)
                 cell_type_container.append(13)  # VTK_WEDGE
+            elif num_nodes == 8 and num_faces == 6:
+                # 六面体 (Hexahedron)
+                # 六面体由两个四边形底面和四个矩形侧面组成
+                # 需要识别哪个四边形是底面，哪个是顶面
+                # 计算所有节点的z坐标，将节点分为两组
+                nodes_z = [(node_container[idx].coords[2], idx) for idx in cell_nodes]
+                nodes_z.sort(key=lambda x: x[0])
+                
+                # 取z坐标最小的4个节点作为底面，最大的4个节点作为顶面
+                bottom_nodes = [nodes_z[i][1] for i in range(4)]
+                top_nodes = [nodes_z[i][1] for i in range(4, 8)]
+                
+                # 对底面和顶面的节点进行排序，确保正确的对应关系
+                # 使用四边形的质心来确定节点顺序
+                def get_quad_center(nodes):
+                    center = [0.0, 0.0, 0.0]
+                    for idx in nodes:
+                        coords = node_container[idx].coords
+                        center[0] += coords[0]
+                        center[1] += coords[1]
+                        center[2] += coords[2]
+                    center[0] /= 4
+                    center[1] /= 4
+                    center[2] /= 4
+                    return center
+                
+                bottom_center = get_quad_center(bottom_nodes)
+                top_center = get_quad_center(top_nodes)
+                
+                # 对底面节点按角度排序
+                def sort_quad_nodes(nodes, center):
+                    def angle_from_reference(node_idx):
+                        coords = node_container[node_idx].coords
+                        dx = coords[0] - center[0]
+                        dy = coords[1] - center[1]
+                        return np.arctan2(dy, dx)
+                    
+                    sorted_nodes = sorted(nodes, key=angle_from_reference)
+                    return sorted_nodes
+                
+                bottom_nodes_sorted = sort_quad_nodes(bottom_nodes, bottom_center)
+                top_nodes_sorted = sort_quad_nodes(top_nodes, top_center)
+                
+                # 创建六面体对象
+                # p1, p2, p3, p4: 底面四边形（逆时针顺序）
+                # p5, p6, p7, p8: 顶面四边形（与底面对应）
+                node1 = node_container[bottom_nodes_sorted[0]]
+                node2 = node_container[bottom_nodes_sorted[1]]
+                node3 = node_container[bottom_nodes_sorted[2]]
+                node4 = node_container[bottom_nodes_sorted[3]]
+                node5 = node_container[top_nodes_sorted[0]]
+                node6 = node_container[top_nodes_sorted[1]]
+                node7 = node_container[top_nodes_sorted[2]]
+                node8 = node_container[top_nodes_sorted[3]]
+                
+                cell = Hexahedron(
+                    node1, node2, node3, node4, node5, node6, node7, node8,
+                    "hexahedron", idx=len(cell_container)
+                )
+                cell_container.append(cell)
+                cell_type_container.append(12)  # VTK_HEXAHEDRON
         else:
             # 其他类型暂时不支持
             print(f"Warning: Unsupported cell with {len(cell_nodes)} nodes, skipping")

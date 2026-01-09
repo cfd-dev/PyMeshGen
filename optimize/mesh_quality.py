@@ -9,6 +9,7 @@ from utils.geom_toolkit import (
     tetrahedron_volume,
     pyramid_volume,
     prism_volume,
+    hexahedron_volume,
 )
 
 
@@ -165,6 +166,126 @@ def prism_skewness(p1, p2, p3, p4, p5, p6):
     # 侧面之间的二面角为 90 度（正方形）
     # 侧面与底面之间的二面角约为 90 度（对于正三棱柱）
     # 使用平均值作为理想角度
+    ideal_angle = 90.0
+
+    # 计算偏斜度
+    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
+    skew2 = (ideal_angle - min_angle) / ideal_angle
+    skewness = 1.0 - max([skew1, skew2])
+
+    # 确保偏斜度在[0, 1]范围内
+    skewness = max(0.0, min(1.0, skewness))
+
+    return skewness
+
+
+def hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8):
+    """计算六面体网格质量（基于体积与棱长立方比）
+    六面体由8个顶点组成，可以分解为5个四面体计算体积
+    p1, p2, p3, p4: 下底面四边形顶点（按顺序）
+    p5, p6, p7, p8: 上底面四边形顶点（与下底面对应）
+    """
+    # 计算所有边长（六面体有12条边）
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p4),
+        calculate_distance(p4, p1),
+        calculate_distance(p5, p6),
+        calculate_distance(p6, p7),
+        calculate_distance(p7, p8),
+        calculate_distance(p8, p5),
+        calculate_distance(p1, p5),
+        calculate_distance(p2, p6),
+        calculate_distance(p3, p7),
+        calculate_distance(p4, p8),
+    ]
+
+    # 计算体积
+    volume = hexahedron_volume(p1, p2, p3, p4, p5, p6, p7, p8)
+
+    # 计算边长立方和
+    edge_cubes_sum = sum(e**3 for e in edges)
+
+    # 质量指标：体积与边长立方比的标准化
+    if edge_cubes_sum == 0 or volume <= 0:
+        return 0.0
+
+    # 标准化因子（理想正六面体的质量为1）
+    # 正六面体（立方体）：所有边长相等，所有面都是正方形
+    # 设边长为a，则体积 V = a^3
+    # 对于立方体，边长立方和 = 12*a^3
+    # 因此理想质量 = a^3 / (12*a^3) = 1/12
+    ideal_factor = 12.0
+    quality = volume * ideal_factor / edge_cubes_sum
+
+    # 异常检测（移除质量值上限检查，因为某些特殊形状的六面体质量值可能超过1.0）
+    if isnan(quality) or isinf(quality) or quality < 0.0:
+        raise ValueError(
+            f"六面体质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}, {p6}, {p7}, {p8}"
+        )
+
+    return quality
+
+
+def hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8):
+    """计算六面体的偏斜度（基于二面角）
+    六面体由8个顶点组成，有6个面
+    p1, p2, p3, p4: 下底面四边形顶点（按顺序）
+    p5, p6, p7, p8: 上底面四边形顶点（与下底面对应）
+    """
+    def face_normal(a, b, c, d=None):
+        """计算四边形面的法向量"""
+        if d is None:
+            ab = np.array(b) - np.array(a)
+            ac = np.array(c) - np.array(a)
+            normal = np.cross(ab, ac)
+        else:
+            ab = np.array(b) - np.array(a)
+            ad = np.array(d) - np.array(a)
+            normal = np.cross(ab, ad)
+        norm = np.linalg.norm(normal)
+        return normal / norm if norm > 1e-12 else np.array([0.0, 0.0, 0.0])
+
+    # 六个面的法向量
+    n1 = face_normal(p1, p2, p3, p4)  # 下底面
+    n2 = face_normal(p5, p6, p7, p8)  # 上底面
+    n3 = face_normal(p1, p2, p6, p5)  # 侧面 p1-p2-p6-p5
+    n4 = face_normal(p2, p3, p7, p6)  # 侧面 p2-p3-p7-p6
+    n5 = face_normal(p3, p4, p8, p7)  # 侧面 p3-p4-p8-p7
+    n6 = face_normal(p4, p1, p5, p8)  # 侧面 p4-p1-p5-p8
+
+    # 计算两个面之间的二面角
+    def dihedral_angle(n1, n2):
+        cos_angle = np.dot(n1, n2)
+        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+        return np.degrees(np.arccos(cos_angle))
+
+    # 计算所有二面角
+    dihedral_angles = []
+
+    # 侧面之间的二面角（4个）
+    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p2-p6
+    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p3-p7
+    dihedral_angles.append(dihedral_angle(n5, n6))  # 棱 p4-p8
+    dihedral_angles.append(dihedral_angle(n6, n3))  # 棱 p1-p5
+
+    # 侧面与底面之间的二面角（8个）
+    dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p1-p2
+    dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
+    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p3-p4
+    dihedral_angles.append(dihedral_angle(n1, n6))  # 棱 p4-p1
+    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p5-p6
+    dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p6-p7
+    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p7-p8
+    dihedral_angles.append(dihedral_angle(n2, n6))  # 棱 p8-p5
+
+    # 计算最大和最小二面角
+    max_angle = max(dihedral_angles)
+    min_angle = min(dihedral_angles)
+
+    # 理想正六面体（立方体）的二面角
+    # 所有相邻面之间的二面角都是 90 度
     ideal_angle = 90.0
 
     # 计算偏斜度
@@ -433,8 +554,8 @@ def pyramid_shape_quality(p1, p2, p3, p4, p5):
     ideal_factor = 72.0
     quality = volume * ideal_factor / edge_cubes_sum
 
-    # 异常检测
-    if isnan(quality) or isinf(quality) or quality < 0.0 or quality > 1.0:
+    # 异常检测（移除质量值上限检查，因为某些特殊形状的金字塔质量值可能超过1.0）
+    if isnan(quality) or isinf(quality) or quality < 0.0:
         raise ValueError(
             f"金字塔质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}"
         )

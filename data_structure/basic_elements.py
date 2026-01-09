@@ -15,6 +15,7 @@ from utils.geom_toolkit import (
     tetrahedron_volume,
     pyramid_volume,
     prism_volume,
+    hexahedron_volume,
 )
 from utils.message import info, debug, warning, verbose
 
@@ -118,6 +119,24 @@ def _get_prism_skewness():
         import mesh_quality
         prism_skewness = mesh_quality.prism_skewness
     return prism_skewness
+
+def _get_hexahedron_shape_quality():
+    """Lazy import for hexahedron_shape_quality to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import hexahedron_shape_quality
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        hexahedron_shape_quality = mesh_quality.hexahedron_shape_quality
+    return hexahedron_shape_quality
+
+def _get_hexahedron_skewness():
+    """Lazy import for hexahedron_skewness to avoid circular imports"""
+    try:
+        from optimize.mesh_quality import hexahedron_skewness
+    except (ImportError, ModuleNotFoundError):
+        import mesh_quality
+        hexahedron_skewness = mesh_quality.hexahedron_skewness
+    return hexahedron_skewness
 
 
 class NodeElement:
@@ -770,6 +789,117 @@ class Prism:
         if self.skewness is None:
             prism_skewness = _get_prism_skewness()
             self.skewness = prism_skewness(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
+        return self.skewness
+
+    def get_element_size(self):
+        if self.volume is None:
+            self.get_volume()
+        return self.volume ** (1/3)
+
+
+class Hexahedron:
+    def __init__(self, p1, p2, p3, p4, p5, p6, p7, p8, part_name=None, idx=None, node_ids=None):
+        if (
+            is_node_element(p1)
+            and is_node_element(p2)
+            and is_node_element(p3)
+            and is_node_element(p4)
+            and is_node_element(p5)
+            and is_node_element(p6)
+            and is_node_element(p7)
+            and is_node_element(p8)
+        ):
+            self.p1 = p1.coords
+            self.p2 = p2.coords
+            self.p3 = p3.coords
+            self.p4 = p4.coords
+            self.p5 = p5.coords
+            self.p6 = p6.coords
+            self.p7 = p7.coords
+            self.p8 = p8.coords
+            self.node_ids = [p1.idx, p2.idx, p3.idx, p4.idx, p5.idx, p6.idx, p7.idx, p8.idx]
+        else:
+            self.p1 = p1
+            self.p2 = p2
+            self.p3 = p3
+            self.p4 = p4
+            self.p5 = p5
+            self.p6 = p6
+            self.p7 = p7
+            self.p8 = p8
+            self.node_ids = node_ids
+
+        self.part_name = part_name
+        self.idx = idx
+        # 生成几何级哈希
+        coord_hash = hash(
+            (
+                tuple(f"{coord:.6f}" for coord in self.p1),
+                tuple(f"{coord:.6f}" for coord in self.p2),
+                tuple(f"{coord:.6f}" for coord in self.p3),
+                tuple(f"{coord:.6f}" for coord in self.p4),
+                tuple(f"{coord:.6f}" for coord in self.p5),
+                tuple(f"{coord:.6f}" for coord in self.p6),
+                tuple(f"{coord:.6f}" for coord in self.p7),
+                tuple(f"{coord:.6f}" for coord in self.p8),
+            )
+        )
+        # 生成逻辑级哈希
+        id_hash = hash(tuple(sorted(self.node_ids))) if self.node_ids else 0
+        # 组合哈希
+        self.hash = hash((coord_hash, id_hash))
+
+        self.volume = None
+        self.quality = None
+        self.skewness = None
+        self.bbox = [
+            min(self.p1[0], self.p2[0], self.p3[0], self.p4[0], self.p5[0], self.p6[0], self.p7[0], self.p8[0]),  # (min_x, min_y, min_z, max_x, max_y, max_z)
+            min(self.p1[1], self.p2[1], self.p3[1], self.p4[1], self.p5[1], self.p6[1], self.p7[1], self.p8[1]),
+            min(self.p1[2], self.p2[2], self.p3[2], self.p4[2], self.p5[2], self.p6[2], self.p7[2], self.p8[2]),
+            max(self.p1[0], self.p2[0], self.p3[0], self.p4[0], self.p5[0], self.p6[0], self.p7[0], self.p8[0]),
+            max(self.p1[1], self.p2[1], self.p3[1], self.p4[1], self.p5[1], self.p6[1], self.p7[1], self.p8[1]),
+            max(self.p1[2], self.p2[2], self.p3[2], self.p4[2], self.p5[2], self.p6[2], self.p7[2], self.p8[2]),
+        ]
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, other):
+        if isinstance(other, Hexahedron):
+            return self.hash == other.hash
+        return False
+
+    def init_metrics(self, force_update=False):
+        if self.volume is None or force_update:
+            self.volume = hexahedron_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
+            if self.volume == 0.0:
+                raise ValueError(
+                    f"六面体体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}, {self.p5}, {self.p6}, {self.p7}, {self.p8}"
+                )
+        
+        if self.quality is None or force_update:
+            hexahedron_shape_quality = _get_hexahedron_shape_quality()
+            self.quality = hexahedron_shape_quality(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
+        
+        if self.skewness is None or force_update:
+            hexahedron_skewness = _get_hexahedron_skewness()
+            self.skewness = hexahedron_skewness(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
+
+    def get_volume(self):
+        if self.volume is None:
+            self.volume = hexahedron_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
+        return self.volume
+
+    def get_quality(self):
+        if self.quality is None:
+            hexahedron_shape_quality = _get_hexahedron_shape_quality()
+            self.quality = hexahedron_shape_quality(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
+        return self.quality
+
+    def get_skewness(self):
+        if self.skewness is None:
+            hexahedron_skewness = _get_hexahedron_skewness()
+            self.skewness = hexahedron_skewness(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
         return self.skewness
 
     def get_element_size(self):

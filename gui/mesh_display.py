@@ -354,6 +354,20 @@ class MeshDisplayArea:
                             wedge.GetPointIds().SetId(4, node_ids[4])
                             wedge.GetPointIds().SetId(5, node_ids[5])
                             polys.InsertNextCell(wedge)
+                    elif len(node_ids) == 8:
+                        # 六面体单元
+                        from data_structure.basic_elements import Hexahedron
+                        if isinstance(cell, Hexahedron):
+                            hexahedron = vtk.vtkHexahedron()
+                            hexahedron.GetPointIds().SetId(0, node_ids[0])
+                            hexahedron.GetPointIds().SetId(1, node_ids[1])
+                            hexahedron.GetPointIds().SetId(2, node_ids[2])
+                            hexahedron.GetPointIds().SetId(3, node_ids[3])
+                            hexahedron.GetPointIds().SetId(4, node_ids[4])
+                            hexahedron.GetPointIds().SetId(5, node_ids[5])
+                            hexahedron.GetPointIds().SetId(6, node_ids[6])
+                            hexahedron.GetPointIds().SetId(7, node_ids[7])
+                            polys.InsertNextCell(hexahedron)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
@@ -433,6 +447,20 @@ class MeshDisplayArea:
                         wedge.GetPointIds().SetId(4, node_ids[4])
                         wedge.GetPointIds().SetId(5, node_ids[5])
                         polys.InsertNextCell(wedge)
+                elif len(node_ids) == 8:
+                    # 六面体单元
+                    from data_structure.basic_elements import Hexahedron
+                    if isinstance(cell, Hexahedron):
+                        hexahedron = vtk.vtkHexahedron()
+                        hexahedron.GetPointIds().SetId(0, node_ids[0])
+                        hexahedron.GetPointIds().SetId(1, node_ids[1])
+                        hexahedron.GetPointIds().SetId(2, node_ids[2])
+                        hexahedron.GetPointIds().SetId(3, node_ids[3])
+                        hexahedron.GetPointIds().SetId(4, node_ids[4])
+                        hexahedron.GetPointIds().SetId(5, node_ids[5])
+                        hexahedron.GetPointIds().SetId(6, node_ids[6])
+                        hexahedron.GetPointIds().SetId(7, node_ids[7])
+                        polys.InsertNextCell(hexahedron)
 
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(points)
