@@ -20,6 +20,11 @@ for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
 
+# 添加 meshio 到 Python 路径
+meshio_path = project_root / "3rd_party" / "meshio" / "src"
+if meshio_path.exists():
+    sys.path.insert(0, str(meshio_path))
+
 def main():
     """主启动函数"""
     print("正在启动PyMeshGen图形用户界面...")

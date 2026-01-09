@@ -13,7 +13,13 @@ from vtk.util import numpy_support
 import numpy as np
 
 # 添加项目根目录到sys.path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(project_root)
+
+# 添加 meshio 到 sys.path
+meshio_path = os.path.join(project_root, "3rd_party", "meshio", "src")
+if meshio_path not in sys.path:
+    sys.path.insert(0, meshio_path)
 
 # 导入通用网格数据类
 from data_structure.mesh_data import MeshData
@@ -30,8 +36,8 @@ class FileOperations:
         if not os.path.exists(self.mesh_dir):
             os.makedirs(self.mesh_dir, exist_ok=True)
 
-    def import_mesh(self, file_path):
-        """导入网格文件"""
+    def import_mesh_original(self, file_path):
+        """导入网格文件（原始方法备份）"""
         try:
             file_ext = os.path.splitext(file_path)[1].lower()
             
@@ -53,6 +59,87 @@ class FileOperations:
         except Exception as e:
             print(f"导入网格失败: {str(e)}")
             return None
+
+    def import_mesh(self, file_path):
+        """导入网格文件（使用 meshio 实现）"""
+        try:
+            # 尝试导入 meshio
+            try:
+                import meshio
+            except ImportError as e:
+                print(f"无法导入 meshio: {e}")
+                print("尝试使用原始方法...")
+                return self.import_mesh_original(file_path)
+            
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # 对于 CAS 文件，使用原始方法（因为 meshio 不支持 CAS 格式）
+            if file_ext == '.cas':
+                return self.import_mesh_original(file_path)
+            
+            # 使用 meshio 读取网格文件
+            mesh = meshio.read(file_path)
+            
+            # 创建 MeshData 对象
+            mesh_data = MeshData(file_path=file_path, mesh_type=file_ext[1:])
+            
+            # 提取节点坐标
+            mesh_data.node_coords = mesh.points.tolist() if hasattr(mesh.points, 'tolist') else list(mesh.points)
+            
+            # 提取单元数据
+            mesh_data.cells = []
+            for cell_block in mesh.cells:
+                cell_type = cell_block.type
+                cell_data = cell_block.data
+                for cell in cell_data:
+                    mesh_data.cells.append(cell.tolist() if hasattr(cell, 'tolist') else list(cell))
+            
+            # 提取点数据（如果有）
+            if mesh.point_data:
+                mesh_data.point_data = dict(mesh.point_data)
+            
+            # 提取单元数据（如果有）
+            if mesh.cell_data:
+                mesh_data.cell_data_dict = dict(mesh.cell_data)
+            
+            # 创建 VTK PolyData 对象用于可视化
+            try:
+                import vtk
+                from vtk.util import numpy_support
+                
+                # 创建 VTK 点
+                vtk_points = vtk.vtkPoints()
+                for point in mesh_data.node_coords:
+                    vtk_points.InsertNextPoint(point)
+                
+                # 创建 VTK 单元
+                vtk_cells = vtk.vtkCellArray()
+                for cell in mesh_data.cells:
+                    vtk_cell = vtk.vtkPolygon()
+                    vtk_cell.GetPointIds().SetNumberOfIds(len(cell))
+                    for i, node_id in enumerate(cell):
+                        vtk_cell.GetPointIds().SetId(i, node_id)
+                    vtk_cells.InsertNextCell(vtk_cell)
+                
+                # 创建 PolyData
+                poly_data = vtk.vtkPolyData()
+                poly_data.SetPoints(vtk_points)
+                poly_data.SetPolys(vtk_cells)
+                
+                mesh_data.vtk_poly_data = poly_data
+            except Exception as e:
+                print(f"创建 VTK PolyData 失败: {str(e)}")
+            
+            # 更新计数
+            mesh_data.update_counts()
+            
+            return mesh_data
+                
+        except Exception as e:
+            print(f"使用 meshio 导入网格失败: {str(e)}")
+            # 如果 meshio 失败，回退到原始方法
+            print("尝试使用原始方法...")
+            return self.import_mesh_original(file_path)
 
     def _import_vtk(self, file_path):
         """导入VTK文件"""
