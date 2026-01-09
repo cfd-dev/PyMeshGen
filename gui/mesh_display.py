@@ -985,7 +985,7 @@ class MeshDisplayArea:
     
     def set_render_mode(self, mode):
         """设置渲染模式
-        
+
         Args:
             mode: 渲染模式，可选值:
                 - "surface": 实体模式
@@ -995,7 +995,23 @@ class MeshDisplayArea:
         if mode in ["surface", "wireframe", "surface-wireframe"]:
             self.render_mode = mode
             self._apply_render_mode()
-            
+
+            # Apply render mode to all additional actors (individual parts)
+            if hasattr(self, 'additional_actors'):
+                for actor in self.additional_actors:
+                    if mode == "wireframe":
+                        actor.GetProperty().SetRepresentationToWireframe()
+                        actor.GetProperty().EdgeVisibilityOff()
+                        actor.GetProperty().SetLineWidth(2.0)
+                    elif mode == "surface-wireframe":
+                        actor.GetProperty().SetRepresentationToSurface()
+                        actor.GetProperty().EdgeVisibilityOn()
+                        actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
+                        actor.GetProperty().SetLineWidth(1.5)
+                    else:  # surface mode
+                        actor.GetProperty().SetRepresentationToSurface()
+                        actor.GetProperty().EdgeVisibilityOff()
+
             # 更新渲染窗口
             self.render_window.Render()
     
