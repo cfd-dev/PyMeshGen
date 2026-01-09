@@ -24,6 +24,14 @@ if meshio_path not in sys.path:
 # 导入通用网格数据类
 from data_structure.mesh_data import MeshData
 
+# 导入通用CGNS读取器
+try:
+    from universal_cgns_reader import UniversalCGNSReader
+    CGNS_READER_AVAILABLE = True
+except ImportError:
+    CGNS_READER_AVAILABLE = False
+    print("警告: UniversalCGNSReader 未找到，CGNS 文件将使用 meshio 读取")
+
 
 class FileOperations:
     """文件操作类"""
@@ -63,18 +71,22 @@ class FileOperations:
     def import_mesh(self, file_path):
         """导入网格文件（使用 meshio 实现）"""
         try:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            
+            # 对于 CGNS 文件，使用 UniversalCGNSReader
+            if file_ext == '.cgns' and CGNS_READER_AVAILABLE:
+                return self._import_cgns(file_path)
+            
+            # 对于 CAS 文件，使用原始方法（因为 meshio 不支持 CAS 格式）
+            if file_ext == '.cas':
+                return self.import_mesh_original(file_path)
+            
             # 尝试导入 meshio
             try:
                 import meshio
             except ImportError as e:
                 print(f"无法导入 meshio: {e}")
                 print("尝试使用原始方法...")
-                return self.import_mesh_original(file_path)
-            
-            file_ext = os.path.splitext(file_path)[1].lower()
-            
-            # 对于 CAS 文件，使用原始方法（因为 meshio 不支持 CAS 格式）
-            if file_ext == '.cas':
                 return self.import_mesh_original(file_path)
             
             # 使用 meshio 读取网格文件
@@ -340,6 +352,79 @@ class FileOperations:
             
         except Exception as e:
             print(f"导入OBJ文件失败: {str(e)}")
+            return None
+
+    def _import_cgns(self, file_path):
+        """导入CGNS文件 - 使用 UniversalCGNSReader"""
+        try:
+            print(f"使用 UniversalCGNSReader 读取 CGNS 文件: {file_path}")
+            
+            # 创建 CGNS 读取器
+            reader = UniversalCGNSReader(file_path)
+            
+            # 读取 CGNS 文件
+            if not reader.read():
+                print(f"读取 CGNS 文件失败")
+                return None
+            
+            # 创建 MeshData 对象
+            mesh_data = MeshData(file_path=file_path, mesh_type='cgns')
+            
+            # 提取节点坐标
+            mesh_data.node_coords = reader.points.tolist() if hasattr(reader.points, 'tolist') else list(reader.points)
+            
+            # 提取单元数据
+            mesh_data.cells = []
+            for cell in reader.cells:
+                cell_data = cell['data']
+                for cell_nodes in cell_data:
+                    mesh_data.cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+            
+            # 提取元数据
+            if reader.metadata:
+                mesh_data.metadata = reader.metadata
+            
+            # 创建 VTK PolyData 对象用于可视化
+            try:
+                import vtk
+                from vtk.util import numpy_support
+                
+                # 创建 VTK 点
+                vtk_points = vtk.vtkPoints()
+                for point in mesh_data.node_coords:
+                    vtk_points.InsertNextPoint(point)
+                
+                # 创建 VTK 单元
+                vtk_cells = vtk.vtkCellArray()
+                for cell in mesh_data.cells:
+                    vtk_cell = vtk.vtkPolygon()
+                    vtk_cell.GetPointIds().SetNumberOfIds(len(cell))
+                    for i, node_id in enumerate(cell):
+                        vtk_cell.GetPointIds().SetId(i, node_id)
+                    vtk_cells.InsertNextCell(vtk_cell)
+                
+                # 创建 PolyData
+                poly_data = vtk.vtkPolyData()
+                poly_data.SetPoints(vtk_points)
+                poly_data.SetPolys(vtk_cells)
+                
+                mesh_data.vtk_poly_data = poly_data
+            except Exception as e:
+                print(f"创建 VTK PolyData 失败: {str(e)}")
+            
+            # 更新计数
+            mesh_data.update_counts()
+            
+            print(f"✅ 成功读取 CGNS 文件")
+            print(f"   节点数: {len(mesh_data.node_coords)}")
+            print(f"   单元数: {len(mesh_data.cells)}")
+            
+            return mesh_data
+            
+        except Exception as e:
+            print(f"导入CGNS文件失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def _import_cas(self, file_path):
