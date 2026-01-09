@@ -36,13 +36,26 @@ except ImportError:
 class FileOperations:
     """文件操作类"""
 
-    def __init__(self, project_root):
+    def __init__(self, project_root, log_callback=None):
         self.project_root = project_root
         self.mesh_dir = os.path.join(project_root, "meshes")
+        self.log_callback = log_callback
         
         # 确保网格目录存在
         if not os.path.exists(self.mesh_dir):
             os.makedirs(self.mesh_dir, exist_ok=True)
+
+    def _log(self, message, level="info"):
+        """记录日志到GUI信息窗口"""
+        if self.log_callback:
+            if level == "info":
+                self.log_callback(message)
+            elif level == "error":
+                self.log_callback(message)
+            elif level == "warning":
+                self.log_callback(message)
+        else:
+            print(message)
 
     def import_mesh_original(self, file_path):
         """导入网格文件（原始方法备份）"""
@@ -357,14 +370,14 @@ class FileOperations:
     def _import_cgns(self, file_path):
         """导入CGNS文件 - 使用 UniversalCGNSReader"""
         try:
-            print(f"使用 UniversalCGNSReader 读取 CGNS 文件: {file_path}")
+            self._log(f"使用 UniversalCGNSReader 读取 CGNS 文件: {file_path}")
             
             # 创建 CGNS 读取器
             reader = UniversalCGNSReader(file_path)
             
             # 读取 CGNS 文件
             if not reader.read():
-                print(f"读取 CGNS 文件失败")
+                self._log(f"读取 CGNS 文件失败", level="error")
                 return None
             
             # 创建 MeshData 对象
@@ -410,14 +423,14 @@ class FileOperations:
                 
                 mesh_data.vtk_poly_data = poly_data
             except Exception as e:
-                print(f"创建 VTK PolyData 失败: {str(e)}")
+                self._log(f"创建 VTK PolyData 失败: {str(e)}", level="warning")
             
             # 更新计数
             mesh_data.update_counts()
             
-            print(f"✅ 成功读取 CGNS 文件")
-            print(f"   节点数: {len(mesh_data.node_coords)}")
-            print(f"   单元数: {len(mesh_data.cells)}")
+            self._log(f"✅ 成功读取 CGNS 文件")
+            self._log(f"   节点数: {len(mesh_data.node_coords)}")
+            self._log(f"   单元数: {len(mesh_data.cells)}")
             
             return mesh_data
             

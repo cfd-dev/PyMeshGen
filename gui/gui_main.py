@@ -766,7 +766,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         if file_path:
             try:
-                file_ops = FileOperations(self.project_root)
+                file_ops = FileOperations(self.project_root, log_callback=self.log_info)
                 mesh_data = file_ops.import_mesh(file_path)
                 self.current_mesh = mesh_data
 
