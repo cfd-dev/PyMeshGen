@@ -125,18 +125,6 @@ class ViewToolbar(QToolBar):
         
         self.addSeparator()
         
-        # Zoom actions
-        zoom_in_action = QAction(get_icon('zoom-in'), "放大", self)
-        zoom_in_action.setStatusTip("放大视图")
-        zoom_in_action.triggered.connect(lambda: self._emit_view_change("zoom_in"))
-        self.addAction(zoom_in_action)
-        self.actions['zoom_in'] = zoom_in_action
-        
-        zoom_out_action = QAction(get_icon('zoom-out'), "缩小", self)
-        zoom_out_action.setStatusTip("缩小视图")
-        zoom_out_action.triggered.connect(lambda: self._emit_view_change("zoom_out"))
-        self.addAction(zoom_out_action)
-        self.actions['zoom_out'] = zoom_out_action
 
     def _emit_mode_change(self, mode):
         """Emit signal for mode change - to be connected externally"""
@@ -175,7 +163,7 @@ class ViewToolbar(QToolBar):
         self.actions['surface'].triggered.connect(lambda: main_window.set_render_mode("surface"))
         self.actions['wireframe'].triggered.connect(lambda: main_window.set_render_mode("wireframe"))
         self.actions['surface-wireframe'].triggered.connect(lambda: main_window.set_render_mode("surface-wireframe"))
-        
+
         # Connect view actions
         self.actions['reset'].triggered.connect(main_window.reset_view)
         self.actions['fit'].triggered.connect(main_window.fit_view)
@@ -186,8 +174,6 @@ class ViewToolbar(QToolBar):
         self.actions['z_pos'].triggered.connect(main_window.set_view_z_positive)
         self.actions['z_neg'].triggered.connect(main_window.set_view_z_negative)
         self.actions['iso'].triggered.connect(main_window.set_view_isometric)
-        self.actions['zoom_in'].triggered.connect(main_window.zoom_in)
-        self.actions['zoom_out'].triggered.connect(main_window.zoom_out)
 
     def contextMenuEvent(self, event):
         """Override context menu to provide toolbar options"""

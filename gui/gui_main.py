@@ -281,8 +281,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.view_toolbar = ViewToolbar(self)
         self.view_toolbar.add_view_toolbar_to_main_window(self)
 
-        # Add the toolbar to the main window
-        self.addToolBar(Qt.TopToolBarArea, self.view_toolbar)
+        # Add the toolbar to the main window - docked to the right of the view area
+        self.addToolBar(Qt.RightToolBarArea, self.view_toolbar)
 
         # Initially show the toolbar
         self.view_toolbar.show()
