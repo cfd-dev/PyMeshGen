@@ -397,6 +397,42 @@ class FileOperations:
             if reader.metadata:
                 mesh_data.metadata = reader.metadata
             
+            # 提取边界信息并转换为parts_info
+            if reader.boundary_info:
+                mesh_data.boundary_info = reader.boundary_info
+                
+                # 将boundary_info转换为parts_info格式，并提取faces数据
+                parts_info = {}
+                boundary_info_with_faces = {}
+                
+                for part_name, part_data in reader.boundary_info.items():
+                    point_range = part_data.get('point_range', [])
+                    family_name = part_data.get('family_name', part_name)
+                    
+                    # 从point_range提取faces数据
+                    faces = self._extract_faces_from_point_range(reader.cells, point_range)
+                    
+                    parts_info[part_name] = {
+                        'bc_type': 'boundary',
+                        'point_range': point_range,
+                        'family_name': family_name,
+                        'part_name': part_name,
+                        'faces': faces
+                    }
+                    
+                    boundary_info_with_faces[part_name] = {
+                        'bc_type': 'boundary',
+                        'point_range': point_range,
+                        'family_name': family_name,
+                        'faces': faces
+                    }
+                
+                mesh_data.parts_info = parts_info
+                mesh_data.boundary_info = boundary_info_with_faces
+            else:
+                mesh_data.boundary_info = {}
+                mesh_data.parts_info = {}
+            
             # 创建 VTK PolyData 对象用于可视化
             try:
                 import vtk
@@ -432,6 +468,16 @@ class FileOperations:
             self._log(f"   节点数: {len(mesh_data.node_coords)}")
             self._log(f"   单元数: {len(mesh_data.cells)}")
             
+            # 记录边界信息
+            if mesh_data.parts_info:
+                self._log(f"   边界数: {len(mesh_data.parts_info)}")
+                for part_name, part_data in mesh_data.parts_info.items():
+                    point_range = part_data.get('point_range', [])
+                    if point_range:
+                        self._log(f"   - {part_name}: 节点范围 [{point_range[0]}, {point_range[1]}]")
+                    else:
+                        self._log(f"   - {part_name}")
+            
             return mesh_data
             
         except Exception as e:
@@ -439,6 +485,53 @@ class FileOperations:
             import traceback
             traceback.print_exc()
             return None
+
+    def _extract_faces_from_point_range(self, cells, point_range):
+        """从point_range提取faces数据
+        
+        Args:
+            cells: 单元数据列表
+            point_range: 单元索引范围 [start, end]
+            
+        Returns:
+            list: faces数据，每个元素是包含节点索引的字典
+        """
+        faces = []
+        if not point_range or len(point_range) != 2:
+            return faces
+        
+        start_idx = point_range[0] - 1  # 转换为0基索引
+        end_idx = point_range[1] - 1    # 转换为0基索引
+        
+        # 遍历所有单元组，找到属于该范围的单元
+        current_global_idx = 1  # CGNS使用1基索引
+        
+        for cell_group in cells:
+            cell_data = cell_group['data']
+            num_cells = cell_data.shape[0]
+            
+            # 计算这个单元组的全局索引范围
+            group_start = current_global_idx
+            group_end = current_global_idx + num_cells - 1
+            
+            # 检查是否有重叠
+            overlap_start = max(start_idx, group_start - 1)
+            overlap_end = min(end_idx, group_end - 1)
+            
+            if overlap_start <= overlap_end:
+                # 有重叠，提取这些单元
+                local_start = overlap_start - (group_start - 1)
+                local_end = overlap_end - (group_start - 1) + 1
+                
+                for i in range(local_start, local_end):
+                    cell_nodes = cell_data[i]
+                    faces.append({
+                        'nodes': cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes)
+                    })
+            
+            current_global_idx += num_cells
+        
+        return faces
 
     def _import_cas(self, file_path):
         """导入CAS文件 - 用于CFD网格"""

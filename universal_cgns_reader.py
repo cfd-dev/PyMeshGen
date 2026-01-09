@@ -43,6 +43,7 @@ class UniversalCGNSReader:
         self.cells = []
         self.cell_info = []
         self.metadata = {}
+        self.boundary_info = {}
 
     def read(self) -> bool:
         """
@@ -83,6 +84,9 @@ class UniversalCGNSReader:
 
                 # 读取元数据
                 self.metadata = self._read_metadata(f, base, zone)
+
+                # 读取边界信息
+                self.boundary_info = self._read_boundary_info(zone)
 
                 return True
 
@@ -281,6 +285,65 @@ class UniversalCGNSReader:
                 metadata[f'zone_{key}'] = value
 
         return metadata
+
+    def _read_boundary_info(self, zone: h5py.Group) -> Dict[str, Any]:
+        """
+        读取边界信息
+
+        Args:
+            zone: Zone节点
+
+        Returns:
+            Dict[str, Any]: 边界信息字典，格式为 {边界名: {point_range: [start, end], family_name: str}}
+        """
+        boundary_info = {}
+
+        try:
+            # 查找ZoneBC节点
+            zone_bc = zone.get('ZoneBC')
+            if not zone_bc:
+                return boundary_info
+
+            # 遍历每个边界条件
+            for bc_name in zone_bc.keys():
+                if bc_name.lower() == 'data':
+                    continue
+
+                bc = zone_bc[bc_name]
+                if not isinstance(bc, h5py.Group):
+                    continue
+
+                # 读取PointRange
+                point_range = None
+                if 'PointRange' in bc.keys():
+                    point_range_obj = bc['PointRange']
+                    if isinstance(point_range_obj, h5py.Group) and ' data' in point_range_obj.keys():
+                        data = point_range_obj[' data']
+                        point_range = data[:].flatten().tolist()
+
+                # 读取FamilyName
+                family_name = bc_name
+                if 'FamilyName' in bc.keys():
+                    family_name_obj = bc['FamilyName']
+                    if isinstance(family_name_obj, h5py.Group) and ' data' in family_name_obj.keys():
+                        data = family_name_obj[' data']
+                        try:
+                            family_name = data[:].tobytes().decode('utf-8').rstrip('\x00')
+                        except:
+                            family_name = bc_name
+
+                # 保存边界信息
+                boundary_info[family_name] = {
+                    'point_range': point_range,
+                    'family_name': family_name
+                }
+
+        except Exception as e:
+            print(f"❌ 读取边界信息失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return boundary_info
 
     def to_meshio_format(self):
         """
