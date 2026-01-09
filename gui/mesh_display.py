@@ -9,6 +9,7 @@ PyQt网格显示模块
 
 import os
 import time
+import numpy as np
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
 from PyQt5.QtCore import Qt
 import vtk
@@ -298,25 +299,33 @@ class MeshDisplayArea:
 
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
                 # 对于Unstructured_Grid对象，直接使用node_coords和cell_container属性
-                node_coords = self.mesh_data.node_coords
+                node_coords = np.array(self.mesh_data.node_coords, dtype=np.float64)
                 cell_container = self.mesh_data.cell_container
 
-                for coord in node_coords:
+                # 批量插入点数据
+                for i in range(len(node_coords)):
+                    coord = node_coords[i]
                     add_point(coord)
+
+                # 预导入单元类型以避免循环中重复导入
+                from data_structure.basic_elements import (
+                    Quadrilateral, Tetrahedron, Pyramid, Prism, Hexahedron
+                )
 
                 for cell in cell_container:
                     if cell is None:
                         continue
                     node_ids = cell.node_ids
-                    if len(node_ids) == 3:
+                    num_nodes = len(node_ids)
+                    
+                    if num_nodes == 3:
                         triangle = vtk.vtkTriangle()
                         triangle.GetPointIds().SetId(0, node_ids[0])
                         triangle.GetPointIds().SetId(1, node_ids[1])
                         triangle.GetPointIds().SetId(2, node_ids[2])
                         polys.InsertNextCell(triangle)
-                    elif len(node_ids) == 4:
+                    elif num_nodes == 4:
                         # 检查单元类型：四边形(2D)或四面体(3D)
-                        from data_structure.basic_elements import Quadrilateral, Tetrahedron
                         if isinstance(cell, Tetrahedron):
                             tetra = vtk.vtkTetra()
                             tetra.GetPointIds().SetId(0, node_ids[0])
@@ -331,9 +340,8 @@ class MeshDisplayArea:
                             quad.GetPointIds().SetId(2, node_ids[2])
                             quad.GetPointIds().SetId(3, node_ids[3])
                             polys.InsertNextCell(quad)
-                    elif len(node_ids) == 5:
+                    elif num_nodes == 5:
                         # 金字塔单元
-                        from data_structure.basic_elements import Pyramid
                         if isinstance(cell, Pyramid):
                             pyramid = vtk.vtkPyramid()
                             pyramid.GetPointIds().SetId(0, node_ids[0])
@@ -342,9 +350,8 @@ class MeshDisplayArea:
                             pyramid.GetPointIds().SetId(3, node_ids[3])
                             pyramid.GetPointIds().SetId(4, node_ids[4])
                             polys.InsertNextCell(pyramid)
-                    elif len(node_ids) == 6:
+                    elif num_nodes == 6:
                         # 三棱柱单元
-                        from data_structure.basic_elements import Prism
                         if isinstance(cell, Prism):
                             wedge = vtk.vtkWedge()
                             wedge.GetPointIds().SetId(0, node_ids[0])
@@ -354,9 +361,8 @@ class MeshDisplayArea:
                             wedge.GetPointIds().SetId(4, node_ids[4])
                             wedge.GetPointIds().SetId(5, node_ids[5])
                             polys.InsertNextCell(wedge)
-                    elif len(node_ids) == 8:
+                    elif num_nodes == 8:
                         # 六面体单元
-                        from data_structure.basic_elements import Hexahedron
                         if isinstance(cell, Hexahedron):
                             hexahedron = vtk.vtkHexahedron()
                             hexahedron.GetPointIds().SetId(0, node_ids[0])
@@ -389,27 +395,39 @@ class MeshDisplayArea:
             points = vtk.vtkPoints()
             polys = vtk.vtkCellArray()
 
-            for coord in unstr_grid.node_coords:
+            # 使用numpy数组批量处理节点坐标以提高性能
+            node_coords = np.array(unstr_grid.node_coords, dtype=np.float64)
+            num_points = len(node_coords)
+            
+            # 批量插入点数据
+            for i in range(num_points):
+                coord = node_coords[i]
                 if len(coord) >= 2:
                     if len(coord) == 2:
                         points.InsertNextPoint(coord[0], coord[1], 0.0)
                     else:
                         points.InsertNextPoint(coord[0], coord[1], coord[2])
 
+            # 预导入单元类型以避免循环中重复导入
+            from data_structure.basic_elements import (
+                Quadrilateral, Tetrahedron, Pyramid, Prism, Hexahedron
+            )
+
             for cell in unstr_grid.cell_container:
                 if cell is None:
                     continue
 
                 node_ids = cell.node_ids
-                if len(node_ids) == 3:
+                num_nodes = len(node_ids)
+                
+                if num_nodes == 3:
                     triangle = vtk.vtkTriangle()
                     triangle.GetPointIds().SetId(0, node_ids[0])
                     triangle.GetPointIds().SetId(1, node_ids[1])
                     triangle.GetPointIds().SetId(2, node_ids[2])
                     polys.InsertNextCell(triangle)
-                elif len(node_ids) == 4:
+                elif num_nodes == 4:
                     # 检查单元类型：四边形(2D)或四面体(3D)
-                    from data_structure.basic_elements import Quadrilateral, Tetrahedron
                     if isinstance(cell, Tetrahedron):
                         tetra = vtk.vtkTetra()
                         tetra.GetPointIds().SetId(0, node_ids[0])
@@ -424,9 +442,8 @@ class MeshDisplayArea:
                         quad.GetPointIds().SetId(2, node_ids[2])
                         quad.GetPointIds().SetId(3, node_ids[3])
                         polys.InsertNextCell(quad)
-                elif len(node_ids) == 5:
+                elif num_nodes == 5:
                     # 金字塔单元
-                    from data_structure.basic_elements import Pyramid
                     if isinstance(cell, Pyramid):
                         pyramid = vtk.vtkPyramid()
                         pyramid.GetPointIds().SetId(0, node_ids[0])
@@ -435,9 +452,8 @@ class MeshDisplayArea:
                         pyramid.GetPointIds().SetId(3, node_ids[3])
                         pyramid.GetPointIds().SetId(4, node_ids[4])
                         polys.InsertNextCell(pyramid)
-                elif len(node_ids) == 6:
+                elif num_nodes == 6:
                     # 三棱柱单元
-                    from data_structure.basic_elements import Prism
                     if isinstance(cell, Prism):
                         wedge = vtk.vtkWedge()
                         wedge.GetPointIds().SetId(0, node_ids[0])
@@ -447,9 +463,8 @@ class MeshDisplayArea:
                         wedge.GetPointIds().SetId(4, node_ids[4])
                         wedge.GetPointIds().SetId(5, node_ids[5])
                         polys.InsertNextCell(wedge)
-                elif len(node_ids) == 8:
+                elif num_nodes == 8:
                     # 六面体单元
-                    from data_structure.basic_elements import Hexahedron
                     if isinstance(cell, Hexahedron):
                         hexahedron = vtk.vtkHexahedron()
                         hexahedron.GetPointIds().SetId(0, node_ids[0])

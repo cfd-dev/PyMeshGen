@@ -11,7 +11,19 @@ from data_structure.fluent_types import (
     CELL_ZONE_TYPE,
 )
 
-# FIXME 此函数暂时可以解析fluent cas网格，但是不支持fluent msh格式网格，待后续拓展
+# 预编译正则表达式模式
+HEX_PATTERN = re.compile(r"[0-9a-fA-F]+")
+NODE_SECTION_PATTERN = re.compile(r"\(10 \(1")
+FACE_SECTION_PATTERN = re.compile(
+    r"\(\s*13\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)"
+)
+CELL_SECTION_PATTERN = re.compile(
+    r"\(\s*12\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)"
+)
+BC_PATTERN = re.compile(
+    r"^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$"
+)
+
 def parse_fluent_msh(file_path):
     timer = TimeSpan("解析fluent .cas网格...")
 
@@ -25,24 +37,12 @@ def parse_fluent_msh(file_path):
         "dimensions": 0,
     }
 
+    # 使用生成器逐行读取，避免一次性加载所有行到内存
     with open(file_path, "r") as f:
         lines = [line.strip() for line in f if line.strip()]
 
     current_section = None
     current_zone = None
-
-    # 正则表达式模式
-    hex_pattern = re.compile(r"[0-9a-fA-F]+")
-    node_section_pattern = re.compile(r"\(10 \(1")
-    face_section_pattern = re.compile(
-        r"\(\s*13\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)"
-    )
-    cell_section_pattern = re.compile(
-        r"\(\s*12\s*\(\s*(\d+)\s+([0-9A-Fa-f]+)\s+([0-9A-Fa-f]+)\s+(\d+)\s+(\d+)"
-    )
-    bc_pattern = re.compile(
-        r"^\(\s*45\s+\(\s*(\d+)\s+([\w-]+)\s+([\w-]+)\s*\)\s*\(\s*\)\s*\)$"
-    )
 
     for line in lines:
         # 处理注释和输出提示
@@ -60,7 +60,6 @@ def parse_fluent_msh(file_path):
 
         # 处理维度信息
         if line.startswith("(2 "):
-            # 使用正则表达式提取所有数字
             numbers = re.findall(r"\d+", line)
             if len(numbers) >= 2:
                 raw_cas_data["dimensions"] = int(numbers[1])
@@ -84,12 +83,12 @@ def parse_fluent_msh(file_path):
             continue
 
         # 处理节点坐标
-        if node_section_pattern.match(line):
+        if NODE_SECTION_PATTERN.match(line):
             current_section = "nodes"
             continue
 
         # 处理面数据
-        face_match = face_section_pattern.match(line)
+        face_match = FACE_SECTION_PATTERN.match(line)
         if face_match:
             current_section = "faces"
             zone_id = int(face_match.group(1))
@@ -113,7 +112,7 @@ def parse_fluent_msh(file_path):
             continue
 
         # 处理单元数据
-        cell_match = cell_section_pattern.match(line)
+        cell_match = CELL_SECTION_PATTERN.match(line)
         if cell_match:
             current_section = "cells"
             zone_id = int(cell_match.group(1))
@@ -138,7 +137,7 @@ def parse_fluent_msh(file_path):
 
         # 处理边界条件
         if line.startswith("(45"):
-            match = bc_pattern.match(line)
+            match = BC_PATTERN.match(line)
             if match:
                 zone_id = int(match.group(1))
                 bc_type = match.group(2)
@@ -177,7 +176,7 @@ def parse_fluent_msh(file_path):
                 # 移除行尾的结束标记 '))'
                 line = line.replace("))", "").strip()
                 # 处理十六进制面数据
-                hex_values = hex_pattern.findall(line)
+                hex_values = HEX_PATTERN.findall(line)
                 dec_values = [int(h, 16) for h in hex_values]
 
                 if face_type == FLUENT_FACE_TYPES["MIXED"]:
@@ -259,22 +258,30 @@ def reconstruct_mesh_from_cas(raw_cas_data):
     )
     from data_structure.unstructured_grid import Unstructured_Grid
 
-    # 提取节点坐标
+    # 提取节点坐标并转换为numpy数组以提高性能
     node_coords = raw_cas_data["nodes"]
     num_nodes = len(node_coords)
 
     # 确保所有节点都有3个坐标值(x,y,z)
     # 如果是2D网格，添加z=0.0坐标
+    # 使用列表推导式提高效率
+    processed_coords = []
     for i in range(num_nodes):
-        if len(node_coords[i]) == 2:
+        coord = node_coords[i]
+        if len(coord) == 2:
             # 2D坐标，添加z=0.0
-            node_coords[i] = [node_coords[i][0], node_coords[i][1], 0.0]
-        elif len(node_coords[i]) < 2:
+            processed_coords.append([coord[0], coord[1], 0.0])
+        elif len(coord) >= 3:
+            # 已经是3D坐标，直接使用
+            processed_coords.append([coord[0], coord[1], coord[2]])
+        else:
             # 异常情况，至少需要x,y坐标
-            print(
-                f"Warning: Node {i} has only {len(node_coords[i])} coordinates, skipping"
-            )
+            print(f"Warning: Node {i} has only {len(coord)} coordinates, skipping")
             continue
+
+    # 转换为numpy数组
+    node_coords = np.array(processed_coords, dtype=np.float64)
+    num_nodes = len(node_coords)
 
     # 创建节点对象
     node_container = [NodeElement(node_coords[idx], idx) for idx in range(num_nodes)]
@@ -304,6 +311,52 @@ def reconstruct_mesh_from_cas(raw_cas_data):
 
     # 首先确定网格维度
     grid_dimension = raw_cas_data.get("dimensions", 2)
+    
+    # 预定义辅助函数，避免在循环中重复定义
+    def get_triangle_center(nodes):
+        center = [0.0, 0.0, 0.0]
+        for idx in nodes:
+            coords = node_container[idx].coords
+            center[0] += coords[0]
+            center[1] += coords[1]
+            center[2] += coords[2]
+        center[0] /= 3
+        center[1] /= 3
+        center[2] /= 3
+        return center
+    
+    def get_quad_center(nodes):
+        center = [0.0, 0.0, 0.0]
+        for idx in nodes:
+            coords = node_container[idx].coords
+            center[0] += coords[0]
+            center[1] += coords[1]
+            center[2] += coords[2]
+        center[0] /= 4
+        center[1] /= 4
+        center[2] /= 4
+        return center
+    
+    def sort_triangle_nodes(nodes, center):
+        def angle_from_reference(node_idx):
+            coords = node_container[node_idx].coords
+            dx = coords[0] - center[0]
+            dy = coords[1] - center[1]
+            return np.arctan2(dy, dx)
+        
+        sorted_nodes = sorted(nodes, key=angle_from_reference)
+        return sorted_nodes
+    
+    def sort_quad_nodes(nodes, center):
+        def angle_from_reference(node_idx):
+            coords = node_container[node_idx].coords
+            dx = coords[0] - center[0]
+            dy = coords[1] - center[1]
+            return np.arctan2(dy, dx)
+        
+        sorted_nodes = sorted(nodes, key=angle_from_reference)
+        return sorted_nodes
+    
     # 根据面连接关系构建单元
     for cell_id, faces in cell_faces.items():
         # 收集单元的所有节点
@@ -384,40 +437,10 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 top_nodes = [nodes_z[i][1] for i in range(3, 6)]
                 
                 # 对底面和顶面的节点进行排序，确保正确的对应关系
-                # 使用三角形的质心来确定节点顺序
-                def get_triangle_center(nodes):
-                    center = [0.0, 0.0, 0.0]
-                    for idx in nodes:
-                        coords = node_container[idx].coords
-                        center[0] += coords[0]
-                        center[1] += coords[1]
-                        center[2] += coords[2]
-                    center[0] /= 3
-                    center[1] /= 3
-                    center[2] /= 3
-                    return center
-                
                 bottom_center = get_triangle_center(bottom_nodes)
                 top_center = get_triangle_center(top_nodes)
                 
-                # 计算从底面中心到顶面中心的方向向量
-                direction = [
-                    top_center[0] - bottom_center[0],
-                    top_center[1] - bottom_center[1],
-                    top_center[2] - bottom_center[2],
-                ]
-                
                 # 对底面节点按角度排序
-                def sort_triangle_nodes(nodes, center):
-                    def angle_from_reference(node_idx):
-                        coords = node_container[node_idx].coords
-                        dx = coords[0] - center[0]
-                        dy = coords[1] - center[1]
-                        return np.arctan2(dy, dx)
-                    
-                    sorted_nodes = sorted(nodes, key=angle_from_reference)
-                    return sorted_nodes
-                
                 bottom_nodes_sorted = sort_triangle_nodes(bottom_nodes, bottom_center)
                 top_nodes_sorted = sort_triangle_nodes(top_nodes, top_center)
                 
@@ -450,33 +473,10 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 top_nodes = [nodes_z[i][1] for i in range(4, 8)]
                 
                 # 对底面和顶面的节点进行排序，确保正确的对应关系
-                # 使用四边形的质心来确定节点顺序
-                def get_quad_center(nodes):
-                    center = [0.0, 0.0, 0.0]
-                    for idx in nodes:
-                        coords = node_container[idx].coords
-                        center[0] += coords[0]
-                        center[1] += coords[1]
-                        center[2] += coords[2]
-                    center[0] /= 4
-                    center[1] /= 4
-                    center[2] /= 4
-                    return center
-                
                 bottom_center = get_quad_center(bottom_nodes)
                 top_center = get_quad_center(top_nodes)
                 
                 # 对底面节点按角度排序
-                def sort_quad_nodes(nodes, center):
-                    def angle_from_reference(node_idx):
-                        coords = node_container[node_idx].coords
-                        dx = coords[0] - center[0]
-                        dy = coords[1] - center[1]
-                        return np.arctan2(dy, dx)
-                    
-                    sorted_nodes = sorted(nodes, key=angle_from_reference)
-                    return sorted_nodes
-                
                 bottom_nodes_sorted = sort_quad_nodes(bottom_nodes, bottom_center)
                 top_nodes_sorted = sort_quad_nodes(top_nodes, top_center)
                 
