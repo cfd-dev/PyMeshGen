@@ -143,6 +143,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.show_boundary = True
         self.mesh_generation_thread = None
         self.progress_dialog = None
+        self.import_thread = None
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -788,8 +789,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.update_status("工程保存失败")
 
     def import_mesh(self):
-        """导入网格"""
+        """导入网格（使用异步线程，避免GUI卡顿）"""
         from gui.file_operations import FileOperations
+        from gui.import_thread import MeshImportThread
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -801,28 +803,83 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if file_path:
             try:
                 file_ops = FileOperations(self.project_root, log_callback=self.log_info)
-                mesh_data = file_ops.import_mesh(file_path)
-                self.current_mesh = mesh_data
 
-                if hasattr(self, 'mesh_display'):
-                    self.mesh_display.display_mesh(mesh_data)
+                # 创建导入线程
+                self.import_thread = MeshImportThread(file_path, file_ops)
 
-                # 保存原始节点坐标用于后续的节点映射
-                if hasattr(mesh_data, 'node_coords'):
-                    self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
+                # 连接信号
+                self.import_thread.progress_updated.connect(self.on_import_progress)
+                self.import_thread.import_finished.connect(self.on_import_finished)
+                self.import_thread.import_failed.connect(self.on_import_failed)
 
-                # 从MeshData对象中获取部件信息
-                if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
-                    self.update_parts_list_from_cas(mesh_data.parts_info)
+                # 禁用导入按钮，防止重复导入
+                if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+                    import_btn = self.ribbon.buttons.get('file', {}).get('import')
+                    if import_btn:
+                        import_btn.setEnabled(False)
 
-                # Refresh display to show all parts with different colors
-                self.refresh_display_all_parts()
+                # 启动线程
+                self.import_thread.start()
+                self.log_info(f"开始导入网格: {file_path}")
+                self.update_status("正在导入网格...")
 
-                self.log_info(f"已导入网格: {file_path}")
-                self.update_status("已导入网格")
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"导入网格失败: {str(e)}")
                 self.log_error(f"导入网格失败: {str(e)}")
+
+    def on_import_progress(self, message, progress):
+        """导入进度更新回调"""
+        self.status_bar.show_progress(message, progress)
+        self.log_info(f"{message} ({progress}%)")
+
+    def on_import_finished(self, mesh_data):
+        """导入完成回调"""
+        try:
+            self.current_mesh = mesh_data
+
+            if hasattr(self, 'mesh_display'):
+                self.mesh_display.display_mesh(mesh_data)
+
+            # 保存原始节点坐标用于后续的节点映射
+            if hasattr(mesh_data, 'node_coords'):
+                self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
+
+            # 从MeshData对象中获取部件信息
+            if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
+                self.update_parts_list_from_cas(mesh_data.parts_info)
+
+            # Refresh display to show all parts with different colors
+            self.refresh_display_all_parts()
+
+            self.log_info(f"已导入网格: {mesh_data.file_path}")
+            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
+            self.update_status("已导入网格")
+            self.status_bar.hide_progress()
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"处理导入的网格失败: {str(e)}")
+            self.log_error(f"处理导入的网格失败: {str(e)}")
+            self.status_bar.hide_progress()
+
+        finally:
+            # 重新启用导入按钮
+            if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+                import_btn = self.ribbon.buttons.get('file', {}).get('import')
+                if import_btn:
+                    import_btn.setEnabled(True)
+
+    def on_import_failed(self, error_message):
+        """导入失败回调"""
+        QMessageBox.critical(self, "错误", error_message)
+        self.log_error(error_message)
+        self.update_status("导入失败")
+        self.status_bar.hide_progress()
+
+        # 重新启用导入按钮
+        if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+            import_btn = self.ribbon.buttons.get('file', {}).get('import')
+            if import_btn:
+                import_btn.setEnabled(True)
 
     def export_mesh(self):
         """导出网格"""
@@ -3105,6 +3162,22 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             if reply == QMessageBox.Yes:
                 # 停止网格生成任务
                 self.mesh_generation_thread.stop()
+            else:
+                event.ignore()
+                return
+
+        # 检查是否有网格导入任务正在运行
+        if self.import_thread and self.import_thread.isRunning():
+            reply = QMessageBox.question(
+                self,
+                '网格导入中',
+                '网格导入任务正在进行中，确定要退出吗？任务将被强制终止。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                # 停止网格导入任务
+                self.import_thread.stop()
             else:
                 event.ignore()
                 return

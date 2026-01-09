@@ -26,6 +26,31 @@ class StatusBar:
         self.status_bar.setMinimumHeight(25)
         self.status_bar.showMessage("就绪")
 
+        # 创建进度条
+        from PyQt5.QtWidgets import QProgressBar, QWidget, QHBoxLayout
+        self.progress_widget = QWidget()
+        progress_layout = QHBoxLayout(self.progress_widget)
+        progress_layout.setContentsMargins(0, 0, 0, 0)
+        progress_layout.setSpacing(5)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumWidth(200)
+        self.progress_bar.setMinimumWidth(100)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setMaximumHeight(20)
+
+        self.progress_label = QLabel()
+        self.progress_label.setVisible(False)
+        self.progress_label.setMaximumWidth(300)
+        self.progress_label.setMinimumWidth(100)
+
+        progress_layout.addWidget(self.progress_label)
+        progress_layout.addWidget(self.progress_bar)
+
+        # 将进度条添加到状态栏右侧
+        self.status_bar.addPermanentWidget(self.progress_widget)
+
     def update_status(self, message):
         """更新状态栏信息"""
         self.status_bar.showMessage(message)
@@ -34,6 +59,24 @@ class StatusBar:
         font = self.status_bar.font()
         font.setPointSize(9)  # Slightly smaller font to fit more text
         self.status_bar.setFont(font)
+
+    def show_progress(self, message, progress):
+        """显示进度条
+
+        Args:
+            message: 进度消息
+            progress: 进度值 (0-100)
+        """
+        self.progress_label.setVisible(True)
+        self.progress_bar.setVisible(True)
+        self.progress_label.setText(message)
+        self.progress_bar.setValue(progress)
+
+    def hide_progress(self):
+        """隐藏进度条"""
+        self.progress_label.setVisible(False)
+        self.progress_bar.setVisible(False)
+        self.progress_bar.setValue(0)
 
 
 class InfoOutput:
