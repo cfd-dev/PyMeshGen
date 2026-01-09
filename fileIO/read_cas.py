@@ -11,7 +11,7 @@ from data_structure.fluent_types import (
     CELL_ZONE_TYPE,
 )
 
-
+# FIXME 此函数暂时可以解析fluent cas网格，但是不支持fluent msh格式网格，待后续拓展
 def parse_fluent_msh(file_path):
     timer = TimeSpan("解析fluent .cas网格...")
 
@@ -163,6 +163,8 @@ def parse_fluent_msh(file_path):
             if line == "))":
                 current_section = None
             else:
+                # 移除行尾的结束标记 '))'
+                line = line.replace("))", "").strip()
                 coords = list(map(float, line.split()))
                 for i in range(0, len(coords), raw_cas_data["dimensions"]):
                     raw_cas_data["nodes"].append(coords[i : i + raw_cas_data["dimensions"]])
@@ -172,6 +174,8 @@ def parse_fluent_msh(file_path):
             if line == "))":
                 current_section = None
             else:
+                # 移除行尾的结束标记 '))'
+                line = line.replace("))", "").strip()
                 # 处理十六进制面数据
                 hex_values = hex_pattern.findall(line)
                 dec_values = [int(h, 16) for h in hex_values]
@@ -205,6 +209,8 @@ def parse_fluent_msh(file_path):
             if line == "))":
                 current_section = None
             else:
+                # 移除行尾的结束标记 '))'
+                line = line.replace("))", "").strip()
                 dec_values = line.split()
                 # 分离单元类型
                 for h in dec_values:
