@@ -32,17 +32,17 @@ class TestUniversalCGNSReader(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """测试类初始化"""
-        cls.meshes_dir = project_root / "meshes"
+        cls.meshes_dir = project_root / "examples"
         
-        # 检查meshes目录是否存在
+        # 检查examples目录是否存在
         if not cls.meshes_dir.exists():
-            cls.skipTest(f"meshes目录不存在: {cls.meshes_dir}")
+            raise unittest.SkipTest(f"examples目录不存在: {cls.meshes_dir}")
         
         # 查找所有CGNS文件
-        cls.cgns_files = sorted(cls.meshes_dir.glob("*.cgns"))
+        cls.cgns_files = sorted(cls.meshes_dir.rglob("*.cgns"))
         
         if not cls.cgns_files:
-            cls.skipTest(f"meshes目录中没有CGNS文件")
+            raise unittest.SkipTest(f"examples目录中没有CGNS文件")
 
     def test_cgns_files_exist(self):
         """测试CGNS文件是否存在"""
@@ -142,19 +142,18 @@ class TestUniversalCGNSReader(unittest.TestCase):
                     # 检查是否有高阶元素
                     for cell in reader.cells:
                         if cell['num_nodes'] > 4:  # 高阶元素通常有更多节点
-                            high_order_files.append(cgns_file.name)
+                            high_order_files.append(cgns_file)
                             break
             except Exception:
                 continue
         
         # 如果找到了高阶元素文件，验证它们能正确读取
         if high_order_files:
-            for file_name in high_order_files:
-                cgns_file = self.meshes_dir / file_name
+            for cgns_file in high_order_files:
                 reader = UniversalCGNSReader(str(cgns_file))
                 success = reader.read()
                 
-                self.assertTrue(success, f"高阶元素CGNS文件读取失败: {file_name}")
+                self.assertTrue(success, f"高阶元素CGNS文件读取失败: {cgns_file.name}")
                 
                 # 验证高阶元素
                 for cell in reader.cells:
