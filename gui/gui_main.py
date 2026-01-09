@@ -39,6 +39,7 @@ from gui.gui_base import (
     Splitter, PartListWidget
 )
 from gui.ribbon_widget import RibbonWidget
+from gui.toolbar import ViewToolbar
 from gui.mesh_display import MeshDisplayArea
 from gui.ui_utils import UIStyles
 from data_structure.parameters import Parameters
@@ -272,6 +273,19 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def _create_menu(self):
         """创建菜单"""
         self._create_ribbon()
+        self._create_view_toolbar()
+
+    def _create_view_toolbar(self):
+        """创建视图工具栏"""
+        # Create the view toolbar
+        self.view_toolbar = ViewToolbar(self)
+        self.view_toolbar.add_view_toolbar_to_main_window(self)
+
+        # Add the toolbar to the main window
+        self.addToolBar(Qt.TopToolBarArea, self.view_toolbar)
+
+        # Initially show the toolbar
+        self.view_toolbar.show()
 
     def _create_ribbon(self):
         """创建功能区"""
