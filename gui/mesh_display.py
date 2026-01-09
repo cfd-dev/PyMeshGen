@@ -1047,7 +1047,8 @@ class MeshDisplayArea:
                 camera.SetPosition(0, 0, 1)
                 camera.SetFocalPoint(0, 0, 0)
                 camera.SetViewUp(0, 1, 0)
-                camera.SetParallelProjection(True)
+                # Use perspective projection instead of parallel for better zoom flexibility
+                camera.SetParallelProjection(False)
                 self.renderer.ResetCamera()
             except Exception as e:
                 print(f"重置视图失败: {str(e)}")
@@ -1060,7 +1061,18 @@ class MeshDisplayArea:
         if self.renderer:
             try:
                 camera = self.renderer.GetActiveCamera()
-                camera.Zoom(1.2)
+                # Instead of using Zoom(1.2), we'll decrease the camera's distance to focal point
+                # Get current position and focal point
+                pos = camera.GetPosition()
+                focal = camera.GetFocalPoint()
+
+                # Calculate direction vector from focal point to camera position
+                direction = [pos[i] - focal[i] for i in range(3)]
+
+                # Move camera closer to focal point (zoom in)
+                new_pos = [focal[i] + 0.8 * direction[i] for i in range(3)]
+
+                camera.SetPosition(new_pos)
             except Exception as e:
                 print(f"放大视图失败: {str(e)}")
                 return
@@ -1072,7 +1084,18 @@ class MeshDisplayArea:
         if self.renderer:
             try:
                 camera = self.renderer.GetActiveCamera()
-                camera.Zoom(0.8)
+                # Instead of using Zoom(0.8), we'll increase the camera's distance to focal point
+                # Get current position and focal point
+                pos = camera.GetPosition()
+                focal = camera.GetFocalPoint()
+
+                # Calculate direction vector from focal point to camera position
+                direction = [pos[i] - focal[i] for i in range(3)]
+
+                # Move camera further from focal point (zoom out)
+                new_pos = [focal[i] + 1.25 * direction[i] for i in range(3)]
+
+                camera.SetPosition(new_pos)
             except Exception as e:
                 print(f"缩小视图失败: {str(e)}")
                 return
@@ -1083,6 +1106,9 @@ class MeshDisplayArea:
         """适应视图以显示所有内容"""
         if self.renderer:
             try:
+                camera = self.renderer.GetActiveCamera()
+                # Ensure perspective projection for proper fitting
+                camera.SetParallelProjection(False)
                 self.renderer.ResetCamera()
             except Exception as e:
                 print(f"适应视图失败: {str(e)}")
