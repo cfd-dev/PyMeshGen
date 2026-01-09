@@ -2,7 +2,8 @@ import numpy as np
 from math import sqrt
 import matplotlib.pyplot as plt
 
-from fileIO.vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
+from fileIO.vtk_io import write_vtk, parse_vtk_msh
+from data_structure.vtk_types import VTKCellType
 from utils.geom_toolkit import (
     calculate_distance,
     segments_intersect,

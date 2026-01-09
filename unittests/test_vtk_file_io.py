@@ -16,6 +16,7 @@ sys.path.insert(0, current_dir)
 from fileIO.vtk_io import read_vtk, reconstruct_mesh_from_vtk, write_vtk, parse_vtk_msh
 from data_structure.unstructured_grid import Unstructured_Grid
 from data_structure.basic_elements import Triangle, Quadrilateral, NodeElement, Tetrahedron
+from data_structure.vtk_types import VTKCellType
 
 
 class TestVTKFileIO(unittest.TestCase):
@@ -266,7 +267,7 @@ class TestTetrahedronVTKIO(unittest.TestCase):
         
         cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
         boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
-        cell_type_container = [10] * len(mesh.cell_container)
+        cell_type_container = [VTKCellType.TETRA] * len(mesh.cell_container)
         cell_part_names = [cell.part_name for cell in mesh.cell_container]
         
         write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 
@@ -307,7 +308,7 @@ class TestTetrahedronVTKIO(unittest.TestCase):
         
         cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
         boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
-        cell_type_container = [10] * len(mesh.cell_container)
+        cell_type_container = [VTKCellType.TETRA] * len(mesh.cell_container)
         cell_part_names = [cell.part_name for cell in mesh.cell_container]
         
         write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 
@@ -345,7 +346,7 @@ class TestTetrahedronVTKIO(unittest.TestCase):
         
         cell_idx_container = [cell.node_ids for cell in mesh.cell_container]
         boundary_nodes_idx = [node.idx for node in mesh.boundary_nodes]
-        cell_type_container = [10] * len(mesh.cell_container)
+        cell_type_container = [VTKCellType.TETRA] * len(mesh.cell_container)
         cell_part_names = [cell.part_name for cell in mesh.cell_container]
         
         write_vtk(vtk_path, mesh.node_coords, cell_idx_container, boundary_nodes_idx, 

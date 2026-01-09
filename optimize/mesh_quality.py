@@ -62,6 +62,16 @@ def triangle_skewness(p1, p2, p3):
         skewness = 0.0
         return skewness
 
+    # 计算最大和最小角度
+    max_angle = max(angles)
+    min_angle = min(angles)
+
+    skew1 = (max_angle - 60) / 120
+    skew2 = (60 - min_angle) / 60
+    skewness = 1.0 - max([skew1, skew2])
+
+    return skewness
+
 
 def prism_shape_quality(p1, p2, p3, p4, p5, p6):
     """计算三棱柱网格质量（基于体积与棱长立方比）
@@ -295,16 +305,6 @@ def hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8):
 
     # 确保偏斜度在[0, 1]范围内
     skewness = max(0.0, min(1.0, skewness))
-
-    return skewness
-
-    # 计算最大和最小角度
-    max_angle = max(angles)
-    min_angle = min(angles)
-
-    skew1 = (max_angle - 60) / 120
-    skew2 = (60 - min_angle) / 60
-    skewness = 1.0 - max([skew1, skew2])
 
     return skewness
 

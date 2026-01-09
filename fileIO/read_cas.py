@@ -3,6 +3,7 @@ import numpy as np
 
 from utils.timer import TimeSpan
 from utils.geom_toolkit import sort_quadrilateral_nodes
+from data_structure.vtk_types import VTKCellType
 
 # Fluent网格类型定义
 FLUENT_FACE_TYPES = {"MIXED": 0, "LINEAR": 2, "TRI": 3, "QUAD": 4}
@@ -348,7 +349,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                     node1, node2, node3, "interior-triangle", idx=len(cell_container)
                 )
                 cell_container.append(cell)
-                cell_type_container.append(5)  # VTK_TRIANGLE
+                cell_type_container.append(VTKCellType.TRIANGLE)
             elif num_nodes == 4 and num_faces == 4:
                 # 四边形单元
                 # 对节点进行排序，确保逆时针顺序和正确的法向量方向
@@ -366,7 +367,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                     idx=len(cell_container),
                 )
                 cell_container.append(cell)
-                cell_type_container.append(9)  # VTK_QUAD
+                cell_type_container.append(VTKCellType.QUAD)
         elif grid_dimension == 3:
             # 根据节点数量确定单元类型
             if num_nodes == 4 and num_faces == 4:
@@ -379,14 +380,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                     node1, node2, node3, node4, "tetrahedron", idx=len(cell_container)
                 )
                 cell_container.append(cell)
-                cell_type_container.append(10)  # VTK_TETRA
-
-            elif num_nodes == 8 and num_faces == 6:
-                # 六面体 (Hexahedron)
-                nodes = [node_container[idx] for idx in cell_nodes]
-                cell = Hexahedron(*nodes, "hexahedron", idx=len(cell_container))
-                cell_container.append(cell)
-                cell_type_container.append(12)  # VTK_HEXAHEDRON
+                cell_type_container.append(VTKCellType.TETRA)
 
             elif num_nodes == 5 and num_faces == 5:
                 # 金字塔 (Pyramid)
@@ -397,7 +391,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                 node5 = node_container[cell_nodes[4]]
                 cell = Pyramid(node1, node2, node3, node4, node5, "pyramid", idx=len(cell_container))
                 cell_container.append(cell)
-                cell_type_container.append(14)  # VTK_PYRAMID
+                cell_type_container.append(VTKCellType.PYRAMID)
             elif num_nodes == 6 and num_faces == 5:
                 # 棱柱 (Prism/Wedge)
                 # 三棱柱由两个三角形底面和三个矩形侧面组成
@@ -463,7 +457,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                     "prism", idx=len(cell_container)
                 )
                 cell_container.append(cell)
-                cell_type_container.append(13)  # VTK_WEDGE
+                cell_type_container.append(VTKCellType.WEDGE)
             elif num_nodes == 8 and num_faces == 6:
                 # 六面体 (Hexahedron)
                 # 六面体由两个四边形底面和四个矩形侧面组成
@@ -524,7 +518,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
                     "hexahedron", idx=len(cell_container)
                 )
                 cell_container.append(cell)
-                cell_type_container.append(12)  # VTK_HEXAHEDRON
+                cell_type_container.append(VTKCellType.HEXAHEDRON)
         else:
             # 其他类型暂时不支持
             print(f"Warning: Unsupported cell with {len(cell_nodes)} nodes, skipping")

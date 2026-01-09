@@ -1,21 +1,7 @@
 import numpy as np
-from enum import IntEnum
 
 from utils.message import info
-
-
-class VTK_ELEMENT_TYPE(IntEnum):
-    """VTK元素类型枚举"""
-
-    EMPTY_CELL = 0
-    VERTEX = 1
-    LINE = 3
-    TRI = 5  # 三角形单元
-    QUAD = 9  # 四边形单元
-    TETRA = 10  # 四面体
-    HEXA = 12  # 六面体
-    PRISM = 13  # 三棱柱
-    PYRAMID = 14  # 金字塔
+from data_structure.vtk_types import VTKCellType
 
 
 def write_vtk(
@@ -44,22 +30,22 @@ def write_vtk(
     num_prism = 0
     num_hexa = 0
     for i, cell in enumerate(cell_idx_container):
-        if cell_type_container[i] == VTK_ELEMENT_TYPE.TRI.value:  # 三角形
+        if cell_type_container[i] == VTKCellType.TRIANGLE:  # 三角形
             cell_data.append(f"3 {cell[0]} {cell[1]} {cell[2]}")
             num_tri += 1
-        elif cell_type_container[i] == VTK_ELEMENT_TYPE.QUAD.value:  # 四边形
+        elif cell_type_container[i] == VTKCellType.QUAD:  # 四边形
             cell_data.append(f"4 {cell[0]} {cell[1]} {cell[2]} {cell[3]}")
             num_quad += 1
-        elif cell_type_container[i] == VTK_ELEMENT_TYPE.TETRA.value:  # 四面体
+        elif cell_type_container[i] == VTKCellType.TETRA:  # 四面体
             cell_data.append(f"4 {cell[0]} {cell[1]} {cell[2]} {cell[3]}")
             num_tetra += 1
-        elif cell_type_container[i] == VTK_ELEMENT_TYPE.PYRAMID.value:  # 金字塔
+        elif cell_type_container[i] == VTKCellType.PYRAMID:  # 金字塔
             cell_data.append(f"5 {cell[0]} {cell[1]} {cell[2]} {cell[3]} {cell[4]}")
             num_pyramid += 1
-        elif cell_type_container[i] == VTK_ELEMENT_TYPE.PRISM.value:  # 三棱柱
+        elif cell_type_container[i] == VTKCellType.WEDGE:  # 三棱柱
             cell_data.append(f"6 {cell[0]} {cell[1]} {cell[2]} {cell[3]} {cell[4]} {cell[5]}")
             num_prism += 1
-        elif cell_type_container[i] == VTK_ELEMENT_TYPE.HEXA.value:  # 六面体
+        elif cell_type_container[i] == VTKCellType.HEXAHEDRON:  # 六面体
             cell_data.append(f"8 {cell[0]} {cell[1]} {cell[2]} {cell[3]} {cell[4]} {cell[5]} {cell[6]} {cell[7]}")
             num_hexa += 1
 
@@ -165,7 +151,7 @@ def read_vtk(filename):
                 cell_type = int(lines[i])
                 # 检查是否为支持的类型
                 try:
-                    VTK_ELEMENT_TYPE(cell_type)  # 尝试转换为枚举实例
+                    VTKCellType(cell_type)  # 尝试转换为枚举实例
                 except ValueError:
                     raise ValueError(f"不支持的单元类型: {cell_type}")
 
@@ -255,33 +241,33 @@ def reconstruct_mesh_from_vtk(
         node2 = node_container[cell_idx_container[idx][1]]
         node3 = node_container[cell_idx_container[idx][2]]
 
-        cell_type = VTK_ELEMENT_TYPE(cell_type_container[idx])
-        if cell_type == VTK_ELEMENT_TYPE.TRI:  # 三角形
+        cell_type = VTKCellType(cell_type_container[idx])
+        if cell_type == VTKCellType.TRIANGLE:  # 三角形
             cell = Triangle(node1, node2, node3, "interior-triangle", idx)
-        elif cell_type == VTK_ELEMENT_TYPE.QUAD:  # 四边形
+        elif cell_type == VTKCellType.QUAD:  # 四边形
             if len(cell_idx_container[idx]) < 4:
                 raise ValueError(f"四边形单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             cell = Quadrilateral(node1, node2, node3, node4, "interior-quadrilateral", idx)
-        elif cell_type == VTK_ELEMENT_TYPE.TETRA:  # 四面体
+        elif cell_type == VTKCellType.TETRA:  # 四面体
             if len(cell_idx_container[idx]) < 4:
                 raise ValueError(f"四面体单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             cell = Tetrahedron(node1, node2, node3, node4, "interior-tetrahedron", idx)
-        elif cell_type == VTK_ELEMENT_TYPE.PYRAMID:  # 金字塔
+        elif cell_type == VTKCellType.PYRAMID:  # 金字塔
             if len(cell_idx_container[idx]) < 5:
                 raise ValueError(f"金字塔单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             node5 = node_container[cell_idx_container[idx][4]]
             cell = Pyramid(node1, node2, node3, node4, node5, "interior-pyramid", idx)
-        elif cell_type == VTK_ELEMENT_TYPE.PRISM:  # 三棱柱
+        elif cell_type == VTKCellType.WEDGE:  # 三棱柱
             if len(cell_idx_container[idx]) < 6:
                 raise ValueError(f"三棱柱单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]
             node5 = node_container[cell_idx_container[idx][4]]
             node6 = node_container[cell_idx_container[idx][5]]
             cell = Prism(node1, node2, node3, node4, node5, node6, "interior-prism", idx)
-        elif cell_type == VTK_ELEMENT_TYPE.HEXA:  # 六面体
+        elif cell_type == VTKCellType.HEXAHEDRON:  # 六面体
             if len(cell_idx_container[idx]) < 8:
                 raise ValueError(f"六面体单元 {idx} 节点数量不足: {len(cell_idx_container[idx])}")
             node4 = node_container[cell_idx_container[idx][3]]

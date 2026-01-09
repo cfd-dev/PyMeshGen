@@ -1,9 +1,9 @@
 import numpy as np
 
 try:
-    from vtk_io import VTK_ELEMENT_TYPE
+    from data_structure.vtk_types import VTKCellType
 except (ImportError, ModuleNotFoundError):
-    from fileIO.vtk_io import VTK_ELEMENT_TYPE
+    from data_structure.vtk_types import VTKCellType
 
 try:
     from basic_elements import NodeElement, Triangle
@@ -61,7 +61,7 @@ def read_stl(filename):
             boundary_nodes.update(edge)
 
     boundary_nodes_idx = list(boundary_nodes)
-    cell_type_container = [VTK_ELEMENT_TYPE.TRI.value] * len(cell_idx_container)
+    cell_type_container = [VTKCellType.TRIANGLE] * len(cell_idx_container)
 
     return node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
 
@@ -74,7 +74,7 @@ def write_stl(
         f.write("solid PyMeshGen\n")
 
         for cell_idx, cell_type in zip(cell_idx_container, cell_type_container):
-            if VTK_ELEMENT_TYPE(cell_type) != VTK_ELEMENT_TYPE.TRI:
+            if VTKCellType(cell_type) != VTKCellType.TRIANGLE:
                 continue  # 跳过非三角形单元
 
             # 获取三个顶点坐标

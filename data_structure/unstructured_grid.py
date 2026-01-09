@@ -9,7 +9,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fileIO.vtk_io import write_vtk, parse_vtk_msh, VTK_ELEMENT_TYPE
+from fileIO.vtk_io import write_vtk, parse_vtk_msh
+from data_structure.vtk_types import VTKCellType
 from utils.message import warning
 
 
@@ -338,16 +339,16 @@ class Unstructured_Grid:
             # 初始化vtk_cell_type为None，避免未定义错误
             vtk_cell_type = None
             # if isinstance(cell, Quadrilateral):
-            #     vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
+            #     vtk_cell_type = VTKCellType.QUAD
             # elif isinstance(cell, Triangle):
-            #     vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
+            #     vtk_cell_type = VTKCellType.TRIANGLE
             # 使用类名字符串进行类型判断，避免导入问题
             cell_class_name = cell.__class__.__name__
 
             if cell_class_name == 'Quadrilateral':
-                vtk_cell_type = VTK_ELEMENT_TYPE.QUAD.value
+                vtk_cell_type = VTKCellType.QUAD
             elif cell_class_name == 'Triangle':
-                vtk_cell_type = VTK_ELEMENT_TYPE.TRI.value
+                vtk_cell_type = VTKCellType.TRIANGLE
             else:
                 # 如果遇到未知类型的单元，可以选择跳过或抛出错误
                 warning(f"未知单元类型: {type(cell)}, 跳过保存")
