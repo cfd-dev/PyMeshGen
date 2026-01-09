@@ -573,6 +573,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     elif hasattr(self, 'mesh_display'):
                         self.mesh_display.display_mesh(self.current_mesh)
                         self.log_info("网格已在视图区显示")
+
+                        # Refresh display to show all parts with different colors
+                        self.refresh_display_all_parts()
                     else:
                         self.log_info("未找到网格显示组件")
 
@@ -593,10 +596,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 # Clear the existing parts in the actual list widget
                 self.parts_list_widget.parts_list.clear()
 
-                # Add parts to the list widget
+                # Add parts to the list widget with checkboxes
                 for part in project_data["config"]["parts"]:
                     item_text = f"{part['part_name']} - Max Size: {part['max_size']}, Prism: {part['PRISM_SWITCH']}"
-                    self.parts_list_widget.parts_list.addItem(item_text)
+                    self.parts_list_widget.add_part_with_checkbox(item_text)
 
             # Also update parts_params if it exists
             if hasattr(self, 'params') and hasattr(self, 'parts_params'):
@@ -781,6 +784,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
                     self.update_parts_list_from_cas(mesh_data.parts_info)
 
+                # Refresh display to show all parts with different colors
+                self.refresh_display_all_parts()
+
                 self.log_info(f"已导入网格: {file_path}")
                 self.update_status("已导入网格")
             except Exception as e:
@@ -941,7 +947,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             return
 
         part_name = f"部件{self.parts_list_widget.parts_list.count() + 1}"
-        self.parts_list_widget.parts_list.addItem(part_name)
+        self.parts_list_widget.add_part_with_checkbox(part_name)
         self.log_info(f"已添加部件: {part_name}")
         self.update_status("已添加部件")
 
@@ -1099,6 +1105,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         selected_part_item = self.parts_list_widget.parts_list.item(current_row)
         if selected_part_item:
             selected_part_name = selected_part_item.text()
+            # Check the item to show it
+            selected_part_item.setCheckState(Qt.Checked)
+            # Refresh display to show all checked items
+            self.refresh_display_all_parts()
             self._execute_part_operation("显示选中部件", self.mesh_display.display_part, selected_part_name)
 
 
@@ -1113,6 +1123,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 获取选中部件的名称
         selected_part_item = self.parts_list_widget.parts_list.item(current_row)
         if selected_part_item:
+            # Uncheck all items first
+            for i in range(self.parts_list_widget.parts_list.count()):
+                item = self.parts_list_widget.parts_list.item(i)
+                item.setCheckState(Qt.Unchecked)
+
+            # Then check only the selected item
+            selected_part_item.setCheckState(Qt.Checked)
+
+            # Refresh display to show only the checked item
+            self.refresh_display_all_parts()
+
             selected_part_name = selected_part_item.text()
             self._execute_part_operation("只显示选中部件", self.mesh_display.show_only_selected_part, selected_part_name)
 
@@ -1125,28 +1146,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # 更新状态栏
         self.update_status("显示所有部件")
 
-        # 如果有3D显示区域，重新显示整个网格
-        if hasattr(self, 'mesh_display'):
-            try:
-                # Clear any additional actors that might have been added by display_part
-                if hasattr(self.mesh_display, 'additional_actors'):
-                    self.mesh_display.additional_actors.clear()
+        # 设置所有部件为选中状态
+        for i in range(self.parts_list_widget.parts_list.count()):
+            item = self.parts_list_widget.parts_list.item(i)
+            item.setCheckState(Qt.Checked)
 
-                # Clear highlights as well
-                self.mesh_display.clear_highlights()
+        # 刷新显示以显示所有部件
+        self.refresh_display_all_parts()
 
-                # Display the full mesh
-                if hasattr(self, 'current_mesh'):
-                    success = self.mesh_display.display_mesh(self.current_mesh)
-                else:
-                    success = self.mesh_display.display_mesh()
-
-                if success:
-                    self.log_info("成功显示所有部件")
-                else:
-                    self.log_error("显示所有部件失败")
-            except Exception as e:
-                self.log_error(f"显示所有部件失败: {str(e)}")
+        self.log_info("成功显示所有部件")
 
 
     def update_params_display(self):
@@ -1165,9 +1173,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     part_name = getattr(part, 'part_name', f"部件{i+1}")
                     if hasattr(part, 'part_params') and hasattr(part.part_params, 'part_name'):
                         part_name = part.part_params.part_name
-                    self.parts_list_widget.parts_list.addItem(part_name)
+                    self.parts_list_widget.add_part_with_checkbox(part_name)
             else:
-                self.parts_list_widget.parts_list.addItem("默认部件")
+                self.parts_list_widget.add_part_with_checkbox("默认部件")
 
     def update_parts_list_from_cas(self, parts_info):
         """从cas文件的部件信息更新部件列表"""
@@ -1177,13 +1185,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if isinstance(parts_info, list):
             for part_info in parts_info:
                 part_name = part_info.get('part_name', '未知部件')
-                self.parts_list_widget.parts_list.addItem(part_name)
+                self.parts_list_widget.add_part_with_checkbox(part_name)
         elif isinstance(parts_info, dict):
             for part_name in parts_info.keys():
                 if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
-                    self.parts_list_widget.parts_list.addItem(part_name)
+                    self.parts_list_widget.add_part_with_checkbox(part_name)
         elif parts_info:
-            self.parts_list_widget.parts_list.addItem(str(parts_info))
+            self.parts_list_widget.add_part_with_checkbox(str(parts_info))
 
     def on_part_select(self, index):
         """处理部件列表选择事件"""
@@ -1198,7 +1206,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         part_index = index
         selected_part_name = ""
         if self.parts_list_widget.parts_list.count() > index:
-            selected_part_name = self.parts_list_widget.parts_list.item(index).text()
+            item = self.parts_list_widget.parts_list.item(index)
+            # Extract actual part name from the item text (without checkbox state)
+            selected_part_name = item.text()
 
         if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
             if isinstance(self.cas_parts_info, dict) and selected_part_name in self.cas_parts_info:
@@ -1221,7 +1231,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 self.props_text.setPlainText(props_content)
                 self.update_status(f"已选中CAS部件: {selected_part_name}")
-                
+
                 # 高亮显示选中的部件
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.highlight_part(selected_part_name, highlight=True, parts_info=self.cas_parts_info)
@@ -1243,7 +1253,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 self.props_text.setPlainText(props_content)
                 self.update_status(f"已选中CAS部件: {part_name}")
-                
+
                 # 高亮显示选中的部件
                 if hasattr(self, 'mesh_display'):
                     # 当cas_parts_info是列表时，需要构建一个临时的部件字典
@@ -1276,6 +1286,48 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 error_content += f"显示部件属性时出错:\n{str(e)}\n"
                 error_content += f"\n请检查部件数据是否正确\n"
                 self.props_text.setPlainText(error_content)
+
+    def handle_part_visibility_change(self, part_name, is_visible):
+        """处理部件可见性变化"""
+        if not hasattr(self, 'mesh_display') or not self.mesh_display:
+            return
+
+        # Refresh the entire display to show/hide parts based on checkbox states
+        self.refresh_display_all_parts()
+
+        # Extract the actual part name from formatted text (e.g., "部件1 - Max Size: 1.0, Prism: True" -> "部件1")
+        actual_part_name = part_name.split(' - ')[0] if ' - ' in part_name else part_name
+
+        action = "显示" if is_visible else "隐藏"
+        self.log_info(f"{action}部件: {actual_part_name}")
+
+    def refresh_display_all_parts(self):
+        """刷新显示所有可见部件"""
+        if not hasattr(self, 'mesh_display') or not self.mesh_display:
+            return
+
+        # Clear current display
+        self.mesh_display.clear_mesh_actors()
+
+        # Get all currently checked parts
+        visible_parts = []
+        for i in range(self.parts_list_widget.parts_list.count()):
+            item = self.parts_list_widget.parts_list.item(i)
+            part_name = item.text().split(' - ')[0] if ' - ' in item.text() else item.text()
+            if item.checkState() == Qt.Checked:
+                visible_parts.append(part_name)
+
+        # Display only visible parts
+        if visible_parts:
+            # For each visible part, display it with a unique color
+            for part_name in visible_parts:
+                self.mesh_display.display_part(part_name, parts_info=self.cas_parts_info)
+        else:
+            # If no parts are visible, clear the display
+            self.mesh_display.clear()
+
+        # Re-add axes after displaying parts
+        self.mesh_display.add_axes()
 
     def log_info(self, message):
         """记录信息日志"""
@@ -1817,6 +1869,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("已显示生成的网格")
                 # 更新部件列表以显示新网格的部件信息
                 self._update_parts_list_from_generated_mesh(result_mesh)
+
+                # Refresh display to show all parts with different colors
+                self.refresh_display_all_parts()
             else:
                 self.log_info("未找到result_mesh，尝试从输出文件加载...")
                 # 从输出文件加载生成的网格
@@ -1831,6 +1886,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 # 更新部件列表以显示新网格的部件信息
                 self._update_parts_list_from_generated_mesh(generated_mesh)
+
+                # Refresh display to show all parts with different colors
+                self.refresh_display_all_parts()
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"加载生成的网格失败: {str(e)}")
@@ -1918,6 +1976,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 # 更新部件列表显示
                 self.update_parts_list_from_cas(updated_parts_info)
                 self.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
+
+                # Refresh display to show all parts with different colors
+                self.refresh_display_all_parts()
             else:
                 # 如果没有部件信息，保持原有部件列表
                 self.log_info("生成的网格中未检测到部件信息，保持原有部件列表")

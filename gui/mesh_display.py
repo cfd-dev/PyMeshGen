@@ -1074,12 +1074,13 @@ class MeshDisplayArea:
 
             self.render_window.Render()
     
-    def display_part(self, part_name, parts_info=None):
+    def display_part(self, part_name, parts_info=None, color=None):
         """显示指定的部件，保留其他已显示的内容
 
         Args:
             part_name (str): 要显示的部件名称
             parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
+            color (tuple): 可选，指定颜色 (R, G, B)，范围0-1
         """
         try:
             # 检查渲染器和渲染窗口是否可用
@@ -1163,9 +1164,27 @@ class MeshDisplayArea:
                     part_actor = vtk.vtkActor()
                     part_actor.SetMapper(mapper)
 
-                    # 设置部件颜色（黄色）
-                    part_actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-                    part_actor.GetProperty().SetLineWidth(4.0)
+                    # 设置部件颜色（如果未指定颜色，则使用不同颜色区分不同部件）
+                    if color:
+                        part_actor.GetProperty().SetColor(color)
+                    else:
+                        # Generate a unique color for each part based on its name
+                        color_index = hash(actual_part_name) % 10  # Use hash to get consistent color per part
+                        colors = [
+                            (1.0, 0.0, 0.0),  # Red
+                            (0.0, 1.0, 0.0),  # Green
+                            (0.0, 0.0, 1.0),  # Blue
+                            (1.0, 1.0, 0.0),  # Yellow
+                            (1.0, 0.0, 1.0),  # Magenta
+                            (0.0, 1.0, 1.0),  # Cyan
+                            (1.0, 0.5, 0.0),  # Orange
+                            (0.5, 0.0, 1.0),  # Purple
+                            (0.0, 0.5, 1.0),  # Light Blue
+                            (1.0, 0.5, 0.5),  # Pink
+                        ]
+                        part_actor.GetProperty().SetColor(colors[color_index])
+
+                    part_actor.GetProperty().SetLineWidth(2.0)
                     part_actor.GetProperty().SetOpacity(1.0)
 
                     # 添加部件演员
@@ -1187,8 +1206,11 @@ class MeshDisplayArea:
                     additional_actor.SetMapper(mapper)
 
                     self._apply_default_mesh_properties()
-                    additional_actor.GetProperty().SetColor(1.0, 1.0, 0.0)  # Highlight in yellow
-                    additional_actor.GetProperty().SetLineWidth(4.0)
+                    if color:
+                        additional_actor.GetProperty().SetColor(color)
+                    else:
+                        additional_actor.GetProperty().SetColor(0.0, 0.0, 1.0)  # Blue
+                    additional_actor.GetProperty().SetLineWidth(2.0)
 
                     self.renderer.AddActor(additional_actor)
 

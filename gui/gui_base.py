@@ -507,7 +507,7 @@ class PartListWidget:
     """部件列表组件"""
 
     def __init__(self, parent=None, add_callback=None, remove_callback=None, edit_callback=None, show_callback=None, show_only_callback=None, show_all_callback=None):
-        from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QWidget, QMenu
+        from PyQt5.QtWidgets import QListWidget, QVBoxLayout, QWidget, QMenu, QListWidgetItem
         from PyQt5.QtCore import pyqtSignal, Qt
         from PyQt5.QtWidgets import QAction
 
@@ -534,6 +534,32 @@ class PartListWidget:
         # 添加右键菜单
         self.parts_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.parts_list.customContextMenuRequested.connect(self.show_context_menu)
+
+        # Connect item click to handle checkbox state changes
+        self.parts_list.itemClicked.connect(self.handle_item_click)
+
+    def add_part_with_checkbox(self, part_name):
+        """添加带复选框的部件项"""
+        from PyQt5.QtWidgets import QListWidgetItem
+        from PyQt5.QtCore import Qt
+
+        item = QListWidgetItem(part_name)
+        item.setCheckState(Qt.Checked)  # 默认选中
+        self.parts_list.addItem(item)
+        return item
+
+    def handle_item_click(self, item):
+        """处理项目点击事件，切换复选框状态"""
+        # 如果点击的是复选框区域，状态已经自动切换
+        # 如果点击的是文本区域，我们也切换状态
+        if item.checkState() == Qt.Checked:
+            item.setCheckState(Qt.Unchecked)
+        else:
+            item.setCheckState(Qt.Checked)
+
+        # 触发显示/隐藏逻辑
+        if hasattr(self.parent, 'handle_part_visibility_change'):
+            self.parent.handle_part_visibility_change(item.text(), item.checkState() == Qt.Checked)
 
     def show_context_menu(self, position):
         """显示右键菜单"""
