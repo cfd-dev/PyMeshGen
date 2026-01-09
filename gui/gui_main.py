@@ -305,7 +305,18 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 'reset': 'view-refresh',
                 'fit': 'zoom-fit-best',
                 'zoom_in': 'zoom-in',
-                'zoom_out': 'zoom-out'
+                'zoom_out': 'zoom-out',
+                'view_x_pos': 'view-x-pos',
+                'view_x_neg': 'view-x-neg',
+                'view_y_pos': 'view-y-pos',
+                'view_y_neg': 'view-y-neg',
+                'view_z_pos': 'view-z-pos',
+                'view_z_neg': 'view-z-neg',
+                'view_iso': 'view-iso',
+                'surface': 'surface',
+                'wireframe': 'wireframe',
+                'surface-wireframe': 'surface-wireframe',
+                'background': 'configure'
             }.get(button_name, 'view-refresh')
             button.setIcon(get_icon(icon_name))
 
@@ -337,7 +348,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         for button_name, button in self.ribbon.buttons.get('geometry', {}).items():
             icon_name = {
                 'import': 'document-import',
-                'extract_boundary': 'extract_boundary'
+                'extract_boundary': 'extract-boundary'
             }.get(button_name, 'document-import')
             button.setIcon(get_icon(icon_name))
 

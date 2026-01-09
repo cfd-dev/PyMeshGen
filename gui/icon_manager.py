@@ -686,17 +686,18 @@ class IconManager:
     
     def _draw_wireframe_icon(self, painter, size, color):
         """Draw wireframe mode icon - outlined 3D cube"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+
         pen = QPen(color, 2)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        
+
         center_x = size // 2
         center_y = size // 2
         cube_size = size // 3
-        
+
         # Draw isometric cube outline only
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint, Qt
         
         # Draw top face outline
         top_points = [
