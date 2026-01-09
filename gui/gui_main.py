@@ -839,6 +839,90 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info("已适应视图")
         self.update_status("已适应视图")
 
+    def set_view_x_positive(self):
+        """设置X轴正向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(1, 0, 0)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 0, 1)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到X轴正向视图")
+            self.update_status("已切换到X轴正向视图")
+
+    def set_view_x_negative(self):
+        """设置X轴负向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(-1, 0, 0)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 0, 1)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到X轴负向视图")
+            self.update_status("已切换到X轴负向视图")
+
+    def set_view_y_positive(self):
+        """设置Y轴正向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(0, 1, 0)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 0, 1)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到Y轴正向视图")
+            self.update_status("已切换到Y轴正向视图")
+
+    def set_view_y_negative(self):
+        """设置Y轴负向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(0, -1, 0)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 0, 1)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到Y轴负向视图")
+            self.update_status("已切换到Y轴负向视图")
+
+    def set_view_z_positive(self):
+        """设置Z轴正向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(0, 0, 1)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 1, 0)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到Z轴正向视图")
+            self.update_status("已切换到Z轴正向视图")
+
+    def set_view_z_negative(self):
+        """设置Z轴负向视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(0, 0, -1)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 1, 0)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到Z轴负向视图")
+            self.update_status("已切换到Z轴负向视图")
+
+    def set_view_isometric(self):
+        """设置等轴测视图"""
+        if hasattr(self, 'mesh_display') and self.mesh_display.renderer:
+            camera = self.mesh_display.renderer.GetActiveCamera()
+            camera.SetPosition(1, 1, 1)
+            camera.SetFocalPoint(0, 0, 0)
+            camera.SetViewUp(0, 0, 1)
+            self.mesh_display.renderer.ResetCamera()
+            self.mesh_display.render_window.Render()
+            self.log_info("已切换到等轴测视图")
+            self.update_status("已切换到等轴测视图")
+
     def add_part(self):
         """添加部件"""
         if not self.params:

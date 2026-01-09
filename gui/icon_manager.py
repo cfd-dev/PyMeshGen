@@ -132,6 +132,20 @@ class IconManager:
             self._draw_statistics_icon(painter, size, primary_color)
         elif icon_name == 'report':
             self._draw_report_icon(painter, size, secondary_color)
+        elif icon_name == 'view-x-pos':
+            self._draw_view_x_pos_icon(painter, size, primary_color)
+        elif icon_name == 'view-x-neg':
+            self._draw_view_x_neg_icon(painter, size, primary_color)
+        elif icon_name == 'view-y-pos':
+            self._draw_view_y_pos_icon(painter, size, secondary_color)
+        elif icon_name == 'view-y-neg':
+            self._draw_view_y_neg_icon(painter, size, secondary_color)
+        elif icon_name == 'view-z-pos':
+            self._draw_view_z_pos_icon(painter, size, accent_color)
+        elif icon_name == 'view-z-neg':
+            self._draw_view_z_neg_icon(painter, size, accent_color)
+        elif icon_name == 'view-iso':
+            self._draw_view_iso_icon(painter, size, primary_color)
         else:
             # Default fallback: draw a generic icon
             self._draw_generic_icon(painter, size, primary_color)
@@ -392,6 +406,289 @@ class IconManager:
             x = size - 15 + i * 4
             height = 8 - i * 2
             painter.drawRect(x, size - 15, bar_width, height)
+    
+    def _draw_view_x_pos_icon(self, painter, size, color):
+        """Draw X+ view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with X+ direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin + front_offset, margin + front_offset, box_size, box_size)
+        
+        # Draw X+ arrow
+        painter.setBrush(color)
+        arrow_x = size - 8
+        arrow_y = size // 2
+        
+        # Arrow shaft
+        painter.drawLine(arrow_x - 6, arrow_y, arrow_x, arrow_y)
+        # Arrow head
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        arrow_points = [
+            (arrow_x, arrow_y),
+            (arrow_x - 4, arrow_y - 4),
+            (arrow_x - 4, arrow_y + 4)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in arrow_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw X label
+        painter.setPen(color)
+        painter.drawText(arrow_x - 6, arrow_y - 8, "X")
+    
+    def _draw_view_x_neg_icon(self, painter, size, color):
+        """Draw X- view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with X- direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin - front_offset, margin + front_offset, box_size, box_size)
+        
+        # Draw X- arrow
+        painter.setBrush(color)
+        arrow_x = 8
+        arrow_y = size // 2
+        
+        # Arrow shaft
+        painter.drawLine(arrow_x + 6, arrow_y, arrow_x, arrow_y)
+        # Arrow head
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        arrow_points = [
+            (arrow_x, arrow_y),
+            (arrow_x + 4, arrow_y - 4),
+            (arrow_x + 4, arrow_y + 4)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in arrow_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw X label
+        painter.setPen(color)
+        painter.drawText(arrow_x + 2, arrow_y - 8, "X")
+    
+    def _draw_view_y_pos_icon(self, painter, size, color):
+        """Draw Y+ view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with Y+ direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin + front_offset, margin - front_offset, box_size, box_size)
+        
+        # Draw Y+ arrow
+        painter.setBrush(color)
+        arrow_x = size // 2
+        arrow_y = 8
+        
+        # Arrow shaft
+        painter.drawLine(arrow_x, arrow_y + 6, arrow_x, arrow_y)
+        # Arrow head
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        arrow_points = [
+            (arrow_x, arrow_y),
+            (arrow_x - 4, arrow_y + 4),
+            (arrow_x + 4, arrow_y + 4)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in arrow_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw Y label
+        painter.setPen(color)
+        painter.drawText(arrow_x + 6, arrow_y + 8, "Y")
+    
+    def _draw_view_y_neg_icon(self, painter, size, color):
+        """Draw Y- view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with Y- direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin + front_offset, margin + front_offset, box_size, box_size)
+        
+        # Draw Y- arrow
+        painter.setBrush(color)
+        arrow_x = size // 2
+        arrow_y = size - 8
+        
+        # Arrow shaft
+        painter.drawLine(arrow_x, arrow_y - 6, arrow_x, arrow_y)
+        # Arrow head
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        arrow_points = [
+            (arrow_x, arrow_y),
+            (arrow_x - 4, arrow_y - 4),
+            (arrow_x + 4, arrow_y - 4)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in arrow_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw Y label
+        painter.setPen(color)
+        painter.drawText(arrow_x + 6, arrow_y - 2, "Y")
+    
+    def _draw_view_z_pos_icon(self, painter, size, color):
+        """Draw Z+ view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with Z+ direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin + front_offset, margin + front_offset, box_size, box_size)
+        
+        # Draw Z+ arrow (pointing out of screen)
+        painter.setBrush(color)
+        arrow_x = size // 2
+        arrow_y = size // 2
+        
+        # Draw circle with dot for Z+ (pointing out)
+        painter.drawEllipse(arrow_x - 6, arrow_y - 6, 12, 12)
+        painter.drawEllipse(arrow_x - 2, arrow_y - 2, 4, 4)
+        
+        # Draw Z label
+        painter.setPen(color)
+        painter.drawText(arrow_x + 8, arrow_y + 4, "Z")
+    
+    def _draw_view_z_neg_icon(self, painter, size, color):
+        """Draw Z- view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw 3D coordinate system box
+        margin = 5
+        box_size = size - 2 * margin
+        
+        # Draw back face (darker)
+        back_pen = QPen(QColor('#CCCCCC'), 1)
+        painter.setPen(back_pen)
+        painter.drawRect(margin, margin, box_size, box_size)
+        
+        # Draw front face with Z- direction highlighted
+        painter.setPen(pen)
+        front_offset = box_size // 3
+        painter.drawRect(margin - front_offset, margin - front_offset, box_size, box_size)
+        
+        # Draw Z- arrow (pointing into screen)
+        painter.setBrush(color)
+        arrow_x = size // 2
+        arrow_y = size // 2
+        
+        # Draw circle with X for Z- (pointing in)
+        painter.drawEllipse(arrow_x - 6, arrow_y - 6, 12, 12)
+        painter.drawLine(arrow_x - 4, arrow_y - 4, arrow_x + 4, arrow_y + 4)
+        painter.drawLine(arrow_x + 4, arrow_y - 4, arrow_x - 4, arrow_y + 4)
+        
+        # Draw Z label
+        painter.setPen(color)
+        painter.drawText(arrow_x + 8, arrow_y + 4, "Z")
+    
+    def _draw_view_iso_icon(self, painter, size, color):
+        """Draw isometric view icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        
+        # Draw isometric cube
+        center_x = size // 2
+        center_y = size // 2
+        cube_size = size // 4
+        
+        # Draw top face
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        top_points = [
+            (center_x, center_y - cube_size),
+            (center_x + cube_size * 0.866, center_y - cube_size * 0.5),
+            (center_x, center_y),
+            (center_x - cube_size * 0.866, center_y - cube_size * 0.5)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in top_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw left face
+        left_points = [
+            (center_x - cube_size * 0.866, center_y - cube_size * 0.5),
+            (center_x, center_y),
+            (center_x, center_y + cube_size),
+            (center_x - cube_size * 0.866, center_y + cube_size * 0.5)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in left_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw right face
+        right_points = [
+            (center_x + cube_size * 0.866, center_y - cube_size * 0.5),
+            (center_x, center_y),
+            (center_x, center_y + cube_size),
+            (center_x + cube_size * 0.866, center_y + cube_size * 0.5)
+        ]
+        qpoints = [QPoint(int(x), int(y)) for x, y in right_points]
+        qpolygon = QPolygon(qpoints)
+        painter.drawPolygon(qpolygon)
+        
+        # Draw ISO label
+        painter.setPen(color)
+        painter.drawText(center_x - 8, size - 2, "ISO")
     
     def _draw_generic_icon(self, painter, size, color):
         """Draw a generic icon as fallback"""
