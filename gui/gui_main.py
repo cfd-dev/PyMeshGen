@@ -1273,11 +1273,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if isinstance(parts_info, list):
             for part_info in parts_info:
                 part_name = part_info.get('part_name', '未知部件')
-                self.parts_list_widget.add_part_with_checkbox(part_name)
+                bc_type = part_info.get('bc_type', '')
+                checked = bc_type != 'interior'
+                self.parts_list_widget.add_part_with_checkbox(part_name, checked)
         elif isinstance(parts_info, dict):
-            for part_name in parts_info.keys():
+            for part_name, part_data in parts_info.items():
                 if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
-                    self.parts_list_widget.add_part_with_checkbox(part_name)
+                    bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                    checked = bc_type != 'interior'
+                    self.parts_list_widget.add_part_with_checkbox(part_name, checked)
         elif parts_info:
             self.parts_list_widget.add_part_with_checkbox(str(parts_info))
 

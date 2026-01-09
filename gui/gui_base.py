@@ -584,13 +584,18 @@ class PartListWidget:
         # Connect item click to handle checkbox state changes
         self.parts_list.itemClicked.connect(self.handle_item_click)
 
-    def add_part_with_checkbox(self, part_name):
-        """添加带复选框的部件项"""
+    def add_part_with_checkbox(self, part_name, checked=True):
+        """添加带复选框的部件项
+
+        Args:
+            part_name: 部件名称
+            checked: 是否默认选中，默认为True
+        """
         from PyQt5.QtWidgets import QListWidgetItem
         from PyQt5.QtCore import Qt
 
         item = QListWidgetItem(part_name)
-        item.setCheckState(Qt.Checked)  # 默认选中
+        item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
         self.parts_list.addItem(item)
         return item
 
