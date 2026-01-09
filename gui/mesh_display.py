@@ -36,7 +36,7 @@ class MeshDisplayArea:
         # 显示控制变量
         self.show_boundary = True
         self.wireframe = False
-        self.render_mode = "surface"
+        self.render_mode = "wireframe"
 
         # 渲染状态标志
         self._render_in_progress = False

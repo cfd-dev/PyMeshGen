@@ -761,7 +761,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self,
             "导入网格文件",
             os.path.join(self.project_root, "meshes"),
-            "网格文件 (*.vtk *.stl *.obj *.cas *.msh *.ply);;所有文件 (*.*)"
+            "网格文件 (*.vtk *.vtu *.stl *.obj *.cas *.msh *.ply *.xdmf *.xmf *.off *.med *.mesh *.meshb *.bdf *.fem *.nas *.inp *.e *.exo *.ex2 *.su2 *.cgns *.avs *.vol *.mdpa *.h5m *.f3grid *.dat *.tec *.ugrid *.ele *.node *.xml *.post *.wkt *.hmf);;所有文件 (*.*)"
         )
 
         if file_path:
