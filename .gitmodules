@@ -1,3 +1,6 @@
 [submodule "neural/GNN_ALM"]
 	path = neural/GNN_ALM
 	url = https://github.com/cfd-dev/GNN_ALM
+[submodule "3rd_party/meshio"]
+	path = 3rd_party/meshio
+	url = https://github.com/cfd-dev/meshio
