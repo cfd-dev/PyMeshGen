@@ -30,20 +30,47 @@ class StatusBar:
         from PyQt5.QtWidgets import QProgressBar, QWidget, QHBoxLayout
         self.progress_widget = QWidget()
         progress_layout = QHBoxLayout(self.progress_widget)
-        progress_layout.setContentsMargins(0, 0, 0, 0)
-        progress_layout.setSpacing(5)
+        progress_layout.setContentsMargins(2, 1, 2, 1)  # Reduced padding
+        progress_layout.setSpacing(4)  # Reduced spacing
 
+        # Create a styled progress bar
         self.progress_bar = QProgressBar()
         self.progress_bar.setMaximumWidth(200)
         self.progress_bar.setMinimumWidth(100)
         self.progress_bar.setVisible(False)
-        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setTextVisible(True)  # Show percentage text
         self.progress_bar.setMaximumHeight(20)
+        # Apply custom styling to the progress bar
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #888888;
+                border-radius: 3px;
+                text-align: center;
+                color: black;
+                font-size: 9pt;
+                height: 16px;
+            }
+            QProgressBar::chunk {
+                background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,
+                stop:0 #4CAF50, stop:1 #2E7D32);
+                border-radius: 2px;
+            }
+        """)
 
         self.progress_label = QLabel()
         self.progress_label.setVisible(False)
-        self.progress_label.setMaximumWidth(300)
+        self.progress_label.setMaximumWidth(250)
         self.progress_label.setMinimumWidth(100)
+        # Apply styling to the progress label to match status bar font
+        self.progress_label.setStyleSheet("""
+            QLabel {
+                font-size: 9pt;
+                color: #333333;
+                padding: 1px 2px;
+                border: 1px solid transparent;
+                border-radius: 2px;
+            }
+        """)
 
         progress_layout.addWidget(self.progress_label)
         progress_layout.addWidget(self.progress_bar)
@@ -57,7 +84,7 @@ class StatusBar:
 
         # Ensure the status bar can show the full text by setting appropriate font
         font = self.status_bar.font()
-        font.setPointSize(9)  # Slightly smaller font to fit more text
+        font.setPixelSize(9)  # 9px font size
         self.status_bar.setFont(font)
 
     def show_progress(self, message, progress):

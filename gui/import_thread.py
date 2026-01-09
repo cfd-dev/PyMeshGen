@@ -48,66 +48,95 @@ class MeshImportThread(QThread):
     def _import_cas(self):
         """导入CAS文件"""
         try:
-            self.progress_updated.emit("解析CAS文件结构...", 10)
-            
+            self.progress_updated.emit("开始解析CAS文件结构...", 5)
+
             if not self._is_running:
                 return
 
+            # Parse the CAS file
             raw_cas_data = parse_fluent_msh(self.file_path)
-            
+
             if not self._is_running:
                 return
 
-            self.progress_updated.emit("重建网格数据...", 60)
-            
+            self.progress_updated.emit("解析网格节点信息...", 20)
+
             if not self._is_running:
                 return
 
+            # Reconstruct the mesh from CAS data
             unstr_grid = reconstruct_mesh_from_cas(raw_cas_data)
-            
+
             if not self._is_running:
                 return
 
-            self.progress_updated.emit("提取网格信息...", 80)
-            
+            self.progress_updated.emit("重建网格拓扑结构...", 40)
+
+            if not self._is_running:
+                return
+
+            self.progress_updated.emit("处理网格单元...", 60)
+
             if not self._is_running:
                 return
 
             from data_structure.mesh_data import MeshData
             mesh_data = MeshData(file_path=self.file_path, mesh_type='cas')
-            
+
             if hasattr(unstr_grid, 'node_coords'):
                 mesh_data.node_coords = [list(coord) for coord in unstr_grid.node_coords]
             elif hasattr(unstr_grid, 'nodes'):
                 mesh_data.node_coords = [list(node.coords) for node in unstr_grid.nodes]
-            
+
             if hasattr(unstr_grid, 'cell_container'):
                 mesh_data.cells = []
-                for cell in unstr_grid.cell_container:
+                total_cells = len(unstr_grid.cell_container)
+                for i, cell in enumerate(unstr_grid.cell_container):
+                    if not self._is_running:
+                        return
                     if cell is not None and hasattr(cell, 'node_ids'):
                         mesh_data.cells.append(cell.node_ids)
-            
+
+                    # Update progress periodically during cell processing
+                    if i % max(1, total_cells // 10) == 0:  # Update every 10% of cells
+                        progress = 60 + int(20 * i / total_cells)
+                        self.progress_updated.emit(f"处理网格单元... ({i}/{total_cells})", progress)
+
+            self.progress_updated.emit("提取边界信息...", 80)
+
+            if not self._is_running:
+                return
+
             if hasattr(unstr_grid, 'boundary_info'):
                 mesh_data.boundary_info = unstr_grid.boundary_info
                 parts_info = {}
-                for part_name, part_data in unstr_grid.boundary_info.items():
+                total_parts = len(unstr_grid.boundary_info)
+                for i, (part_name, part_data) in enumerate(unstr_grid.boundary_info.items()):
+                    if not self._is_running:
+                        return
                     parts_info[part_name] = {
                         'bc_type': part_data.get('bc_type', 'unspecified'),
                         'faces': part_data.get('faces', []),
                         'face_count': len(part_data.get('faces', [])),
                         'part_name': part_name
                     }
+
+                    # Update progress periodically during part processing
+                    if total_parts > 0:
+                        progress = 80 + int(15 * i / total_parts)
+                        self.progress_updated.emit(f"提取部件信息... ({i+1}/{total_parts})", progress)
+
                 mesh_data.parts_info = parts_info
-            
+
             mesh_data.unstr_grid = unstr_grid
             mesh_data.update_counts()
-            
+
             if not self._is_running:
                 return
 
-            self.progress_updated.emit("CAS文件导入完成", 100)
+            self.progress_updated.emit("完成CAS文件导入", 100)
             self.import_finished.emit(mesh_data)
-            
+
         except Exception as e:
             self.import_failed.emit(f"CAS文件导入失败: {str(e)}")
 
