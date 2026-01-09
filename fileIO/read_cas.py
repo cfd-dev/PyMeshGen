@@ -4,39 +4,12 @@ import numpy as np
 from utils.timer import TimeSpan
 from utils.geom_toolkit import sort_quadrilateral_nodes
 from data_structure.vtk_types import VTKCellType
-
-# Fluent网格类型定义
-FLUENT_FACE_TYPES = {"MIXED": 0, "LINEAR": 2, "TRI": 3, "QUAD": 4}
-
-# Fluent单元类型定义
-FLUENT_CELL_TYPES = {
-    "MIXED": 0,
-    "TRI": 1,
-    "TET": 2,
-    "QUAD": 3,
-    "HEX": 4,
-    "PYRAMID": 5,
-    "WEDGE": 6,
-}
-
-# Fluent边界条件类型定义
-FLUENT_BOUNDARY_TYPES = {
-    "INTERIOR": 2,  # 内部面
-    "WALL": 3,  # 壁面
-    "PRESSURE_INLET": 4,  # 压力入口
-    "PRESSURE_OUTLET": 5,  # 压力出口
-    "SYMMETRY": 7,  # 对称面
-    "PRESSURE_FAR": 9,  # 远场压力
-    "VELOCITY_INLET": 10,  # 速度入口
-    "PERIODIC": 12,  # 周期性边界
-    "MASS_FLOW_INLET": 20,  # 质量流入口
-    "INTERFACE": 24,  # 交界面
-    "OUTFLOW": 36,  # 出流边界
-    "AXIS": 37,  # 轴边界
-}
-
-# CELL区域类型
-CELL_ZONE_TYPE = {"DEAD": 0, "FLUID": 1}
+from data_structure.fluent_types import (
+    FLUENT_FACE_TYPES,
+    FLUENT_CELL_TYPES,
+    FLUENT_BOUNDARY_TYPES,
+    CELL_ZONE_TYPE,
+)
 
 
 def parse_fluent_msh(file_path):
