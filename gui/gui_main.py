@@ -320,6 +320,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             }.get(button_name, 'view-refresh')
             button.setIcon(get_icon(icon_name))
 
+            # Connect view buttons to their respective functions
+            if button_name == 'surface':
+                button.clicked.connect(lambda: self.set_render_mode("surface"))
+            elif button_name == 'wireframe':
+                button.clicked.connect(lambda: self.set_render_mode("wireframe"))
+            elif button_name == 'surface-wireframe':
+                button.clicked.connect(lambda: self.set_render_mode("surface-wireframe"))
+
         for button_name, button in self.ribbon.buttons.get('config', {}).items():
             icon_name = {
                 'params': 'configure',
@@ -384,6 +392,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             "surface-wireframe": "渲染模式: 实体+线框模式 (3键)",
         }
         self.update_status(mode_messages.get(mode, f"渲染模式: {mode}"))
+
+        # Refresh the display to apply the new mode to all visible parts
+        self.refresh_display_all_parts()
 
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
@@ -1328,6 +1339,15 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         # Re-add axes after displaying parts
         self.mesh_display.add_axes()
+
+    def switch_display_mode(self, mode):
+        """切换显示模式"""
+        if hasattr(self, 'mesh_display') and self.mesh_display:
+            self.mesh_display.set_render_mode(mode)
+            self.update_status(f"显示模式已切换为: {mode}")
+
+            # Refresh the display to apply the new mode to all visible parts
+            self.refresh_display_all_parts()
 
     def log_info(self, message):
         """记录信息日志"""

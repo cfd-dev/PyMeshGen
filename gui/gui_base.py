@@ -549,14 +549,8 @@ class PartListWidget:
         return item
 
     def handle_item_click(self, item):
-        """处理项目点击事件，切换复选框状态"""
-        # 如果点击的是复选框区域，状态已经自动切换
-        # 如果点击的是文本区域，我们也切换状态
-        if item.checkState() == Qt.Checked:
-            item.setCheckState(Qt.Unchecked)
-        else:
-            item.setCheckState(Qt.Checked)
-
+        """处理项目点击事件，触发显示/隐藏逻辑"""
+        # 状态已经在点击时自动切换（无论是点击复选框还是文本）
         # 触发显示/隐藏逻辑
         if hasattr(self.parent, 'handle_part_visibility_change'):
             self.parent.handle_part_visibility_change(item.text(), item.checkState() == Qt.Checked)

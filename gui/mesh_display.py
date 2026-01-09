@@ -1184,7 +1184,20 @@ class MeshDisplayArea:
                         ]
                         part_actor.GetProperty().SetColor(colors[color_index])
 
-                    part_actor.GetProperty().SetLineWidth(2.0)
+                    # Apply current render mode to the part actor
+                    if self.render_mode == "wireframe":
+                        part_actor.GetProperty().SetRepresentationToWireframe()
+                        part_actor.GetProperty().EdgeVisibilityOff()
+                        part_actor.GetProperty().SetLineWidth(2.0)
+                    elif self.render_mode == "surface-wireframe":
+                        part_actor.GetProperty().SetRepresentationToSurface()
+                        part_actor.GetProperty().EdgeVisibilityOn()
+                        part_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
+                        part_actor.GetProperty().SetLineWidth(1.5)
+                    else:  # surface mode
+                        part_actor.GetProperty().SetRepresentationToSurface()
+                        part_actor.GetProperty().EdgeVisibilityOff()
+
                     part_actor.GetProperty().SetOpacity(1.0)
 
                     # 添加部件演员
@@ -1210,7 +1223,20 @@ class MeshDisplayArea:
                         additional_actor.GetProperty().SetColor(color)
                     else:
                         additional_actor.GetProperty().SetColor(0.0, 0.0, 1.0)  # Blue
-                    additional_actor.GetProperty().SetLineWidth(2.0)
+
+                    # Apply current render mode to the additional actor
+                    if self.render_mode == "wireframe":
+                        additional_actor.GetProperty().SetRepresentationToWireframe()
+                        additional_actor.GetProperty().EdgeVisibilityOff()
+                        additional_actor.GetProperty().SetLineWidth(2.0)
+                    elif self.render_mode == "surface-wireframe":
+                        additional_actor.GetProperty().SetRepresentationToSurface()
+                        additional_actor.GetProperty().EdgeVisibilityOn()
+                        additional_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
+                        additional_actor.GetProperty().SetLineWidth(1.5)
+                    else:  # surface mode
+                        additional_actor.GetProperty().SetRepresentationToSurface()
+                        additional_actor.GetProperty().EdgeVisibilityOff()
 
                     self.renderer.AddActor(additional_actor)
 
