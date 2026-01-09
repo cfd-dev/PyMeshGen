@@ -205,6 +205,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         parts_layout.addWidget(self.parts_list_widget.widget)
 
+        # Ensure the parts list widget expands to fill the available width
+        self.parts_list_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.parts_list_widget.parts_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
         left_layout = self.left_panel.layout()
         left_layout.addWidget(parts_frame_container)
 
@@ -228,6 +232,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.props_text = QTextEdit()
         self.props_text.setReadOnly(True)
         self.props_text.setStyleSheet(UIStyles.TEXTEDIT_STYLESHEET)
+        # Ensure the properties text area expands to fill the available width
+        self.props_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         props_layout.addWidget(self.props_text)
         self.props_frame.setLayout(props_layout)
 

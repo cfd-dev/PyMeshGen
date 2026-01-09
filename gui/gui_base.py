@@ -515,8 +515,11 @@ class PartListWidget:
         self.widget = QWidget()
 
         layout = QVBoxLayout()
-        layout.setSpacing(2)  # Reduced spacing
+        layout.setSpacing(0)  # Minimal spacing
+        layout.setContentsMargins(1, 1, 1, 1)  # Minimal margins to match properties panel
         self.parts_list = QListWidget()
+        # Set spacing between items in the list
+        self.parts_list.setSpacing(0)  # Minimal spacing between list items
         layout.addWidget(self.parts_list)
 
         # 移除按钮布局和按钮
