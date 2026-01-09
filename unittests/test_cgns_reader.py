@@ -21,7 +21,7 @@ if meshio_path.exists():
 
 # 导入UniversalCGNSReader
 try:
-    from universal_cgns_reader import UniversalCGNSReader
+    from fileIO.universal_cgns_reader import UniversalCGNSReader
 except ImportError:
     UniversalCGNSReader = None
 

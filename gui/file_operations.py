@@ -26,7 +26,7 @@ from data_structure.mesh_data import MeshData
 
 # 导入通用CGNS读取器
 try:
-    from universal_cgns_reader import UniversalCGNSReader
+    from fileIO.universal_cgns_reader import UniversalCGNSReader
     CGNS_READER_AVAILABLE = True
 except ImportError:
     CGNS_READER_AVAILABLE = False
