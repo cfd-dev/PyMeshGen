@@ -4,3 +4,9 @@
 [submodule "3rd_party/meshio"]
 	path = 3rd_party/meshio
 	url = https://github.com/cfd-dev/meshio
+[submodule "3rd_party/OCP"]
+	path = 3rd_party/OCP
+	url = https://github.com/cfd-dev/OCP
+[submodule "3rd_party/pythonocc-core"]
+	path = 3rd_party/pythonocc-core
+	url = https://github.com/tpaviot/pythonocc-core

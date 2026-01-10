@@ -881,6 +881,58 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             if import_btn:
                 import_btn.setEnabled(True)
 
+    def import_geometry(self):
+        """导入几何文件（STEP/IGES/STL等）"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "导入几何文件",
+            os.path.join(self.project_root, "geometries"),
+            "几何文件 (*.step *.stp *.iges *.igs *.stl);;STEP文件 (*.step *.stp);;IGES文件 (*.iges *.igs);;STL文件 (*.stl);;所有文件 (*.*)"
+        )
+
+        if file_path:
+            try:
+                from fileIO.geometry_io import import_geometry_file, get_shape_statistics
+                from fileIO.occ_to_vtk import create_shape_actor
+
+                self.log_info(f"开始导入几何: {file_path}")
+                self.update_status("正在导入几何...")
+
+                shape = import_geometry_file(file_path)
+
+                stats = get_shape_statistics(shape)
+                self.log_info(f"几何统计信息:")
+                self.log_info(f"  - 顶点数: {stats['num_vertices']}")
+                self.log_info(f"  - 边数: {stats['num_edges']}")
+                self.log_info(f"  - 面数: {stats['num_faces']}")
+                self.log_info(f"  - 实体数: {stats['num_solids']}")
+
+                bbox_min, bbox_max = stats['bounding_box']
+                self.log_info(f"  - 边界框: ({bbox_min[0]:.2f}, {bbox_min[1]:.2f}, {bbox_min[2]:.2f}) 到 ({bbox_max[0]:.2f}, {bbox_max[1]:.2f}, {bbox_max[2]:.2f})")
+
+                if hasattr(self, 'mesh_display'):
+                    actor = create_shape_actor(
+                        shape,
+                        mesh_quality=1.0,
+                        display_mode='surface',
+                        color=(0.8, 0.8, 0.9),
+                        opacity=0.8,
+                        edge_color=(0.0, 0.0, 0.0),
+                        edge_width=1.0
+                    )
+
+                    self.mesh_display.renderer.AddActor(actor)
+                    self.mesh_display.renderer.ResetCamera()
+                    self.mesh_display.render_window.Render()
+
+                self.log_info(f"已导入几何: {file_path}")
+                self.update_status("已导入几何")
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导入几何失败: {str(e)}")
+                self.log_error(f"导入几何失败: {str(e)}")
+                self.update_status("导入几何失败")
+
     def export_mesh(self):
         """导出网格"""
         from gui.file_operations import FileOperations

@@ -340,6 +340,7 @@ class RibbonWidget(QWidget):
         )
 
         geometry_group = RibbonGroup("")
+        self.buttons['geometry']['import_geometry'] = geometry_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
         self.buttons['geometry']['import'] = geometry_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
         self.buttons['geometry']['extract_boundary'] = geometry_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
         layout.addWidget(geometry_group)
@@ -384,6 +385,7 @@ class RibbonWidget(QWidget):
         self.buttons['file']['export'].clicked.connect(main_window.export_mesh)
 
         # Geometry tab callbacks
+        self.buttons['geometry']['import_geometry'].clicked.connect(main_window.import_geometry)
         self.buttons['geometry']['import'].clicked.connect(main_window.import_mesh)
         self.buttons['geometry']['extract_boundary'].clicked.connect(main_window.extract_boundary_mesh_info)
 

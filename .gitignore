@@ -11,3 +11,4 @@ __pycache__/
 /neural/GNN_ALM/model
 neural/GNN_ALM/sample_grids/validation
 temp*
+meshes
