@@ -4,25 +4,13 @@ OCC Shape到VTK PolyData的转换模块
 import numpy as np
 from typing import List, Tuple, Optional
 
-try:
-    from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Edge, TopoDS_Vertex
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
-    from OCC.Core.BRep import BRep_Tool
-    from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
-    from OCC.Core.TopLoc import TopLoc_Location
-    from OCC.Core.Poly import Poly_Triangulation
-except ImportError:
-    try:
-        from OCP.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Edge, TopoDS_Vertex
-        from OCP.TopExp import TopExp_Explorer
-        from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
-        from OCP.BRep import BRep_Tool
-        from OCP.BRepMesh import BRepMesh_IncrementalMesh
-        from OCP.TopLoc import TopLoc_Location
-        from OCP.Poly import Poly_Triangulation
-    except ImportError:
-        raise ImportError("无法导入OpenCASCADE库，请确保已安装pythonocc-core或OCP")
+from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Face, TopoDS_Edge, TopoDS_Vertex
+from OCC.Core.TopExp import TopExp_Explorer
+from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
+from OCC.Core.BRep import BRep_Tool
+from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+from OCC.Core.TopLoc import TopLoc_Location
+from OCC.Core.Poly import Poly_Triangulation
 
 try:
     import vtk
