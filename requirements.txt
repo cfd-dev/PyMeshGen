@@ -1,7 +1,28 @@
-matplotlib>=3.9.4
+# PyMeshGen - Python非结构化网格生成器
+# 依赖包列表
+
+# 核心依赖
 numpy>=1.26.0
-rtree>=1.4.0
 scipy>=1.10.0
-pillow>=10.0.0  # GUI图像处理支持
-vtk>=9.5.0  # 3D可视化支持
-PyQt5>=5.15.0  # GUI框架
+matplotlib>=3.9.4
+
+# 3D可视化
+vtk>=9.5.0
+
+# GUI框架
+PyQt5>=5.15.0
+
+# 空间索引
+rtree>=1.4.0
+
+# 图像处理
+pillow>=10.0.0
+
+# 几何处理 (PythonOCC-Core)
+# GitHub: https://github.com/tpaviot/pythonocc-core
+# 安装命令: pip install pythonocc-core
+pythonocc-core
+
+# 开发和测试工具
+# pytest>=7.0.0  # 可选，用于运行pytest测试
+# pefile>=2023.0.0  # 可选，用于分析DLL依赖
