@@ -189,10 +189,24 @@ class TestGeometryImport(unittest.TestCase):
 
     def test_get_shape_bounding_box(self):
         """测试获取形状边界框"""
-        if not self.shapes:
-            self.skipTest("没有可用的形状对象")
+        if not self.test_files['step'] and not self.test_files['iges'] and not self.test_files['stl']:
+            self.skipTest("没有找到测试文件")
 
-        for file_path, shape in list(self.shapes.items())[:3]:
+        shapes_to_test = {}
+
+        for file_type in ['step', 'iges', 'stl']:
+            if self.test_files[file_type]:
+                file_path = self.test_files[file_type][0]
+                try:
+                    shape = import_geometry_file(file_path)
+                    shapes_to_test[file_path] = shape
+                except Exception as e:
+                    print(f"警告: 无法导入文件 {file_path}: {e}")
+
+        if not shapes_to_test:
+            self.skipTest("无法导入任何形状对象")
+
+        for file_path, shape in list(shapes_to_test.items())[:3]:
             try:
                 print(f"\n测试获取边界框: {os.path.basename(file_path)}")
                 min_point, max_point = get_shape_bounding_box(shape)
@@ -200,13 +214,11 @@ class TestGeometryImport(unittest.TestCase):
                 print(f"  最小点: ({min_point[0]:.2f}, {min_point[1]:.2f}, {min_point[2]:.2f})")
                 print(f"  最大点: ({max_point[0]:.2f}, {max_point[1]:.2f}, {max_point[2]:.2f})")
 
-                # 验证边界框
                 self.assertIsNotNone(min_point)
                 self.assertIsNotNone(max_point)
                 self.assertEqual(len(min_point), 3)
                 self.assertEqual(len(max_point), 3)
 
-                # 验证最大点大于最小点
                 self.assertGreater(max_point[0], min_point[0])
                 self.assertGreater(max_point[1], min_point[1])
                 self.assertGreater(max_point[2], min_point[2])
@@ -216,22 +228,34 @@ class TestGeometryImport(unittest.TestCase):
 
     def test_extract_vertices_from_shape(self):
         """测试从形状中提取顶点"""
-        if not self.shapes:
-            self.skipTest("没有可用的形状对象")
+        if not self.test_files['step'] and not self.test_files['iges'] and not self.test_files['stl']:
+            self.skipTest("没有找到测试文件")
 
-        for file_path, shape in list(self.shapes.items())[:2]:
+        shapes_to_test = {}
+
+        for file_type in ['step', 'iges', 'stl']:
+            if self.test_files[file_type]:
+                file_path = self.test_files[file_type][0]
+                try:
+                    shape = import_geometry_file(file_path)
+                    shapes_to_test[file_path] = shape
+                except Exception as e:
+                    print(f"警告: 无法导入文件 {file_path}: {e}")
+
+        if not shapes_to_test:
+            self.skipTest("无法导入任何形状对象")
+
+        for file_path, shape in list(shapes_to_test.items())[:2]:
             try:
                 print(f"\n测试提取顶点: {os.path.basename(file_path)}")
                 vertices = extract_vertices_from_shape(shape)
 
                 print(f"  提取到 {len(vertices)} 个顶点")
 
-                # 验证顶点
                 self.assertIsInstance(vertices, list)
                 self.assertGreater(len(vertices), 0)
 
-                # 验证顶点坐标格式
-                for vertex in vertices[:5]:  # 只检查前5个顶点
+                for vertex in vertices[:5]:
                     self.assertEqual(len(vertex), 3)
                     self.assertIsInstance(vertex[0], (int, float))
                     self.assertIsInstance(vertex[1], (int, float))
@@ -242,25 +266,37 @@ class TestGeometryImport(unittest.TestCase):
 
     def test_extract_edges_from_shape(self):
         """测试从形状中提取边"""
-        if not self.shapes:
-            self.skipTest("没有可用的形状对象")
+        if not self.test_files['step'] and not self.test_files['iges'] and not self.test_files['stl']:
+            self.skipTest("没有找到测试文件")
 
-        for file_path, shape in list(self.shapes.items())[:2]:
+        shapes_to_test = {}
+
+        for file_type in ['step', 'iges', 'stl']:
+            if self.test_files[file_type]:
+                file_path = self.test_files[file_type][0]
+                try:
+                    shape = import_geometry_file(file_path)
+                    shapes_to_test[file_path] = shape
+                except Exception as e:
+                    print(f"警告: 无法导入文件 {file_path}: {e}")
+
+        if not shapes_to_test:
+            self.skipTest("无法导入任何形状对象")
+
+        for file_path, shape in list(shapes_to_test.items())[:2]:
             try:
                 print(f"\n测试提取边: {os.path.basename(file_path)}")
                 edges = extract_edges_from_shape(shape)
 
                 print(f"  提取到 {len(edges)} 条边")
 
-                # 验证边
                 self.assertIsInstance(edges, list)
 
-                # 验证边上的点
-                for edge in edges[:3]:  # 只检查前3条边
+                for edge in edges[:3]:
                     self.assertIsInstance(edge, list)
                     self.assertGreater(len(edge), 0)
 
-                    for point in edge[:5]:  # 只检查每条边的前5个点
+                    for point in edge[:5]:
                         self.assertEqual(len(point), 3)
 
             except Exception as e:
@@ -298,8 +334,8 @@ class TestOCCToVTK(unittest.TestCase):
             try:
                 shape = import_geometry_file(file_path)
                 self.shapes[file_path] = shape
-            except:
-                pass
+            except Exception as e:
+                print(f"警告: 无法导入文件 {file_path}: {e}")
 
     def test_shape_to_vtk_polydata(self):
         """测试将OCC Shape转换为VTK PolyData"""
