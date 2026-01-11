@@ -407,6 +407,23 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if hasattr(self, 'mesh_display'):
             self.mesh_display.set_render_mode(mode)
 
+        if hasattr(self, 'geometry_actor') and self.geometry_actor:
+            if mode == "wireframe":
+                self.geometry_actor.GetProperty().SetRepresentationToWireframe()
+                self.geometry_actor.GetProperty().EdgeVisibilityOff()
+                self.geometry_actor.GetProperty().SetLineWidth(2.0)
+            elif mode == "surface-wireframe":
+                self.geometry_actor.GetProperty().SetRepresentationToSurface()
+                self.geometry_actor.GetProperty().EdgeVisibilityOn()
+                self.geometry_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
+                self.geometry_actor.GetProperty().SetLineWidth(1.5)
+            else:
+                self.geometry_actor.GetProperty().SetRepresentationToSurface()
+                self.geometry_actor.GetProperty().EdgeVisibilityOff()
+
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
+                self.mesh_display.render_window.Render()
+
         mode_messages = {
             "surface": "渲染模式: 实体模式 (1键)",
             "wireframe": "渲染模式: 线框模式 (2键)",
@@ -414,7 +431,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         }
         self.update_status(mode_messages.get(mode, f"渲染模式: {mode}"))
 
-        # Refresh the display to apply the new mode to all visible parts
         self.refresh_display_all_parts()
 
     def on_mesh_display_key(self, event):
@@ -492,6 +508,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 if hasattr(self, 'json_config'):
                     self.json_config = {}
+
+                if hasattr(self, 'geometry_actor'):
+                    if self.geometry_actor and hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                        try:
+                            self.mesh_display.renderer.RemoveActor(self.geometry_actor)
+                        except:
+                            pass
+                    self.geometry_actor = None
+
+                if hasattr(self, 'current_geometry'):
+                    self.current_geometry = None
 
                 # 清空网格显示区域
                 if hasattr(self, 'mesh_display'):
@@ -920,6 +947,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         edge_color=(0.0, 0.0, 0.0),
                         edge_width=1.0
                     )
+
+                    self.geometry_actor = actor
+                    self.current_geometry = shape
 
                     self.mesh_display.renderer.AddActor(actor)
                     self.mesh_display.renderer.ResetCamera()
