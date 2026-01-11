@@ -4,6 +4,27 @@
 import os
 from typing import Union, List, Tuple
 import numpy as np
+import ctypes
+
+# 预先加载OpenCASCADE DLL以解决DLL加载问题
+try:
+    lib_bin_dir = r'C:\Users\HighOrderMesh\miniconda3\envs\pymeshgen\Library\bin'
+    occ_dir = r'C:\Users\HighOrderMesh\miniconda3\envs\pymeshgen\Lib\site-packages\OCC'
+    occ_core_dir = os.path.join(occ_dir, 'Core')
+    
+    if hasattr(os, 'add_dll_directory'):
+        os.add_dll_directory(lib_bin_dir)
+        os.add_dll_directory(occ_core_dir)
+    
+    kernel32 = ctypes.windll.kernel32
+    LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
+    
+    for dll_name in ['TKernel.dll', 'TKDE.dll', 'TKDESTEP.dll', 'TKDEIGES.dll', 'TKDESTL.dll']:
+        dll_path = os.path.join(occ_core_dir, dll_name)
+        if os.path.exists(dll_path):
+            kernel32.LoadLibraryExW(dll_path, None, LOAD_WITH_ALTERED_SEARCH_PATH)
+except Exception:
+    pass
 
 try:
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Solid, TopoDS_Shell, TopoDS_Face, TopoDS_Wire, TopoDS_Edge, TopoDS_Vertex
@@ -14,16 +35,7 @@ try:
     from OCC.Core.Geom import Geom_Curve, Geom_Surface
     from OCC.Core.gp import gp_Pnt, gp_Vec
 except ImportError:
-    try:
-        from OCP.TopoDS import TopoDS_Shape, TopoDS_Solid, TopoDS_Shell, TopoDS_Face, TopoDS_Wire, TopoDS_Edge, TopoDS_Vertex
-        from OCP.TopExp import TopExp_Explorer
-        from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_WIRE, TopAbs_EDGE, TopAbs_VERTEX
-        from OCP.BRep import BRep_Tool
-        from OCP.BRepBuilderAPI import BRepBuilderAPI_MakeVertex, BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid
-        from OCP.Geom import Geom_Curve, Geom_Surface
-        from OCP.gp import gp_Pnt, gp_Vec
-    except ImportError:
-        raise ImportError("无法导入OpenCASCADE库，请确保已安装pythonocc-core或OCP")
+    raise ImportError("无法导入OpenCASCADE库，请确保已安装pythonocc-core")
 
 
 def import_geometry_file(filename: str) -> TopoDS_Shape:
@@ -69,8 +81,7 @@ def import_step_file(filename: str) -> TopoDS_Shape:
         from OCC.Core.STEPControl import STEPControl_Reader
         from OCC.Core.IFSelect import IFSelect_RetDone, IFSelect_ItemsByEntity
     except ImportError:
-        from OCP.STEPControl import STEPControl_Reader
-        from OCP.IFSelect import IFSelect_RetDone, IFSelect_ItemsByEntity
+        raise ImportError("无法导入STEP模块，请确保已安装pythonocc-core")
     
     step_reader = STEPControl_Reader()
     status = step_reader.ReadFile(filename)
@@ -98,8 +109,7 @@ def import_iges_file(filename: str) -> TopoDS_Shape:
         from OCC.Core.IGESControl import IGESControl_Reader
         from OCC.Core.IFSelect import IFSelect_RetDone
     except ImportError:
-        from OCP.IGESControl import IGESControl_Reader
-        from OCP.IFSelect import IFSelect_RetDone
+        raise ImportError("无法导入IGES模块，请确保已安装pythonocc-core")
     
     iges_reader = IGESControl_Reader()
     status = iges_reader.ReadFile(filename)
@@ -126,7 +136,7 @@ def import_stl_file(filename: str) -> TopoDS_Shape:
     try:
         from OCC.Core.StlAPI import StlAPI_Reader
     except ImportError:
-        from OCP.StlAPI import StlAPI_Reader
+        raise ImportError("无法导入STL模块，请确保已安装pythonocc-core")
     
     stl_reader = StlAPI_Reader()
     shape = TopoDS_Shape()
@@ -287,8 +297,7 @@ def get_shape_bounding_box(shape: TopoDS_Shape) -> Tuple[Tuple[float, float, flo
         from OCC.Core.Bnd import Bnd_Box
         from OCC.Core.BRepBndLib import brepbndlib_Add
     except ImportError:
-        from OCP.Bnd import Bnd_Box
-        from OCP.BRepBndLib import brepbndlib_Add
+        raise ImportError("无法导入边界框模块，请确保已安装pythonocc-core")
     
     bbox = Bnd_Box()
     brepbndlib_Add(shape, bbox)
