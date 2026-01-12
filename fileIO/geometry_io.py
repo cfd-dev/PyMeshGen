@@ -610,3 +610,39 @@ def bind_edges_by_curve_name(shape: TopoDS_Shape, parts: List, edge_curve_mappin
                     
                     print(f"边 {edge_idx} 已绑定到 {part.part_name}.{curve_name}")
                     break
+
+
+def create_test_square_shape():
+    """
+    创建一个测试用的正方形形状
+    
+    Returns:
+        TopoDS_Shape: 包含4条边的正方形形状
+    """
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+    from OCC.Core.gp import gp_Pnt
+    from OCC.Core.GC import GC_MakeSegment
+
+    # 创建正方形的4个顶点
+    p1 = gp_Pnt(0.0, 0.0, 0.0)
+    p2 = gp_Pnt(1.0, 0.0, 0.0)
+    p3 = gp_Pnt(1.0, 1.0, 0.0)
+    p4 = gp_Pnt(0.0, 1.0, 0.0)
+
+    # 创建4条边
+    edge1 = BRepBuilderAPI_MakeEdge(GC_MakeSegment(p1, p2).Value()).Edge()
+    edge2 = BRepBuilderAPI_MakeEdge(GC_MakeSegment(p2, p3).Value()).Edge()
+    edge3 = BRepBuilderAPI_MakeEdge(GC_MakeSegment(p3, p4).Value()).Edge()
+    edge4 = BRepBuilderAPI_MakeEdge(GC_MakeSegment(p4, p1).Value()).Edge()
+
+    # 创建线框
+    wire_maker = BRepBuilderAPI_MakeWire()
+    wire_maker.Add(edge1)
+    wire_maker.Add(edge2)
+    wire_maker.Add(edge3)
+    wire_maker.Add(edge4)
+    wire = wire_maker.Wire()
+
+    # 创建面
+    face_maker = BRepBuilderAPI_MakeFace(wire)
+    return face_maker.Shape()
