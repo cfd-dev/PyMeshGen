@@ -57,6 +57,31 @@ python start_gui.py
 
 The basic workflow for mesh generation using the PyMeshGen GUI follows these steps:
 
+### Geometry Model Workflow
+
+1. **Import Geometry**
+   - Click on the **文件** (File) tab in the ribbon
+   - Select **导入几何** (Import Geometry) button
+   - Choose the geometry file format (STEP, IGES, or STL)
+   - Browse and select your geometry file
+   - The system will parse the geometry asynchronously and display it in the 3D view
+   - Imported geometry elements will be shown in the model tree on the left panel
+
+2. **Export Geometry**
+   - Click on the **文件** (File) tab in the ribbon
+   - Select **导出几何** (Export Geometry) button
+   - Choose the output format (STEP, IGES, or STL)
+   - Specify the output file path
+   - Click **保存** (Save) to export the geometry
+
+3. **Rendering Modes**
+   - Use the rendering mode buttons or keyboard shortcuts to switch between:
+     - **实体模式** (Solid Mode, Press 1): Display solid surfaces
+     - **线框模式** (Wireframe Mode, Press 2): Display original geometry edges
+     - **实体+线框模式** (Solid+Wireframe Mode, Press 3): Display both solid surfaces and original geometry edges
+
+### Mesh Generation Workflow
+
 1. **Import CAS Mesh**
    - Click on the **文件** (File) tab in the ribbon
    - Select **导入网格** (Import Mesh) button
@@ -93,7 +118,7 @@ The basic workflow for mesh generation using the PyMeshGen GUI follows these ste
    - Choose the output file path and format (VTK recommended)
    - Click **保存** (Save) to export the mesh
 
-5. The generated mesh will be saved in the specified output directory (default: `./out`).
+6. The generated mesh will be saved in the specified output directory (default: `./out`).
 
 `Note`: The configuration file `./config/30p30n.json` is used to specify the mesh generation parameters. You can modify this file to change the mesh generation parameters.
 
@@ -150,10 +175,11 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
 - **docs**: the user guide and other documents of the project.
 - **dynamic**: Contains dynamic mesh generation and deformation algorithms:
   - **`fish_swim.py`**: dynamic mesh generation for swimming fish simulation using RBF (Radial Basis Function) deformation methods.
-- **fileIO**: Handles input and output operations for meshes.
+- **fileIO**: Handles input and output operations for meshes and geometry.
   - **`read_cas.py`**: read fluent `.cas` file format.
   - **`stl_io.py`**: read and write `.stl` grid file format and parse the grid to a UnstructuredGrid object.
   - **`vtk_io.py`**: read and write `.vtk` grid file format and parse the grid to a UnstructuredGrid object.
+  - **`occ_to_vtk.py`**: convert OpenCASCADE geometry to VTK format for visualization.
 - **gui**: Graphical User Interface for PyMeshGen:
   - **`gui_main.py`**: main GUI application window with PyQt5.
   - **`gui_base.py`**: base classes and components for GUI.
@@ -164,6 +190,8 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
   - **`part_params_dialog.py`**: dialog for setting part parameters.
   - **`icon_manager.py`**: icon and resource management.
   - **`ui_utils.py`**: utility functions for UI styling and layout.
+  - **`import_thread.py`**: asynchronous geometry import thread for non-blocking UI.
+  - **`model_tree.py`**: model tree widget for displaying geometry and mesh hierarchy.
 - **meshsize**: Contains quadtree-based mesh sizing method.
 - **neural**: Contains AI-driven mesh generation and smoothing methods including:
   - `DataSet`: Grid sampling and dataset construction.
@@ -187,6 +215,58 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
 
 The module framework of PyMeshGen is shown in the following figure:
 ![Module Framework](./images/module_framework.png)
+
+## Geometry Import and Export
+
+PyMeshGen provides comprehensive geometry import and export capabilities through the GUI, supporting multiple CAD file formats.
+
+### Supported Formats
+
+**Import Formats:**
+- **STEP** (.stp, .step): Standard for the Exchange of Product model data
+- **IGES** (.igs, .iges): Initial Graphics Exchange Specification
+- **STL** (.stl): Stereolithography format
+
+**Export Formats:**
+- **STEP** (.stp, .step)
+- **IGES** (.igs, .iges)
+- **STL** (.stl)
+
+### Import Features
+
+- **Asynchronous Import**: Geometry files are imported in a separate thread to prevent UI freezing
+- **Progress Tracking**: Real-time progress bar shows import status
+- **Model Tree Display**: Imported geometry elements are displayed in the model tree panel
+- **Automatic Visualization**: Geometry is automatically rendered in the 3D view after import
+- **Element Information**: Detailed information about geometry elements (curves, surfaces, solids) is available
+
+### Rendering Modes
+
+The GUI provides three rendering modes for geometry visualization:
+
+1. **Solid Mode (实体模式)**: Displays solid surfaces with proper shading and lighting
+2. **Wireframe Mode (线框模式)**: Displays original geometry edges and curves (not VTK-generated wireframe)
+3. **Solid+Wireframe Mode (实体+线框模式)**: Combines solid surfaces with original geometry edges
+
+### Export Features
+
+- **Format Selection**: Choose from STEP, IGES, or STL formats
+- **Path Specification**: Custom output file path selection
+- **Batch Export**: Export multiple geometry elements in a single operation
+
+### Technical Implementation
+
+The geometry import/export functionality is implemented using:
+- **OpenCASCADE Technology (OCC)**: For parsing and processing CAD geometry
+- **VTK**: For visualization and rendering
+- **QThread**: For asynchronous import operations
+- **PyQt5 Signals/Slots**: For progress updates and UI communication
+
+Key files:
+- `fileIO/occ_to_vtk.py`: OpenCASCADE to VTK conversion
+- `gui/import_thread.py`: Asynchronous import thread
+- `gui/model_tree.py`: Geometry hierarchy display
+- `gui/gui_main.py`: Main GUI integration
 
 
 ## Chapter 4: Mesh Generation Algorithms
