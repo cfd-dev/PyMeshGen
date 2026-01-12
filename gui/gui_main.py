@@ -558,6 +558,22 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 # 清空网格显示区域
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.clear()
+                    # 彻底清除渲染器中的所有 actors
+                    if hasattr(self.mesh_display, 'renderer'):
+                        try:
+                            # 获取渲染器中的所有 actors
+                            renderer = self.mesh_display.renderer
+                            actors = renderer.GetActors()
+                            actors.InitTraversal()
+                            actor = actors.GetNextItem()
+                            while actor:
+                                renderer.RemoveActor(actor)
+                                actor = actors.GetNextItem()
+                        except:
+                            pass
+                    # 重新渲染窗口以确保所有元素都被清除
+                    if hasattr(self.mesh_display, 'render_window'):
+                        self.mesh_display.render_window.Render()
 
                 # 如果有画布，也清空
                 if hasattr(self, 'canvas'):
