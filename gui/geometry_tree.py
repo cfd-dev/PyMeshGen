@@ -717,7 +717,11 @@ class GeometryTreeWidget:
             if category is not None and category_data != category:
                 continue
 
-            visible_elements[category_data] = {}
+            if category_data is None:
+                continue
+
+            if category_data not in visible_elements:
+                visible_elements[category_data] = {}
 
             for j in range(category_item.childCount()):
                 element_type_item = category_item.child(j)
@@ -729,10 +733,11 @@ class GeometryTreeWidget:
                     if element_type is not None and elem_type != element_type:
                         continue
 
-                    if element_type_item.checkState(0) != Qt.Checked:
+                    if elem_type is None:
                         continue
 
-                    visible_elements[category_data][elem_type] = []
+                    if elem_type not in visible_elements[category_data]:
+                        visible_elements[category_data][elem_type] = []
 
                     for k in range(element_type_item.childCount()):
                         element_item = element_type_item.child(k)
@@ -740,8 +745,9 @@ class GeometryTreeWidget:
                         if element_item.checkState(0) == Qt.Checked:
                             element_data = element_item.data(0, Qt.UserRole)
                             if isinstance(element_data, tuple) and len(element_data) >= 4:
-                                elem_category, elem_type, elem_obj, elem_index = element_data
-                                visible_elements[category_data][elem_type].append((elem_index, elem_obj))
+                                elem_category_data, elem_type_data, elem_obj, elem_index = element_data
+                                if elem_type_data == elem_type:
+                                    visible_elements[category_data][elem_type].append((elem_index, elem_obj))
 
         if category is not None and category in visible_elements:
             if element_type is not None and element_type in visible_elements[category]:
