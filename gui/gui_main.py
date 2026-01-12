@@ -420,17 +420,17 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 for actor in actors:
                     if mode == "wireframe":
                         if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.GetProperty().SetRepresentationToWireframe()
-                            actor.GetProperty().EdgeVisibilityOff()
-                            actor.GetProperty().SetLineWidth(2.0)
+                            actor.SetVisibility(False)
                     elif mode == "surface-wireframe":
                         if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.SetVisibility(True)
                             actor.GetProperty().SetRepresentationToSurface()
                             actor.GetProperty().EdgeVisibilityOn()
                             actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
                             actor.GetProperty().SetLineWidth(1.5)
                     else:
                         if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.SetVisibility(True)
                             actor.GetProperty().SetRepresentationToSurface()
                             actor.GetProperty().EdgeVisibilityOff()
 
