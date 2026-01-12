@@ -7,7 +7,7 @@ import numpy as np
 
 # 导入 OpenCASCADE DLL 加载器
 # 该模块负责预加载所有必要的 OpenCASCADE DLL，解决 Windows 平台上的 DLL 依赖问题
-from occ_loader import ensure_occ_loaded
+from fileIO.occ_loader import ensure_occ_loaded
 
 # 确保 OpenCASCADE DLL 已加载
 # 这必须在导入任何 OCC 模块之前调用
@@ -346,3 +346,267 @@ def get_shape_statistics(shape: TopoDS_Shape) -> dict:
     stats['bounding_box'] = get_shape_bounding_box(shape)
     
     return stats
+
+
+def extract_edges_with_info(shape: TopoDS_Shape) -> List[dict]:
+    """
+    从TopoDS_Shape中提取所有边及其详细信息
+    
+    Args:
+        shape: OpenCASCADE形状
+        
+    Returns:
+        边列表，每条边包含几何曲线、参数范围、长度等信息
+        [
+            {
+                'edge': TopoDS_Edge,
+                'curve': Geom_Curve,
+                'first': float,
+                'last': float,
+                'length': float,
+                'start_point': (x, y, z),
+                'end_point': (x, y, z)
+            },
+            ...
+        ]
+    """
+    edges_info = []
+    explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    
+    while explorer.More():
+        edge = explorer.Current()
+        curve = BRep_Tool.Curve(edge)
+        
+        if curve:
+            geom_curve, first, last = curve
+            if geom_curve:
+                # 计算曲线长度
+                try:
+                    from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
+                except:
+                    # 如果无法计算精确长度，使用近似值
+                    length = abs(last - first)
+                
+                # 获取起点和终点
+                start_pnt = geom_curve.Value(first)
+                end_pnt = geom_curve.Value(last)
+                
+                edge_info = {
+                    'edge': edge,
+                    'curve': geom_curve,
+                    'first': first,
+                    'last': last,
+                    'length': length,
+                    'start_point': (start_pnt.X(), start_pnt.Y(), start_pnt.Z()),
+                    'end_point': (end_pnt.X(), end_pnt.Y(), end_pnt.Z())
+                }
+                edges_info.append(edge_info)
+        
+        explorer.Next()
+    
+    return edges_info
+
+
+def discretize_edge_by_size(edge_info: dict, max_size: float) -> List[Tuple[float, float, float]]:
+    """
+    根据最大网格尺寸离散化边
+    
+    Args:
+        edge_info: 边信息字典（由extract_edges_with_info返回）
+        max_size: 最大网格尺寸
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    geom_curve = edge_info['curve']
+    first = edge_info['first']
+    last = edge_info['last']
+    length = edge_info['length']
+    
+    if length < 1e-10:
+        return [edge_info['start_point'], edge_info['end_point']]
+    
+    # 计算需要的段数
+    num_segments = max(1, int(length / max_size))
+    
+    # 生成离散点
+    points = []
+    for i in range(num_segments + 1):
+        param = first + (last - first) * i / num_segments
+        pnt = geom_curve.Value(param)
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    
+    return points
+
+
+def discretize_edge_by_count(edge_info: dict, num_points: int) -> List[Tuple[float, float, float]]:
+    """
+    根据指定点数离散化边
+    
+    Args:
+        edge_info: 边信息字典（由extract_edges_with_info返回）
+        num_points: 离散点数
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    geom_curve = edge_info['curve']
+    first = edge_info['first']
+    last = edge_info['last']
+    
+    if num_points < 2:
+        num_points = 2
+    
+    # 生成离散点
+    points = []
+    for i in range(num_points):
+        param = first + (last - first) * i / (num_points - 1)
+        pnt = geom_curve.Value(param)
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    
+    return points
+
+
+def bind_edges_to_connectors(shape: TopoDS_Shape, parts: List) -> None:
+    """
+    将OCC读取的二维曲线edge与Connector绑定，并离散化后保存到Connector中
+    
+    Args:
+        shape: OpenCASCADE形状
+        parts: 部件列表，每个部件包含多个Connector对象
+    """
+    # 提取所有边及其信息
+    edges_info = extract_edges_with_info(shape)
+    
+    if not edges_info:
+        print("警告：未找到任何边")
+        return
+    
+    # 为每条边分配一个索引
+    for idx, edge_info in enumerate(edges_info):
+        edge_info['idx'] = idx
+    
+    # 将边绑定到Connector
+    # 这里使用简单的策略：按照边的顺序分配给各个部件的默认connector
+    # 实际应用中可以根据几何特征、命名等进行更智能的匹配
+    edge_idx = 0
+    for part in parts:
+        for connector in part.connectors:
+            if connector.curve_name == "default":
+                # 为默认connector分配边
+                if edge_idx < len(edges_info):
+                    edge_info = edges_info[edge_idx]
+                    
+                    # 根据connector的参数进行离散化
+                    max_size = connector.param.max_size
+                    
+                    # 离散化边
+                    discretized_points = discretize_edge_by_size(edge_info, max_size)
+                    
+                    # 将离散点保存到connector的front_list中
+                    _create_fronts_from_points(connector, discretized_points)
+                    
+                    # 保存边信息到connector的cad_obj中
+                    connector.cad_obj = edge_info
+                    
+                    edge_idx += 1
+    
+    print(f"成功绑定 {edge_idx} 条边到Connector")
+
+
+def _create_fronts_from_points(connector, points: List[Tuple[float, float, float]]) -> None:
+    """
+    从离散点创建Front对象并保存到Connector中
+    
+    Args:
+        connector: Connector对象
+        points: 离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    if len(points) < 2:
+        return
+    
+    # 延迟导入以避免循环依赖
+    from data_structure.basic_elements import NodeElementALM
+    from data_structure.front2d import Front
+    
+    # 清空现有的front_list
+    connector.front_list = []
+    
+    # 为每对相邻点创建一个Front
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i + 1]
+        
+        # 创建节点元素
+        node1 = NodeElementALM(
+            coords=p1,
+            idx=i,
+            bc_type=None,
+            match_bound=None
+        )
+        node2 = NodeElementALM(
+            coords=p2,
+            idx=i + 1,
+            bc_type=None,
+            match_bound=None
+        )
+        
+        # 创建Front对象
+        front = Front(
+            node_elem1=node1,
+            node_elem2=node2,
+            idx=i,
+            bc_type=None,
+            part_name=connector.part_name
+        )
+        
+        # 添加到connector的front_list中
+        connector.front_list.append(front)
+
+
+def bind_edges_by_curve_name(shape: TopoDS_Shape, parts: List, edge_curve_mapping: dict) -> None:
+    """
+    根据曲线名称将edge绑定到对应的Connector
+    
+    Args:
+        shape: OpenCASCADE形状
+        parts: 部件列表
+        edge_curve_mapping: 边到曲线名称的映射 {edge_idx: curve_name}
+    """
+    # 提取所有边及其信息
+    edges_info = extract_edges_with_info(shape)
+    
+    if not edges_info:
+        print("警告：未找到任何边")
+        return
+    
+    # 为每条边分配一个索引
+    for idx, edge_info in enumerate(edges_info):
+        edge_info['idx'] = idx
+    
+    # 根据映射关系绑定边到connector
+    for edge_idx, curve_name in edge_curve_mapping.items():
+        if edge_idx >= len(edges_info):
+            continue
+        
+        edge_info = edges_info[edge_idx]
+        
+        # 查找对应的connector
+        for part in parts:
+            for connector in part.connectors:
+                if connector.curve_name == curve_name:
+                    # 根据connector的参数进行离散化
+                    max_size = connector.param.max_size
+                    
+                    # 离散化边
+                    discretized_points = discretize_edge_by_size(edge_info, max_size)
+                    
+                    # 将离散点保存到connector的front_list中
+                    _create_fronts_from_points(connector, discretized_points)
+                    
+                    # 保存边信息到connector的cad_obj中
+                    connector.cad_obj = edge_info
+                    
+                    print(f"边 {edge_idx} 已绑定到 {part.part_name}.{curve_name}")
+                    break
