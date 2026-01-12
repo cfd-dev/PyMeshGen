@@ -608,8 +608,8 @@ class PartListWidget:
         self.parts_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.parts_list.customContextMenuRequested.connect(self.show_context_menu)
 
-        # Connect item click to handle checkbox state changes
-        self.parts_list.itemClicked.connect(self.handle_item_click)
+        # Connect item changed to handle checkbox state changes
+        self.parts_list.itemChanged.connect(self.handle_item_click)
 
     def add_part_with_checkbox(self, part_name, checked=True):
         """添加带复选框的部件项

@@ -469,6 +469,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'parts_list_widget') and hasattr(self.parts_list_widget, 'parts_list'):
                     self.parts_list_widget.parts_list.clear()
 
+                # 清空模型树
+                if hasattr(self, 'geometry_tree_widget'):
+                    self.geometry_tree_widget.clear()
+
                 # 清空网格显示
                 if hasattr(self, 'mesh_visualizer'):
                     self.mesh_visualizer.clear_mesh()
