@@ -71,6 +71,8 @@ class ModelTreeWidget:
         """初始化三层模型树结构"""
         self.tree.clear()
 
+        self.tree.blockSignals(True)
+
         geometry_item = QTreeWidgetItem(self.tree)
         geometry_item.setText(0, self.geometry_name)
         geometry_item.setText(1, "")
@@ -139,6 +141,8 @@ class ModelTreeWidget:
         parts_item.setExpanded(True)
         parts_item.setCheckState(0, Qt.Checked)
         parts_item.setData(0, Qt.UserRole, "parts")
+
+        self.tree.blockSignals(False)
 
     def load_geometry(self, shape, geometry_name="几何"):
         """
@@ -249,6 +253,8 @@ class ModelTreeWidget:
         face_count = 0
         body_count = 0
 
+        self.tree.blockSignals(True)
+
         explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
         while explorer.More():
             vertex = explorer.Current()
@@ -318,6 +324,8 @@ class ModelTreeWidget:
         faces_item.setText(1, str(face_count))
         bodies_item.setText(1, str(body_count))
 
+        self.tree.blockSignals(False)
+
     def _extract_mesh_elements(self, mesh_data):
         """
         从网格数据中提取网格元素并添加到树中
@@ -341,6 +349,8 @@ class ModelTreeWidget:
         edge_count = 0
         face_count = 0
         body_count = 0
+
+        self.tree.blockSignals(True)
 
         if hasattr(mesh_data, 'node_coords'):
             node_coords = mesh_data.node_coords
@@ -438,6 +448,8 @@ class ModelTreeWidget:
             parts_item.setText(1, "0")
             return
 
+        self.tree.blockSignals(True)
+
         if hasattr(parts_data, 'parts_info') and parts_data.parts_info:
             if isinstance(parts_data.parts_info, list):
                 for part_info in parts_data.parts_info:
@@ -495,6 +507,8 @@ class ModelTreeWidget:
             part_count = 1
 
         parts_item.setText(1, str(part_count))
+
+        self.tree.blockSignals(False)
 
     def _get_vertex_point(self, vertex):
         """
