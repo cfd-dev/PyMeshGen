@@ -155,6 +155,9 @@ class GeometryTreeWidget:
         self._clear_geometry_elements()
         self._extract_geometry_elements(shape)
 
+        if hasattr(self.parent, '_update_geometry_element_display'):
+            self.parent._update_geometry_element_display()
+
     def load_mesh(self, mesh_data, mesh_name="网格"):
         """
         加载网格模型到树中
@@ -250,7 +253,7 @@ class GeometryTreeWidget:
             vertex_item.setText(0, f"点_{vertex_count}")
             vertex_item.setText(1, "")
             vertex_item.setCheckState(0, Qt.Checked)
-            vertex_item.setData(0, Qt.UserRole, ("geometry", "vertex", vertex, vertex_count))
+            vertex_item.setData(0, Qt.UserRole, ("geometry", "vertices", vertex, vertex_count))
 
             pnt = self._get_vertex_point(vertex)
             if pnt:
@@ -266,7 +269,7 @@ class GeometryTreeWidget:
             edge_item.setText(0, f"线_{edge_count}")
             edge_item.setText(1, "")
             edge_item.setCheckState(0, Qt.Checked)
-            edge_item.setData(0, Qt.UserRole, ("geometry", "edge", edge, edge_count))
+            edge_item.setData(0, Qt.UserRole, ("geometry", "edges", edge, edge_count))
 
             edge_length = self._get_edge_length(edge)
             if edge_length is not None:
@@ -282,7 +285,7 @@ class GeometryTreeWidget:
             face_item.setText(0, f"面_{face_count}")
             face_item.setText(1, "")
             face_item.setCheckState(0, Qt.Checked)
-            face_item.setData(0, Qt.UserRole, ("geometry", "face", face, face_count))
+            face_item.setData(0, Qt.UserRole, ("geometry", "faces", face, face_count))
 
             face_area = self._get_face_area(face)
             if face_area is not None:
@@ -298,7 +301,7 @@ class GeometryTreeWidget:
             body_item.setText(0, f"体_{body_count}")
             body_item.setText(1, "")
             body_item.setCheckState(0, Qt.Checked)
-            body_item.setData(0, Qt.UserRole, ("geometry", "body", solid, body_count))
+            body_item.setData(0, Qt.UserRole, ("geometry", "bodies", solid, body_count))
 
             body_volume = self._get_solid_volume(solid)
             if body_volume is not None:
@@ -748,11 +751,6 @@ class GeometryTreeWidget:
                                 elem_category_data, elem_type_data, elem_obj, elem_index = element_data
                                 if elem_type_data == elem_type:
                                     visible_elements[category_data][elem_type].append((elem_index, elem_obj))
-
-        if category is not None and category in visible_elements:
-            if element_type is not None and element_type in visible_elements[category]:
-                return visible_elements[category][element_type]
-            return visible_elements[category]
 
         return visible_elements
 

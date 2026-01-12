@@ -920,22 +920,20 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 bbox_min, bbox_max = stats['bounding_box']
                 self.log_info(f"  - 边界框: ({bbox_min[0]:.2f}, {bbox_min[1]:.2f}, {bbox_min[2]:.2f}) 到 ({bbox_max[0]:.2f}, {bbox_max[1]:.2f}, {bbox_max[2]:.2f})")
 
-                if hasattr(self, 'mesh_display'):
-                    actor = create_shape_actor(
+                self.current_geometry = shape
+                self.geometry_actors = {}
+                self.geometry_actor = None
+
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    self.geometry_actor = create_shape_actor(
                         shape,
                         mesh_quality=1.0,
                         display_mode='surface',
                         color=(0.8, 0.8, 0.9),
-                        opacity=0.8,
-                        edge_color=(0.0, 0.0, 0.0),
-                        edge_width=1.0
+                        opacity=0.8
                     )
-
-                    self.geometry_actor = actor
-                    self.current_geometry = shape
-                    self.geometry_actors = {}
-
-                    self.mesh_display.renderer.AddActor(actor)
+                    self.mesh_display.renderer.AddActor(self.geometry_actor)
+                    self.geometry_actors['main'] = [self.geometry_actor]
                     self.mesh_display.renderer.ResetCamera()
                     self.mesh_display.render_window.Render()
 
@@ -1566,9 +1564,12 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
         if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_geometry'):
+            self.log_info("缺少 geometry_tree_widget 或 current_geometry")
             return
 
         visible_elements = self.geometry_tree_widget.get_visible_elements(category='geometry')
+        self.log_info(f"可见元素: {visible_elements}")
+        self.log_info(f"visible_elements 类型: {type(visible_elements)}")
 
         if hasattr(self, 'geometry_actors'):
             for elem_type, actors in self.geometry_actors.items():
@@ -1576,41 +1577,59 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                         self.mesh_display.renderer.RemoveActor(actor)
 
+        if hasattr(self, 'geometry_actor') and self.geometry_actor:
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                self.mesh_display.renderer.RemoveActor(self.geometry_actor)
+            self.geometry_actor = None
+
         self.geometry_actors = {}
 
         from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
 
-        if 'vertices' in visible_elements and visible_elements['vertices']:
+        if 'geometry' in visible_elements:
+            self.log_info(f"找到 geometry 键")
+            if 'vertices' in visible_elements['geometry']:
+                self.log_info(f"找到 vertices 键，数量: {len(visible_elements['geometry']['vertices'])}")
+            else:
+                self.log_info(f"未找到 vertices 键")
+        else:
+            self.log_info(f"未找到 geometry 键")
+
+        if 'geometry' in visible_elements and 'vertices' in visible_elements['geometry'] and visible_elements['geometry']['vertices']:
             self.geometry_actors['vertices'] = []
-            for elem_index, elem_data in visible_elements['vertices']:
+            for elem_index, elem_data in visible_elements['geometry']['vertices']:
                 actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
                 self.geometry_actors['vertices'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
+            self.log_info(f"已显示 {len(self.geometry_actors['vertices'])} 个顶点")
 
-        if 'edges' in visible_elements and visible_elements['edges']:
+        if 'geometry' in visible_elements and 'edges' in visible_elements['geometry'] and visible_elements['geometry']['edges']:
             self.geometry_actors['edges'] = []
-            for elem_index, elem_data in visible_elements['edges']:
+            for elem_index, elem_data in visible_elements['geometry']['edges']:
                 actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
                 self.geometry_actors['edges'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
+            self.log_info(f"已显示 {len(self.geometry_actors['edges'])} 条边")
 
-        if 'faces' in visible_elements and visible_elements['faces']:
+        if 'geometry' in visible_elements and 'faces' in visible_elements['geometry'] and visible_elements['geometry']['faces']:
             self.geometry_actors['faces'] = []
-            for elem_index, elem_data in visible_elements['faces']:
+            for elem_index, elem_data in visible_elements['geometry']['faces']:
                 actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
                 self.geometry_actors['faces'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
+            self.log_info(f"已显示 {len(self.geometry_actors['faces'])} 个面")
 
-        if 'bodies' in visible_elements and visible_elements['bodies']:
+        if 'geometry' in visible_elements and 'bodies' in visible_elements['geometry'] and visible_elements['geometry']['bodies']:
             self.geometry_actors['bodies'] = []
-            for elem_index, elem_data in visible_elements['bodies']:
+            for elem_index, elem_data in visible_elements['geometry']['bodies']:
                 actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
                 self.geometry_actors['bodies'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
+            self.log_info(f"已显示 {len(self.geometry_actors['bodies'])} 个体")
 
         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
             self.mesh_display.render_window.Render()
