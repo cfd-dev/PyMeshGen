@@ -399,8 +399,27 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actor.GetProperty().SetRepresentationToSurface()
                 self.geometry_actor.GetProperty().EdgeVisibilityOff()
 
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
-                self.mesh_display.render_window.Render()
+        if hasattr(self, 'geometry_actors'):
+            for elem_type, actors in self.geometry_actors.items():
+                for actor in actors:
+                    if mode == "wireframe":
+                        if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.GetProperty().SetRepresentationToWireframe()
+                            actor.GetProperty().EdgeVisibilityOff()
+                            actor.GetProperty().SetLineWidth(2.0)
+                    elif mode == "surface-wireframe":
+                        if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.GetProperty().SetRepresentationToSurface()
+                            actor.GetProperty().EdgeVisibilityOn()
+                            actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
+                            actor.GetProperty().SetLineWidth(1.5)
+                    else:
+                        if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.GetProperty().SetRepresentationToSurface()
+                            actor.GetProperty().EdgeVisibilityOff()
+
+        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
+            self.mesh_display.render_window.Render()
 
         mode_messages = {
             "surface": "渲染模式: 实体模式 (1键)",
