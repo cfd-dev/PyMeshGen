@@ -956,7 +956,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 import_btn.setEnabled(True)
 
     def import_geometry(self):
-        """导入几何文件（STEP/IGES/STL等）"""
+        """导入几何文件（使用异步线程，避免GUI卡顿）"""
+        from gui.import_thread import GeometryImportThread
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "导入几何文件",
@@ -966,50 +968,104 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         if file_path:
             try:
-                from fileIO.geometry_io import import_geometry_file, get_shape_statistics
-                from fileIO.occ_to_vtk import create_shape_actor
+                # 创建几何导入线程
+                self.geometry_import_thread = GeometryImportThread(file_path)
 
+                # 连接信号
+                self.geometry_import_thread.progress_updated.connect(self.on_geometry_import_progress)
+                self.geometry_import_thread.import_finished.connect(self.on_geometry_import_finished)
+                self.geometry_import_thread.import_failed.connect(self.on_geometry_import_failed)
+
+                # 禁用导入几何按钮，防止重复导入
+                if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+                    import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
+                    if import_btn:
+                        import_btn.setEnabled(False)
+
+                # 启动线程
+                self.geometry_import_thread.start()
                 self.log_info(f"开始导入几何: {file_path}")
                 self.update_status("正在导入几何...")
-
-                shape = import_geometry_file(file_path)
-
-                stats = get_shape_statistics(shape)
-                self.log_info(f"几何统计信息:")
-                self.log_info(f"  - 顶点数: {stats['num_vertices']}")
-                self.log_info(f"  - 边数: {stats['num_edges']}")
-                self.log_info(f"  - 面数: {stats['num_faces']}")
-                self.log_info(f"  - 实体数: {stats['num_solids']}")
-
-                bbox_min, bbox_max = stats['bounding_box']
-                self.log_info(f"  - 边界框: ({bbox_min[0]:.2f}, {bbox_min[1]:.2f}, {bbox_min[2]:.2f}) 到 ({bbox_max[0]:.2f}, {bbox_max[1]:.2f}, {bbox_max[2]:.2f})")
-
-                self.current_geometry = shape
-                self.geometry_actors = {}
-                self.geometry_actor = None
-
-                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                    self.geometry_actor = create_shape_actor(
-                        shape,
-                        mesh_quality=1.0,
-                        display_mode='surface',
-                        color=(0.8, 0.8, 0.9),
-                        opacity=0.8
-                    )
-                    self.mesh_display.renderer.AddActor(self.geometry_actor)
-                    self.geometry_actors['main'] = [self.geometry_actor]
-                    self.mesh_display.renderer.ResetCamera()
-                    self.mesh_display.render_window.Render()
-
-                self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
-
-                self.log_info(f"已导入几何: {file_path}")
-                self.update_status("已导入几何")
 
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"导入几何失败: {str(e)}")
                 self.log_error(f"导入几何失败: {str(e)}")
-                self.update_status("导入几何失败")
+
+    def on_geometry_import_progress(self, message, progress):
+        """几何导入进度更新回调"""
+        self.status_bar.show_progress(message, progress)
+        self.log_info(f"{message} ({progress}%)")
+
+    def on_geometry_import_finished(self, result):
+        """几何导入完成回调"""
+        try:
+            from fileIO.occ_to_vtk import create_shape_actor
+
+            shape = result['shape']
+            stats = result['stats']
+            file_path = result['file_path']
+
+            self.log_info(f"几何统计信息:")
+            self.log_info(f"  - 顶点数: {stats['num_vertices']}")
+            self.log_info(f"  - 边数: {stats['num_edges']}")
+            self.log_info(f"  - 面数: {stats['num_faces']}")
+            self.log_info(f"  - 实体数: {stats['num_solids']}")
+
+            bbox_min, bbox_max = stats['bounding_box']
+            self.log_info(f"  - 边界框: ({bbox_min[0]:.2f}, {bbox_min[1]:.2f}, {bbox_min[2]:.2f}) 到 ({bbox_max[0]:.2f}, {bbox_max[1]:.2f}, {bbox_max[2]:.2f})")
+
+            self.current_geometry = shape
+            self.geometry_actors = {}
+            self.geometry_actor = None
+
+            self.update_status("正在创建几何显示...")
+
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                self.geometry_actor = create_shape_actor(
+                    shape,
+                    mesh_quality=1.0,
+                    display_mode='surface',
+                    color=(0.8, 0.8, 0.9),
+                    opacity=0.8
+                )
+                self.mesh_display.renderer.AddActor(self.geometry_actor)
+                self.geometry_actors['main'] = [self.geometry_actor]
+                self.mesh_display.renderer.ResetCamera()
+                self.mesh_display.render_window.Render()
+
+            self.update_status("正在加载模型树...")
+
+            if hasattr(self, 'model_tree_widget'):
+                self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
+
+            self.log_info(f"已导入几何: {file_path}")
+            self.update_status("已导入几何")
+            self.status_bar.hide_progress()
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"处理导入的几何失败: {str(e)}")
+            self.log_error(f"处理导入的几何失败: {str(e)}")
+            self.status_bar.hide_progress()
+
+        finally:
+            # 重新启用导入几何按钮
+            if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+                import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
+                if import_btn:
+                    import_btn.setEnabled(True)
+
+    def on_geometry_import_failed(self, error_message):
+        """几何导入失败回调"""
+        QMessageBox.critical(self, "错误", error_message)
+        self.log_error(error_message)
+        self.update_status("导入几何失败")
+        self.status_bar.hide_progress()
+
+        # 重新启用导入几何按钮
+        if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
+            import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
+            if import_btn:
+                import_btn.setEnabled(True)
 
     def export_geometry(self):
         """导出几何文件"""

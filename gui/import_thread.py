@@ -11,6 +11,69 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from fileIO.read_cas import parse_fluent_msh, reconstruct_mesh_from_cas
 
 
+class GeometryImportThread(QThread):
+    """几何导入线程类"""
+
+    progress_updated = pyqtSignal(str, int)  # 消息, 进度百分比
+    import_finished = pyqtSignal(object)  # 导入的几何形状
+    import_failed = pyqtSignal(str)  # 错误信息
+
+    def __init__(self, file_path):
+        super().__init__()
+        self.file_path = file_path
+        self._is_running = True
+
+    def run(self):
+        """执行几何导入操作"""
+        try:
+            from fileIO.geometry_io import import_geometry_file, get_shape_statistics
+
+            file_ext = os.path.splitext(self.file_path)[1].lower()
+            
+            self.progress_updated.emit(f"开始导入几何文件: {os.path.basename(self.file_path)}", 5)
+            
+            if not self._is_running:
+                return
+
+            self.progress_updated.emit(f"读取{file_ext.upper()}文件...", 20)
+
+            if not self._is_running:
+                return
+
+            shape = import_geometry_file(self.file_path)
+
+            if not self._is_running:
+                return
+
+            self.progress_updated.emit("提取几何统计信息...", 60)
+
+            if not self._is_running:
+                return
+
+            stats = get_shape_statistics(shape)
+
+            if not self._is_running:
+                return
+
+            self.progress_updated.emit("完成几何文件导入", 100)
+            
+            result = {
+                'shape': shape,
+                'stats': stats,
+                'file_path': self.file_path
+            }
+            
+            self.import_finished.emit(result)
+
+        except Exception as e:
+            self.import_failed.emit(f"几何导入失败: {str(e)}")
+
+    def stop(self):
+        """停止导入操作"""
+        self._is_running = False
+        self.wait()
+
+
 class MeshImportThread(QThread):
     """网格导入线程类"""
 
