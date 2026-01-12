@@ -399,9 +399,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             elif mode == "surface-wireframe":
                 self.geometry_actor.SetVisibility(True)
                 self.geometry_actor.GetProperty().SetRepresentationToSurface()
-                self.geometry_actor.GetProperty().EdgeVisibilityOn()
-                self.geometry_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
-                self.geometry_actor.GetProperty().SetLineWidth(1.5)
+                self.geometry_actor.GetProperty().EdgeVisibilityOff()
             else:
                 self.geometry_actor.SetVisibility(True)
                 self.geometry_actor.GetProperty().SetRepresentationToSurface()
@@ -411,7 +409,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             if mode == "wireframe":
                 self.geometry_edges_actor.SetVisibility(True)
             elif mode == "surface-wireframe":
-                self.geometry_edges_actor.SetVisibility(False)
+                self.geometry_edges_actor.SetVisibility(True)
             else:
                 self.geometry_edges_actor.SetVisibility(False)
 
@@ -425,9 +423,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         if elem_type == 'faces' or elem_type == 'bodies':
                             actor.SetVisibility(True)
                             actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOn()
-                            actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
-                            actor.GetProperty().SetLineWidth(1.5)
+                            actor.GetProperty().EdgeVisibilityOff()
                     else:
                         if elem_type == 'faces' or elem_type == 'bodies':
                             actor.SetVisibility(True)
