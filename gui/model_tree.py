@@ -843,6 +843,9 @@ class ModelTreeWidget:
 
     def clear(self):
         """清空树"""
+        self.geometry_name = "几何"
+        self.mesh_name = "网格"
+        self.parts_name = "部件"
         self._init_tree_structure()
         self.geometry_data = None
         self.mesh_data = None
