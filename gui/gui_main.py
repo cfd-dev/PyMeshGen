@@ -518,6 +518,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                             pass
                     self.geometry_actor = None
 
+                if hasattr(self, 'geometry_actors'):
+                    for elem_type, actors in self.geometry_actors.items():
+                        for actor in actors:
+                            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                                try:
+                                    self.mesh_display.renderer.RemoveActor(actor)
+                                except:
+                                    pass
+                    self.geometry_actors = {}
+
                 if hasattr(self, 'current_geometry'):
                     self.current_geometry = None
 
