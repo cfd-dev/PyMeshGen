@@ -16,6 +16,9 @@ from PyQt5.QtGui import QIcon
 class ModelTreeWidget:
     """统一模型树组件 - 三层结构：几何、网格、部件"""
 
+    MAX_TREE_ITEMS = 1000  # 最大树项数量，超过则使用虚拟化
+    LAZY_LOAD_THRESHOLD = 500  # 延迟加载阈值
+
     def __init__(self, parent=None):
         """
         初始化统一模型树组件
@@ -343,33 +346,75 @@ class ModelTreeWidget:
             node_coords = mesh_data.node_coords
             vertex_count = len(node_coords)
 
-            for i, coord in enumerate(node_coords):
-                vertex_item = QTreeWidgetItem(vertices_item)
-                vertex_item.setText(0, f"点_{i}")
-                vertex_item.setText(1, "")
-                vertex_item.setCheckState(0, Qt.Checked)
-                vertex_item.setData(0, Qt.UserRole, ("mesh", "vertex", i, coord))
+            if vertex_count <= self.LAZY_LOAD_THRESHOLD:
+                for i, coord in enumerate(node_coords):
+                    vertex_item = QTreeWidgetItem(vertices_item)
+                    vertex_item.setText(0, f"点_{i}")
+                    vertex_item.setText(1, "")
+                    vertex_item.setCheckState(0, Qt.Checked)
+                    vertex_item.setData(0, Qt.UserRole, ("mesh", "vertex", i, coord))
 
-                coord_str = f"({coord[0]:.3f}, {coord[1]:.3f}"
-                if len(coord) > 2:
-                    coord_str += f", {coord[2]:.3f})"
-                else:
-                    coord_str += ", 0.000)"
-                vertex_item.setToolTip(0, f"坐标: {coord_str}")
+                    coord_str = f"({coord[0]:.3f}, {coord[1]:.3f}"
+                    if len(coord) > 2:
+                        coord_str += f", {coord[2]:.3f})"
+                    else:
+                        coord_str += ", 0.000)"
+                    vertex_item.setToolTip(0, f"坐标: {coord_str}")
+            else:
+                for i in range(0, min(vertex_count, self.MAX_TREE_ITEMS)):
+                    coord = node_coords[i]
+                    vertex_item = QTreeWidgetItem(vertices_item)
+                    vertex_item.setText(0, f"点_{i}")
+                    vertex_item.setText(1, "")
+                    vertex_item.setCheckState(0, Qt.Checked)
+                    vertex_item.setData(0, Qt.UserRole, ("mesh", "vertex", i, coord))
+
+                    coord_str = f"({coord[0]:.3f}, {coord[1]:.3f}"
+                    if len(coord) > 2:
+                        coord_str += f", {coord[2]:.3f})"
+                    else:
+                        coord_str += ", 0.000)"
+                    vertex_item.setToolTip(0, f"坐标: {coord_str}")
+
+                if vertex_count > self.MAX_TREE_ITEMS:
+                    summary_item = QTreeWidgetItem(vertices_item)
+                    summary_item.setText(0, f"... (还有 {vertex_count - self.MAX_TREE_ITEMS} 个节点)")
+                    summary_item.setText(1, "")
+                    summary_item.setCheckState(0, Qt.Checked)
+                    summary_item.setData(0, Qt.UserRole, ("mesh", "vertex_summary", self.MAX_TREE_ITEMS, vertex_count))
 
         if hasattr(mesh_data, 'cells'):
             cells = mesh_data.cells
             face_count = len(cells)
 
-            for i, cell in enumerate(cells):
-                face_item = QTreeWidgetItem(faces_item)
-                face_item.setText(0, f"面_{i}")
-                face_item.setText(1, "")
-                face_item.setCheckState(0, Qt.Checked)
-                face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
+            if face_count <= self.LAZY_LOAD_THRESHOLD:
+                for i, cell in enumerate(cells):
+                    face_item = QTreeWidgetItem(faces_item)
+                    face_item.setText(0, f"面_{i}")
+                    face_item.setText(1, "")
+                    face_item.setCheckState(0, Qt.Checked)
+                    face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
 
-                num_nodes = len(cell)
-                face_item.setToolTip(0, f"节点数: {num_nodes}")
+                    num_nodes = len(cell)
+                    face_item.setToolTip(0, f"节点数: {num_nodes}")
+            else:
+                for i in range(0, min(face_count, self.MAX_TREE_ITEMS)):
+                    cell = cells[i]
+                    face_item = QTreeWidgetItem(faces_item)
+                    face_item.setText(0, f"面_{i}")
+                    face_item.setText(1, "")
+                    face_item.setCheckState(0, Qt.Checked)
+                    face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
+
+                    num_nodes = len(cell)
+                    face_item.setToolTip(0, f"节点数: {num_nodes}")
+
+                if face_count > self.MAX_TREE_ITEMS:
+                    summary_item = QTreeWidgetItem(faces_item)
+                    summary_item.setText(0, f"... (还有 {face_count - self.MAX_TREE_ITEMS} 个单元)")
+                    summary_item.setText(1, "")
+                    summary_item.setCheckState(0, Qt.Checked)
+                    summary_item.setData(0, Qt.UserRole, ("mesh", "face_summary", self.MAX_TREE_ITEMS, face_count))
 
         vertices_item.setText(1, str(vertex_count))
         edges_item.setText(1, str(edge_count))

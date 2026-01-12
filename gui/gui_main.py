@@ -842,29 +842,56 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info(f"{message} ({progress}%)")
 
     def on_import_finished(self, mesh_data):
-        """导入完成回调"""
+        """导入完成回调 - 优化版本，使用QTimer分步处理避免UI卡顿"""
         try:
             self.current_mesh = mesh_data
 
             if hasattr(self, 'mesh_display'):
+                self.update_status("正在显示网格...")
                 self.mesh_display.display_mesh(mesh_data)
 
             # 保存原始节点坐标用于后续的节点映射
             if hasattr(mesh_data, 'node_coords'):
+                self.update_status("正在保存节点坐标...")
                 self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
 
-            # 使用几何模型树加载网格数据
+            # 使用几何模型树加载网格数据 - 分步处理
             if hasattr(self, 'model_tree_widget'):
-                self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
-                self.model_tree_widget.load_parts(mesh_data)
+                self.update_status("正在加载模型树...")
+                from PyQt5.QtCore import QTimer
+                
+                # 创建分步处理函数
+                def step1_load_mesh():
+                    self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
+                    QTimer.singleShot(10, step2_load_parts)
+                
+                def step2_load_parts():
+                    self.update_status("正在加载部件信息...")
+                    self.model_tree_widget.load_parts(mesh_data)
+                    QTimer.singleShot(10, step3_refresh_display)
+                
+                def step3_refresh_display():
+                    self.update_status("正在刷新显示...")
+                    self.refresh_display_all_parts()
+                    QTimer.singleShot(10, step4_complete)
+                
+                def step4_complete():
+                    self.log_info(f"已导入网格: {mesh_data.file_path}")
+                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
+                    self.update_status("已导入网格")
+                    self.status_bar.hide_progress()
 
-            # Refresh display to show all parts with different colors
-            self.refresh_display_all_parts()
-
-            self.log_info(f"已导入网格: {mesh_data.file_path}")
-            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
-            self.update_status("已导入网格")
-            self.status_bar.hide_progress()
+                # 启动分步处理
+                QTimer.singleShot(10, step1_load_mesh)
+            else:
+                # Refresh display to show all parts with different colors
+                self.update_status("正在刷新显示...")
+                self.refresh_display_all_parts()
+                
+                self.log_info(f"已导入网格: {mesh_data.file_path}")
+                self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
+                self.update_status("已导入网格")
+                self.status_bar.hide_progress()
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"处理导入的网格失败: {str(e)}")
@@ -1460,7 +1487,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info(f"{action}部件: {actual_part_name}")
 
     def refresh_display_all_parts(self):
-        """刷新显示所有可见部件"""
+        """刷新显示所有可见部件 - 优化版本，批量处理减少渲染次数"""
         if not hasattr(self, 'mesh_display') or not self.mesh_display:
             return
 
@@ -1478,11 +1505,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 if item.checkState() == Qt.Checked:
                     visible_parts.append(part_name)
 
-        # Display only visible parts
+        # Display only visible parts - 批量处理以提高性能
         if visible_parts:
-            # For each visible part, display it with a unique color
+            # 批量显示所有部件，只渲染一次
             for part_name in visible_parts:
-                self.mesh_display.display_part(part_name, parts_info=self.cas_parts_info)
+                self.mesh_display.display_part(part_name, parts_info=self.cas_parts_info, render_immediately=False)
+            
+            # 批量渲染一次，而不是每个部件都渲染
+            self.mesh_display.render_window.Render()
         else:
             # If no parts are visible, clear the display
             self.mesh_display.clear()

@@ -1131,13 +1131,14 @@ class MeshDisplayArea:
 
             self.render_window.Render()
     
-    def display_part(self, part_name, parts_info=None, color=None):
+    def display_part(self, part_name, parts_info=None, color=None, render_immediately=True):
         """显示指定的部件，保留其他已显示的内容
 
         Args:
             part_name (str): 要显示的部件名称
             parts_info (dict): 可选，部件信息字典，用于直接传递部件数据
             color (tuple): 可选，指定颜色 (R, G, B)，范围0-1
+            render_immediately (bool): 是否立即渲染，默认为True。设为False可批量渲染提高性能
         """
         try:
             # 检查渲染器和渲染窗口是否可用
@@ -1302,8 +1303,9 @@ class MeshDisplayArea:
                         self.additional_actors = []
                     self.additional_actors.append(additional_actor)
 
-            # 重渲染
-            self.render_window.Render()
+            # 重渲染 - 仅当render_immediately为True时才渲染
+            if render_immediately:
+                self.render_window.Render()
 
             return True
 
