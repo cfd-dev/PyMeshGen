@@ -158,22 +158,12 @@ class ViewToolbar(QToolBar):
                 getattr(self.window(), method_name)()
 
     def add_view_toolbar_to_main_window(self, main_window):
-        """Connect the toolbar to the main window methods"""
-        # Connect display mode actions
-        self.actions['surface'].triggered.connect(lambda: main_window.set_render_mode("surface"))
-        self.actions['wireframe'].triggered.connect(lambda: main_window.set_render_mode("wireframe"))
-        self.actions['surface-wireframe'].triggered.connect(lambda: main_window.set_render_mode("surface-wireframe"))
-
-        # Connect view actions
-        self.actions['reset'].triggered.connect(main_window.reset_view)
-        self.actions['fit'].triggered.connect(main_window.fit_view)
-        self.actions['x_pos'].triggered.connect(main_window.set_view_x_positive)
-        self.actions['x_neg'].triggered.connect(main_window.set_view_x_negative)
-        self.actions['y_pos'].triggered.connect(main_window.set_view_y_positive)
-        self.actions['y_neg'].triggered.connect(main_window.set_view_y_negative)
-        self.actions['z_pos'].triggered.connect(main_window.set_view_z_positive)
-        self.actions['z_neg'].triggered.connect(main_window.set_view_z_negative)
-        self.actions['iso'].triggered.connect(main_window.set_view_isometric)
+        """Connect the toolbar to the main window methods
+        
+        Note: The actions are already connected in _create_toolbar_content() via _emit_view_change()
+        This method is kept for potential future use but no longer adds duplicate connections.
+        """
+        pass
 
     def contextMenuEvent(self, event):
         """Override context menu to provide toolbar options"""
