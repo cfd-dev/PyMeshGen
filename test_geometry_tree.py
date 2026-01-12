@@ -13,14 +13,14 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from PyQt5.QtWidgets import QApplication
-from gui.gui_main import SimplifiedPyMeshGenGUI
+from gui.gui_main import PyMeshGenGUI
 
 
 def test_unified_model_tree():
     """测试统一模型树功能（几何和网格）"""
     app = QApplication(sys.argv)
     
-    gui = SimplifiedPyMeshGenGUI()
+    gui = PyMeshGenGUI()
     gui.show()
     
     print("=" * 60)

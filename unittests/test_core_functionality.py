@@ -50,7 +50,7 @@ class TestCoreFunctionality(unittest.TestCase):
     def test_gui_import(self):
         """测试GUI模块导入"""
         try:
-            from gui.gui_main import SimplifiedPyMeshGenGUI
+            from gui.gui_main import PyMeshGenGUI
             self.assertTrue(True, "GUI模块导入成功")
         except Exception as e:
             self.fail(f"GUI模块导入失败: {e}")
@@ -224,10 +224,10 @@ class TestBackupFunctionalities(unittest.TestCase):
     def test_gui_components_available(self):
         """测试GUI组件可用性"""
         try:
-            from gui.gui_main import SimplifiedPyMeshGenGUI
+            from gui.gui_main import PyMeshGenGUI
             from gui.mesh_display import MeshDisplayArea
 
-            self.assertIsNotNone(SimplifiedPyMeshGenGUI)
+            self.assertIsNotNone(PyMeshGenGUI)
             self.assertIsNotNone(MeshDisplayArea)
 
         except ImportError as e:

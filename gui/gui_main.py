@@ -49,7 +49,7 @@ from data_structure.parameters import Parameters
 from core import generate_mesh
 
 
-class SimplifiedPyMeshGenGUI(QMainWindow):
+class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
 
     MIN_WINDOW_WIDTH = 1200
@@ -925,7 +925,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 
                 # 创建分步处理函数 - 减少延迟时间
                 def step1_load_mesh():
-                    self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
+                    self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格")
                     QTimer.singleShot(0, step2_load_parts)
                 
                 def step2_load_parts():
@@ -3801,7 +3801,7 @@ def main():
     app.setApplicationName("PyMeshGen")
     app.setApplicationVersion("1.0")
 
-    window = SimplifiedPyMeshGenGUI()
+    window = PyMeshGenGUI()
     window.show()
 
     sys.exit(app.exec_())

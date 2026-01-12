@@ -23,7 +23,7 @@ try:
     from parameters import Parameters
     from data_structure.parameters import Parameters as DataParameters
     from data_structure.basic_elements import Part, Connector
-    from gui.gui_main import SimplifiedPyMeshGenGUI
+    from gui.gui_main import PyMeshGenGUI
     from gui.mesh_display import MeshDisplayArea
     from utils.message import info, error, warning, debug, verbose, set_debug_level, DEBUG_LEVEL_INFO
 except ImportError as e:
@@ -301,7 +301,7 @@ class TestImportMesh(unittest.TestCase):
         self.root = Mock()
         self.root.configure = Mock()
 
-        self.app = Mock(spec=SimplifiedPyMeshGenGUI)
+        self.app = Mock(spec=PyMeshGenGUI)
 
         self.mesh_display = Mock(spec=MeshDisplayArea)
         self.app.mesh_display = self.mesh_display
@@ -320,7 +320,7 @@ class TestImportMesh(unittest.TestCase):
     def test_gui_initialization(self):
         """测试GUI初始化过程"""
         from unittest.mock import patch
-        with patch('gui.gui_main.SimplifiedPyMeshGenGUI') as mock_gui_class:
+        with patch('gui.gui_main.PyMeshGenGUI') as mock_gui_class:
             mock_instance = Mock()
             mock_instance.mesh_display = Mock(spec=MeshDisplayArea)
             mock_gui_class.return_value = mock_instance

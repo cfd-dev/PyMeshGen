@@ -71,7 +71,7 @@ gui/
 
 #### gui_main.py
 
-主窗口类`SimplifiedPyMeshGenGUI`，负责：
+主窗口类`PyMeshGenGUI`，负责：
 - 窗口布局和初始化
 - 事件处理和回调函数
 - 各功能模块的协调

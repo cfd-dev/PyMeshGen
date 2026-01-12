@@ -160,8 +160,8 @@ class TestCASImportFixes(unittest.TestCase):
         self.mesh_display = Mock()
         self.mesh_display.mesh_data = None
 
-        from gui.gui_main import SimplifiedPyMeshGenGUI
-        self.app = Mock(spec=SimplifiedPyMeshGenGUI)
+        from gui.gui_main import PyMeshGenGUI
+        self.app = Mock(spec=PyMeshGenGUI)
         self.app.mesh_display = self.mesh_display
         self.app.mesh_status_label = self.mesh_status_label
         self.app.mesh_info_label = self.mesh_info_label
