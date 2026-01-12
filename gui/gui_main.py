@@ -1551,22 +1551,18 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def on_geometry_visibility_changed(self, element_type, visible):
         """几何元素类别可见性改变时的回调"""
-        self.log_info(f"{element_type} 可见性: {'显示' if visible else '隐藏'}")
         self._update_geometry_element_display()
 
     def on_geometry_element_visibility_changed(self, element_type, element_index, visible):
         """单个几何元素可见性改变时的回调"""
-        self.log_info(f"{element_type}_{element_index} 可见性: {'显示' if visible else '隐藏'}")
         self._update_geometry_element_display()
 
     def on_mesh_part_visibility_changed(self, visible):
         """网格部件类别可见性改变时的回调"""
-        self.log_info(f"网格部件 可见性: {'显示' if visible else '隐藏'}")
         self._update_mesh_part_display()
 
     def on_mesh_part_element_visibility_changed(self, part_index, visible):
         """单个网格部件可见性改变时的回调"""
-        self.log_info(f"网格部件_{part_index} 可见性: {'显示' if visible else '隐藏'}")
         self._update_mesh_part_display()
 
     def on_mesh_part_selected(self, part_data, part_index):
@@ -1594,12 +1590,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
         if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_geometry'):
-            self.log_info("缺少 model_tree_widget 或 current_geometry")
             return
 
         visible_elements = self.model_tree_widget.get_visible_elements(category='geometry')
-        self.log_info(f"可见元素: {visible_elements}")
-        self.log_info(f"visible_elements 类型: {type(visible_elements)}")
 
         if hasattr(self, 'geometry_actors'):
             for elem_type, actors in self.geometry_actors.items():
@@ -1616,15 +1609,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
 
-        if 'geometry' in visible_elements:
-            self.log_info(f"找到 geometry 键")
-            if 'vertices' in visible_elements['geometry']:
-                self.log_info(f"找到 vertices 键，数量: {len(visible_elements['geometry']['vertices'])}")
-            else:
-                self.log_info(f"未找到 vertices 键")
-        else:
-            self.log_info(f"未找到 geometry 键")
-
         if 'geometry' in visible_elements and 'vertices' in visible_elements['geometry'] and visible_elements['geometry']['vertices']:
             self.geometry_actors['vertices'] = []
             for elem_index, elem_data in visible_elements['geometry']['vertices']:
@@ -1632,7 +1616,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actors['vertices'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
-            self.log_info(f"已显示 {len(self.geometry_actors['vertices'])} 个顶点")
 
         if 'geometry' in visible_elements and 'edges' in visible_elements['geometry'] and visible_elements['geometry']['edges']:
             self.geometry_actors['edges'] = []
@@ -1641,7 +1624,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actors['edges'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
-            self.log_info(f"已显示 {len(self.geometry_actors['edges'])} 条边")
 
         if 'geometry' in visible_elements and 'faces' in visible_elements['geometry'] and visible_elements['geometry']['faces']:
             self.geometry_actors['faces'] = []
@@ -1650,7 +1632,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actors['faces'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
-            self.log_info(f"已显示 {len(self.geometry_actors['faces'])} 个面")
 
         if 'geometry' in visible_elements and 'bodies' in visible_elements['geometry'] and visible_elements['geometry']['bodies']:
             self.geometry_actors['bodies'] = []
@@ -1659,7 +1640,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actors['bodies'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
-            self.log_info(f"已显示 {len(self.geometry_actors['bodies'])} 个体")
 
         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
             self.mesh_display.render_window.Render()
@@ -1713,7 +1693,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """
         if len(args) == 2:
             category, visible = args
-            self.log_info(f"{category}可见性: {'显示' if visible else '隐藏'}")
             
             if category == 'geometry':
                 self._update_geometry_element_display()
@@ -1727,11 +1706,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 对于部件，arg2 是 element_index；对于其他类别，arg2 是 element_type
             if category == 'parts':
                 element_index = arg2
-                self.log_info(f"{category}[{element_index}]可见性: {'显示' if visible else '隐藏'}")
                 self.refresh_display_all_parts()
             else:
                 element_type = arg2
-                self.log_info(f"{category}/{element_type}可见性: {'显示' if visible else '隐藏'}")
                 if category == 'geometry':
                     self._update_geometry_element_display()
                 elif category == 'mesh':
@@ -1739,7 +1716,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 
         elif len(args) == 4:
             category, element_type, element_index, visible = args
-            self.log_info(f"{category}/{element_type}[{element_index}]可见性: {'显示' if visible else '隐藏'}")
             
             if category == 'geometry':
                 self._update_geometry_element_display()
