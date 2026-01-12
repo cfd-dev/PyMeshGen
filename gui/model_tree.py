@@ -36,6 +36,8 @@ class ModelTreeWidget:
         self.parts_data = None
         self.parts_name = "部件"
 
+        self._updating_items = False  # 标志：是否正在更新项（防止递归调用）
+
         self._create_tree_widget()
         self._setup_ui()
         self._init_tree_structure()
@@ -599,8 +601,13 @@ class ModelTreeWidget:
             column: 改变的列
         """
         if column == 0:
+            if self._updating_items:
+                return
+
+            self._updating_items = True
             self._update_child_items(item, item.checkState(0))
             self._update_parent_item(item)
+            self._updating_items = False
 
             element_data = item.data(0, Qt.UserRole)
             self._handle_visibility_change(item, element_data)
@@ -680,9 +687,11 @@ class ModelTreeWidget:
             item: 父项
             check_state: 选中状态
         """
+        self.tree.blockSignals(True)
         for i in range(item.childCount()):
             child = item.child(i)
             child.setCheckState(0, check_state)
+        self.tree.blockSignals(False)
 
     def _update_parent_item(self, item):
         """
@@ -708,12 +717,14 @@ class ModelTreeWidget:
                 all_checked = False
                 all_unchecked = False
 
+        self.tree.blockSignals(True)
         if all_checked:
             parent.setCheckState(0, Qt.Checked)
         elif all_unchecked:
             parent.setCheckState(0, Qt.Unchecked)
         else:
             parent.setCheckState(0, Qt.PartiallyChecked)
+        self.tree.blockSignals(False)
 
     def _show_context_menu(self, position):
         """
@@ -757,7 +768,9 @@ class ModelTreeWidget:
             item: 树项
             visible: 是否可见
         """
+        self.tree.blockSignals(True)
         item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
+        self.tree.blockSignals(False)
 
     def get_visible_elements(self, category=None, element_type=None):
         """
