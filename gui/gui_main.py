@@ -434,9 +434,6 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                             actor.GetProperty().SetRepresentationToSurface()
                             actor.GetProperty().EdgeVisibilityOff()
 
-        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
-            self.mesh_display.render_window.Render()
-
         mode_messages = {
             "surface": "渲染模式: 实体模式 (1键)",
             "wireframe": "渲染模式: 线框模式 (2键)",
@@ -681,7 +678,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         self.mesh_visualizer.update_mesh(self.current_mesh)
                         self.log_info("网格已在视图区显示")
                     elif hasattr(self, 'mesh_display'):
-                        self.mesh_display.display_mesh(self.current_mesh)
+                        self.mesh_display.display_mesh(self.current_mesh, render_immediately=False)
                         self.log_info("网格已在视图区显示")
 
                         # Refresh display to show all parts with different colors
@@ -917,7 +914,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
             if hasattr(self, 'mesh_display'):
                 self.update_status("正在显示网格...")
-                self.mesh_display.display_mesh(mesh_data)
+                # 使用延迟渲染，避免多次渲染
+                self.mesh_display.display_mesh(mesh_data, render_immediately=False)
 
             # 保存原始节点坐标用于后续的节点映射
             if hasattr(mesh_data, 'node_coords'):
@@ -929,20 +927,20 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.update_status("正在加载模型树...")
                 from PyQt5.QtCore import QTimer
                 
-                # 创建分步处理函数
+                # 创建分步处理函数 - 减少延迟时间
                 def step1_load_mesh():
                     self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
-                    QTimer.singleShot(10, step2_load_parts)
+                    QTimer.singleShot(0, step2_load_parts)
                 
                 def step2_load_parts():
                     self.update_status("正在加载部件信息...")
                     self.model_tree_widget.load_parts(mesh_data)
-                    QTimer.singleShot(10, step3_refresh_display)
+                    QTimer.singleShot(0, step3_refresh_display)
                 
                 def step3_refresh_display():
                     self.update_status("正在刷新显示...")
                     self.refresh_display_all_parts()
-                    QTimer.singleShot(10, step4_complete)
+                    QTimer.singleShot(0, step4_complete)
                 
                 def step4_complete():
                     self.log_info(f"已导入网格: {mesh_data.file_path}")
@@ -950,8 +948,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     self.update_status("已导入网格")
                     self.status_bar.hide_progress()
 
-                # 启动分步处理
-                QTimer.singleShot(10, step1_load_mesh)
+                # 启动分步处理 - 使用0延迟
+                QTimer.singleShot(0, step1_load_mesh)
             else:
                 # Refresh display to show all parts with different colors
                 self.update_status("正在刷新显示...")
@@ -2561,7 +2559,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             # 优先从result_mesh加载网格
             if result_mesh:
                 self.current_mesh = result_mesh
-                self.mesh_display.display_mesh(result_mesh)
+                self.mesh_display.display_mesh(result_mesh, render_immediately=False)
                 self.log_info("已显示生成的网格")
                 self.update_status("已显示生成的网格")
                 # 更新部件列表以显示新网格的部件信息
@@ -2577,7 +2575,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                 if hasattr(self, 'mesh_display') and generated_mesh:
                     self.current_mesh = generated_mesh
-                    self.mesh_display.display_mesh(generated_mesh)
+                    self.mesh_display.display_mesh(generated_mesh, render_immediately=False)
                     self.log_info("已显示生成的网格")
                     self.update_status("已显示生成的网格")
 
@@ -3399,7 +3397,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         if hasattr(self, 'mesh_display'):
                             self.mesh_display.clear_mesh_actors()
                             self.mesh_display.set_mesh_data(self.current_mesh)
-                            self.mesh_display.display_mesh()
+                            self.mesh_display.display_mesh(render_immediately=False)
                         
                         self.log_info(f"边界提取完成: 保留 {len(new_cell_container)} 个单元, {len(new_node_coords)} 个节点, {len(boundary_part_names)} 个边界部件")
                         self.update_status(f"边界提取完成: {len(boundary_part_names)} 个边界部件")

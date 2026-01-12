@@ -139,8 +139,13 @@ class MeshDisplayArea:
         """设置参数对象"""
         self.params = params
         
-    def display_mesh(self, mesh_data=None):
-        """显示网格"""
+    def display_mesh(self, mesh_data=None, render_immediately=True):
+        """显示网格
+        
+        Args:
+            mesh_data: 网格数据对象
+            render_immediately: 是否立即渲染，默认为True。设为False可批量渲染提高性能
+        """
         # 如果提供了mesh_data参数，则更新self.mesh_data
         if mesh_data is not None:
             self.mesh_data = mesh_data
@@ -182,10 +187,14 @@ class MeshDisplayArea:
                     self.add_axes()
 
                     if self.show_boundary:
-                        self.display_boundary()
+                        self.display_boundary(render_immediately=False)
 
                     self.renderer.ResetCamera()
-                    self.render_window.Render()
+                    
+                    # 根据参数决定是否立即渲染
+                    if render_immediately:
+                        self.render_window.Render()
+                    
                     self.enable_interaction()
 
                     return True
@@ -487,8 +496,12 @@ class MeshDisplayArea:
             print(f"从Unstructured_Grid创建VTK网格失败: {str(e)}")
             return None
             
-    def display_boundary(self):
-        """显示边界"""
+    def display_boundary(self, render_immediately=True):
+        """显示边界
+        
+        Args:
+            render_immediately: 是否立即渲染，默认为True。设为False可批量渲染提高性能
+        """
         try:
             for actor in self.boundary_actors:
                 self.renderer.RemoveActor(actor)
@@ -533,6 +546,10 @@ class MeshDisplayArea:
 
                     self.renderer.AddActor(boundary_actor)
                     self.boundary_actors.append(boundary_actor)
+
+            # 根据参数决定是否立即渲染
+            if render_immediately:
+                self.render_window.Render()
 
         except Exception as e:
             print(f"显示边界失败: {str(e)}")
@@ -793,7 +810,7 @@ class MeshDisplayArea:
             self.show_boundary = show_boundary
         
         if self.show_boundary:
-            self.display_boundary()
+            self.display_boundary(render_immediately=False)
         else:
             self.clear_boundary_actors()
         
