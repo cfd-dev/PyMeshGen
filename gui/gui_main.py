@@ -38,6 +38,7 @@ from gui.gui_base import (
     StatusBar, InfoOutput, DialogBase,
     Splitter, PartListWidget
 )
+from gui.geometry_tree import GeometryTreeWidget
 from gui.ribbon_widget import RibbonWidget
 from gui.toolbar import ViewToolbar
 from gui.mesh_display import MeshDisplayArea
@@ -178,49 +179,26 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setSpacing(2)
 
-        self._create_parts_list_widget()
+        self._create_geometry_tree_widget()
         self._create_properties_panel()
 
         self.left_panel.setMinimumWidth(300)
         self.paned_window.addWidget(self.left_panel)
 
-        self.parts_list_widget.parts_list.currentRowChanged.connect(self.on_part_select)
+    def _create_geometry_tree_widget(self):
+        """创建几何模型树组件"""
+        self.geometry_tree_widget = GeometryTreeWidget(parent=self)
 
-    def _create_parts_list_widget(self):
-        """创建部件列表组件"""
-        self.parts_list_widget = PartListWidget(
-            parent=self,
-            add_callback=self.add_part,
-            remove_callback=self.remove_part,
-            edit_callback=self.edit_part,
-            show_callback=self.show_selected_part,
-            show_only_callback=self.show_only_selected_part,
-            show_all_callback=self.show_all_parts
-        )
+        geometry_tree_frame_container = QGroupBox("几何模型树")
+        geometry_tree_layout = QVBoxLayout(geometry_tree_frame_container)
+        geometry_tree_layout.setSpacing(2)
 
-        self._apply_parts_list_styling()
+        geometry_tree_layout.addWidget(self.geometry_tree_widget.widget)
 
-        parts_frame_container = QGroupBox("部件列表")
-        parts_layout = QVBoxLayout(parts_frame_container)
-        parts_layout.setSpacing(2)
-
-        parts_layout.addWidget(self.parts_list_widget.widget)
-
-        # Ensure the parts list widget expands to fill the available width
-        self.parts_list_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.parts_list_widget.parts_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.geometry_tree_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         left_layout = self.left_panel.layout()
-        left_layout.addWidget(parts_frame_container)
-
-    def _apply_parts_list_styling(self):
-        """应用部件列表样式"""
-        if hasattr(self.parts_list_widget, 'parts_list'):
-            self.parts_list_widget.parts_list.setStyleSheet(UIStyles.LIST_WIDGET_STYLESHEET)
-
-        for button_name, style in UIStyles.BUTTON_STYLESHEETS.items():
-            if hasattr(self.parts_list_widget, button_name):
-                getattr(self.parts_list_widget, button_name).setStyleSheet(style)
+        left_layout.addWidget(geometry_tree_frame_container)
 
     def _create_properties_panel(self):
         """创建属性面板"""
@@ -950,10 +928,13 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
                     self.geometry_actor = actor
                     self.current_geometry = shape
+                    self.geometry_actors = {}
 
                     self.mesh_display.renderer.AddActor(actor)
                     self.mesh_display.renderer.ResetCamera()
                     self.mesh_display.render_window.Render()
+
+                self.geometry_tree_widget.load_geometry(shape, os.path.basename(file_path))
 
                 self.log_info(f"已导入几何: {file_path}")
                 self.update_status("已导入几何")
@@ -1531,6 +1512,137 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         """更新状态栏信息"""
         if hasattr(self, 'status_bar'):
             self.status_bar.update_status(message)
+
+    def on_geometry_visibility_changed(self, element_type, visible):
+        """几何元素类别可见性改变时的回调"""
+        self.log_info(f"{element_type} 可见性: {'显示' if visible else '隐藏'}")
+        self._update_geometry_element_display()
+
+    def on_geometry_element_visibility_changed(self, element_type, element_index, visible):
+        """单个几何元素可见性改变时的回调"""
+        self.log_info(f"{element_type}_{element_index} 可见性: {'显示' if visible else '隐藏'}")
+        self._update_geometry_element_display()
+
+    def _update_geometry_element_display(self):
+        """更新几何元素的显示"""
+        if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_geometry'):
+            return
+
+        visible_elements = self.geometry_tree_widget.get_visible_elements()
+
+        if hasattr(self, 'geometry_actors'):
+            for elem_type, actors in self.geometry_actors.items():
+                for actor in actors:
+                    if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                        self.mesh_display.renderer.RemoveActor(actor)
+
+        self.geometry_actors = {}
+
+        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
+
+        if 'vertices' in visible_elements and visible_elements['vertices']:
+            self.geometry_actors['vertices'] = []
+            for elem_index, elem_data in visible_elements['vertices']:
+                actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
+                self.geometry_actors['vertices'].append(actor)
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    self.mesh_display.renderer.AddActor(actor)
+
+        if 'edges' in visible_elements and visible_elements['edges']:
+            self.geometry_actors['edges'] = []
+            for elem_index, elem_data in visible_elements['edges']:
+                actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
+                self.geometry_actors['edges'].append(actor)
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    self.mesh_display.renderer.AddActor(actor)
+
+        if 'faces' in visible_elements and visible_elements['faces']:
+            self.geometry_actors['faces'] = []
+            for elem_index, elem_data in visible_elements['faces']:
+                actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
+                self.geometry_actors['faces'].append(actor)
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    self.mesh_display.renderer.AddActor(actor)
+
+        if 'bodies' in visible_elements and visible_elements['bodies']:
+            self.geometry_actors['bodies'] = []
+            for elem_index, elem_data in visible_elements['bodies']:
+                actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
+                self.geometry_actors['bodies'].append(actor)
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    self.mesh_display.renderer.AddActor(actor)
+
+        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
+            self.mesh_display.render_window.Render()
+
+    def on_geometry_element_selected(self, element_type, element_data, element_index):
+        """几何元素被选中时的回调"""
+        element_name = f"{element_type}_{element_index}"
+        self.log_info(f"选中: {element_name}")
+
+        if hasattr(self, 'props_text'):
+            info_text = f"选中元素: {element_name}\n"
+            info_text += f"类型: {element_type}\n"
+            info_text += f"索引: {element_index}\n"
+
+            if element_type == "vertex":
+                from OCC.Core.BRep import BRep_Tool
+                pnt = BRep_Tool.Pnt(element_data)
+                info_text += f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})\n"
+            elif element_type == "edge":
+                edge_length = self._get_edge_length(element_data)
+                if edge_length is not None:
+                    info_text += f"长度: {edge_length:.3f}\n"
+            elif element_type == "face":
+                face_area = self._get_face_area(element_data)
+                if face_area is not None:
+                    info_text += f"面积: {face_area:.3f}\n"
+            elif element_type == "body":
+                body_volume = self._get_solid_volume(element_data)
+                if body_volume is not None:
+                    info_text += f"体积: {body_volume:.3f}\n"
+
+            self.props_text.setPlainText(info_text)
+
+    def _get_edge_length(self, edge):
+        """获取边的长度"""
+        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+        from OCC.Core.BRep import BRep_Tool
+
+        try:
+            curve = BRep_Tool.Curve(edge)
+            if curve:
+                geom_curve, first, last = curve
+                if geom_curve:
+                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
+                    return length
+        except:
+            pass
+        return None
+
+    def _get_face_area(self, face):
+        """获取面的面积"""
+        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+        from OCC.Core.GProp import GProp_GProps
+
+        try:
+            props = GProp_GProps()
+            brepgprop_SurfaceProperties(face, props)
+            return props.Mass()
+        except:
+            return None
+
+    def _get_solid_volume(self, solid):
+        """获取体的体积"""
+        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+        from OCC.Core.GProp import GProp_GProps
+
+        try:
+            props = GProp_GProps()
+            brepgprop_VolumeProperties(solid, props)
+            return props.Mass()
+        except:
+            return None
 
     def show_about(self):
         """显示关于对话框"""

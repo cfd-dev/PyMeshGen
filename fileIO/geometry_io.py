@@ -139,23 +139,222 @@ def import_stl_file(filename: str) -> TopoDS_Shape:
 def extract_vertices_from_shape(shape: TopoDS_Shape) -> List[Tuple[float, float, float]]:
     """
     从TopoDS_Shape中提取所有顶点坐标
-    
+
     Args:
         shape: OpenCASCADE形状
-        
+
     Returns:
         顶点坐标列表 [(x, y, z), ...]
     """
     vertices = []
     explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
-    
+
     while explorer.More():
         vertex = explorer.Current()
         pnt = BRep_Tool.Pnt(vertex)
         vertices.append((pnt.X(), pnt.Y(), pnt.Z()))
         explorer.Next()
-    
+
     return vertices
+
+
+def extract_vertices_with_data(shape: TopoDS_Shape) -> List[dict]:
+    """
+    从TopoDS_Shape中提取所有顶点及其数据
+
+    Args:
+        shape: OpenCASCADE形状
+
+    Returns:
+        顶点列表，每个顶点包含坐标和索引信息
+        [
+            {
+                'vertex': TopoDS_Vertex,
+                'point': (x, y, z),
+                'index': int
+            },
+            ...
+        ]
+    """
+    vertices_data = []
+    explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
+    index = 0
+
+    while explorer.More():
+        vertex = explorer.Current()
+        pnt = BRep_Tool.Pnt(vertex)
+
+        vertex_data = {
+            'vertex': vertex,
+            'point': (pnt.X(), pnt.Y(), pnt.Z()),
+            'index': index
+        }
+        vertices_data.append(vertex_data)
+        index += 1
+        explorer.Next()
+
+    return vertices_data
+
+
+def extract_edges_with_data(shape: TopoDS_Shape) -> List[dict]:
+    """
+    从TopoDS_Shape中提取所有边及其数据
+
+    Args:
+        shape: OpenCASCADE形状
+
+    Returns:
+        边列表，每条边包含几何曲线、参数范围、长度等信息
+        [
+            {
+                'edge': TopoDS_Edge,
+                'curve': Geom_Curve,
+                'first': float,
+                'last': float,
+                'length': float,
+                'start_point': (x, y, z),
+                'end_point': (x, y, z),
+                'index': int
+            },
+            ...
+        ]
+    """
+    edges_data = []
+    explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    index = 0
+
+    while explorer.More():
+        edge = explorer.Current()
+        curve = BRep_Tool.Curve(edge)
+
+        if curve:
+            geom_curve, first, last = curve
+            if geom_curve:
+                try:
+                    from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
+                except:
+                    length = abs(last - first)
+
+                start_pnt = geom_curve.Value(first)
+                end_pnt = geom_curve.Value(last)
+
+                edge_data = {
+                    'edge': edge,
+                    'curve': geom_curve,
+                    'first': first,
+                    'last': last,
+                    'length': length,
+                    'start_point': (start_pnt.X(), start_pnt.Y(), start_pnt.Z()),
+                    'end_point': (end_pnt.X(), end_pnt.Y(), end_pnt.Z()),
+                    'index': index
+                }
+                edges_data.append(edge_data)
+                index += 1
+
+        explorer.Next()
+
+    return edges_data
+
+
+def extract_faces_with_data(shape: TopoDS_Shape) -> List[dict]:
+    """
+    从TopoDS_Shape中提取所有面及其数据
+
+    Args:
+        shape: OpenCASCADE形状
+
+    Returns:
+        面列表，每个面包含几何曲面、面积等信息
+        [
+            {
+                'face': TopoDS_Face,
+                'surface': Geom_Surface,
+                'area': float,
+                'index': int
+            },
+            ...
+        ]
+    """
+    faces_data = []
+    explorer = TopExp_Explorer(shape, TopAbs_FACE)
+    index = 0
+
+    while explorer.More():
+        face = explorer.Current()
+        surface = BRep_Tool.Surface(face)
+
+        if surface:
+            from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+            from OCC.Core.GProp import GProp_GProps
+
+            try:
+                props = GProp_GProps()
+                brepgprop_SurfaceProperties(face, props)
+                area = props.Mass()
+            except:
+                area = 0.0
+
+            face_data = {
+                'face': face,
+                'surface': surface,
+                'area': area,
+                'index': index
+            }
+            faces_data.append(face_data)
+            index += 1
+
+        explorer.Next()
+
+    return faces_data
+
+
+def extract_solids_with_data(shape: TopoDS_Shape) -> List[dict]:
+    """
+    从TopoDS_Shape中提取所有体及其数据
+
+    Args:
+        shape: OpenCASCADE形状
+
+    Returns:
+        体列表，每个体包含体积等信息
+        [
+            {
+                'solid': TopoDS_Solid,
+                'volume': float,
+                'index': int
+            },
+            ...
+        ]
+    """
+    solids_data = []
+    explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+    index = 0
+
+    while explorer.More():
+        solid = explorer.Current()
+
+        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+        from OCC.Core.GProp import GProp_GProps
+
+        try:
+            props = GProp_GProps()
+            brepgprop_VolumeProperties(solid, props)
+            volume = props.Mass()
+        except:
+            volume = 0.0
+
+        solid_data = {
+            'solid': solid,
+            'volume': volume,
+            'index': index
+        }
+        solids_data.append(solid_data)
+        index += 1
+
+        explorer.Next()
+
+    return solids_data
 
 
 def extract_edges_from_shape(shape: TopoDS_Shape) -> List[List[Tuple[float, float, float]]]:

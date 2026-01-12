@@ -339,3 +339,208 @@ def decimate_shape_mesh(polydata: vtk.vtkPolyData,
     decimator.Update()
     
     return decimator.GetOutput()
+
+
+def create_vertex_actor(vertex: TopoDS_Vertex,
+                       color: Tuple[float, float, float] = (1.0, 0.0, 0.0),
+                       point_size: float = 8.0) -> vtk.vtkActor:
+    """
+    为顶点创建VTK Actor
+    
+    Args:
+        vertex: OpenCASCADE顶点
+        color: 颜色 (R, G, B)
+        point_size: 点大小
+        
+    Returns:
+        vtk.vtkActor: VTK Actor对象
+    """
+    from OCC.Core.BRep import BRep_Tool
+    
+    p = BRep_Tool.Pnt(vertex)
+    
+    points = vtk.vtkPoints()
+    points.InsertNextPoint(p.X(), p.Y(), p.Z())
+    
+    vertices = vtk.vtkCellArray()
+    vertex_id = vtk.vtkVertex()
+    vertex_id.GetPointIds().SetId(0, 0)
+    vertices.InsertNextCell(vertex_id)
+    
+    polydata = vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetVerts(vertices)
+    
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(polydata)
+    
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color[0], color[1], color[2])
+    actor.GetProperty().SetPointSize(point_size)
+    
+    return actor
+
+
+def create_edge_actor(edge: TopoDS_Edge,
+                     color: Tuple[float, float, float] = (0.0, 0.0, 1.0),
+                     line_width: float = 2.0,
+                     sample_rate: float = 0.1) -> vtk.vtkActor:
+    """
+    为边创建VTK Actor
+    
+    Args:
+        edge: OpenCASCADE边
+        color: 颜色 (R, G, B)
+        line_width: 线宽
+        sample_rate: 采样率（控制边的采样密度）
+        
+    Returns:
+        vtk.vtkActor: VTK Actor对象
+    """
+    from OCC.Core.BRep import BRep_Tool
+    
+    points = vtk.vtkPoints()
+    lines = vtk.vtkCellArray()
+    
+    curve, first, last = BRep_Tool.Curve(edge)
+    
+    if curve:
+        length = last - first
+        num_points = max(2, int(length / sample_rate) + 1)
+        
+        edge_points = []
+        for i in range(num_points):
+            param = first + (last - first) * i / (num_points - 1)
+            p = curve.Value(param)
+            points.InsertNextPoint(p.X(), p.Y(), p.Z())
+            edge_points.append(i)
+        
+        for i in range(len(edge_points) - 1):
+            line = vtk.vtkLine()
+            line.GetPointIds().SetId(0, edge_points[i])
+            line.GetPointIds().SetId(1, edge_points[i + 1])
+            lines.InsertNextCell(line)
+    
+    polydata = vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetLines(lines)
+    
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(polydata)
+    
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color[0], color[1], color[2])
+    actor.GetProperty().SetLineWidth(line_width)
+    
+    return actor
+
+
+def create_face_actor(face: TopoDS_Face,
+                     color: Tuple[float, float, float] = (0.0, 1.0, 0.0),
+                     opacity: float = 0.8,
+                     mesh_quality: float = 1.0) -> vtk.vtkActor:
+    """
+    为面创建VTK Actor
+    
+    Args:
+        face: OpenCASCADE面
+        color: 颜色 (R, G, B)
+        opacity: 不透明度 (0.0-1.0)
+        mesh_quality: 网格质量参数
+        
+    Returns:
+        vtk.vtkActor: VTK Actor对象
+    """
+    from OCC.Core.BRep import BRep_Tool
+    from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+    from OCC.Core.TopLoc import TopLoc_Location
+    
+    points = vtk.vtkPoints()
+    triangles = vtk.vtkCellArray()
+    
+    loc = TopLoc_Location()
+    triangulation = BRep_Tool.Triangulation(face, loc)
+    
+    if triangulation:
+        nb_triangles = triangulation.NbTriangles()
+        nb_nodes = triangulation.NbNodes()
+        
+        vertex_map = {}
+        all_vertices = []
+        
+        for i in range(1, nb_nodes + 1):
+            p = triangulation.Node(i)
+            p.Transform(loc.Transformation())
+            vertex = (p.X(), p.Y(), p.Z())
+            
+            if vertex not in vertex_map:
+                vertex_map[vertex] = len(all_vertices)
+                all_vertices.append(vertex)
+        
+        for i in range(1, nb_triangles + 1):
+            tri = triangulation.Triangle(i)
+            n1, n2, n3 = tri.Get()
+            
+            idx1 = vertex_map[(triangulation.Node(n1).X(), 
+                              triangulation.Node(n1).Y(), 
+                              triangulation.Node(n1).Z())]
+            idx2 = vertex_map[(triangulation.Node(n2).X(), 
+                              triangulation.Node(n2).Y(), 
+                              triangulation.Node(n2).Z())]
+            idx3 = vertex_map[(triangulation.Node(n3).X(), 
+                              triangulation.Node(n3).Y(), 
+                              triangulation.Node(n3).Z())]
+            
+            triangle = vtk.vtkTriangle()
+            triangle.GetPointIds().SetId(0, idx1)
+            triangle.GetPointIds().SetId(1, idx2)
+            triangle.GetPointIds().SetId(2, idx3)
+            triangles.InsertNextCell(triangle)
+        
+        for vertex in all_vertices:
+            points.InsertNextPoint(vertex[0], vertex[1], vertex[2])
+    
+    polydata = vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetPolys(triangles)
+    
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(polydata)
+    
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color[0], color[1], color[2])
+    actor.GetProperty().SetOpacity(opacity)
+    
+    return actor
+
+
+def create_solid_actor(solid: TopoDS_Shape,
+                      color: Tuple[float, float, float] = (0.8, 0.8, 0.9),
+                      opacity: float = 0.8,
+                      mesh_quality: float = 1.0) -> vtk.vtkActor:
+    """
+    为实体创建VTK Actor
+    
+    Args:
+        solid: OpenCASCADE实体
+        color: 颜色 (R, G, B)
+        opacity: 不透明度 (0.0-1.0)
+        mesh_quality: 网格质量参数
+        
+    Returns:
+        vtk.vtkActor: VTK Actor对象
+    """
+    polydata = shape_to_vtk_polydata(solid, mesh_quality)
+    
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(polydata)
+    
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color[0], color[1], color[2])
+    actor.GetProperty().SetOpacity(opacity)
+    
+    return actor
