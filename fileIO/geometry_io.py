@@ -4,27 +4,14 @@
 import os
 from typing import Union, List, Tuple
 import numpy as np
-import ctypes
 
-# 预先加载OpenCASCADE DLL以解决DLL加载问题
-try:
-    lib_bin_dir = r'C:\Users\HighOrderMesh\miniconda3\envs\pymeshgen\Library\bin'
-    occ_dir = r'C:\Users\HighOrderMesh\miniconda3\envs\pymeshgen\Lib\site-packages\OCC'
-    occ_core_dir = os.path.join(occ_dir, 'Core')
-    
-    if hasattr(os, 'add_dll_directory'):
-        os.add_dll_directory(lib_bin_dir)
-        os.add_dll_directory(occ_core_dir)
-    
-    kernel32 = ctypes.windll.kernel32
-    LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008
-    
-    for dll_name in ['TKernel.dll', 'TKDE.dll', 'TKDESTEP.dll', 'TKDEIGES.dll', 'TKDESTL.dll']:
-        dll_path = os.path.join(occ_core_dir, dll_name)
-        if os.path.exists(dll_path):
-            kernel32.LoadLibraryExW(dll_path, None, LOAD_WITH_ALTERED_SEARCH_PATH)
-except Exception:
-    pass
+# 导入 OpenCASCADE DLL 加载器
+# 该模块负责预加载所有必要的 OpenCASCADE DLL，解决 Windows 平台上的 DLL 依赖问题
+from occ_loader import ensure_occ_loaded
+
+# 确保 OpenCASCADE DLL 已加载
+# 这必须在导入任何 OCC 模块之前调用
+ensure_occ_loaded()
 
 try:
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Solid, TopoDS_Shell, TopoDS_Face, TopoDS_Wire, TopoDS_Edge, TopoDS_Vertex
