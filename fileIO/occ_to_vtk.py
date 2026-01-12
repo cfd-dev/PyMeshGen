@@ -20,14 +20,14 @@ except ImportError:
 
 
 def shape_to_vtk_polydata(shape: TopoDS_Shape, 
-                         mesh_quality: float = 1.0,
+                         mesh_quality: float = 2.0,
                          relative: bool = False) -> vtk.vtkPolyData:
     """
     将TopoDS_Shape转换为VTK PolyData
     
     Args:
         shape: OpenCASCADE形状
-        mesh_quality: 网格质量参数（越小越精细）
+        mesh_quality: 网格质量参数（越大越粗糙，默认2.0以提高性能）
         relative: 是否使用相对网格质量
         
     Returns:
@@ -42,7 +42,6 @@ def shape_to_vtk_polydata(shape: TopoDS_Shape,
     
     # 创建VTK单元
     triangles = vtk.vtkCellArray()
-    lines = vtk.vtkCellArray()
     
     # 存储所有顶点
     all_vertices = []
@@ -513,6 +512,83 @@ def create_face_actor(face: TopoDS_Face,
     actor.SetMapper(mapper)
     actor.GetProperty().SetColor(color[0], color[1], color[2])
     actor.GetProperty().SetOpacity(opacity)
+    
+    return actor
+
+
+def create_geometry_edges_actor(shape: TopoDS_Shape,
+                               color: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+                               line_width: float = 1.5,
+                               sample_rate: float = 0.1,
+                               max_points_per_edge: int = 50) -> vtk.vtkActor:
+    """
+    为几何形状创建仅包含原始几何曲线的VTK Actor
+    
+    Args:
+        shape: OpenCASCADE形状
+        color: 线条颜色 (R, G, B)
+        line_width: 线宽
+        sample_rate: 采样率（控制边的采样密度，越大越粗略，默认0.1）
+        max_points_per_edge: 每条边的最大采样点数，防止长边产生过多点
+        
+    Returns:
+        vtk.vtkActor: VTK Actor对象（仅包含原始几何曲线）
+    """
+    points = vtk.vtkPoints()
+    lines = vtk.vtkCellArray()
+    
+    from OCC.Core.BRep import BRep_Tool
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_EDGE
+    
+    vertex_map = {}
+    all_vertices = []
+    
+    edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+    while edge_explorer.More():
+        edge = edge_explorer.Current()
+        
+        curve, first, last = BRep_Tool.Curve(edge)
+        
+        if curve:
+            length = last - first
+            num_points = max(2, min(int(length / sample_rate) + 1, max_points_per_edge))
+            
+            edge_points = []
+            for i in range(num_points):
+                param = first + (last - first) * i / (num_points - 1)
+                p = curve.Value(param)
+                vertex = (p.X(), p.Y(), p.Z())
+                
+                if vertex not in vertex_map:
+                    vertex_map[vertex] = len(all_vertices)
+                    all_vertices.append(vertex)
+                
+                edge_points.append(vertex_map[vertex])
+            
+            for i in range(len(edge_points) - 1):
+                line = vtk.vtkLine()
+                line.GetPointIds().SetId(0, edge_points[i])
+                line.GetPointIds().SetId(1, edge_points[i + 1])
+                lines.InsertNextCell(line)
+        
+        edge_explorer.Next()
+    
+    for vertex in all_vertices:
+        points.InsertNextPoint(vertex[0], vertex[1], vertex[2])
+    
+    polydata = vtk.vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetLines(lines)
+    
+    mapper = vtk.vtkPolyDataMapper()
+    mapper.SetInputData(polydata)
+    
+    actor = vtk.vtkActor()
+    actor.SetMapper(mapper)
+    actor.GetProperty().SetColor(color[0], color[1], color[2])
+    actor.GetProperty().SetLineWidth(line_width)
+    actor.GetProperty().SetRepresentationToWireframe()
     
     return actor
 

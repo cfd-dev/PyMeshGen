@@ -395,17 +395,25 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         if hasattr(self, 'geometry_actor') and self.geometry_actor:
             if mode == "wireframe":
-                self.geometry_actor.GetProperty().SetRepresentationToWireframe()
-                self.geometry_actor.GetProperty().EdgeVisibilityOff()
-                self.geometry_actor.GetProperty().SetLineWidth(2.0)
+                self.geometry_actor.SetVisibility(False)
             elif mode == "surface-wireframe":
+                self.geometry_actor.SetVisibility(True)
                 self.geometry_actor.GetProperty().SetRepresentationToSurface()
                 self.geometry_actor.GetProperty().EdgeVisibilityOn()
                 self.geometry_actor.GetProperty().SetEdgeColor(0.0, 0.0, 0.0)
                 self.geometry_actor.GetProperty().SetLineWidth(1.5)
             else:
+                self.geometry_actor.SetVisibility(True)
                 self.geometry_actor.GetProperty().SetRepresentationToSurface()
                 self.geometry_actor.GetProperty().EdgeVisibilityOff()
+
+        if hasattr(self, 'geometry_edges_actor') and self.geometry_edges_actor:
+            if mode == "wireframe":
+                self.geometry_edges_actor.SetVisibility(True)
+            elif mode == "surface-wireframe":
+                self.geometry_edges_actor.SetVisibility(False)
+            else:
+                self.geometry_edges_actor.SetVisibility(False)
 
         if hasattr(self, 'geometry_actors'):
             for elem_type, actors in self.geometry_actors.items():
@@ -525,6 +533,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                         except:
                             pass
                     self.geometry_actor = None
+
+                if hasattr(self, 'geometry_edges_actor'):
+                    if self.geometry_edges_actor and hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                        try:
+                            self.mesh_display.renderer.RemoveActor(self.geometry_edges_actor)
+                        except:
+                            pass
+                    self.geometry_edges_actor = None
 
                 if hasattr(self, 'geometry_actors'):
                     for elem_type, actors in self.geometry_actors.items():
@@ -1017,19 +1033,43 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             self.current_geometry = shape
             self.geometry_actors = {}
             self.geometry_actor = None
+            self.geometry_edges_actor = None
 
             self.update_status("正在创建几何显示...")
 
             if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                from fileIO.occ_to_vtk import create_geometry_edges_actor
+                
                 self.geometry_actor = create_shape_actor(
                     shape,
-                    mesh_quality=1.0,
+                    mesh_quality=2.0,
                     display_mode='surface',
                     color=(0.8, 0.8, 0.9),
                     opacity=0.8
                 )
                 self.mesh_display.renderer.AddActor(self.geometry_actor)
                 self.geometry_actors['main'] = [self.geometry_actor]
+                
+                self.geometry_edges_actor = create_geometry_edges_actor(
+                    shape,
+                    color=(0.0, 0.0, 0.0),
+                    line_width=1.5,
+                    sample_rate=0.1,
+                    max_points_per_edge=50
+                )
+                self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                self.geometry_actors['edges'] = [self.geometry_edges_actor]
+                
+                if self.render_mode == "wireframe":
+                    self.geometry_actor.SetVisibility(False)
+                    self.geometry_edges_actor.SetVisibility(True)
+                elif self.render_mode == "surface-wireframe":
+                    self.geometry_actor.SetVisibility(True)
+                    self.geometry_edges_actor.SetVisibility(False)
+                else:
+                    self.geometry_actor.SetVisibility(True)
+                    self.geometry_edges_actor.SetVisibility(False)
+                
                 self.mesh_display.renderer.ResetCamera()
                 self.mesh_display.render_window.Render()
 
@@ -1735,9 +1775,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.mesh_display.renderer.RemoveActor(self.geometry_actor)
             self.geometry_actor = None
 
+        if hasattr(self, 'geometry_edges_actor') and self.geometry_edges_actor:
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                self.mesh_display.renderer.RemoveActor(self.geometry_edges_actor)
+            self.geometry_edges_actor = None
+
         self.geometry_actors = {}
 
-        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
+        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor, create_shape_actor, create_geometry_edges_actor
 
         if 'geometry' in visible_elements and 'vertices' in visible_elements['geometry'] and visible_elements['geometry']['vertices']:
             self.geometry_actors['vertices'] = []
@@ -1770,6 +1815,38 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.geometry_actors['bodies'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
+
+        if hasattr(self, 'current_geometry') and self.current_geometry:
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                self.geometry_actor = create_shape_actor(
+                    self.current_geometry,
+                    mesh_quality=2.0,
+                    display_mode='surface',
+                    color=(0.8, 0.8, 0.9),
+                    opacity=0.8
+                )
+                self.mesh_display.renderer.AddActor(self.geometry_actor)
+                self.geometry_actors['main'] = [self.geometry_actor]
+                
+                self.geometry_edges_actor = create_geometry_edges_actor(
+                    self.current_geometry,
+                    color=(0.0, 0.0, 0.0),
+                    line_width=1.5,
+                    sample_rate=0.1,
+                    max_points_per_edge=50
+                )
+                self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                self.geometry_actors['edges'] = [self.geometry_edges_actor]
+                
+                if self.render_mode == "wireframe":
+                    self.geometry_actor.SetVisibility(False)
+                    self.geometry_edges_actor.SetVisibility(True)
+                elif self.render_mode == "surface-wireframe":
+                    self.geometry_actor.SetVisibility(True)
+                    self.geometry_edges_actor.SetVisibility(False)
+                else:
+                    self.geometry_actor.SetVisibility(True)
+                    self.geometry_edges_actor.SetVisibility(False)
 
         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
             self.mesh_display.render_window.Render()
