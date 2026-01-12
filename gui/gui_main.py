@@ -849,9 +849,10 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
             if hasattr(mesh_data, 'node_coords'):
                 self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
 
-            # 从MeshData对象中获取部件信息
-            if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
-                self.update_parts_list_from_cas(mesh_data.parts_info)
+            # 使用几何模型树加载网格数据
+            if hasattr(self, 'geometry_tree_widget'):
+                self.geometry_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
+                self.geometry_tree_widget.load_parts(mesh_data)
 
             # Refresh display to show all parts with different colors
             self.refresh_display_all_parts()
@@ -1464,13 +1465,16 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         # Clear current display
         self.mesh_display.clear_mesh_actors()
 
-        # Get all currently checked parts
+        # Get all currently checked parts from geometry tree widget
         visible_parts = []
-        for i in range(self.parts_list_widget.parts_list.count()):
-            item = self.parts_list_widget.parts_list.item(i)
-            part_name = item.text().split(' - ')[0] if ' - ' in item.text() else item.text()
-            if item.checkState() == Qt.Checked:
-                visible_parts.append(part_name)
+        if hasattr(self, 'geometry_tree_widget'):
+            visible_parts = self.geometry_tree_widget.get_visible_parts()
+        elif hasattr(self, 'parts_list_widget'):
+            for i in range(self.parts_list_widget.parts_list.count()):
+                item = self.parts_list_widget.parts_list.item(i)
+                part_name = item.text().split(' - ')[0] if ' - ' in item.text() else item.text()
+                if item.checkState() == Qt.Checked:
+                    visible_parts.append(part_name)
 
         # Display only visible parts
         if visible_parts:
@@ -1523,12 +1527,44 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         self.log_info(f"{element_type}_{element_index} 可见性: {'显示' if visible else '隐藏'}")
         self._update_geometry_element_display()
 
+    def on_mesh_part_visibility_changed(self, visible):
+        """网格部件类别可见性改变时的回调"""
+        self.log_info(f"网格部件 可见性: {'显示' if visible else '隐藏'}")
+        self._update_mesh_part_display()
+
+    def on_mesh_part_element_visibility_changed(self, part_index, visible):
+        """单个网格部件可见性改变时的回调"""
+        self.log_info(f"网格部件_{part_index} 可见性: {'显示' if visible else '隐藏'}")
+        self._update_mesh_part_display()
+
+    def on_mesh_part_selected(self, part_data, part_index):
+        """网格部件被选中时的回调"""
+        part_name = part_data.get('part_name', f'Part_{part_index}') if isinstance(part_data, dict) else f'Part_{part_index}'
+        self.log_info(f"选中网格部件: {part_name}")
+
+        if hasattr(self, 'props_text'):
+            info_text = f"选中部件: {part_name}\n"
+            info_text += f"索引: {part_index}\n"
+
+            if isinstance(part_data, dict):
+                bc_type = part_data.get('bc_type', '未知')
+                info_text += f"边界条件: {bc_type}\n"
+
+                if 'faces' in part_data:
+                    info_text += f"面数量: {len(part_data['faces'])}\n"
+
+                if 'nodes' in part_data:
+                    info_text += f"节点数量: {len(part_data['nodes'])}\n"
+
+            self.props_text.setPlainText(info_text)
+            self.update_status(f"已选中网格部件: {part_name}")
+
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
         if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_geometry'):
             return
 
-        visible_elements = self.geometry_tree_widget.get_visible_elements()
+        visible_elements = self.geometry_tree_widget.get_visible_elements(category='geometry')
 
         if hasattr(self, 'geometry_actors'):
             for elem_type, actors in self.geometry_actors.items():
@@ -1575,6 +1611,14 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
             self.mesh_display.render_window.Render()
 
+    def _update_mesh_part_display(self):
+        """更新网格部件的显示"""
+        if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_mesh'):
+            return
+
+        # 使用 refresh_display_all_parts 来正确更新部件显示
+        self.refresh_display_all_parts()
+
     def on_geometry_element_selected(self, element_type, element_data, element_index):
         """几何元素被选中时的回调"""
         element_name = f"{element_type}_{element_index}"
@@ -1603,6 +1647,112 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     info_text += f"体积: {body_volume:.3f}\n"
 
             self.props_text.setPlainText(info_text)
+
+    def on_model_tree_visibility_changed(self, *args):
+        """
+        模型树可见性改变的回调
+        
+        Args:
+            可以是以下几种形式:
+            - (category, visible): 整个类别的可见性改变
+            - (category, element_type, visible): 类别下特定元素类型的可见性改变
+            - (category, element_type, element_index, visible): 特定元素的可见性改变
+        """
+        if len(args) == 2:
+            category, visible = args
+            self.log_info(f"{category}可见性: {'显示' if visible else '隐藏'}")
+            
+            if category == 'geometry':
+                self._update_geometry_element_display()
+            elif category == 'mesh':
+                self._update_mesh_part_display()
+            elif category == 'parts':
+                self.refresh_display_all_parts()
+                
+        elif len(args) == 3:
+            category, arg2, visible = args
+            # 对于部件，arg2 是 element_index；对于其他类别，arg2 是 element_type
+            if category == 'parts':
+                element_index = arg2
+                self.log_info(f"{category}[{element_index}]可见性: {'显示' if visible else '隐藏'}")
+                self.refresh_display_all_parts()
+            else:
+                element_type = arg2
+                self.log_info(f"{category}/{element_type}可见性: {'显示' if visible else '隐藏'}")
+                if category == 'geometry':
+                    self._update_geometry_element_display()
+                elif category == 'mesh':
+                    self._update_mesh_part_display()
+                
+        elif len(args) == 4:
+            category, element_type, element_index, visible = args
+            self.log_info(f"{category}/{element_type}[{element_index}]可见性: {'显示' if visible else '隐藏'}")
+            
+            if category == 'geometry':
+                self._update_geometry_element_display()
+            elif category == 'mesh':
+                self._update_mesh_part_display()
+            elif category == 'parts':
+                self.refresh_display_all_parts()
+
+    def on_model_tree_selected(self, category, element_type, element_index, element_obj):
+        """
+        模型树元素被选中的回调
+        
+        Args:
+            category: 类别（"geometry", "mesh", "parts"）
+            element_type: 元素类型（"vertices", "edges", "faces", "bodies"）
+            element_index: 元素索引
+            element_obj: 元素对象
+        """
+        if category == 'geometry':
+            self.on_geometry_element_selected(element_type, element_obj, element_index)
+        elif category == 'mesh':
+            self.on_mesh_element_selected(element_type, element_obj, element_index)
+        elif category == 'parts':
+            self.on_part_selected(element_type, element_obj, element_index)
+
+    def on_mesh_element_selected(self, element_type, element_data, element_index):
+        """网格元素被选中时的回调"""
+        element_name = f"{element_type}_{element_index}"
+        self.log_info(f"选中网格元素: {element_name}")
+
+        if hasattr(self, 'props_text'):
+            info_text = f"选中网格元素: {element_name}\n"
+            info_text += f"类型: {element_type}\n"
+            info_text += f"索引: {element_index}\n"
+
+            if isinstance(element_data, dict):
+                if 'nodes' in element_data:
+                    info_text += f"节点数量: {len(element_data['nodes'])}\n"
+                if 'faces' in element_data:
+                    info_text += f"面数量: {len(element_data['faces'])}\n"
+                if 'edges' in element_data:
+                    info_text += f"边数量: {len(element_data['edges'])}\n"
+
+            self.props_text.setPlainText(info_text)
+
+    def on_part_selected(self, element_type, element_data, element_index):
+        """部件被选中时的回调"""
+        part_name = f"{element_type}_{element_index}"
+        self.log_info(f"选中部件: {part_name}")
+
+        if hasattr(self, 'props_text'):
+            info_text = f"选中部件: {part_name}\n"
+            info_text += f"索引: {element_index}\n"
+
+            if isinstance(element_data, dict):
+                bc_type = element_data.get('bc_type', '未知')
+                info_text += f"边界条件: {bc_type}\n"
+
+                if 'faces' in element_data:
+                    info_text += f"面数量: {len(element_data['faces'])}\n"
+
+                if 'nodes' in element_data:
+                    info_text += f"节点数量: {len(element_data['nodes'])}\n"
+
+            self.props_text.setPlainText(info_text)
+            self.update_status(f"已选中网格部件: {part_name}")
 
     def _get_edge_length(self, edge):
         """获取边的长度"""
