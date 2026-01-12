@@ -38,7 +38,7 @@ from gui.gui_base import (
     StatusBar, InfoOutput, DialogBase,
     Splitter, PartListWidget
 )
-from gui.geometry_tree import GeometryTreeWidget
+from gui.model_tree import ModelTreeWidget
 from gui.ribbon_widget import RibbonWidget
 from gui.toolbar import ViewToolbar
 from gui.mesh_display import MeshDisplayArea
@@ -179,26 +179,26 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setSpacing(2)
 
-        self._create_geometry_tree_widget()
+        self._create_model_tree_widget()
         self._create_properties_panel()
 
         self.left_panel.setMinimumWidth(300)
         self.paned_window.addWidget(self.left_panel)
 
-    def _create_geometry_tree_widget(self):
-        """创建几何模型树组件"""
-        self.geometry_tree_widget = GeometryTreeWidget(parent=self)
+    def _create_model_tree_widget(self):
+        """创建模型树组件"""
+        self.model_tree_widget = ModelTreeWidget(parent=self)
 
-        geometry_tree_frame_container = QGroupBox("几何模型树")
-        geometry_tree_layout = QVBoxLayout(geometry_tree_frame_container)
-        geometry_tree_layout.setSpacing(2)
+        model_tree_frame_container = QGroupBox("模型树")
+        model_tree_layout = QVBoxLayout(model_tree_frame_container)
+        model_tree_layout.setSpacing(2)
 
-        geometry_tree_layout.addWidget(self.geometry_tree_widget.widget)
+        model_tree_layout.addWidget(self.model_tree_widget.widget)
 
-        self.geometry_tree_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.model_tree_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         left_layout = self.left_panel.layout()
-        left_layout.addWidget(geometry_tree_frame_container)
+        left_layout.addWidget(model_tree_frame_container)
 
     def _create_properties_panel(self):
         """创建属性面板"""
@@ -470,8 +470,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     self.parts_list_widget.parts_list.clear()
 
                 # 清空模型树
-                if hasattr(self, 'geometry_tree_widget'):
-                    self.geometry_tree_widget.clear()
+                if hasattr(self, 'model_tree_widget'):
+                    self.model_tree_widget.clear()
 
                 # 清空网格显示
                 if hasattr(self, 'mesh_visualizer'):
@@ -854,9 +854,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 self.original_node_coords = [list(coord) for coord in mesh_data.node_coords]
 
             # 使用几何模型树加载网格数据
-            if hasattr(self, 'geometry_tree_widget'):
-                self.geometry_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
-                self.geometry_tree_widget.load_parts(mesh_data)
+            if hasattr(self, 'model_tree_widget'):
+                self.model_tree_widget.load_mesh(mesh_data, mesh_name="网格模型")
+                self.model_tree_widget.load_parts(mesh_data)
 
             # Refresh display to show all parts with different colors
             self.refresh_display_all_parts()
@@ -937,7 +937,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                     self.mesh_display.renderer.ResetCamera()
                     self.mesh_display.render_window.Render()
 
-                self.geometry_tree_widget.load_geometry(shape, os.path.basename(file_path))
+                self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
 
                 self.log_info(f"已导入几何: {file_path}")
                 self.update_status("已导入几何")
@@ -1469,8 +1469,8 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
         # Get all currently checked parts from geometry tree widget
         visible_parts = []
-        if hasattr(self, 'geometry_tree_widget'):
-            visible_parts = self.geometry_tree_widget.get_visible_parts()
+        if hasattr(self, 'model_tree_widget'):
+            visible_parts = self.model_tree_widget.get_visible_parts()
         elif hasattr(self, 'parts_list_widget'):
             for i in range(self.parts_list_widget.parts_list.count()):
                 item = self.parts_list_widget.parts_list.item(i)
@@ -1563,11 +1563,11 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
-        if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_geometry'):
-            self.log_info("缺少 geometry_tree_widget 或 current_geometry")
+        if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_geometry'):
+            self.log_info("缺少 model_tree_widget 或 current_geometry")
             return
 
-        visible_elements = self.geometry_tree_widget.get_visible_elements(category='geometry')
+        visible_elements = self.model_tree_widget.get_visible_elements(category='geometry')
         self.log_info(f"可见元素: {visible_elements}")
         self.log_info(f"visible_elements 类型: {type(visible_elements)}")
 
@@ -1636,7 +1636,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _update_mesh_part_display(self):
         """更新网格部件的显示"""
-        if not hasattr(self, 'geometry_tree_widget') or not hasattr(self, 'current_mesh'):
+        if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_mesh'):
             return
 
         # 使用 refresh_display_all_parts 来正确更新部件显示

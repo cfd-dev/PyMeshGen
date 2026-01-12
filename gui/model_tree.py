@@ -13,7 +13,7 @@ from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
 
 
-class GeometryTreeWidget:
+class ModelTreeWidget:
     """统一模型树组件 - 三层结构：几何、网格、部件"""
 
     def __init__(self, parent=None):
