@@ -811,6 +811,105 @@ def bind_edges_by_curve_name(shape: TopoDS_Shape, parts: List, edge_curve_mappin
                     break
 
 
+def export_geometry_file(shape: TopoDS_Shape, filename: str) -> bool:
+    """
+    导出几何文件，自动识别文件格式
+    
+    Args:
+        shape: OpenCASCADE形状
+        filename: 输出文件路径
+        
+    Returns:
+        bool: 导出是否成功
+        
+    Raises:
+        ValueError: 不支持的文件格式
+    """
+    if not os.path.exists(os.path.dirname(filename)):
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+    
+    file_ext = os.path.splitext(filename)[1].lower()
+    
+    if file_ext in ['.step', '.stp']:
+        return export_step_file(shape, filename)
+    elif file_ext in ['.iges', '.igs']:
+        return export_iges_file(shape, filename)
+    elif file_ext in ['.stl']:
+        return export_stl_file(shape, filename)
+    else:
+        raise ValueError(f"不支持的文件格式: {file_ext}")
+
+
+def export_step_file(shape: TopoDS_Shape, filename: str) -> bool:
+    """
+    导出STEP文件
+    
+    Args:
+        shape: OpenCASCADE形状
+        filename: 输出文件路径
+        
+    Returns:
+        bool: 导出是否成功
+    """
+    try:
+        from OCC.Core.STEPControl import STEPControl_Writer
+        from OCC.Core.IFSelect import IFSelect_RetDone
+    except ImportError:
+        raise ImportError("无法导入STEP模块，请确保已安装pythonocc-core")
+    
+    step_writer = STEPControl_Writer()
+    step_writer.Transfer(shape, 1)
+    status = step_writer.Write(filename)
+    
+    return status == IFSelect_RetDone
+
+
+def export_iges_file(shape: TopoDS_Shape, filename: str) -> bool:
+    """
+    导出IGES文件
+    
+    Args:
+        shape: OpenCASCADE形状
+        filename: 输出文件路径
+        
+    Returns:
+        bool: 导出是否成功
+    """
+    try:
+        from OCC.Core.IGESControl import IGESControl_Writer
+        from OCC.Core.Interface import Interface_Static_SetCVal
+    except ImportError:
+        raise ImportError("无法导入IGES模块，请确保已安装pythonocc-core")
+    
+    iges_writer = IGESControl_Writer()
+    iges_writer.AddShape(shape)
+    status = iges_writer.Write(filename)
+    
+    return status
+
+
+def export_stl_file(shape: TopoDS_Shape, filename: str) -> bool:
+    """
+    导出STL文件
+    
+    Args:
+        shape: OpenCASCADE形状
+        filename: 输出文件路径
+        
+    Returns:
+        bool: 导出是否成功
+    """
+    try:
+        from OCC.Core.StlAPI import StlAPI_Writer
+    except ImportError:
+        raise ImportError("无法导入STL模块，请确保已安装pythonocc-core")
+    
+    stl_writer = StlAPI_Writer()
+    status = stl_writer.Write(shape, filename)
+    
+    return status
+
+
 def create_test_square_shape():
     """
     创建一个测试用的正方形形状

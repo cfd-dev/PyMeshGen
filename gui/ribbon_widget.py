@@ -197,6 +197,11 @@ class RibbonWidget(QWidget):
         self.buttons['file']['save'] = file_group.add_large_button("保存工程", tooltip="保存工程 (Ctrl+S)")
         layout.addWidget(file_group)
 
+        geometry_group = RibbonGroup("")
+        self.buttons['file']['import_geometry'] = geometry_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
+        self.buttons['file']['export_geometry'] = geometry_group.add_large_button("导出几何", tooltip="导出几何文件 (IGES/STEP/STL等)")
+        layout.addWidget(geometry_group)
+
         io_group = RibbonGroup("")
         self.buttons['file']['import'] = io_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
         self.buttons['file']['export'] = io_group.add_large_button("导出网格", tooltip="导出网格 (Ctrl+E)")
@@ -383,6 +388,8 @@ class RibbonWidget(QWidget):
         self.buttons['file']['save'].clicked.connect(main_window.save_config)
         self.buttons['file']['import'].clicked.connect(main_window.import_mesh)
         self.buttons['file']['export'].clicked.connect(main_window.export_mesh)
+        self.buttons['file']['import_geometry'].clicked.connect(main_window.import_geometry)
+        self.buttons['file']['export_geometry'].clicked.connect(main_window.export_geometry)
 
         # Geometry tab callbacks
         self.buttons['geometry']['import_geometry'].clicked.connect(main_window.import_geometry)

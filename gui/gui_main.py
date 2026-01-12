@@ -285,6 +285,12 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
         shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
         shortcut.activated.connect(self.toggle_ribbon)
 
+        import_geometry_shortcut = QShortcut(QKeySequence("Ctrl+G"), self)
+        import_geometry_shortcut.activated.connect(self.import_geometry)
+
+        export_geometry_shortcut = QShortcut(QKeySequence("Ctrl+Shift+E"), self)
+        export_geometry_shortcut.activated.connect(self.export_geometry)
+
     def _setup_ribbon_icons(self):
         """设置功能区图标"""
         from gui.icon_manager import get_icon
@@ -295,7 +301,9 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 'open': 'document-open',
                 'save': 'document-save',
                 'import': 'document-import',
-                'export': 'document-export'
+                'export': 'document-export',
+                'import_geometry': 'document-import',
+                'export_geometry': 'document-export'
             }.get(button_name, 'document-new')
             button.setIcon(get_icon(icon_name))
 
@@ -1002,6 +1010,43 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
                 QMessageBox.critical(self, "错误", f"导入几何失败: {str(e)}")
                 self.log_error(f"导入几何失败: {str(e)}")
                 self.update_status("导入几何失败")
+
+    def export_geometry(self):
+        """导出几何文件"""
+        if not hasattr(self, 'current_geometry') or self.current_geometry is None:
+            QMessageBox.warning(self, "警告", "请先导入几何文件")
+            self.log_info("未导入几何文件，无法导出")
+            self.update_status("未导入几何文件")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "导出几何文件",
+            os.path.join(self.project_root, "geometries"),
+            "几何文件 (*.step *.stp *.iges *.igs *.stl);;STEP文件 (*.step *.stp);;IGES文件 (*.iges *.igs);;STL文件 (*.stl);;所有文件 (*.*)"
+        )
+
+        if file_path:
+            try:
+                from fileIO.geometry_io import export_geometry_file
+
+                self.log_info(f"开始导出几何: {file_path}")
+                self.update_status("正在导出几何...")
+
+                success = export_geometry_file(self.current_geometry, file_path)
+
+                if success:
+                    self.log_info(f"已导出几何: {file_path}")
+                    self.update_status("已导出几何")
+                else:
+                    QMessageBox.warning(self, "警告", "导出几何失败")
+                    self.log_info("导出几何失败")
+                    self.update_status("导出几何失败")
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"导出几何失败: {str(e)}")
+                self.log_error(f"导出几何失败: {str(e)}")
+                self.update_status("导出几何失败")
 
     def export_mesh(self):
         """导出网格"""
@@ -3382,7 +3427,7 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def show_shortcuts(self):
         """显示快捷键"""
-        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
+        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nCtrl+G: 导入几何\nCtrl+Shift+E: 导出几何\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
         QMessageBox.about(self, "快捷键", shortcuts_text)
 
     def set_background_color(self):
