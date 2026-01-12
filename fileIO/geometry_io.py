@@ -285,12 +285,12 @@ def extract_faces_with_data(shape: TopoDS_Shape) -> List[dict]:
         surface = BRep_Tool.Surface(face)
 
         if surface:
-            from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+            from OCC.Core.BRepGProp import brepgprop
             from OCC.Core.GProp import GProp_GProps
 
             try:
                 props = GProp_GProps()
-                brepgprop_SurfaceProperties(face, props)
+                brepgprop.SurfaceProperties(face, props)
                 area = props.Mass()
             except:
                 area = 0.0
@@ -334,12 +334,12 @@ def extract_solids_with_data(shape: TopoDS_Shape) -> List[dict]:
     while explorer.More():
         solid = explorer.Current()
 
-        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+        from OCC.Core.BRepGProp import brepgprop
         from OCC.Core.GProp import GProp_GProps
 
         try:
             props = GProp_GProps()
-            brepgprop_VolumeProperties(solid, props)
+            brepgprop.VolumeProperties(solid, props)
             volume = props.Mass()
         except:
             volume = 0.0
@@ -481,12 +481,12 @@ def get_shape_bounding_box(shape: TopoDS_Shape) -> Tuple[Tuple[float, float, flo
     """
     try:
         from OCC.Core.Bnd import Bnd_Box
-        from OCC.Core.BRepBndLib import brepbndlib_Add
+        from OCC.Core.BRepBndLib import brepbndlib
     except ImportError:
         raise ImportError("无法导入边界框模块，请确保已安装pythonocc-core")
     
     bbox = Bnd_Box()
-    brepbndlib_Add(shape, bbox)
+    brepbndlib.Add(shape, bbox)
     
     xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
     

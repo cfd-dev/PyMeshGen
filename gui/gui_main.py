@@ -1801,24 +1801,24 @@ class SimplifiedPyMeshGenGUI(QMainWindow):
 
     def _get_face_area(self, face):
         """获取面的面积"""
-        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+        from OCC.Core.BRepGProp import brepgprop
         from OCC.Core.GProp import GProp_GProps
 
         try:
             props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
+            brepgprop.SurfaceProperties(face, props)
             return props.Mass()
         except:
             return None
 
     def _get_solid_volume(self, solid):
         """获取体的体积"""
-        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+        from OCC.Core.BRepGProp import brepgprop
         from OCC.Core.GProp import GProp_GProps
 
         try:
             props = GProp_GProps()
-            brepgprop_VolumeProperties(solid, props)
+            brepgprop.VolumeProperties(solid, props)
             return props.Mass()
         except:
             return None

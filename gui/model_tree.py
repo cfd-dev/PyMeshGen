@@ -562,12 +562,12 @@ class ModelTreeWidget:
         Returns:
             面的面积
         """
-        from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
+        from OCC.Core.BRepGProp import brepgprop
         from OCC.Core.GProp import GProp_GProps
 
         try:
             props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
+            brepgprop.SurfaceProperties(face, props)
             return props.Mass()
         except:
             return None
@@ -582,12 +582,12 @@ class ModelTreeWidget:
         Returns:
             体的体积
         """
-        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+        from OCC.Core.BRepGProp import brepgprop
         from OCC.Core.GProp import GProp_GProps
 
         try:
             props = GProp_GProps()
-            brepgprop_VolumeProperties(solid, props)
+            brepgprop.VolumeProperties(solid, props)
             return props.Mass()
         except:
             return None
