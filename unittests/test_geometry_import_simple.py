@@ -21,7 +21,7 @@ class TestGeometryImport(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """测试类初始化"""
-        cls.meshes_dir = current_dir / "meshes"
+        cls.meshes_dir = current_dir / "examples" / "cad"
         cls.test_files = {
             'step': [],
             'iges': [],

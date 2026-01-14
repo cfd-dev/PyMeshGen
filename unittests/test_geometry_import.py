@@ -62,8 +62,8 @@ class TestGeometryImport(unittest.TestCase):
             'stl': []
         }
 
-        # 搜索meshes目录下的几何文件
-        meshes_dir = os.path.join(current_dir, "meshes")
+        # 搜索examples/cad目录下的几何文件
+        meshes_dir = os.path.join(current_dir, "examples", "cad")
         if os.path.exists(meshes_dir):
             for file in os.listdir(meshes_dir):
                 file_path = os.path.join(meshes_dir, file)
@@ -314,7 +314,7 @@ class TestOCCToVTK(unittest.TestCase):
 
         # 查找测试文件
         cls.test_files = []
-        meshes_dir = os.path.join(current_dir, "meshes")
+        meshes_dir = os.path.join(current_dir, "examples", "cad")
         if os.path.exists(meshes_dir):
             for file in os.listdir(meshes_dir):
                 file_path = os.path.join(meshes_dir, file)
