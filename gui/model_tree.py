@@ -407,7 +407,39 @@ class ModelTreeWidget:
                     summary_item.setCheckState(0, Qt.Checked)
                     summary_item.setData(0, Qt.UserRole, ("mesh", "vertex_summary", self.MAX_TREE_ITEMS, vertex_count))
 
-        if hasattr(mesh_data, 'cells'):
+        if hasattr(mesh_data, 'cell_container'):
+            cells = mesh_data.cell_container
+            face_count = len(cells)
+
+            if face_count <= self.LAZY_LOAD_THRESHOLD:
+                for i, cell in enumerate(cells):
+                    face_item = QTreeWidgetItem(faces_item)
+                    face_item.setText(0, f"面_{i}")
+                    face_item.setText(1, "")
+                    face_item.setCheckState(0, Qt.Checked)
+                    face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
+
+                    num_nodes = len(cell.node_ids) if hasattr(cell, 'node_ids') else len(cell)
+                    face_item.setToolTip(0, f"节点数: {num_nodes}")
+            else:
+                for i in range(0, min(face_count, self.MAX_TREE_ITEMS)):
+                    cell = cells[i]
+                    face_item = QTreeWidgetItem(faces_item)
+                    face_item.setText(0, f"面_{i}")
+                    face_item.setText(1, "")
+                    face_item.setCheckState(0, Qt.Checked)
+                    face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
+
+                    num_nodes = len(cell.node_ids) if hasattr(cell, 'node_ids') else len(cell)
+                    face_item.setToolTip(0, f"节点数: {num_nodes}")
+
+                if face_count > self.MAX_TREE_ITEMS:
+                    summary_item = QTreeWidgetItem(faces_item)
+                    summary_item.setText(0, f"... (还有 {face_count - self.MAX_TREE_ITEMS} 个单元)")
+                    summary_item.setText(1, "")
+                    summary_item.setCheckState(0, Qt.Checked)
+                    summary_item.setData(0, Qt.UserRole, ("mesh", "face_summary", self.MAX_TREE_ITEMS, face_count))
+        elif hasattr(mesh_data, 'cells'):
             cells = mesh_data.cells
             face_count = len(cells)
 
@@ -419,7 +451,7 @@ class ModelTreeWidget:
                     face_item.setCheckState(0, Qt.Checked)
                     face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
 
-                    num_nodes = len(cell)
+                    num_nodes = len(cell.node_ids) if hasattr(cell, 'node_ids') else len(cell)
                     face_item.setToolTip(0, f"节点数: {num_nodes}")
             else:
                 for i in range(0, min(face_count, self.MAX_TREE_ITEMS)):
@@ -430,7 +462,7 @@ class ModelTreeWidget:
                     face_item.setCheckState(0, Qt.Checked)
                     face_item.setData(0, Qt.UserRole, ("mesh", "face", i, cell))
 
-                    num_nodes = len(cell)
+                    num_nodes = len(cell.node_ids) if hasattr(cell, 'node_ids') else len(cell)
                     face_item.setToolTip(0, f"节点数: {num_nodes}")
 
                 if face_count > self.MAX_TREE_ITEMS:

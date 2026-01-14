@@ -166,6 +166,16 @@ class MeshOperations:
                 self.gui.update_status("网格生成完成")
 
                 self.gui.display_mesh()
+
+                # 更新模型树中的网格统计信息
+                if hasattr(self.gui, 'model_tree_widget'):
+                    self.gui.model_tree_widget.load_mesh(result_mesh)
+
+                # 更新部件列表以显示新网格的部件信息
+                self.gui._update_parts_list_from_generated_mesh(result_mesh)
+
+                # Refresh display to show all parts with different colors
+                self.gui.refresh_display_all_parts()
             else:
                 QMessageBox.warning(self.gui, "警告", "网格生成失败，未返回有效结果")
                 self.gui.log_info("网格生成失败，未返回有效结果")

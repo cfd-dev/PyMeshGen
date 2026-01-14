@@ -1925,55 +1925,6 @@ class PyMeshGenGUI(QMainWindow):
         """生成网格 - 使用异步线程避免UI冻结"""
         self.mesh_operations.generate_mesh()
 
-    def _on_mesh_finished(self, result_mesh):
-        """处理网格生成完成"""
-        try:
-            self.log_info("网格生成完成!")
-            self.update_status("网格生成完成")
-
-            # 关闭进度对话框
-            if self.progress_dialog:
-                self.progress_dialog.setValue(100)
-                self.progress_dialog.close()
-
-            # 加载生成的网格文件并显示
-            self.log_info("正在加载生成的网格文件...")
-            self.update_status("正在加载生成的网格文件...")
-
-            # 优先从result_mesh加载网格
-            if result_mesh:
-                self.current_mesh = result_mesh
-                self.mesh_display.display_mesh(result_mesh, render_immediately=False)
-                self.log_info("已显示生成的网格")
-                self.update_status("已显示生成的网格")
-                # 更新部件列表以显示新网格的部件信息
-                self._update_parts_list_from_generated_mesh(result_mesh)
-
-                # Refresh display to show all parts with different colors
-                self.refresh_display_all_parts()
-            else:
-                self.log_info("未找到result_mesh，尝试从输出文件加载...")
-                # 从输出文件加载生成的网格
-                from fileIO.vtk_io import parse_vtk_msh
-                generated_mesh = parse_vtk_msh("./out/mesh.vtk")
-
-                if hasattr(self, 'mesh_display') and generated_mesh:
-                    self.current_mesh = generated_mesh
-                    self.mesh_display.display_mesh(generated_mesh, render_immediately=False)
-                    self.log_info("已显示生成的网格")
-                    self.update_status("已显示生成的网格")
-
-                # 更新部件列表以显示新网格的部件信息
-                self._update_parts_list_from_generated_mesh(generated_mesh)
-
-                # Refresh display to show all parts with different colors
-                self.refresh_display_all_parts()
-
-        except Exception as e:
-            QMessageBox.critical(self, "错误", f"加载生成的网格失败: {str(e)}")
-            self.log_error(f"加载生成的网格失败: {str(e)}")
-            self.update_status("加载生成的网格失败")
-
     def _update_parts_list_from_generated_mesh(self, generated_mesh):
         """从生成的网格更新部件列表"""
         try:
