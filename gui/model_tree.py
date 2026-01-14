@@ -16,8 +16,8 @@ from PyQt5.QtGui import QIcon
 class ModelTreeWidget:
     """统一模型树组件 - 三层结构：几何、网格、部件"""
 
-    MAX_TREE_ITEMS = 1000  # 最大树项数量，超过则使用虚拟化
-    LAZY_LOAD_THRESHOLD = 500  # 延迟加载阈值
+    MAX_TREE_ITEMS = 100000  # 最大树项数量，超过则使用虚拟化
+    LAZY_LOAD_THRESHOLD = 10000  # 延迟加载阈值
 
     def __init__(self, parent=None):
         """
