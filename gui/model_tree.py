@@ -464,7 +464,42 @@ class ModelTreeWidget:
 
         self.tree.blockSignals(True)
 
-        if hasattr(parts_data, 'parts_info') and parts_data.parts_info:
+        # 处理字典类型的数据
+        if isinstance(parts_data, dict) and 'parts_info' in parts_data:
+            parts_info = parts_data['parts_info']
+            if isinstance(parts_info, list):
+                for part_info in parts_info:
+                    part_name = part_info.get('part_name', f'部件_{part_count}')
+                    bc_type = part_info.get('bc_type', '')
+                    checked = bc_type != 'interior'
+
+                    part_item = QTreeWidgetItem(parts_item)
+                    part_item.setText(0, part_name)
+                    part_item.setText(1, "")
+                    part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    part_item.setData(0, Qt.UserRole, ("parts", part_info, part_count))
+
+                    if bc_type:
+                        part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                    part_count += 1
+            elif isinstance(parts_info, dict):
+                for part_name, part_data in parts_info.items():
+                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                        checked = bc_type != 'interior'
+
+                        part_item = QTreeWidgetItem(parts_item)
+                        part_item.setText(0, part_name)
+                        part_item.setText(1, "")
+                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                        part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
+
+                        if bc_type:
+                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                        part_count += 1
+        elif hasattr(parts_data, 'parts_info') and parts_data.parts_info:
             if isinstance(parts_data.parts_info, list):
                 for part_info in parts_data.parts_info:
                     part_name = part_info.get('part_name', f'部件_{part_count}')

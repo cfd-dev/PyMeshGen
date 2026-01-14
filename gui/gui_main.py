@@ -931,8 +931,12 @@ class PyMeshGenGUI(QMainWindow):
                 def step2_load_parts():
                     self.update_status("正在加载部件信息...")
                     self.model_tree_widget.load_parts(mesh_data)
+                    # 如果网格文件本身包含部件信息，保留这些信息
+                    if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
+                        self.cas_parts_info = mesh_data.parts_info.copy()
+                        self.log_info(f"已保留网格文件中的部件信息，共 {len(mesh_data.parts_info)} 个部件")
                     # 如果没有预设部件，自动创建Default部件
-                    if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+                    elif not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
                         self._create_default_part_for_mesh(mesh_data)
                     QTimer.singleShot(0, step3_refresh_display)
                 
@@ -1846,6 +1850,42 @@ class PyMeshGenGUI(QMainWindow):
         if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
             self.cas_parts_info = {}
         
+        # 从DefaultPart中移除已分配的元素
+        if 'DefaultPart' in self.cas_parts_info:
+            default_part = self.cas_parts_info['DefaultPart']
+            
+            # 从网格元素中移除
+            if 'mesh_elements' in default_part:
+                default_mesh_elements = default_part['mesh_elements']
+                for elem_type, elem_list in mesh_elements.items():
+                    if elem_type in default_mesh_elements:
+                        for elem_idx in elem_list:
+                            if elem_idx in default_mesh_elements[elem_type]:
+                                default_mesh_elements[elem_type].remove(elem_idx)
+                
+                # 更新计数
+                default_part['num_vertices'] = len(default_mesh_elements.get('vertices', []))
+                default_part['num_edges'] = len(default_mesh_elements.get('edges', []))
+                default_part['num_faces'] = len(default_mesh_elements.get('faces', []))
+                default_part['num_bodies'] = len(default_mesh_elements.get('bodies', []))
+            
+            # 从几何元素中移除
+            if 'geometry_elements' in default_part:
+                default_geo_elements = default_part['geometry_elements']
+                for elem_type, elem_list in geometry_elements.items():
+                    if elem_type in default_geo_elements:
+                        for elem_idx in elem_list:
+                            if elem_idx in default_geo_elements[elem_type]:
+                                default_geo_elements[elem_type].remove(elem_idx)
+                
+                # 更新计数
+                default_part['num_vertices'] = len(default_geo_elements.get('vertices', []))
+                default_part['num_edges'] = len(default_geo_elements.get('edges', []))
+                default_part['num_faces'] = len(default_geo_elements.get('faces', []))
+                default_part['num_solids'] = len(default_geo_elements.get('bodies', []))
+            
+            self.log_info(f"已从DefaultPart中移除分配给 {part_name} 的元素")
+        
         # 将新建部件的数据转换为与cas部件兼容的格式
         converted_part_info = {
             'type': 'user_created',
@@ -1876,6 +1916,11 @@ class PyMeshGenGUI(QMainWindow):
         # 更新部件列表显示
         if hasattr(self, 'parts_list_widget'):
             self.parts_list_widget.add_part_with_checkbox(part_name, True)
+        
+        # 更新模型树中的 DefaultPart 显示
+        if hasattr(self, 'model_tree_widget') and 'DefaultPart' in self.cas_parts_info:
+            # 重新加载部件到模型树，以更新 DefaultPart 的显示
+            self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
         
         self.log_info(f"已创建部件: {part_name}")
         self.update_status(f"部件已创建: {part_name}")
