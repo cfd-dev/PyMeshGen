@@ -253,8 +253,10 @@ class PartManager:
         if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
             return
 
+        # Clear current display
         self.gui.mesh_display.clear_mesh_actors()
 
+        # Get all currently checked parts from geometry tree widget
         visible_parts = []
         if hasattr(self.gui, 'model_tree_widget'):
             visible_parts = self.gui.model_tree_widget.get_visible_parts()
@@ -265,16 +267,22 @@ class PartManager:
                 if item.checkState() == Qt.Checked:
                     visible_parts.append(part_name)
 
+        # Display only visible parts - 批量处理以提高性能
         if visible_parts:
+            # 批量显示所有部件，只渲染一次
             for part_name in visible_parts:
                 self.gui.mesh_display.display_part(part_name, parts_info=self.gui.cas_parts_info, render_immediately=False)
 
+            # 批量渲染一次，而不是每个部件都渲染
             self.gui.mesh_display.render_window.Render()
         else:
+            # If no parts are visible, clear display
             self.gui.mesh_display.clear()
 
+        # Re-add axes after displaying parts
         self.gui.mesh_display.add_axes()
 
+        # 更新几何元素的显示（基于可见部件）
         self._update_geometry_display_for_parts(visible_parts)
 
     def switch_display_mode(self, mode):
@@ -438,9 +446,11 @@ class PartManager:
                 if 'geometry_elements' in part_data:
                     part_geometry_elements[part_name] = part_data['geometry_elements']
 
+        # 如果没有部件包含几何元素，则显示所有几何元素
         if not part_geometry_elements:
             return
 
+        # 收集所有可见部件的几何元素索引
         visible_geometry_indices = {'vertices': set(), 'edges': set(), 'faces': set(), 'bodies': set()}
         for part_name in visible_parts:
             if part_name in part_geometry_elements:
@@ -448,8 +458,10 @@ class PartManager:
                     if elem_type in visible_geometry_indices:
                         visible_geometry_indices[elem_type].update(indices)
 
+        # 获取当前几何元素的可视性
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
 
+        # 移除所有几何元素actor
         if hasattr(self.gui, 'geometry_actors'):
             for elem_type, actors in self.gui.geometry_actors.items():
                 for actor in actors:
@@ -470,6 +482,7 @@ class PartManager:
 
         from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
 
+        # 只显示属于可见部件的几何元素
         if 'geometry' in visible_elements:
             if 'vertices' in visible_elements['geometry']:
                 self.gui.geometry_actors['vertices'] = []
@@ -507,42 +520,6 @@ class PartManager:
                         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
                             self.gui.mesh_display.renderer.AddActor(actor)
 
-        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
-            self.gui.mesh_display.render_window.Render()
-
-        render_mode = getattr(self.gui, 'render_mode', 'surface')
-        
-        if hasattr(self.gui, 'geometry_actors'):
-            for elem_type, actors in self.gui.geometry_actors.items():
-                for actor in actors:
-                    if render_mode == "wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(False)
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    elif render_mode == "surface-wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    else:
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(False)
-        
-        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
-            if render_mode == "wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(True)
-            elif render_mode == "surface-wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(True)
-            else:
-                self.gui.geometry_edges_actor.SetVisibility(False)
-        
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
 
