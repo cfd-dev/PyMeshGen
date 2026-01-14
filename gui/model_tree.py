@@ -9,7 +9,7 @@
 
 from PyQt5.QtWidgets import (QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
                              QHeaderView, QMenu, QAction, QDialog)
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 
 
@@ -152,7 +152,7 @@ class ModelTreeWidget:
 
     def load_geometry(self, shape, geometry_name="几何"):
         """
-        加载几何模型到树中
+        加载几何模型到树中（使用分批加载避免阻塞）
 
         Args:
             shape: OpenCASCADE TopoDS_Shape对象
@@ -166,10 +166,161 @@ class ModelTreeWidget:
             geometry_item.setText(0, geometry_name)
 
         self._clear_geometry_elements()
-        self._extract_geometry_elements(shape)
+        
+        if shape is None:
+            return
 
-        if hasattr(self.parent, '_update_geometry_element_display'):
-            self.parent._update_geometry_element_display()
+        geometry_item = self.tree.topLevelItem(0)
+        if geometry_item is None:
+            return
+
+        vertices_item = geometry_item.child(0)
+        edges_item = geometry_item.child(1)
+        faces_item = geometry_item.child(2)
+        bodies_item = geometry_item.child(3)
+
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+
+        self.tree.blockSignals(True)
+
+        vertex_count = 0
+        edge_count = 0
+        face_count = 0
+        body_count = 0
+
+        self.tree.blockSignals(False)
+
+        vertices_item.setText(1, "加载中...")
+        edges_item.setText(1, "加载中...")
+        faces_item.setText(1, "加载中...")
+        bodies_item.setText(1, "加载中...")
+
+        self._batch_load_geometry_elements(shape, vertices_item, edges_item, faces_item, bodies_item)
+
+    def _batch_load_geometry_elements(self, shape, vertices_item, edges_item, faces_item, bodies_item):
+        """
+        分批加载几何元素到树中
+
+        Args:
+            shape: OpenCASCADE TopoDS_Shape对象
+            vertices_item: 顶点树项
+            edges_item: 边树项
+            faces_item: 面树项
+            bodies_item: 体树项
+        """
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+
+        BATCH_SIZE = 500  # 每批处理的元素数量
+
+        vertex_explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
+        edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+        face_explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        body_explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+
+        vertex_count = 0
+        edge_count = 0
+        face_count = 0
+        body_count = 0
+
+        def process_batch():
+            nonlocal vertex_count, edge_count, face_count, body_count
+
+            self.tree.blockSignals(True)
+
+            processed = 0
+
+            for _ in range(BATCH_SIZE):
+                if vertex_explorer.More():
+                    vertex = vertex_explorer.Current()
+                    
+                    if vertex_count < self.LAZY_LOAD_THRESHOLD:
+                        vertex_item = QTreeWidgetItem(vertices_item)
+                        vertex_item.setText(0, f"点_{vertex_count}")
+                        vertex_item.setText(1, "")
+                        vertex_item.setCheckState(0, Qt.Checked)
+                        vertex_item.setData(0, Qt.UserRole, ("geometry", "vertices", vertex, vertex_count))
+
+                        pnt = self._get_vertex_point(vertex)
+                        if pnt:
+                            vertex_item.setToolTip(0, f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})")
+                    
+                    vertex_count += 1
+                    vertex_explorer.Next()
+                    processed += 1
+
+            for _ in range(BATCH_SIZE):
+                if edge_explorer.More():
+                    edge = edge_explorer.Current()
+                    
+                    if edge_count < self.LAZY_LOAD_THRESHOLD:
+                        edge_item = QTreeWidgetItem(edges_item)
+                        edge_item.setText(0, f"线_{edge_count}")
+                        edge_item.setText(1, "")
+                        edge_item.setCheckState(0, Qt.Checked)
+                        edge_item.setData(0, Qt.UserRole, ("geometry", "edges", edge, edge_count))
+
+                        edge_length = self._get_edge_length(edge)
+                        if edge_length is not None:
+                            edge_item.setToolTip(0, f"长度: {edge_length:.3f}")
+                    
+                    edge_count += 1
+                    edge_explorer.Next()
+                    processed += 1
+
+            for _ in range(BATCH_SIZE):
+                if face_explorer.More():
+                    face = face_explorer.Current()
+                    
+                    if face_count < self.LAZY_LOAD_THRESHOLD:
+                        face_item = QTreeWidgetItem(faces_item)
+                        face_item.setText(0, f"面_{face_count}")
+                        face_item.setText(1, "")
+                        face_item.setCheckState(0, Qt.Checked)
+                        face_item.setData(0, Qt.UserRole, ("geometry", "faces", face, face_count))
+
+                        face_area = self._get_face_area(face)
+                        if face_area is not None:
+                            face_item.setToolTip(0, f"面积: {face_area:.3f}")
+                    
+                    face_count += 1
+                    face_explorer.Next()
+                    processed += 1
+
+            for _ in range(BATCH_SIZE):
+                if body_explorer.More():
+                    solid = body_explorer.Current()
+                    
+                    if body_count < self.LAZY_LOAD_THRESHOLD:
+                        body_item = QTreeWidgetItem(bodies_item)
+                        body_item.setText(0, f"体_{body_count}")
+                        body_item.setText(1, "")
+                        body_item.setCheckState(0, Qt.Checked)
+                        body_item.setData(0, Qt.UserRole, ("geometry", "bodies", solid, body_count))
+
+                        body_volume = self._get_solid_volume(solid)
+                        if body_volume is not None:
+                            body_item.setToolTip(0, f"体积: {body_volume:.3f}")
+                    
+                    body_count += 1
+                    body_explorer.Next()
+                    processed += 1
+
+            vertices_item.setText(1, str(vertex_count))
+            edges_item.setText(1, str(edge_count))
+            faces_item.setText(1, str(face_count))
+            bodies_item.setText(1, str(body_count))
+
+            self.tree.blockSignals(False)
+
+            if vertex_explorer.More() or edge_explorer.More() or face_explorer.More() or body_explorer.More():
+                QTimer.singleShot(0, process_batch)
+            else:
+                if hasattr(self.parent, '_update_geometry_element_display'):
+                    self.parent._update_geometry_element_display()
+
+        QTimer.singleShot(0, process_batch)
 
     def load_mesh(self, mesh_data, mesh_name="网格"):
         """

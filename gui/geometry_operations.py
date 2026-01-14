@@ -43,13 +43,16 @@ class GeometryOperations:
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
         self.gui.status_bar.show_progress(message, progress)
-        self.gui.log_info(f"{message} ({progress}%)")
+        
+        if progress % 20 == 0 or progress == 100:
+            self.gui.log_info(f"{message} ({progress}%)")
+        
+        if progress == 100:
+            self.gui.status_bar.hide_progress()
 
     def on_geometry_import_finished(self, result):
         """几何导入完成回调"""
         try:
-            from fileIO.occ_to_vtk import create_shape_actor
-
             shape = result['shape']
             stats = result['stats']
             file_path = result['file_path']
@@ -68,45 +71,41 @@ class GeometryOperations:
             self.gui.geometry_actor = None
             self.gui.geometry_edges_actor = None
 
-            self.gui.update_status("正在创建几何显示...")
+            self.gui.update_status("正在添加几何到显示...")
 
             if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                from fileIO.occ_to_vtk import create_geometry_edges_actor
+                main_actor = result.get('main_actor')
+                edges_actor = result.get('edges_actor')
 
-                self.gui.geometry_actor = create_shape_actor(
-                    shape,
-                    mesh_quality=2.0,
-                    display_mode='surface',
-                    color=(0.8, 0.8, 0.9),
-                    opacity=0.8
-                )
-                self.gui.mesh_display.renderer.AddActor(self.gui.geometry_actor)
-                self.gui.geometry_actors['main'] = [self.gui.geometry_actor]
+                if main_actor is not None:
+                    self.gui.geometry_actor = main_actor
+                    self.gui.mesh_display.renderer.AddActor(self.gui.geometry_actor)
+                    self.gui.geometry_actors['main'] = [self.gui.geometry_actor]
 
-                self.gui.geometry_edges_actor = create_geometry_edges_actor(
-                    shape,
-                    color=(0.0, 0.0, 0.0),
-                    line_width=1.5,
-                    sample_rate=0.1,
-                    max_points_per_edge=50
-                )
-                self.gui.mesh_display.renderer.AddActor(self.gui.geometry_edges_actor)
-                self.gui.geometry_actors['edges'] = [self.gui.geometry_edges_actor]
+                if edges_actor is not None:
+                    self.gui.geometry_edges_actor = edges_actor
+                    self.gui.mesh_display.renderer.AddActor(self.gui.geometry_edges_actor)
+                    self.gui.geometry_actors['edges'] = [self.gui.geometry_edges_actor]
 
-                if self.gui.render_mode == "wireframe":
-                    self.gui.geometry_actor.SetVisibility(False)
-                    self.gui.geometry_edges_actor.SetVisibility(True)
-                elif self.gui.render_mode == "surface-wireframe":
-                    self.gui.geometry_actor.SetVisibility(True)
-                    self.gui.geometry_edges_actor.SetVisibility(True)
-                else:
-                    self.gui.geometry_actor.SetVisibility(True)
-                    self.gui.geometry_edges_actor.SetVisibility(False)
+                if self.gui.geometry_actor is not None:
+                    if self.gui.render_mode == "wireframe":
+                        self.gui.geometry_actor.SetVisibility(False)
+                        if self.gui.geometry_edges_actor:
+                            self.gui.geometry_edges_actor.SetVisibility(True)
+                    elif self.gui.render_mode == "surface-wireframe":
+                        self.gui.geometry_actor.SetVisibility(True)
+                        if self.gui.geometry_edges_actor:
+                            self.gui.geometry_edges_actor.SetVisibility(True)
+                    else:
+                        self.gui.geometry_actor.SetVisibility(True)
+                        if self.gui.geometry_edges_actor:
+                            self.gui.geometry_edges_actor.SetVisibility(False)
 
-                self.gui.mesh_display.renderer.ResetCamera()
-                self.gui.mesh_display.render_window.Render()
+                    self.gui.mesh_display.renderer.ResetCamera()
+                    self.gui.mesh_display.render_window.Render()
 
             if hasattr(self.gui, 'model_tree_widget'):
+                self.gui.update_status("正在加载模型树...")
                 self.gui.model_tree_widget.load_geometry(shape, geometry_name="几何")
 
             self.gui.log_info(f"几何导入成功: {file_path}")

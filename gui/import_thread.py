@@ -18,10 +18,11 @@ class GeometryImportThread(QThread):
     import_finished = pyqtSignal(object)  # 导入的几何形状
     import_failed = pyqtSignal(str)  # 错误信息
 
-    def __init__(self, file_path):
+    def __init__(self, file_path, create_vtk_actors=True):
         super().__init__()
         self.file_path = file_path
         self._is_running = True
+        self.create_vtk_actors = create_vtk_actors
 
     def run(self):
         """执行几何导入操作"""
@@ -55,13 +56,51 @@ class GeometryImportThread(QThread):
             if not self._is_running:
                 return
 
-            self.progress_updated.emit("完成几何文件导入", 100)
-            
             result = {
                 'shape': shape,
                 'stats': stats,
                 'file_path': self.file_path
             }
+
+            if self.create_vtk_actors:
+                self.progress_updated.emit("创建几何显示...", 75)
+
+                if not self._is_running:
+                    return
+
+                try:
+                    from fileIO.occ_to_vtk import create_shape_actor, create_geometry_edges_actor
+
+                    main_actor = create_shape_actor(
+                        shape,
+                        mesh_quality=2.0,
+                        display_mode='surface',
+                        color=(0.8, 0.8, 0.9),
+                        opacity=0.8
+                    )
+
+                    if not self._is_running:
+                        return
+
+                    self.progress_updated.emit("创建几何边缘显示...", 85)
+
+                    edges_actor = create_geometry_edges_actor(
+                        shape,
+                        color=(0.0, 0.0, 0.0),
+                        line_width=1.5,
+                        sample_rate=0.1,
+                        max_points_per_edge=50
+                    )
+
+                    result['main_actor'] = main_actor
+                    result['edges_actor'] = edges_actor
+
+                except Exception as e:
+                    self.progress_updated.emit(f"创建显示失败: {str(e)}", 90)
+                    result['main_actor'] = None
+                    result['edges_actor'] = None
+
+            self.progress_updated.emit("完成几何文件导入", 100)
             
             self.import_finished.emit(result)
 
