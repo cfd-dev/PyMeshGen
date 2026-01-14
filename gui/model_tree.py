@@ -212,7 +212,7 @@ class ModelTreeWidget:
         from OCC.Core.TopExp import TopExp_Explorer
         from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
 
-        BATCH_SIZE = 500  # 每批处理的元素数量
+        BATCH_SIZE = 1000  # 每批处理的元素数量（增加以提高批量处理效率）
 
         vertex_explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
         edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)

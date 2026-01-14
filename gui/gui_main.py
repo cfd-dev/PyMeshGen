@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QToolBar, QAction, QFileDialog, QMessageBox, QScrollArea,
     QDockWidget, QSizePolicy, QProgressDialog
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QIcon
 
 # Setup project paths before any imports that might depend on other modules
@@ -948,7 +948,7 @@ class PyMeshGenGUI(QMainWindow):
                 
                 self.geometry_actor = create_shape_actor(
                     shape,
-                    mesh_quality=2.0,
+                    mesh_quality=8.0,
                     display_mode='surface',
                     color=(0.8, 0.8, 0.9),
                     opacity=0.8
@@ -960,8 +960,8 @@ class PyMeshGenGUI(QMainWindow):
                     shape,
                     color=(0.0, 0.0, 0.0),
                     line_width=1.5,
-                    sample_rate=0.1,
-                    max_points_per_edge=50
+                    sample_rate=0.5,
+                    max_points_per_edge=20
                 )
                 self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
                 self.geometry_actors['edges'] = [self.geometry_edges_actor]
@@ -979,27 +979,14 @@ class PyMeshGenGUI(QMainWindow):
                 self.mesh_display.renderer.ResetCamera()
                 self.mesh_display.render_window.Render()
 
-            self.update_status("正在加载模型树...")
-
-            if hasattr(self, 'model_tree_widget'):
-                self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
-                
-                # 检查cas_parts_info状态
-                if hasattr(self, 'cas_parts_info'):
-                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
-                else:
-                    self.log_info(f"导入几何前cas_parts_info不存在")
-                
-                # 如果没有预设部件，自动创建Default部件
-                if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
-                    self.log_info(f"开始创建Default部件...")
-                    self._create_default_part_for_geometry(shape, stats)
-                else:
-                    self.log_info(f"已存在预设部件，跳过Default部件创建")
-
             self.log_info(f"已导入几何: {file_path}")
             self.update_status("已导入几何")
             self.status_bar.hide_progress()
+
+            if hasattr(self, 'model_tree_widget'):
+                self.update_status("正在加载模型树...")
+                self.log_info("正在后台加载模型树...")
+                QTimer.singleShot(100, lambda: self._load_geometry_tree_async(shape, file_path, stats))
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"处理导入的几何失败: {str(e)}")
@@ -1007,11 +994,33 @@ class PyMeshGenGUI(QMainWindow):
             self.status_bar.hide_progress()
 
         finally:
-            # 重新启用导入几何按钮
             if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
                 import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
                 if import_btn:
                     import_btn.setEnabled(True)
+
+    def _load_geometry_tree_async(self, shape, file_path, stats):
+        """异步加载几何模型树"""
+        try:
+            if hasattr(self, 'model_tree_widget'):
+                self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
+                
+                if hasattr(self, 'cas_parts_info'):
+                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
+                else:
+                    self.log_info(f"导入几何前cas_parts_info不存在")
+                
+                if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+                    self.log_info(f"开始创建Default部件...")
+                    self._create_default_part_for_geometry(shape, stats)
+                else:
+                    self.log_info(f"已存在预设部件，跳过Default部件创建")
+                
+                self.update_status("已导入几何")
+                self.log_info("模型树加载完成")
+        except Exception as e:
+            self.log_error(f"加载模型树失败: {str(e)}")
+            self.update_status("模型树加载失败")
 
     def _create_default_part_for_mesh(self, mesh_data):
         """
