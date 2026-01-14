@@ -499,6 +499,22 @@ class ModelTreeWidget:
                             part_item.setToolTip(0, f"边界条件: {bc_type}")
 
                         part_count += 1
+        elif isinstance(parts_data, dict):
+            for part_name, part_data in parts_data.items():
+                if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                    checked = bc_type != 'interior'
+
+                    part_item = QTreeWidgetItem(parts_item)
+                    part_item.setText(0, part_name)
+                    part_item.setText(1, "")
+                    part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
+
+                    if bc_type:
+                        part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                    part_count += 1
         elif hasattr(parts_data, 'parts_info') and parts_data.parts_info:
             if isinstance(parts_data.parts_info, list):
                 for part_info in parts_data.parts_info:
@@ -946,6 +962,25 @@ class ModelTreeWidget:
                 visible_parts.append(part_name)
 
         return visible_parts
+
+    def set_all_parts_visible(self, visible=True):
+        """
+        设置所有部件的可见性
+
+        Args:
+            visible: 是否可见
+        """
+        parts_item = self.tree.topLevelItem(2)
+        if parts_item is None:
+            return
+
+        self.tree.blockSignals(True)
+
+        for i in range(parts_item.childCount()):
+            part_item = parts_item.child(i)
+            part_item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
+
+        self.tree.blockSignals(False)
 
     def set_element_visibility(self, category, element_type, element_index, visible):
         """
