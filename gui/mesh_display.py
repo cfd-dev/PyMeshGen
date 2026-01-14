@@ -1180,12 +1180,34 @@ class MeshDisplayArea:
                 if isinstance(parts_info, dict):
                     # Try exact match first
                     if actual_part_name in parts_info:
-                        part_faces = parts_info[actual_part_name].get('faces', [])
+                        part_data = parts_info[actual_part_name]
+                        # 检查是否有 mesh_elements 或 geometry_elements（用于 DefaultPart）
+                        if 'mesh_elements' in part_data:
+                            mesh_elements = part_data['mesh_elements']
+                            if 'faces' in mesh_elements:
+                                # mesh_elements['faces'] 包含的是面索引列表
+                                # 需要转换为面数据格式
+                                cells = self.mesh_data.get('cells', []) if isinstance(self.mesh_data, dict) else []
+                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                        elif 'geometry_elements' in part_data:
+                            # 几何元素暂时不显示
+                            part_faces = []
+                        else:
+                            part_faces = part_data.get('faces', [])
                     # If not found, try to find by partial match or key that starts with the part name
                     else:
                         for key in parts_info:
                             if key == actual_part_name or key.startswith(actual_part_name):
-                                part_faces = parts_info[key].get('faces', [])
+                                part_data = parts_info[key]
+                                if 'mesh_elements' in part_data:
+                                    mesh_elements = part_data['mesh_elements']
+                                    if 'faces' in mesh_elements:
+                                        cells = self.mesh_data.get('cells', []) if isinstance(self.mesh_data, dict) else []
+                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                elif 'geometry_elements' in part_data:
+                                    part_faces = []
+                                else:
+                                    part_faces = parts_info[key].get('faces', [])
                                 break
             # 然后检查mesh_data中是否有parts_info
             elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
@@ -1193,12 +1215,30 @@ class MeshDisplayArea:
                 if isinstance(parts_info, dict):
                     # Try exact match first
                     if actual_part_name in parts_info:
-                        part_faces = parts_info[actual_part_name].get('faces', [])
+                        part_data = parts_info[actual_part_name]
+                        if 'mesh_elements' in part_data:
+                            mesh_elements = part_data['mesh_elements']
+                            if 'faces' in mesh_elements:
+                                cells = self.mesh_data.get('cells', []) if isinstance(self.mesh_data, dict) else []
+                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                        elif 'geometry_elements' in part_data:
+                            part_faces = []
+                        else:
+                            part_faces = parts_info[actual_part_name].get('faces', [])
                     # If not found, try to find by partial match or key that starts with the part name
                     else:
                         for key in parts_info:
                             if key == actual_part_name or key.startswith(actual_part_name):
-                                part_faces = parts_info[key].get('faces', [])
+                                part_data = parts_info[key]
+                                if 'mesh_elements' in part_data:
+                                    mesh_elements = part_data['mesh_elements']
+                                    if 'faces' in mesh_elements:
+                                        cells = self.mesh_data.get('cells', []) if isinstance(self.mesh_data, dict) else []
+                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                elif 'geometry_elements' in part_data:
+                                    part_faces = []
+                                else:
+                                    part_faces = parts_info[key].get('faces', [])
                                 break
             # 检查是否有边界信息
             elif boundary_info and isinstance(boundary_info, dict):

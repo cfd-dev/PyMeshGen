@@ -514,7 +514,7 @@ class ModelTreeWidget:
                 part_count += 1
         else:
             default_part_item = QTreeWidgetItem(parts_item)
-            default_part_item.setText(0, "默认部件")
+            default_part_item.setText(0, "DefaultPart")
             default_part_item.setText(1, "")
             default_part_item.setCheckState(0, Qt.Checked)
             default_part_item.setData(0, Qt.UserRole, ("parts", None, 0))

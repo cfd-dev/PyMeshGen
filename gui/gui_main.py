@@ -931,6 +931,9 @@ class PyMeshGenGUI(QMainWindow):
                 def step2_load_parts():
                     self.update_status("正在加载部件信息...")
                     self.model_tree_widget.load_parts(mesh_data)
+                    # 如果没有预设部件，自动创建Default部件
+                    if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+                        self._create_default_part_for_mesh(mesh_data)
                     QTimer.singleShot(0, step3_refresh_display)
                 
                 def step3_refresh_display():
@@ -1087,6 +1090,19 @@ class PyMeshGenGUI(QMainWindow):
 
             if hasattr(self, 'model_tree_widget'):
                 self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
+                
+                # 检查cas_parts_info状态
+                if hasattr(self, 'cas_parts_info'):
+                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
+                else:
+                    self.log_info(f"导入几何前cas_parts_info不存在")
+                
+                # 如果没有预设部件，自动创建Default部件
+                if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+                    self.log_info(f"开始创建Default部件...")
+                    self._create_default_part_for_geometry(shape, stats)
+                else:
+                    self.log_info(f"已存在预设部件，跳过Default部件创建")
 
             self.log_info(f"已导入几何: {file_path}")
             self.update_status("已导入几何")
@@ -1103,6 +1119,149 @@ class PyMeshGenGUI(QMainWindow):
                 import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
                 if import_btn:
                     import_btn.setEnabled(True)
+
+    def _create_default_part_for_mesh(self, mesh_data):
+        """
+        为导入的网格创建Default部件
+        
+        Args:
+            mesh_data: 网格数据对象
+        """
+        try:
+            # 初始化cas_parts_info
+            if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
+                self.cas_parts_info = {}
+            
+            # 收集所有网格元素的索引
+            mesh_elements = {
+                "vertices": [],
+                "edges": [],
+                "faces": [],
+                "bodies": []
+            }
+            
+            # 提取顶点索引
+            if hasattr(mesh_data, 'node_coords'):
+                num_vertices = len(mesh_data.node_coords)
+                mesh_elements["vertices"] = list(range(num_vertices))
+            
+            # 提取面索引
+            if hasattr(mesh_data, 'cells'):
+                num_faces = len(mesh_data.cells)
+                mesh_elements["faces"] = list(range(num_faces))
+            
+            # 创建Default部件信息
+            part_name = "DefaultPart"
+            part_info = {
+                'part_name': part_name,
+                'bc_type': '',
+                'mesh_elements': mesh_elements,
+                'num_vertices': len(mesh_elements["vertices"]),
+                'num_edges': len(mesh_elements["edges"]),
+                'num_faces': len(mesh_elements["faces"]),
+                'num_bodies': len(mesh_elements["bodies"])
+            }
+            
+            # 添加到cas_parts_info
+            self.cas_parts_info[part_name] = part_info
+            
+            # 更新模型树中的部件显示
+            if hasattr(self, 'model_tree_widget'):
+                self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+            
+            self.log_info(f"已自动创建Default部件，包含所有网格元素")
+            
+        except Exception as e:
+            self.log_error(f"创建Default部件失败: {str(e)}")
+
+    def _create_default_part_for_geometry(self, shape, stats):
+        """
+        为导入的几何创建Default部件
+        
+        Args:
+            shape: OpenCASCADE TopoDS_Shape对象
+            stats: 几何统计信息
+        """
+        try:
+            from OCC.Core.TopExp import TopExp_Explorer
+            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+            
+            # 初始化cas_parts_info
+            if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
+                self.cas_parts_info = {}
+            
+            # 收集所有几何元素的索引
+            geometry_elements = {
+                "vertices": [],
+                "edges": [],
+                "faces": [],
+                "bodies": []
+            }
+            
+            # 提取顶点索引
+            vertex_index = 0
+            explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
+            while explorer.More():
+                geometry_elements["vertices"].append(vertex_index)
+                vertex_index += 1
+                explorer.Next()
+            
+            # 提取边索引
+            edge_index = 0
+            explorer = TopExp_Explorer(shape, TopAbs_EDGE)
+            while explorer.More():
+                geometry_elements["edges"].append(edge_index)
+                edge_index += 1
+                explorer.Next()
+            
+            # 提取面索引
+            face_index = 0
+            explorer = TopExp_Explorer(shape, TopAbs_FACE)
+            while explorer.More():
+                geometry_elements["faces"].append(face_index)
+                face_index += 1
+                explorer.Next()
+            
+            # 提取体索引
+            body_index = 0
+            explorer = TopExp_Explorer(shape, TopAbs_SOLID)
+            while explorer.More():
+                geometry_elements["bodies"].append(body_index)
+                body_index += 1
+                explorer.Next()
+            
+            # 记录收集到的元素数量
+            self.log_info(f"Default部件元素收集:")
+            self.log_info(f"  - 顶点: {len(geometry_elements['vertices'])} 个")
+            self.log_info(f"  - 边: {len(geometry_elements['edges'])} 个")
+            self.log_info(f"  - 面: {len(geometry_elements['faces'])} 个")
+            self.log_info(f"  - 体: {len(geometry_elements['bodies'])} 个")
+            
+            # 创建Default部件信息
+            part_name = "DefaultPart"
+            part_info = {
+                'part_name': part_name,
+                'bc_type': '',
+                'geometry_elements': geometry_elements,
+                'num_vertices': len(geometry_elements["vertices"]),
+                'num_edges': len(geometry_elements["edges"]),
+                'num_faces': len(geometry_elements["faces"]),
+                'num_solids': len(geometry_elements["bodies"])
+            }
+            
+            # 添加到cas_parts_info
+            self.cas_parts_info[part_name] = part_info
+            
+            # 更新模型树中的部件显示
+            if hasattr(self, 'model_tree_widget'):
+                self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+            
+            self.log_info(f"已自动创建Default部件，包含所有几何元素")
+            
+        except Exception as e:
+            self.log_error(f"创建Default部件失败: {str(e)}")
+            import traceback
+            self.log_error(traceback.format_exc())
 
     def on_geometry_import_failed(self, error_message):
         """几何导入失败回调"""
