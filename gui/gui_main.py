@@ -509,15 +509,40 @@ class PyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'info_output') and hasattr(self.info_output, 'info_text'):
                     self.info_output.info_text.clear()
 
+                # 清空属性面板
+                if hasattr(self, 'props_text'):
+                    self.props_text.clear()
+
                 # 清空状态栏
                 self.statusBar().clearMessage()
 
                 # 重置相关属性
                 if hasattr(self, 'cas_parts_info'):
-                    self.cas_parts_info = {}
+                    self.cas_parts_info = None
+
+                if hasattr(self, 'original_node_coords'):
+                    self.original_node_coords = None
+
+                if hasattr(self, 'mesh_generator'):
+                    self.mesh_generator = None
 
                 if hasattr(self, 'json_config'):
                     self.json_config = {}
+
+                if hasattr(self, 'render_mode'):
+                    self.render_mode = "surface"
+
+                if hasattr(self, 'show_boundary'):
+                    self.show_boundary = True
+
+                if hasattr(self, 'mesh_generation_thread'):
+                    self.mesh_generation_thread = None
+
+                if hasattr(self, 'progress_dialog'):
+                    self.progress_dialog = None
+
+                if hasattr(self, 'import_thread'):
+                    self.import_thread = None
 
                 if hasattr(self, 'geometry_actor'):
                     if self.geometry_actor and hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
@@ -551,6 +576,11 @@ class PyMeshGenGUI(QMainWindow):
                 # 清空网格显示区域
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.clear()
+                    self.mesh_display.clear_mesh_actors()
+                    self.mesh_display.clear_boundary_actors()
+                    self.mesh_display.clear_highlights()
+                    self.mesh_display.mesh_data = None
+                    self.mesh_display.mesh_actor = None
                     # 彻底清除渲染器中的所有 actors
                     if hasattr(self.mesh_display, 'renderer'):
                         try:
@@ -567,6 +597,12 @@ class PyMeshGenGUI(QMainWindow):
                     # 重新渲染窗口以确保所有元素都被清除
                     if hasattr(self.mesh_display, 'render_window'):
                         self.mesh_display.render_window.Render()
+
+                # 清空模型树数据
+                if hasattr(self, 'model_tree_widget'):
+                    self.model_tree_widget.geometry_data = None
+                    self.model_tree_widget.mesh_data = None
+                    self.model_tree_widget.parts_data = None
 
                 # 如果有画布，也清空
                 if hasattr(self, 'canvas'):
