@@ -1666,6 +1666,64 @@ class PyMeshGenGUI(QMainWindow):
         action = "显示" if is_visible else "隐藏"
         self.log_info(f"{action}部件: {actual_part_name}")
 
+    def on_part_created(self, part_info):
+        """
+        处理新建部件的回调
+        
+        Args:
+            part_info: 部件信息字典，包含:
+                - part_name: 部件名称
+                - geometry_elements: 几何元素字典
+                - mesh_elements: 网格元素字典
+        """
+        if not part_info:
+            return
+        
+        part_name = part_info.get('part_name', '新部件')
+        geometry_elements = part_info.get('geometry_elements', {})
+        mesh_elements = part_info.get('mesh_elements', {})
+        
+        # 初始化cas_parts_info（如果不存在）
+        if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
+            self.cas_parts_info = {}
+        
+        # 将新建部件的数据转换为与cas部件兼容的格式
+        converted_part_info = {
+            'type': 'user_created',
+            'bc_type': 'wall',
+            'faces': [],
+            'nodes': [],
+            'cells': [],
+            'geometry_elements': geometry_elements,
+            'mesh_elements': mesh_elements
+        }
+        
+        # 如果有网格数据，尝试提取面数据
+        if hasattr(self, 'current_mesh') and self.current_mesh:
+            if hasattr(self.current_mesh, 'cells'):
+                # 获取选中的网格面
+                selected_faces = mesh_elements.get('faces', [])
+                if selected_faces:
+                    for face_idx in selected_faces:
+                        if face_idx < len(self.current_mesh.cells):
+                            cell = self.current_mesh.cells[face_idx]
+                            converted_part_info['faces'].append({
+                                'nodes': list(cell) if hasattr(cell, '__iter__') else [cell]
+                            })
+        
+        # 将部件添加到cas_parts_info中
+        self.cas_parts_info[part_name] = converted_part_info
+        
+        # 更新部件列表显示
+        if hasattr(self, 'parts_list_widget'):
+            self.parts_list_widget.add_part_with_checkbox(part_name, True)
+        
+        self.log_info(f"已创建部件: {part_name}")
+        self.update_status(f"部件已创建: {part_name}")
+        
+        # 刷新显示
+        self.refresh_display_all_parts()
+
     def refresh_display_all_parts(self):
         """刷新显示所有可见部件 - 优化版本，批量处理减少渲染次数"""
         if not hasattr(self, 'mesh_display') or not self.mesh_display:
@@ -1825,38 +1883,6 @@ class PyMeshGenGUI(QMainWindow):
                 self.geometry_actors['bodies'].append(actor)
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                     self.mesh_display.renderer.AddActor(actor)
-
-        if hasattr(self, 'current_geometry') and self.current_geometry:
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                self.geometry_actor = create_shape_actor(
-                    self.current_geometry,
-                    mesh_quality=2.0,
-                    display_mode='surface',
-                    color=(0.8, 0.8, 0.9),
-                    opacity=0.8
-                )
-                self.mesh_display.renderer.AddActor(self.geometry_actor)
-                self.geometry_actors['main'] = [self.geometry_actor]
-                
-                self.geometry_edges_actor = create_geometry_edges_actor(
-                    self.current_geometry,
-                    color=(0.0, 0.0, 0.0),
-                    line_width=1.5,
-                    sample_rate=0.1,
-                    max_points_per_edge=50
-                )
-                self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
-                self.geometry_actors['edges'] = [self.geometry_edges_actor]
-                
-                if self.render_mode == "wireframe":
-                    self.geometry_actor.SetVisibility(False)
-                    self.geometry_edges_actor.SetVisibility(True)
-                elif self.render_mode == "surface-wireframe":
-                    self.geometry_actor.SetVisibility(True)
-                    self.geometry_edges_actor.SetVisibility(False)
-                else:
-                    self.geometry_actor.SetVisibility(True)
-                    self.geometry_edges_actor.SetVisibility(False)
 
         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
             self.mesh_display.render_window.Render()

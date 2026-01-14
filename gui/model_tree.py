@@ -8,7 +8,7 @@
 """
 
 from PyQt5.QtWidgets import (QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
-                             QHeaderView, QMenu, QAction)
+                             QHeaderView, QMenu, QAction, QDialog)
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
 
@@ -769,6 +769,12 @@ class ModelTreeWidget:
         collapse_action.triggered.connect(lambda: item.setExpanded(False))
         menu.addAction(collapse_action)
 
+        if element_data == "parts":
+            menu.addSeparator()
+            create_part_action = QAction("创建部件", self.tree)
+            create_part_action.triggered.connect(lambda: self._create_part_dialog())
+            menu.addAction(create_part_action)
+
         if not menu.isEmpty():
             menu.exec_(self.tree.mapToGlobal(position))
 
@@ -783,6 +789,53 @@ class ModelTreeWidget:
         self.tree.blockSignals(True)
         item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
         self.tree.blockSignals(False)
+
+    def _create_part_dialog(self):
+        """显示创建部件对话框"""
+        from .create_part_dialog import CreatePartDialog
+        
+        dialog = CreatePartDialog(self.parent, self.geometry_data, self.mesh_data)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            part_info = dialog.get_part_info()
+            self._add_part_to_tree(part_info)
+    
+    def _add_part_to_tree(self, part_info):
+        """
+        添加部件到树中
+        
+        Args:
+            part_info: 部件信息字典
+        """
+        parts_item = self.tree.topLevelItem(2)
+        if parts_item is None:
+            return
+        
+        self.tree.blockSignals(True)
+        
+        part_name = part_info.get("part_name", "新部件")
+        geometry_elements = part_info.get("geometry_elements", {})
+        mesh_elements = part_info.get("mesh_elements", {})
+        
+        part_item = QTreeWidgetItem(parts_item)
+        part_item.setText(0, part_name)
+        part_item.setText(1, "")
+        part_item.setCheckState(0, Qt.Checked)
+        part_item.setData(0, Qt.UserRole, ("parts", part_info, parts_item.childCount()))
+        
+        geo_count = sum(len(v) for v in geometry_elements.values())
+        mesh_count = sum(len(v) for v in mesh_elements.values())
+        total_count = geo_count + mesh_count
+        
+        if total_count > 0:
+            part_item.setToolTip(0, f"几何元素: {geo_count}, 网格元素: {mesh_count}")
+        
+        parts_item.setText(1, str(parts_item.childCount()))
+        
+        self.tree.blockSignals(False)
+        
+        if hasattr(self.parent, 'on_part_created'):
+            self.parent.on_part_created(part_info)
 
     def get_visible_elements(self, category=None, element_type=None):
         """
