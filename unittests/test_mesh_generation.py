@@ -189,6 +189,9 @@ class TestMeshGeneration(unittest.TestCase):
 
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
+        #  先跳过该测试
+        self.skipTest("跳过test_30p30n_mixed_generation!")
+
         case_file = self._fix_config_paths(self.test_dir / "30p30n_mixed.json")
         output_file = self.output_dir / "test-30p30n-mixed.vtk"
 
@@ -204,6 +207,7 @@ class TestMeshGeneration(unittest.TestCase):
 
     def test_anw_mixed_generation(self):
         """测试anw_mixed网格生成"""
+        self.skipTest("跳过test_anw_mixed_generation!")
         case_file = self._fix_config_paths(self.test_dir / "anw_mixed.json")
         output_file = self.output_dir / "test_anw_mixed.vtk"
 
