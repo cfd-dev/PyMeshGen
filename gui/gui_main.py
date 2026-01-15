@@ -52,8 +52,6 @@ from gui.help_module import HelpModule
 from gui.ui_helpers import UIHelpers
 from data_structure.parameters import Parameters
 
-from core import generate_mesh
-
 
 class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
@@ -147,18 +145,21 @@ class PyMeshGenGUI(QMainWindow):
         self.ui_helpers = UIHelpers(self)
 
     def _initialize_data(self):
-        """初始化数据"""
-        self.params = None
-        self.mesh_generator = None
-        self.current_mesh = None
-        self.cas_parts_info = None
-        self.original_node_coords = None
-        self.parts_params = []
-        self.render_mode = "surface"
-        self.show_boundary = True
-        self.mesh_generation_thread = None
-        self.progress_dialog = None
-        self.import_thread = None
+        """初始化数据
+        
+        初始化GUI类中的所有数据成员，设置它们的初始值
+        """
+        self.params = None                    # 网格生成的参数配置
+        self.mesh_generator = None            # 网格生成器实例
+        self.current_mesh = None              # 当前生成的网格对象
+        self.cas_parts_info = None            # CAS文件的部件信息
+        self.original_node_coords = None      # 原始节点坐标
+        self.parts_params = []                # 部件参数列表
+        self.render_mode = "surface"           # 渲染模式（surface：表面渲染）
+        self.show_boundary = True             # 是否显示边界
+        self.mesh_generation_thread = None    # 网格生成的线程实例
+        self.progress_dialog = None           # 进度对话框实例
+        self.import_thread = None             # 导入操作的线程实例
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -668,7 +669,6 @@ class PyMeshGenGUI(QMainWindow):
                 config_info = project_data["config"]
 
                 # 重建参数对象
-                from data_structure.parameters import Parameters
                 import tempfile
 
                 # 创建临时配置文件用于加载参数
