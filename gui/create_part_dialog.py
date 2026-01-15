@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 
+from .ui_utils import UIStyles
+
 
 class CreatePartDialog(QDialog):
     """创建部件对话框"""
@@ -109,39 +111,11 @@ class CreatePartDialog(QDialog):
         button_layout.addStretch()
         
         self.ok_button = QPushButton("确定")
-        self.ok_button.setStyleSheet("""
-            QPushButton {
-                background-color: #e6f7ff;
-                border: 1px solid #0078d4;
-                border-radius: 3px;
-                padding: 6px 12px;
-                color: #0078d4;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #cceeff;
-            }
-            QPushButton:pressed {
-                background-color: #99ddff;
-            }
-        """)
+        self.ok_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
         button_layout.addWidget(self.ok_button)
         
         self.cancel_button = QPushButton("取消")
-        self.cancel_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f5f5f5;
-                border: 1px solid #cccccc;
-                border-radius: 3px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background-color: #e6e6e6;
-            }
-            QPushButton:pressed {
-                background-color: #d9d9d9;
-            }
-        """)
+        self.cancel_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         button_layout.addWidget(self.cancel_button)
         
         main_layout.addLayout(button_layout)
