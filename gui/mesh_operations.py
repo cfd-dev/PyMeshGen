@@ -645,6 +645,8 @@ class MeshOperations:
                         self.gui.current_mesh.boundary_info = new_parts_info
 
                         self.gui.cas_parts_info = parts_info
+                        
+                        self.gui.original_node_coords = self.gui.current_mesh.node_coords
 
                         self.gui.update_parts_list_from_cas(new_parts_info)
                         
