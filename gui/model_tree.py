@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
                              QHeaderView, QMenu, QAction, QDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
+from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
 
 class ModelTreeWidget:
@@ -668,7 +669,7 @@ class ModelTreeWidget:
                     part_count += 1
             elif isinstance(parts_info, dict):
                 for part_name, part_data in parts_info.items():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    if part_name not in PARTS_INFO_RESERVED_KEYS:
                         bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
                         checked = bc_type != 'interior'
 
@@ -684,7 +685,7 @@ class ModelTreeWidget:
                         part_count += 1
         elif isinstance(parts_data, dict):
             for part_name, part_data in parts_data.items():
-                if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                if part_name not in PARTS_INFO_RESERVED_KEYS:
                     bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
                     checked = bc_type != 'interior'
 
@@ -717,7 +718,7 @@ class ModelTreeWidget:
                     part_count += 1
             elif isinstance(parts_data.parts_info, dict):
                 for part_name, part_data in parts_data.parts_info.items():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    if part_name not in PARTS_INFO_RESERVED_KEYS:
                         bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
                         checked = bc_type != 'interior'
 

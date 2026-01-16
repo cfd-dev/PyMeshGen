@@ -10,6 +10,15 @@ from PyQt5.QtWidgets import QToolButton, QWidget, QHBoxLayout, QVBoxLayout
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QIcon
 
+PARTS_INFO_RESERVED_KEYS = {
+    "type",
+    "node_coords",
+    "cells",
+    "num_points",
+    "num_cells",
+    "unstr_grid"
+}
+
 
 class UIStyles:
     """Centralized UI style definitions"""

@@ -42,7 +42,7 @@ from gui.model_tree import ModelTreeWidget
 from gui.ribbon_widget import RibbonWidget
 from gui.toolbar import ViewToolbar
 from gui.mesh_display import MeshDisplayArea
-from gui.ui_utils import UIStyles
+from gui.ui_utils import UIStyles, PARTS_INFO_RESERVED_KEYS
 from gui.view_controller import ViewController
 from gui.mesh_operations import MeshOperations
 from gui.part_manager import PartManager
@@ -1490,12 +1490,12 @@ class PyMeshGenGUI(QMainWindow):
                         node_mapping
                     )
                     for part_name, part_data in mapped_parts_info.items():
-                        if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        if part_name not in PARTS_INFO_RESERVED_KEYS:
                             updated_parts_info[part_name] = part_data
                 else:
                     # 如果没有映射，直接使用原始部件信息
                     for part_name, part_data in self.cas_parts_info.items():
-                        if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                        if part_name not in PARTS_INFO_RESERVED_KEYS:
                             updated_parts_info[part_name] = part_data
 
             # 方法1: 从网格的单元中提取部件信息
@@ -1519,7 +1519,7 @@ class PyMeshGenGUI(QMainWindow):
             # 方法2: 如果有parts_info属性，也合并进来
             if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
                 for part_name, part_data in generated_mesh.parts_info.items():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    if part_name not in PARTS_INFO_RESERVED_KEYS:
                         if part_name not in updated_parts_info:
                             updated_parts_info[part_name] = part_data
                         else:
@@ -1648,7 +1648,7 @@ class PyMeshGenGUI(QMainWindow):
         mapped_parts_info = {}
 
         for part_name, part_data in original_parts_info.items():
-            if part_name in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+            if part_name in PARTS_INFO_RESERVED_KEYS:
                 mapped_parts_info[part_name] = part_data
                 continue
 

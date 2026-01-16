@@ -18,6 +18,7 @@ if PROJECT_ROOT not in sys.path:
 
 from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton
 from PyQt5.QtCore import Qt
+from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
 
 class MeshOperations:
@@ -560,7 +561,7 @@ class MeshOperations:
                 
                 boundary_part_names = set()
                 for part_name in parts_info.keys():
-                    if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                    if part_name not in PARTS_INFO_RESERVED_KEYS:
                         part_data = parts_info[part_name]
                         bc_type = part_data.get('bc_type', 'unspecified')
                         if bc_type != 'interior':
@@ -705,7 +706,7 @@ class MeshOperations:
 
             parts_list = []
             for part_name, part_data in self.gui.cas_parts_info.items():
-                if part_name not in ['type', 'node_coords', 'cells', 'num_points', 'num_cells', 'unstr_grid']:
+                if part_name not in PARTS_INFO_RESERVED_KEYS:
                     bc_type = part_data.get('bc_type', 'wall')
                     bc_value = part_data.get('bc_value', '')
                     description = part_data.get('description', '')
