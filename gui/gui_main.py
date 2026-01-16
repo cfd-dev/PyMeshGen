@@ -943,8 +943,7 @@ class PyMeshGenGUI(QMainWindow):
                     self.geometry_actor.SetVisibility(True)
                     self.geometry_edges_actor.SetVisibility(False)
                 
-                self.mesh_display.renderer.ResetCamera()
-                self.mesh_display.render_window.Render()
+                self.mesh_display.fit_view()
 
             self.log_info(f"已导入几何: {file_path}")
             self.update_status("已导入几何")
