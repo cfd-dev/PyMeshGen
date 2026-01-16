@@ -441,6 +441,14 @@ class PartManager:
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
             return
 
+        if getattr(self.gui, 'geometry_display_source', None) == 'stl':
+            render_mode = getattr(self.gui, 'render_mode', 'surface')
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
+            return
+
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
 
         if hasattr(self.gui, 'geometry_actors'):
@@ -512,6 +520,14 @@ class PartManager:
     def _update_geometry_display_for_parts(self, visible_parts):
         """根据可见部件更新几何元素的显示"""
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
+            return
+
+        if getattr(self.gui, 'geometry_display_source', None) == 'stl':
+            render_mode = getattr(self.gui, 'render_mode', 'surface')
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
             return
 
         part_geometry_elements = {}

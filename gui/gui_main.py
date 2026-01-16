@@ -161,6 +161,7 @@ class PyMeshGenGUI(QMainWindow):
         self.progress_dialog = None           # 进度对话框实例
         self.import_thread = None             # 导入操作的线程实例
         self._progress_cache = {}             # 进度日志缓存，用于节流输出
+        self.geometry_display_source = None   # 几何显示来源（stl/occ）
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -529,6 +530,9 @@ class PyMeshGenGUI(QMainWindow):
 
                 if hasattr(self, 'import_thread'):
                     self.import_thread = None
+
+                if hasattr(self, 'geometry_display_source'):
+                    self.geometry_display_source = None
 
                 if hasattr(self, 'geometry_actor'):
                     if self.geometry_actor and hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
@@ -965,6 +969,8 @@ class PyMeshGenGUI(QMainWindow):
                     )
                     self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
                     self.geometry_actors['edges'] = [self.geometry_edges_actor]
+
+                self.geometry_display_source = "stl" if stl_displayed else "occ"
                 
                 if self.render_mode == "wireframe":
                     self.geometry_actor.SetVisibility(False)
