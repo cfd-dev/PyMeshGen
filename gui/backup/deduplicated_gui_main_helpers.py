@@ -547,5 +547,70 @@ def _get_solid_volume(self, solid):
         brepgprop.VolumeProperties(solid, props)
         return props.Mass()
     except:
-        return None
+    return None
+"""
+
+GUI_MAIN_MODEL_TREE_SELECTION_BACKUP = """
+def on_model_tree_selected(self, category, element_type, element_index, element_obj):
+    if category == 'geometry':
+        self.on_geometry_element_selected(element_type, element_obj, element_index)
+    elif category == 'mesh':
+        self.on_mesh_element_selected(element_type, element_obj, element_index)
+    elif category == 'parts':
+        self.on_part_selected(element_type, element_obj, element_index)
+
+def on_mesh_element_selected(self, element_type, element_data, element_index):
+    element_name = f"{element_type}_{element_index}"
+    self.log_info(f"选中网格元素: {element_name}")
+
+    if hasattr(self, 'props_text'):
+        info_text = f"选中网格元素: {element_name}\\n"
+        info_text += f"类型: {element_type}\\n"
+        info_text += f"索引: {element_index}\\n"
+
+        if isinstance(element_data, dict):
+            if 'nodes' in element_data:
+                info_text += f"节点数量: {len(element_data['nodes'])}\\n"
+            if 'faces' in element_data:
+                info_text += f"面数量: {len(element_data['faces'])}\\n"
+            if 'edges' in element_data:
+                info_text += f"边数量: {len(element_data['edges'])}\\n"
+
+        self.props_text.setPlainText(info_text)
+
+def on_part_selected(self, element_type, element_data, element_index):
+    part_name = f"{element_type}_{element_index}"
+    self.log_info(f"选中部件: {part_name}")
+
+    if hasattr(self, 'props_text'):
+        info_text = f"选中部件: {part_name}\\n"
+        info_text += f"索引: {element_index}\\n"
+
+        if isinstance(element_data, dict):
+            bc_type = element_data.get('bc_type', '未知')
+            info_text += f"边界条件: {bc_type}\\n"
+
+            if 'faces' in element_data:
+                info_text += f"面数量: {len(element_data['faces'])}\\n"
+
+            if 'nodes' in element_data:
+                info_text += f"节点数量: {len(element_data['nodes'])}\\n"
+
+        self.props_text.setPlainText(info_text)
+        self.update_status(f"已选中网格部件: {part_name}")
+"""
+
+GUI_MAIN_HANDLE_PART_VISIBILITY_BACKUP = """
+def handle_part_visibility_change(self, part_name, is_visible):
+    if not hasattr(self, 'mesh_display') or not self.mesh_display:
+        return
+
+    # Refresh the entire display to show/hide parts based on checkbox states
+    self.refresh_display_all_parts()
+
+    # Extract the actual part name from formatted text (e.g., "部件1 - Max Size: 1.0, Prism: True" -> "部件1")
+    actual_part_name = part_name.split(' - ')[0] if ' - ' in part_name else part_name
+
+    action = "显示" if is_visible else "隐藏"
+    self.log_info(f"{action}部件: {actual_part_name}")
 """
