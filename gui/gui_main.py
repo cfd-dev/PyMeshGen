@@ -1183,44 +1183,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def edit_part(self):
         """编辑部件参数（从右键菜单调用）"""
-        QMessageBox.information(self, "提示", "编辑部件参数功能暂未实现，请使用模型树右键菜单")
-        
-        # 为每个当前部件创建参数，优先使用已保存的参数
-        for part_name in current_part_names:
-            if part_name in saved_params_map:
-                # 使用已保存的参数
-                parts_params.append(saved_params_map[part_name])
-            else:
-                # 使用默认参数
-                parts_params.append({
-                    "part_name": part_name,
-                    "max_size": 1e6,
-                    "PRISM_SWITCH": "off",
-                    "first_height": 0.01,
-                    "growth_rate": 1.2,
-                    "max_layers": 5,
-                    "full_layers": 5,
-                    "multi_direction": False
-                })
-        
-        self.log_info(f"已准备 {len(parts_params)} 个部件的参数")
-
-        # 确保current_row在有效范围内，防止索引超出范围
-        if current_row >= len(parts_params):
-            current_row = 0  # 如果超出范围，选择第一个部件
-        elif current_row < 0:
-            current_row = 0  # 如果没有选中任何部件，选择第一个部件
-
-        # 创建并显示对话框，默认选中当前部件
-        dialog = PartParamsDialog(self, parts=parts_params, current_part=current_row)
-        if dialog.exec_() == QDialog.Accepted:
-            # 获取设置后的参数
-            self.parts_params = dialog.get_parts_params()
-            self.log_info(f"已更新部件参数，共 {len(self.parts_params)} 个部件")
-            self.update_status("部件参数已更新")
-        else:
-            self.log_info("取消设置部件参数")
-            self.update_status("已取消部件参数设置")
+        self.part_manager.edit_mesh_params()
     
     def _execute_part_operation(self, operation_name, display_method, selected_part_name):
         """执行部件操作的通用方法
@@ -1294,21 +1257,11 @@ class PyMeshGenGUI(QMainWindow):
 
     def update_parts_list(self):
         """更新部件列表"""
-        if hasattr(self, 'model_tree_widget') and hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-            self.model_tree_widget.load_parts(self.cas_parts_info)
-            self.log_info("部件列表已更新")
-        else:
-            self.log_info("没有部件信息需要更新")
+        self.part_manager.update_parts_list(update_status=False)
 
     def update_parts_list_from_cas(self, parts_info):
         """从cas文件的部件信息更新部件列表"""
-        self.cas_parts_info = parts_info
-
-        if hasattr(self, 'model_tree_widget'):
-            self.model_tree_widget.load_parts(parts_info)
-            self.log_info(f"已从CAS更新部件列表，共 {len(parts_info)} 个部件")
-        else:
-            self.log_info("模型树组件未初始化，无法更新部件列表")
+        self.part_manager.update_parts_list_from_cas(parts_info=parts_info, update_status=False)
 
     def on_part_select(self, index):
         """处理部件列表选择事件"""

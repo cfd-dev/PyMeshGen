@@ -90,7 +90,7 @@ class PartManager:
             self.gui.log_info("取消设置部件参数")
             self.gui.update_status("已取消部件参数设置")
 
-    def update_parts_list(self):
+    def update_parts_list(self, update_status=True):
         """更新部件列表"""
         if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
             self.gui.log_info("没有部件信息需要更新")
@@ -99,20 +99,26 @@ class PartManager:
         if hasattr(self.gui, 'model_tree_widget'):
             self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
             self.gui.log_info("部件列表已更新")
-            self.gui.update_status("部件列表已更新")
+            if update_status:
+                self.gui.update_status("部件列表已更新")
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
 
-    def update_parts_list_from_cas(self):
+    def update_parts_list_from_cas(self, parts_info=None, update_status=True):
         """从CAS数据更新部件列表"""
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
-            self.gui.log_info("没有CAS部件数据")
-            return
+        if parts_info is not None:
+            self.gui.cas_parts_info = parts_info
+
+        if parts_info is None:
+            if not hasattr(self.gui, 'cas_parts_info') or self.gui.cas_parts_info is None:
+                self.gui.log_info("没有CAS部件数据")
+                return
 
         if hasattr(self.gui, 'model_tree_widget'):
             self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
             self.gui.log_info(f"已从CAS更新部件列表，共 {len(self.gui.cas_parts_info)} 个部件")
-            self.gui.update_status("部件列表已从CAS更新")
+            if update_status:
+                self.gui.update_status("部件列表已从CAS更新")
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
 
