@@ -465,6 +465,49 @@ class PartManager:
 
         return False
 
+    def _get_geometry_visibility_state(self, visible_parts=None, render_mode=None):
+        """计算几何显示状态，统一供不同显示路径使用"""
+        type_states = self._get_geometry_type_states()
+        parts_visible = self._should_show_geometry_for_parts(visible_parts)
+        render_mode = render_mode or getattr(self.gui, 'render_mode', 'surface')
+
+        stats = getattr(self.gui, 'current_geometry_stats', None)
+        face_count = stats.get('num_faces', 0) if stats else 0
+        solid_count = stats.get('num_solids', 0) if stats else 0
+
+        faces_checked = type_states.get('faces', True)
+        bodies_checked = type_states.get('bodies', False)
+        edges_checked = type_states.get('edges', False)
+        vertices_checked = type_states.get('vertices', False)
+
+        if face_count > 0:
+            surface_checked = faces_checked
+        elif solid_count > 0:
+            surface_checked = bodies_checked
+        else:
+            surface_checked = faces_checked or bodies_checked
+
+        if render_mode == "wireframe":
+            show_faces = False
+            show_edges = edges_checked and parts_visible
+            show_vertices = vertices_checked and parts_visible
+        elif render_mode == "surface-wireframe":
+            show_faces = surface_checked and parts_visible
+            show_edges = edges_checked and parts_visible
+            show_vertices = vertices_checked and parts_visible
+        else:
+            show_faces = surface_checked and parts_visible
+            show_edges = False
+            show_vertices = False
+
+        return {
+            'render_mode': render_mode,
+            'parts_visible': parts_visible,
+            'show_faces': show_faces,
+            'show_edges': show_edges,
+            'show_vertices': show_vertices
+        }
+
     def _update_stl_geometry_visibility(self, visible_parts=None):
         """更新STL几何的可见性"""
         geometry_actor = getattr(self.gui, 'geometry_actor', None)
@@ -472,22 +515,9 @@ class PartManager:
         if not geometry_actor and not edges_actor:
             return
 
-        type_states = self._get_geometry_type_states()
-        parts_visible = self._should_show_geometry_for_parts(visible_parts)
-        render_mode = getattr(self.gui, 'render_mode', 'surface')
-
-        faces_checked = type_states.get('faces', True) or type_states.get('bodies', False)
-        edges_checked = type_states.get('edges', False)
-
-        if render_mode == "wireframe":
-            show_faces = False
-            show_edges = edges_checked and parts_visible
-        elif render_mode == "surface-wireframe":
-            show_faces = faces_checked and parts_visible
-            show_edges = edges_checked and parts_visible
-        else:
-            show_faces = faces_checked and parts_visible
-            show_edges = False
+        state = self._get_geometry_visibility_state(visible_parts=visible_parts)
+        show_faces = state['show_faces']
+        show_edges = state['show_edges']
 
         if geometry_actor:
             geometry_actor.SetVisibility(show_faces)

@@ -151,48 +151,66 @@ class ViewController:
                 self.gui.log_info("状态栏已显示")
 
     def _apply_render_mode_to_geometry(self, mode):
-        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
-            if mode == "wireframe":
-                self.gui.geometry_actor.SetVisibility(False)
-            elif mode == "surface-wireframe":
-                self.gui.geometry_actor.SetVisibility(True)
-                self.gui.geometry_actor.GetProperty().SetRepresentationToSurface()
-                self.gui.geometry_actor.GetProperty().EdgeVisibilityOff()
-            else:
-                self.gui.geometry_actor.SetVisibility(True)
-                self.gui.geometry_actor.GetProperty().SetRepresentationToSurface()
-                self.gui.geometry_actor.GetProperty().EdgeVisibilityOff()
+        geometry_display_mode = getattr(self.gui, 'geometry_display_mode', 'full')
+        use_element_display = geometry_display_mode == "elements"
 
-        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+        state = None
+        if hasattr(self.gui, 'part_manager') and hasattr(self.gui.part_manager, '_get_geometry_visibility_state'):
+            state = self.gui.part_manager._get_geometry_visibility_state(render_mode=mode)
+
+        if state:
+            show_faces = state['show_faces']
+            show_edges = state['show_edges']
+            show_vertices = state['show_vertices']
+        else:
+            type_states = {'vertices': True, 'edges': True, 'faces': True, 'bodies': True}
+            if hasattr(self.gui, 'model_tree_widget') and hasattr(self.gui.model_tree_widget, 'get_geometry_type_states'):
+                type_states = self.gui.model_tree_widget.get_geometry_type_states()
+
+            faces_checked = type_states.get('faces', True) or type_states.get('bodies', False)
+            edges_checked = type_states.get('edges', False)
+            vertices_checked = type_states.get('vertices', False)
+
             if mode == "wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(True)
+                show_faces = False
+                show_edges = edges_checked
+                show_vertices = vertices_checked
             elif mode == "surface-wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(False)
+                show_faces = faces_checked
+                show_edges = edges_checked
+                show_vertices = vertices_checked
             else:
+                show_faces = faces_checked
+                show_edges = False
+                show_vertices = False
+
+        if not use_element_display:
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+                self.gui.geometry_actor.SetVisibility(show_faces)
+                if show_faces:
+                    self.gui.geometry_actor.GetProperty().SetRepresentationToSurface()
+                    self.gui.geometry_actor.GetProperty().EdgeVisibilityOff()
+
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+                self.gui.geometry_edges_actor.SetVisibility(show_edges)
+        else:
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+                self.gui.geometry_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
                 self.gui.geometry_edges_actor.SetVisibility(False)
 
         if hasattr(self.gui, 'geometry_actors'):
             for elem_type, actors in self.gui.geometry_actors.items():
                 for actor in actors:
-                    if mode == "wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(False)
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    elif mode == "surface-wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
+                    if elem_type == 'faces' or elem_type == 'bodies':
+                        actor.SetVisibility(show_faces)
+                        if show_faces:
                             actor.GetProperty().SetRepresentationToSurface()
                             actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    else:
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(False)
+                    elif elem_type == 'edges':
+                        actor.SetVisibility(show_edges)
+                    elif elem_type == 'vertices':
+                        actor.SetVisibility(show_vertices)
 
     def set_render_mode(self, mode):
         """设置渲染模式"""
