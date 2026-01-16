@@ -26,6 +26,31 @@ class MeshOperations:
     def __init__(self, gui_instance):
         self.gui = gui_instance
 
+    def _require_mesh(self, log_message, status_message="未找到网格数据", prompt_message="请先生成或导入网格"):
+        """确保存在当前网格，否则提示并返回None"""
+        if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
+            QMessageBox.warning(self.gui, "警告", prompt_message)
+            self.gui.log_info(log_message)
+            self.gui.update_status(status_message)
+            return None
+        return self.gui.current_mesh
+
+    def _get_mesh_obj(self):
+        """获取当前网格对象（优先使用unstr_grid）"""
+        mesh_obj = self.gui.current_mesh
+        if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
+            mesh_obj = self.gui.current_mesh.unstr_grid
+        return mesh_obj
+
+    def _require_cell_container(self, mesh_obj, warning_message, log_message, status_message="网格格式不支持"):
+        """确保网格对象包含cell_container，否则提示并返回False"""
+        if not hasattr(mesh_obj, 'cell_container'):
+            QMessageBox.warning(self.gui, "警告", warning_message)
+            self.gui.log_info(log_message)
+            self.gui.update_status(status_message)
+            return False
+        return True
+
     def generate_mesh(self):
         """生成网格 - 使用异步线程避免UI冻结"""
         try:
@@ -224,15 +249,10 @@ class MeshOperations:
     def check_mesh_quality(self):
         """检查网格质量 - 显示网格质量skewness直方图"""
         try:
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先生成或导入网格")
-                self.gui.log_info("未找到网格数据，无法检查质量")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法检查质量"):
                 return
 
-            mesh_obj = self.gui.current_mesh
-            if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                mesh_obj = self.gui.current_mesh.unstr_grid
+            mesh_obj = self._get_mesh_obj()
 
             if hasattr(mesh_obj, 'quality_histogram'):
                 if hasattr(mesh_obj, 'cell_container'):
@@ -329,20 +349,12 @@ class MeshOperations:
     def smooth_mesh(self):
         """平滑网格 - 使用laplacian光滑算法"""
         try:
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先生成或导入网格")
-                self.gui.log_info("未找到网格数据，无法进行光滑处理")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法进行光滑处理"):
                 return
 
-            mesh_obj = self.gui.current_mesh
-            if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                mesh_obj = self.gui.current_mesh.unstr_grid
+            mesh_obj = self._get_mesh_obj()
 
-            if not hasattr(mesh_obj, 'cell_container'):
-                QMessageBox.warning(self.gui, "警告", "当前网格格式不支持光滑处理")
-                self.gui.log_info("当前网格格式不支持光滑处理")
-                self.gui.update_status("网格格式不支持")
+            if not self._require_cell_container(mesh_obj, "当前网格格式不支持光滑处理", "当前网格格式不支持光滑处理"):
                 return
 
             from optimize.optimize import laplacian_smooth
@@ -379,20 +391,12 @@ class MeshOperations:
     def optimize_mesh(self):
         """优化网格 - 使用edge_swap和laplacian_smooth算法"""
         try:
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先生成或导入网格")
-                self.gui.log_info("未找到网格数据，无法进行优化")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法进行优化"):
                 return
 
-            mesh_obj = self.gui.current_mesh
-            if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                mesh_obj = self.gui.current_mesh.unstr_grid
+            mesh_obj = self._get_mesh_obj()
 
-            if not hasattr(mesh_obj, 'cell_container'):
-                QMessageBox.warning(self.gui, "警告", "当前网格格式不支持优化处理")
-                self.gui.log_info("当前网格格式不支持优化处理")
-                self.gui.update_status("网格格式不支持")
+            if not self._require_cell_container(mesh_obj, "当前网格格式不支持优化处理", "当前网格格式不支持优化处理"):
                 return
 
             from optimize.optimize import edge_swap, laplacian_smooth
@@ -433,20 +437,12 @@ class MeshOperations:
     def show_mesh_statistics(self):
         """显示网格统计信息 - 包括网格单元信息和质量统计"""
         try:
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先生成或导入网格")
-                self.gui.log_info("未找到网格数据，无法显示统计信息")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法显示统计信息"):
                 return
 
-            mesh_obj = self.gui.current_mesh
-            if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                mesh_obj = self.gui.current_mesh.unstr_grid
+            mesh_obj = self._get_mesh_obj()
 
-            if not hasattr(mesh_obj, 'cell_container'):
-                QMessageBox.warning(self.gui, "警告", "当前网格格式不支持统计功能")
-                self.gui.log_info("当前网格格式不支持统计功能")
-                self.gui.update_status("网格格式不支持")
+            if not self._require_cell_container(mesh_obj, "当前网格格式不支持统计功能", "当前网格格式不支持统计功能"):
                 return
 
             if hasattr(mesh_obj, 'cell_container'):
@@ -539,10 +535,7 @@ class MeshOperations:
             from PyQt5.QtWidgets import QMessageBox
             from data_structure.basic_elements import NodeElement, Triangle, Quadrilateral
 
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先导入网格")
-                self.gui.log_info("未找到网格数据，无法提取边界信息")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法提取边界信息", prompt_message="请先导入网格"):
                 return
 
             has_boundary_info = False
@@ -789,15 +782,10 @@ class MeshOperations:
             import os
             import time
 
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先生成或导入网格")
-                self.gui.log_info("未找到网格数据，无法导出报告")
-                self.gui.update_status("未找到网格数据")
+            if not self._require_mesh("未找到网格数据，无法导出报告"):
                 return
 
-            mesh_obj = self.gui.current_mesh
-            if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                mesh_obj = self.gui.current_mesh.unstr_grid
+            mesh_obj = self._get_mesh_obj()
 
             has_params = hasattr(self.gui, 'params') and self.gui.params
             has_parts = hasattr(self.gui, 'parts_params') and self.gui.parts_params

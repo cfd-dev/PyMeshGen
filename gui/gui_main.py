@@ -983,7 +983,30 @@ class PyMeshGenGUI(QMainWindow):
                 self.log_info("模型树加载完成")
         except Exception as e:
             self.log_error(f"加载模型树失败: {str(e)}")
-            self.update_status("模型树加载失败")
+                self.update_status("模型树加载失败")
+
+    def _ensure_cas_parts_info(self):
+        """确保cas_parts_info已初始化"""
+        if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
+            self.cas_parts_info = {}
+
+    def _register_default_part(self, part_name, element_key, elements, counts, log_message):
+        """注册默认部件并更新模型树显示"""
+        self._ensure_cas_parts_info()
+
+        part_info = {
+            'part_name': part_name,
+            'bc_type': '',
+            element_key: elements
+        }
+        part_info.update(counts)
+
+        self.cas_parts_info[part_name] = part_info
+
+        if hasattr(self, 'model_tree_widget'):
+            self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+
+        self.log_info(log_message)
 
     def _create_default_part_for_mesh(self, mesh_data):
         """
@@ -993,10 +1016,6 @@ class PyMeshGenGUI(QMainWindow):
             mesh_data: 网格数据对象
         """
         try:
-            # 初始化cas_parts_info
-            if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
-                self.cas_parts_info = {}
-            
             # 收集所有网格元素的索引
             mesh_elements = {
                 "vertices": [],
@@ -1017,24 +1036,19 @@ class PyMeshGenGUI(QMainWindow):
             
             # 创建Default部件信息
             part_name = "DefaultPart"
-            part_info = {
-                'part_name': part_name,
-                'bc_type': '',
-                'mesh_elements': mesh_elements,
+            counts = {
                 'num_vertices': len(mesh_elements["vertices"]),
                 'num_edges': len(mesh_elements["edges"]),
                 'num_faces': len(mesh_elements["faces"]),
                 'num_bodies': len(mesh_elements["bodies"])
             }
-            
-            # 添加到cas_parts_info
-            self.cas_parts_info[part_name] = part_info
-            
-            # 更新模型树中的部件显示
-            if hasattr(self, 'model_tree_widget'):
-                self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
-            
-            self.log_info(f"已自动创建Default部件，包含所有网格元素")
+            self._register_default_part(
+                part_name,
+                'mesh_elements',
+                mesh_elements,
+                counts,
+                "已自动创建Default部件，包含所有网格元素"
+            )
             
         except Exception as e:
             self.log_error(f"创建Default部件失败: {str(e)}")
@@ -1050,10 +1064,6 @@ class PyMeshGenGUI(QMainWindow):
         try:
             from OCC.Core.TopExp import TopExp_Explorer
             from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
-            
-            # 初始化cas_parts_info
-            if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
-                self.cas_parts_info = {}
             
             # 收集所有几何元素的索引
             geometry_elements = {
@@ -1104,24 +1114,19 @@ class PyMeshGenGUI(QMainWindow):
             
             # 创建Default部件信息
             part_name = "DefaultPart"
-            part_info = {
-                'part_name': part_name,
-                'bc_type': '',
-                'geometry_elements': geometry_elements,
+            counts = {
                 'num_vertices': len(geometry_elements["vertices"]),
                 'num_edges': len(geometry_elements["edges"]),
                 'num_faces': len(geometry_elements["faces"]),
                 'num_solids': len(geometry_elements["bodies"])
             }
-            
-            # 添加到cas_parts_info
-            self.cas_parts_info[part_name] = part_info
-            
-            # 更新模型树中的部件显示
-            if hasattr(self, 'model_tree_widget'):
-                self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
-            
-            self.log_info(f"已自动创建Default部件，包含所有几何元素")
+            self._register_default_part(
+                part_name,
+                'geometry_elements',
+                geometry_elements,
+                counts,
+                "已自动创建Default部件，包含所有几何元素"
+            )
             
         except Exception as e:
             self.log_error(f"创建Default部件失败: {str(e)}")
