@@ -480,12 +480,13 @@ class PartManager:
         edges_checked = type_states.get('edges', False)
         vertices_checked = type_states.get('vertices', False)
 
+        has_surface = (face_count > 0) or (solid_count > 0)
         if face_count > 0:
             surface_checked = faces_checked
         elif solid_count > 0:
             surface_checked = bodies_checked
         else:
-            surface_checked = faces_checked or bodies_checked
+            surface_checked = False
 
         if render_mode == "wireframe":
             show_faces = False
@@ -497,8 +498,12 @@ class PartManager:
             show_vertices = vertices_checked and parts_visible
         else:
             show_faces = surface_checked and parts_visible
-            show_edges = False
-            show_vertices = False
+            if not has_surface:
+                show_edges = edges_checked and parts_visible
+                show_vertices = vertices_checked and parts_visible
+            else:
+                show_edges = False
+                show_vertices = False
 
         return {
             'render_mode': render_mode,

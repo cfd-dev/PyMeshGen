@@ -167,22 +167,39 @@ class ViewController:
             if hasattr(self.gui, 'model_tree_widget') and hasattr(self.gui.model_tree_widget, 'get_geometry_type_states'):
                 type_states = self.gui.model_tree_widget.get_geometry_type_states()
 
-            faces_checked = type_states.get('faces', True) or type_states.get('bodies', False)
+            stats = getattr(self.gui, 'current_geometry_stats', None)
+            face_count = stats.get('num_faces', 0) if stats else 0
+            solid_count = stats.get('num_solids', 0) if stats else 0
+            has_surface = (face_count > 0) or (solid_count > 0)
+
+            faces_checked = type_states.get('faces', True)
+            bodies_checked = type_states.get('bodies', False)
             edges_checked = type_states.get('edges', False)
             vertices_checked = type_states.get('vertices', False)
+
+            if face_count > 0:
+                surface_checked = faces_checked
+            elif solid_count > 0:
+                surface_checked = bodies_checked
+            else:
+                surface_checked = False
 
             if mode == "wireframe":
                 show_faces = False
                 show_edges = edges_checked
                 show_vertices = vertices_checked
             elif mode == "surface-wireframe":
-                show_faces = faces_checked
+                show_faces = surface_checked
                 show_edges = edges_checked
                 show_vertices = vertices_checked
             else:
-                show_faces = faces_checked
-                show_edges = False
-                show_vertices = False
+                show_faces = surface_checked
+                if not has_surface:
+                    show_edges = edges_checked
+                    show_vertices = vertices_checked
+                else:
+                    show_edges = False
+                    show_vertices = False
 
         if not use_element_display:
             if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:

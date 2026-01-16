@@ -851,6 +851,8 @@ class PyMeshGenGUI(QMainWindow):
             file_path = result['file_path']
             file_ext = os.path.splitext(file_path)[1].lower()
 
+            self.current_geometry_stats = stats
+
             self.log_info(f"几何统计信息:")
             self.log_info(f"  - 顶点数: {stats['num_vertices']}")
             self.log_info(f"  - 边数: {stats['num_edges']}")
