@@ -866,6 +866,7 @@ class PyMeshGenGUI(QMainWindow):
             self.geometry_actors = {}
             self.geometry_actor = None
             self.geometry_edges_actor = None
+            self.geometry_points_actor = None
 
             self.update_status("正在创建几何显示...")
 
@@ -913,37 +914,47 @@ class PyMeshGenGUI(QMainWindow):
                         self.log_warning(f"STL显示失败，回退到OCC显示: {str(e)}")
 
                 if not stl_displayed:
-                    self.geometry_actor = create_shape_actor(
-                        shape,
-                        mesh_quality=8.0,
-                        display_mode='surface',
-                        color=(0.8, 0.8, 0.9),
-                        opacity=0.8
-                    )
-                    self.mesh_display.renderer.AddActor(self.geometry_actor)
-                    self.geometry_actors['main'] = [self.geometry_actor]
-                    
-                    self.geometry_edges_actor = create_geometry_edges_actor(
-                        shape,
-                        color=(0.0, 0.0, 0.0),
-                        line_width=1.5,
-                        sample_rate=0.5,
-                        max_points_per_edge=20
-                    )
-                    self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
-                    self.geometry_actors['edges'] = [self.geometry_edges_actor]
+                    has_surface = (stats.get('num_faces', 0) + stats.get('num_solids', 0)) > 0
+                    has_edges = stats.get('num_edges', 0) > 0
+                    has_vertices = stats.get('num_vertices', 0) > 0
+
+                    if has_surface:
+                        self.geometry_actor = create_shape_actor(
+                            shape,
+                            mesh_quality=8.0,
+                            display_mode='surface',
+                            color=(0.8, 0.8, 0.9),
+                            opacity=0.8
+                        )
+                        self.mesh_display.renderer.AddActor(self.geometry_actor)
+                        self.geometry_actors['main'] = [self.geometry_actor]
+
+                    if has_edges:
+                        self.geometry_edges_actor = create_geometry_edges_actor(
+                            shape,
+                            color=(0.0, 0.0, 0.0),
+                            line_width=1.5,
+                            sample_rate=0.5,
+                            max_points_per_edge=20
+                        )
+                        self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                        self.geometry_actors['edges'] = [self.geometry_edges_actor]
+
+                    if has_vertices:
+                        self.geometry_points_actor = create_shape_actor(
+                            shape,
+                            mesh_quality=8.0,
+                            display_mode='points',
+                            color=(1.0, 0.0, 0.0),
+                            opacity=1.0
+                        )
+                        self.mesh_display.renderer.AddActor(self.geometry_points_actor)
+                        self.geometry_actors['points'] = [self.geometry_points_actor]
 
                 self.geometry_display_source = "stl" if stl_displayed else "occ"
                 
-                if self.render_mode == "wireframe":
-                    self.geometry_actor.SetVisibility(False)
-                    self.geometry_edges_actor.SetVisibility(True)
-                elif self.render_mode == "surface-wireframe":
-                    self.geometry_actor.SetVisibility(True)
-                    self.geometry_edges_actor.SetVisibility(True)
-                else:
-                    self.geometry_actor.SetVisibility(True)
-                    self.geometry_edges_actor.SetVisibility(False)
+                if hasattr(self, 'view_controller'):
+                    self.view_controller._apply_render_mode_to_geometry(self.render_mode)
                 
                 self.mesh_display.fit_view()
 

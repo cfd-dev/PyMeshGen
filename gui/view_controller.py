@@ -210,11 +210,16 @@ class ViewController:
 
             if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
                 self.gui.geometry_edges_actor.SetVisibility(show_edges)
+
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+                self.gui.geometry_points_actor.SetVisibility(show_vertices)
         else:
             if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
                 self.gui.geometry_actor.SetVisibility(False)
             if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
                 self.gui.geometry_edges_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+                self.gui.geometry_points_actor.SetVisibility(False)
 
         if hasattr(self.gui, 'geometry_actors'):
             for elem_type, actors in self.gui.geometry_actors.items():
