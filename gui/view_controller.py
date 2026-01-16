@@ -150,12 +150,7 @@ class ViewController:
                 self.gui.status_bar.status_bar.show()
                 self.gui.log_info("状态栏已显示")
 
-    def set_render_mode(self, mode):
-        """设置渲染模式"""
-        self.gui.render_mode = mode
-        if hasattr(self.gui, 'mesh_display'):
-            self.gui.mesh_display.set_render_mode(mode)
-
+    def _apply_render_mode_to_geometry(self, mode):
         if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
             if mode == "wireframe":
                 self.gui.geometry_actor.SetVisibility(False)
@@ -198,6 +193,14 @@ class ViewController:
                             actor.GetProperty().EdgeVisibilityOff()
                         elif elem_type == 'edges' or elem_type == 'vertices':
                             actor.SetVisibility(False)
+
+    def set_render_mode(self, mode):
+        """设置渲染模式"""
+        self.gui.render_mode = mode
+        if hasattr(self.gui, 'mesh_display'):
+            self.gui.mesh_display.set_render_mode(mode)
+
+        self._apply_render_mode_to_geometry(mode)
 
         mode_messages = {
             "surface": "渲染模式: 实体模式 (1键)",

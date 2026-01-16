@@ -495,6 +495,10 @@ class PartManager:
                 if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
                     self.gui.mesh_display.renderer.AddActor(actor)
 
+        render_mode = getattr(self.gui, 'render_mode', 'surface')
+        if hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
+
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
 
