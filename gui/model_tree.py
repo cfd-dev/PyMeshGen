@@ -1156,7 +1156,7 @@ class ModelTreeWidget:
         for type_name, index in type_order:
             child = geometry_item.child(index)
             if child is not None:
-                states[type_name] = child.checkState(0) == Qt.Checked
+                states[type_name] = child.checkState(0) != Qt.Unchecked
 
         return states
 
