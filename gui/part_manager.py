@@ -436,17 +436,74 @@ class PartManager:
         elif category == 'parts':
             self.on_part_selected(element_type, element_obj, element_index)
 
+    def _get_geometry_type_states(self):
+        """获取几何类型的勾选状态"""
+        if hasattr(self.gui, 'model_tree_widget') and hasattr(self.gui.model_tree_widget, 'get_geometry_type_states'):
+            return self.gui.model_tree_widget.get_geometry_type_states()
+        return {'vertices': True, 'edges': True, 'faces': True, 'bodies': True}
+
+    def _should_show_geometry_for_parts(self, visible_parts=None):
+        """根据部件勾选状态判断是否显示几何"""
+        if visible_parts is None:
+            if not hasattr(self.gui, 'model_tree_widget'):
+                return True
+            parts_item = self.gui.model_tree_widget.tree.topLevelItem(2)
+            if parts_item is None or parts_item.childCount() == 0:
+                return True
+            visible_parts = self.gui.model_tree_widget.get_visible_parts()
+
+        if not visible_parts:
+            return False
+
+        if not hasattr(self.gui, 'cas_parts_info') or not isinstance(self.gui.cas_parts_info, dict):
+            return True
+
+        for part_name in visible_parts:
+            part_data = self.gui.cas_parts_info.get(part_name)
+            if isinstance(part_data, dict) and 'geometry_elements' in part_data:
+                return True
+
+        return False
+
+    def _update_stl_geometry_visibility(self, visible_parts=None):
+        """更新STL几何的可见性"""
+        geometry_actor = getattr(self.gui, 'geometry_actor', None)
+        edges_actor = getattr(self.gui, 'geometry_edges_actor', None)
+        if not geometry_actor and not edges_actor:
+            return
+
+        type_states = self._get_geometry_type_states()
+        parts_visible = self._should_show_geometry_for_parts(visible_parts)
+        render_mode = getattr(self.gui, 'render_mode', 'surface')
+
+        faces_checked = type_states.get('faces', True) or type_states.get('bodies', False)
+        edges_checked = type_states.get('edges', False)
+
+        if render_mode == "wireframe":
+            show_faces = False
+            show_edges = edges_checked and parts_visible
+        elif render_mode == "surface-wireframe":
+            show_faces = faces_checked and parts_visible
+            show_edges = edges_checked and parts_visible
+        else:
+            show_faces = faces_checked and parts_visible
+            show_edges = False
+
+        if geometry_actor:
+            geometry_actor.SetVisibility(show_faces)
+        if edges_actor:
+            edges_actor.SetVisibility(show_edges)
+
+        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+            self.gui.mesh_display.render_window.Render()
+
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
             return
 
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':
-            render_mode = getattr(self.gui, 'render_mode', 'surface')
-            if hasattr(self.gui, 'view_controller'):
-                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
-                self.gui.mesh_display.render_window.Render()
+            self._update_stl_geometry_visibility()
             return
 
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
@@ -523,11 +580,7 @@ class PartManager:
             return
 
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':
-            render_mode = getattr(self.gui, 'render_mode', 'surface')
-            if hasattr(self.gui, 'view_controller'):
-                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
-                self.gui.mesh_display.render_window.Render()
+            self._update_stl_geometry_visibility(visible_parts=visible_parts)
             return
 
         part_geometry_elements = {}

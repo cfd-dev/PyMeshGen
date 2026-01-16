@@ -1139,6 +1139,27 @@ class ModelTreeWidget:
 
         return visible_elements
 
+    def get_geometry_type_states(self):
+        """获取几何类型勾选状态"""
+        geometry_item = self.tree.topLevelItem(0)
+        if geometry_item is None:
+            return {}
+
+        type_order = [
+            ('vertices', 0),
+            ('edges', 1),
+            ('faces', 2),
+            ('bodies', 3)
+        ]
+
+        states = {}
+        for type_name, index in type_order:
+            child = geometry_item.child(index)
+            if child is not None:
+                states[type_name] = child.checkState(0) == Qt.Checked
+
+        return states
+
     def get_visible_parts(self):
         """
         获取可见的部件

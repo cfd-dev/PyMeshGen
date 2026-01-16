@@ -1015,11 +1015,11 @@ class PyMeshGenGUI(QMainWindow):
                 else:
                     self.log_info(f"导入几何前cas_parts_info不存在")
                 
-                if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
-                    self.log_info(f"开始创建Default部件...")
+                if not self._has_geometry_parts_info():
+                    self.log_info("开始创建Default部件...")
                     self._create_default_part_for_geometry(shape, stats)
                 else:
-                    self.log_info(f"已存在预设部件，跳过Default部件创建")
+                    self.log_info("已存在几何部件信息，跳过Default部件创建")
                 
                 self.update_status("已导入几何")
                 self.log_info("模型树加载完成")
@@ -1032,16 +1032,47 @@ class PyMeshGenGUI(QMainWindow):
         if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
             self.cas_parts_info = {}
 
+    def _has_geometry_parts_info(self):
+        """检查是否已有几何部件信息"""
+        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+            return False
+
+        if isinstance(self.cas_parts_info, dict):
+            for part_data in self.cas_parts_info.values():
+                if isinstance(part_data, dict):
+                    geometry_elements = part_data.get('geometry_elements') or {}
+                    if any(geometry_elements.values()):
+                        return True
+            return False
+
+        if isinstance(self.cas_parts_info, list):
+            for part_data in self.cas_parts_info:
+                if isinstance(part_data, dict):
+                    geometry_elements = part_data.get('geometry_elements') or {}
+                    if any(geometry_elements.values()):
+                        return True
+            return False
+
+        return False
+
     def _register_default_part(self, part_name, element_key, elements, counts, log_message):
         """注册默认部件并更新模型树显示"""
         self._ensure_cas_parts_info()
 
-        part_info = {
-            'part_name': part_name,
-            'bc_type': '',
-            element_key: elements
-        }
-        part_info.update(counts)
+        existing_part = self.cas_parts_info.get(part_name) if isinstance(self.cas_parts_info, dict) else None
+        if isinstance(existing_part, dict):
+            part_info = existing_part
+            part_info.setdefault('part_name', part_name)
+            part_info.setdefault('bc_type', '')
+            part_info[element_key] = elements
+            part_info.update(counts)
+        else:
+            part_info = {
+                'part_name': part_name,
+                'bc_type': '',
+                element_key: elements
+            }
+            part_info.update(counts)
 
         self.cas_parts_info[part_name] = part_info
 
