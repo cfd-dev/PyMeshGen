@@ -53,6 +53,14 @@ from gui.ui_helpers import UIHelpers
 from data_structure.parameters import Parameters
 
 
+def _register_qt_metatypes():
+    from PyQt5 import QtCore, QtGui
+    if hasattr(QtCore, "qRegisterMetaType"):
+        QtCore.qRegisterMetaType(QtGui.QTextCursor, "QTextCursor")
+    elif hasattr(QtCore, "QMetaType") and hasattr(QtCore.QMetaType, "registerType"):
+        QtCore.QMetaType.registerType(QtGui.QTextCursor)
+
+
 class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
 
@@ -63,6 +71,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        _register_qt_metatypes()
         self._setup_window()
         self._setup_fonts()
         self._initialize_modules()
