@@ -207,8 +207,15 @@ class PyMeshGenGUI(QMainWindow):
         left_layout = QVBoxLayout(self.left_panel)
         left_layout.setSpacing(2)
 
+        self.left_splitter = QSplitter(Qt.Vertical)
+        self.left_splitter.setStyleSheet(UIStyles.SPLITTER_STYLESHEET)
+
         self._create_model_tree_widget()
         self._create_properties_panel()
+
+        self.left_splitter.setStretchFactor(0, 3)
+        self.left_splitter.setStretchFactor(1, 1)
+        left_layout.addWidget(self.left_splitter)
 
         self.left_panel.setMinimumWidth(300)
         self.paned_window.addWidget(self.left_panel)
@@ -225,8 +232,11 @@ class PyMeshGenGUI(QMainWindow):
 
         self.model_tree_widget.widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        left_layout = self.left_panel.layout()
-        left_layout.addWidget(model_tree_frame_container)
+        if hasattr(self, 'left_splitter'):
+            self.left_splitter.addWidget(model_tree_frame_container)
+        else:
+            left_layout = self.left_panel.layout()
+            left_layout.addWidget(model_tree_frame_container)
 
     def _create_properties_panel(self):
         """创建属性面板"""
@@ -244,8 +254,11 @@ class PyMeshGenGUI(QMainWindow):
         props_layout.addWidget(self.props_text)
         self.props_frame.setLayout(props_layout)
 
-        left_layout = self.left_panel.layout()
-        left_layout.addWidget(self.props_frame)
+        if hasattr(self, 'left_splitter'):
+            self.left_splitter.addWidget(self.props_frame)
+        else:
+            left_layout = self.left_panel.layout()
+            left_layout.addWidget(self.props_frame)
 
     def _create_right_panel_layout(self):
         """创建右侧布局"""
