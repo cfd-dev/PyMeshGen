@@ -39,6 +39,10 @@ class ModelTreeWidget:
 
         self._updating_items = False  # 标志：是否正在更新项（防止递归调用）
 
+        self._create_tree_widget()
+        self._setup_ui()
+        self._init_tree_structure()
+
     def _get_parent_handler(self, handler_name):
         """获取父级处理函数（优先使用part_manager）"""
         manager = getattr(self.parent, 'part_manager', None)
@@ -47,10 +51,6 @@ class ModelTreeWidget:
         if hasattr(self.parent, handler_name):
             return getattr(self.parent, handler_name)
         return None
-
-        self._create_tree_widget()
-        self._setup_ui()
-        self._init_tree_structure()
 
     def _create_tree_widget(self):
         """创建树形控件"""
