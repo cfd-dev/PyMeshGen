@@ -162,6 +162,8 @@ class PyMeshGenGUI(QMainWindow):
         self.import_thread = None             # 导入操作的线程实例
         self._progress_cache = {}             # 进度日志缓存，用于节流输出
         self.geometry_display_source = None   # 几何显示来源（stl/occ）
+        self.geometry_display_mode = "full"   # 几何显示模式（full/elements）
+        self.geometry_element_actor_cache = {}  # 几何元素actor缓存
 
     def _create_widgets(self):
         """创建UI组件"""

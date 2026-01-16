@@ -141,6 +141,27 @@ class ViewToolbar(QToolBar):
         elif hasattr(self.window(), 'set_render_mode'):
             self.window().set_render_mode(mode)
 
+        # 尝试输出信息到信息输出窗口（InfoOutput）
+        try:
+            # 翻译为友好的中文名称
+            name_map = {
+                'surface': '实体模式',
+                'wireframe': '线框模式',
+                'surface-wireframe': '实体+线框模式'
+            }
+            friendly = name_map.get(mode, mode)
+            main_win = None
+            if hasattr(self.parent(), 'info_output'):
+                main_win = self.parent()
+            elif hasattr(self.window(), 'info_output'):
+                main_win = self.window()
+
+            if main_win and hasattr(main_win, 'info_output') and hasattr(main_win.info_output, 'log_info'):
+                main_win.info_output.log_info(f"显示模式切换为 {friendly}")
+        except Exception:
+            # 不抛出异常以避免影响原有功能
+            pass
+
     def _emit_view_change(self, view_type):
         """Emit signal for view change - to be connected externally"""
         # Map view types to appropriate methods in the main window
@@ -172,6 +193,35 @@ class ViewToolbar(QToolBar):
                 getattr(self.parent(), method_name)()
             elif hasattr(self.window(), method_name):
                 getattr(self.window(), method_name)()
+
+        # 尝试输出信息到信息输出窗口（InfoOutput）
+        try:
+            # 翻译为友好的中文名称
+            view_name_map = {
+                'reset': '重置视图',
+                'fit': '适应视图',
+                'x_pos': 'X轴正向',
+                'x_neg': 'X轴负向',
+                'y_pos': 'Y轴正向',
+                'y_neg': 'Y轴负向',
+                'z_pos': 'Z轴正向',
+                'z_neg': 'Z轴负向',
+                'iso': '等轴测',
+                'zoom_in': '放大',
+                'zoom_out': '缩小'
+            }
+            friendly = view_name_map.get(view_type, view_type)
+            main_win = None
+            if hasattr(self.parent(), 'info_output'):
+                main_win = self.parent()
+            elif hasattr(self.window(), 'info_output'):
+                main_win = self.window()
+
+            if main_win and hasattr(main_win, 'info_output') and hasattr(main_win.info_output, 'log_info'):
+                main_win.info_output.log_info(f"视图切换为 {friendly}")
+        except Exception:
+            # 忽略日志错误，确保不影响主逻辑
+            pass
 
     def add_view_toolbar_to_main_window(self, main_window):
         """Connect the toolbar to the main window methods

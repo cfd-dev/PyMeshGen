@@ -382,56 +382,75 @@ class RibbonWidget(QWidget):
 
     def set_callbacks(self, main_window):
         """Set callbacks for all ribbon buttons using the main window methods"""
+
+        # 小工具：安全记录信息到 InfoOutput 中（如果存在）
+        def _log(message):
+            try:
+                if hasattr(main_window, 'info_output') and hasattr(main_window.info_output, 'log_info'):
+                    main_window.info_output.log_info(message)
+            except Exception:
+                pass
+
+        # 小工具：包装原有回调，调用后执行日志（不影响原有异常传播）
+        def _wrap(func, message=None):
+            def _wrapped():
+                try:
+                    func()
+                finally:
+                    if message:
+                        _log(message)
+            return _wrapped
+
         # File tab callbacks
-        self.buttons['file']['new'].clicked.connect(main_window.new_config)
-        self.buttons['file']['open'].clicked.connect(main_window.open_config)
-        self.buttons['file']['save'].clicked.connect(main_window.save_config)
-        self.buttons['file']['import'].clicked.connect(main_window.import_mesh)
-        self.buttons['file']['export'].clicked.connect(main_window.export_mesh)
-        self.buttons['file']['import_geometry'].clicked.connect(main_window.import_geometry)
-        self.buttons['file']['export_geometry'].clicked.connect(main_window.export_geometry)
+        self.buttons['file']['new'].clicked.connect(_wrap(main_window.new_config, "新建工程"))
+        self.buttons['file']['open'].clicked.connect(_wrap(main_window.open_config, "打开工程"))
+        self.buttons['file']['save'].clicked.connect(_wrap(main_window.save_config, "保存工程"))
+        self.buttons['file']['import'].clicked.connect(_wrap(main_window.import_mesh, "导入网格"))
+        self.buttons['file']['export'].clicked.connect(_wrap(main_window.export_mesh, "导出网格"))
+        self.buttons['file']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
+        self.buttons['file']['export_geometry'].clicked.connect(_wrap(main_window.export_geometry, "导出几何"))
 
         # Geometry tab callbacks
-        self.buttons['geometry']['import_geometry'].clicked.connect(main_window.import_geometry)
-        self.buttons['geometry']['import'].clicked.connect(main_window.import_mesh)
-        self.buttons['geometry']['extract_boundary'].clicked.connect(main_window.mesh_operations.extract_boundary_mesh_info)
+        self.buttons['geometry']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
+        self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.import_mesh, "导入网格"))
+        self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
 
         # View tab callbacks
-        self.buttons['view']['reset'].clicked.connect(main_window.view_controller.reset_view)
-        self.buttons['view']['fit'].clicked.connect(main_window.view_controller.fit_view)
-        self.buttons['view']['zoom_in'].clicked.connect(main_window.view_controller.zoom_in)
-        self.buttons['view']['zoom_out'].clicked.connect(main_window.view_controller.zoom_out)
-        self.buttons['view']['view_x_pos'].clicked.connect(main_window.view_controller.set_view_x_positive)
-        self.buttons['view']['view_x_neg'].clicked.connect(main_window.view_controller.set_view_x_negative)
-        self.buttons['view']['view_y_pos'].clicked.connect(main_window.view_controller.set_view_y_positive)
-        self.buttons['view']['view_y_neg'].clicked.connect(main_window.view_controller.set_view_y_negative)
-        self.buttons['view']['view_z_pos'].clicked.connect(main_window.view_controller.set_view_z_positive)
-        self.buttons['view']['view_z_neg'].clicked.connect(main_window.view_controller.set_view_z_negative)
-        self.buttons['view']['view_iso'].clicked.connect(main_window.view_controller.set_view_isometric)
-        self.buttons['view']['surface'].clicked.connect(lambda: main_window.view_controller.set_render_mode("surface"))
-        self.buttons['view']['wireframe'].clicked.connect(lambda: main_window.view_controller.set_render_mode("wireframe"))
-        self.buttons['view']['surface-wireframe'].clicked.connect(lambda: main_window.view_controller.set_render_mode("surface-wireframe"))
-        self.buttons['view']['background'].clicked.connect(main_window.view_controller.set_background_color)
+        self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))
+        self.buttons['view']['fit'].clicked.connect(_wrap(main_window.view_controller.fit_view, "适应视图"))
+        self.buttons['view']['zoom_in'].clicked.connect(_wrap(main_window.view_controller.zoom_in, "放大视图"))
+        self.buttons['view']['zoom_out'].clicked.connect(_wrap(main_window.view_controller.zoom_out, "缩小视图"))
+        self.buttons['view']['view_x_pos'].clicked.connect(_wrap(main_window.view_controller.set_view_x_positive, "X轴正向视图"))
+        self.buttons['view']['view_x_neg'].clicked.connect(_wrap(main_window.view_controller.set_view_x_negative, "X轴负向视图"))
+        self.buttons['view']['view_y_pos'].clicked.connect(_wrap(main_window.view_controller.set_view_y_positive, "Y轴正向视图"))
+        self.buttons['view']['view_y_neg'].clicked.connect(_wrap(main_window.view_controller.set_view_y_negative, "Y轴负向视图"))
+        self.buttons['view']['view_z_pos'].clicked.connect(_wrap(main_window.view_controller.set_view_z_positive, "Z轴正向视图"))
+        self.buttons['view']['view_z_neg'].clicked.connect(_wrap(main_window.view_controller.set_view_z_negative, "Z轴负向视图"))
+        self.buttons['view']['view_iso'].clicked.connect(_wrap(main_window.view_controller.set_view_isometric, "等轴测视图"))
+        self.buttons['view']['surface'].clicked.connect(_wrap(lambda: main_window.view_controller.set_render_mode("surface"), "显示模式切换为 实体模式"))
+        self.buttons['view']['wireframe'].clicked.connect(_wrap(lambda: main_window.view_controller.set_render_mode("wireframe"), "显示模式切换为 线框模式"))
+        self.buttons['view']['surface-wireframe'].clicked.connect(_wrap(lambda: main_window.view_controller.set_render_mode("surface-wireframe"), "显示模式切换为 实体+线框模式"))
+        self.buttons['view']['background'].clicked.connect(_wrap(main_window.view_controller.set_background_color, "设置背景色"))
 
         # Config tab callbacks
-        self.buttons['config']['params'].clicked.connect(main_window.ui_helpers.edit_params)
-        self.buttons['config']['mesh_params'].clicked.connect(main_window.part_manager.edit_mesh_params)
-        self.buttons['config']['import_config'].clicked.connect(main_window.import_config)
-        self.buttons['config']['export_config'].clicked.connect(main_window.export_config)
+        self.buttons['config']['params'].clicked.connect(_wrap(main_window.ui_helpers.edit_params, "编辑全局参数"))
+        self.buttons['config']['mesh_params'].clicked.connect(_wrap(main_window.part_manager.edit_mesh_params, "编辑部件参数"))
+        self.buttons['config']['import_config'].clicked.connect(_wrap(main_window.import_config, "导入配置"))
+        self.buttons['config']['export_config'].clicked.connect(_wrap(main_window.export_config, "导出配置"))
 
         # Mesh tab callbacks
-        self.buttons['mesh']['generate'].clicked.connect(main_window.mesh_operations.generate_mesh)
-        self.buttons['mesh']['display'].clicked.connect(main_window.display_mesh)
-        self.buttons['mesh']['clear'].clicked.connect(main_window.clear_mesh)
-        self.buttons['mesh']['quality'].clicked.connect(main_window.mesh_operations.check_mesh_quality)
-        self.buttons['mesh']['smooth'].clicked.connect(main_window.mesh_operations.smooth_mesh)
-        self.buttons['mesh']['optimize'].clicked.connect(main_window.mesh_operations.optimize_mesh)
-        self.buttons['mesh']['statistics'].clicked.connect(main_window.mesh_operations.show_mesh_statistics)
-        self.buttons['mesh']['report'].clicked.connect(main_window.mesh_operations.export_mesh_report)
+        self.buttons['mesh']['generate'].clicked.connect(_wrap(main_window.mesh_operations.generate_mesh, "开始生成网格"))
+        self.buttons['mesh']['display'].clicked.connect(_wrap(main_window.display_mesh, "显示网格"))
+        self.buttons['mesh']['clear'].clicked.connect(_wrap(main_window.clear_mesh, "清空网格"))
+        self.buttons['mesh']['quality'].clicked.connect(_wrap(main_window.mesh_operations.check_mesh_quality, "检查网格质量"))
+        self.buttons['mesh']['smooth'].clicked.connect(_wrap(main_window.mesh_operations.smooth_mesh, "平滑网格"))
+        self.buttons['mesh']['optimize'].clicked.connect(_wrap(main_window.mesh_operations.optimize_mesh, "优化网格"))
+        self.buttons['mesh']['statistics'].clicked.connect(_wrap(main_window.mesh_operations.show_mesh_statistics, "网格统计"))
+        self.buttons['mesh']['report'].clicked.connect(_wrap(main_window.mesh_operations.export_mesh_report, "导出网格报告"))
 
         # Help tab callbacks
-        self.buttons['help']['manual'].clicked.connect(main_window.help_module.show_user_manual)
-        self.buttons['help']['quick_start'].clicked.connect(main_window.help_module.show_quick_start)
-        self.buttons['help']['shortcuts'].clicked.connect(main_window.help_module.show_shortcuts)
-        self.buttons['help']['updates'].clicked.connect(main_window.help_module.check_for_updates)
-        self.buttons['help']['about'].clicked.connect(main_window.help_module.show_about)
+        self.buttons['help']['manual'].clicked.connect(_wrap(main_window.help_module.show_user_manual, "查看用户手册"))
+        self.buttons['help']['quick_start'].clicked.connect(_wrap(main_window.help_module.show_quick_start, "查看入门指南"))
+        self.buttons['help']['shortcuts'].clicked.connect(_wrap(main_window.help_module.show_shortcuts, "查看快捷键"))
+        self.buttons['help']['updates'].clicked.connect(_wrap(main_window.help_module.check_for_updates, "检查更新"))
+        self.buttons['help']['about'].clicked.connect(_wrap(main_window.help_module.show_about, "关于本软件"))
