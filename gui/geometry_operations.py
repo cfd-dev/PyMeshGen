@@ -27,10 +27,10 @@ class GeometryOperations:
                 self.gui.geometry_import_thread.import_finished.connect(self.gui.on_geometry_import_finished)
                 self.gui.geometry_import_thread.import_failed.connect(self.gui.on_geometry_import_failed)
 
-                if hasattr(self.gui, 'ribbon') and hasattr(self.gui.ribbon, 'buttons'):
-                    import_btn = self.gui.ribbon.buttons.get('file', {}).get('import_geometry')
-                    if import_btn:
-                        import_btn.setEnabled(False)
+                if hasattr(self.gui, '_reset_progress_cache'):
+                    self.gui._reset_progress_cache("geometry")
+                if hasattr(self.gui, '_set_ribbon_button_enabled'):
+                    self.gui._set_ribbon_button_enabled('file', 'import_geometry', False)
 
                 self.gui.geometry_import_thread.start()
                 self.gui.log_info(f"开始导入几何: {file_path}")
@@ -42,11 +42,12 @@ class GeometryOperations:
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
-        self.gui.status_bar.show_progress(message, progress)
-        
-        if progress % 20 == 0 or progress == 100:
-            self.gui.log_info(f"{message} ({progress}%)")
-        
+        if hasattr(self.gui, '_update_progress'):
+            self.gui._update_progress(message, progress, "geometry")
+        else:
+            self.gui.status_bar.show_progress(message, progress)
+            if progress % 20 == 0 or progress == 100:
+                self.gui.log_info(f"{message} ({progress}%)")
         if progress == 100:
             self.gui.status_bar.hide_progress()
 
@@ -122,10 +123,8 @@ class GeometryOperations:
         self.gui.log_error(f"导入几何失败：{error_message}")
         self.gui.update_status("几何导入失败")
 
-        if hasattr(self.gui, 'ribbon') and hasattr(self.gui.ribbon, 'buttons'):
-            import_btn = self.gui.ribbon.buttons.get('file', {}).get('import_geometry')
-            if import_btn:
-                import_btn.setEnabled(True)
+        if hasattr(self.gui, '_set_ribbon_button_enabled'):
+            self.gui._set_ribbon_button_enabled('file', 'import_geometry', True)
 
     def export_geometry(self):
         """导出几何文件"""

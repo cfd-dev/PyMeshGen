@@ -160,6 +160,7 @@ class PyMeshGenGUI(QMainWindow):
         self.mesh_generation_thread = None    # 网格生成的线程实例
         self.progress_dialog = None           # 进度对话框实例
         self.import_thread = None             # 导入操作的线程实例
+        self._progress_cache = {}             # 进度日志缓存，用于节流输出
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -396,6 +397,39 @@ class PyMeshGenGUI(QMainWindow):
         """获取标准图标 - 现在使用优化的图标管理器"""
         from gui.icon_manager import get_icon
         return get_icon(icon_name)
+
+    def _set_ribbon_button_enabled(self, tab_key, button_key, enabled):
+        """设置Ribbon按钮状态（启用/禁用）"""
+        ribbon = getattr(self, 'ribbon', None)
+        buttons = getattr(ribbon, 'buttons', None) if ribbon else None
+        if not buttons:
+            return
+        button = buttons.get(tab_key, {}).get(button_key)
+        if button:
+            button.setEnabled(enabled)
+
+    def _reset_progress_cache(self, context):
+        """重置进度日志缓存，确保新任务从头记录"""
+        if hasattr(self, '_progress_cache'):
+            self._progress_cache.pop(context, None)
+
+    def _update_progress(self, message, progress, context):
+        """统一更新进度显示，并对日志输出进行节流"""
+        self.status_bar.show_progress(message, progress)
+
+        last_entry = self._progress_cache.get(context)
+        last_progress = last_entry["progress"] if last_entry else None
+        last_message = last_entry["message"] if last_entry else None
+
+        log_needed = (
+            last_entry is None
+            or message != last_message
+            or progress in (0, 100)
+            or (last_progress is not None and abs(progress - last_progress) >= 5)
+        )
+        if log_needed:
+            self.log_info(f"{message} ({progress}%)")
+            self._progress_cache[context] = {"message": message, "progress": progress}
 
     def toggle_ribbon(self):
         """切换功能区显示"""
@@ -747,10 +781,8 @@ class PyMeshGenGUI(QMainWindow):
                 self.import_thread.import_failed.connect(self.on_import_failed)
 
                 # 禁用导入按钮，防止重复导入
-                if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
-                    import_btn = self.ribbon.buttons.get('file', {}).get('import')
-                    if import_btn:
-                        import_btn.setEnabled(False)
+                self._reset_progress_cache("mesh")
+                self._set_ribbon_button_enabled('file', 'import', False)
 
                 # 启动线程
                 self.import_thread.start()
@@ -763,8 +795,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def on_import_progress(self, message, progress):
         """导入进度更新回调"""
-        self.status_bar.show_progress(message, progress)
-        self.log_info(f"{message} ({progress}%)")
+        self._update_progress(message, progress, "mesh")
 
     def on_import_finished(self, mesh_data):
         """导入完成回调 - 优化版本，使用QTimer分步处理避免UI卡顿"""
@@ -833,10 +864,7 @@ class PyMeshGenGUI(QMainWindow):
 
         finally:
             # 重新启用导入按钮
-            if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
-                import_btn = self.ribbon.buttons.get('file', {}).get('import')
-                if import_btn:
-                    import_btn.setEnabled(True)
+            self._set_ribbon_button_enabled('file', 'import', True)
 
     def on_import_failed(self, error_message):
         """导入失败回调"""
@@ -846,10 +874,7 @@ class PyMeshGenGUI(QMainWindow):
         self.status_bar.hide_progress()
 
         # 重新启用导入按钮
-        if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
-            import_btn = self.ribbon.buttons.get('file', {}).get('import')
-            if import_btn:
-                import_btn.setEnabled(True)
+        self._set_ribbon_button_enabled('file', 'import', True)
 
     def import_geometry(self):
         """导入几何文件（使用异步线程，避免GUI卡顿）"""
@@ -857,8 +882,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
-        self.status_bar.show_progress(message, progress)
-        self.log_info(f"{message} ({progress}%)")
+        self._update_progress(message, progress, "geometry")
 
     def on_geometry_import_finished(self, result):
         """几何导入完成回调"""
@@ -936,10 +960,7 @@ class PyMeshGenGUI(QMainWindow):
             self.status_bar.hide_progress()
 
         finally:
-            if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
-                import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
-                if import_btn:
-                    import_btn.setEnabled(True)
+            self._set_ribbon_button_enabled('file', 'import_geometry', True)
 
     def _load_geometry_tree_async(self, shape, file_path, stats):
         """异步加载几何模型树"""
@@ -1115,10 +1136,7 @@ class PyMeshGenGUI(QMainWindow):
         self.status_bar.hide_progress()
 
         # 重新启用导入几何按钮
-        if hasattr(self, 'ribbon') and hasattr(self.ribbon, 'buttons'):
-            import_btn = self.ribbon.buttons.get('file', {}).get('import_geometry')
-            if import_btn:
-                import_btn.setEnabled(True)
+        self._set_ribbon_button_enabled('file', 'import_geometry', True)
 
     def export_geometry(self):
         """导出几何文件"""
