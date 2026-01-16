@@ -51,6 +51,20 @@ class MeshOperations:
             return False
         return True
 
+    def _collect_quality_metrics(self, mesh_obj):
+        """收集网格质量与偏斜度统计值"""
+        quality_values = []
+        skewness_values = []
+        if hasattr(mesh_obj, 'cell_container'):
+            for cell in mesh_obj.cell_container:
+                if hasattr(cell, 'init_metrics'):
+                    cell.init_metrics()
+                if cell.quality is not None:
+                    quality_values.append(cell.quality)
+                if cell.skewness is not None:
+                    skewness_values.append(cell.skewness)
+        return quality_values, skewness_values
+
     def generate_mesh(self):
         """生成网格 - 使用异步线程避免UI冻结"""
         try:
@@ -255,18 +269,7 @@ class MeshOperations:
             mesh_obj = self._get_mesh_obj()
 
             if hasattr(mesh_obj, 'quality_histogram'):
-                if hasattr(mesh_obj, 'cell_container'):
-                    for cell in mesh_obj.cell_container:
-                        if hasattr(cell, 'init_metrics'):
-                            cell.init_metrics()
-
-                quality_values = []
-                skewness_values = []
-                for cell in mesh_obj.cell_container:
-                    if cell.quality is not None:
-                        quality_values.append(cell.quality)
-                    if cell.skewness is not None:
-                        skewness_values.append(cell.skewness)
+                quality_values, skewness_values = self._collect_quality_metrics(mesh_obj)
 
                 if quality_values:
                     quality_min = min(quality_values)
@@ -445,11 +448,6 @@ class MeshOperations:
             if not self._require_cell_container(mesh_obj, "当前网格格式不支持统计功能", "当前网格格式不支持统计功能"):
                 return
 
-            if hasattr(mesh_obj, 'cell_container'):
-                for cell in mesh_obj.cell_container:
-                    if hasattr(cell, 'init_metrics'):
-                        cell.init_metrics()
-
             num_cells = len(mesh_obj.cell_container)
             num_nodes = len(mesh_obj.node_coords)
             num_boundary_nodes = len(mesh_obj.boundary_nodes)
@@ -462,8 +460,7 @@ class MeshOperations:
             mesh_obj.calculate_edges()
             num_edges = len(mesh_obj.edges)
 
-            quality_values = []
-            skewness_values = []
+            quality_values, skewness_values = self._collect_quality_metrics(mesh_obj)
             triangle_count = 0
             quadrilateral_count = 0
             tetrahedron_count = 0
@@ -840,17 +837,7 @@ class MeshOperations:
 
             report_content += f"## 网格质量统计\n\n"
 
-            quality_values = []
-            skewness_values = []
-
-            if hasattr(mesh_obj, 'cell_container'):
-                for cell in mesh_obj.cell_container:
-                    if hasattr(cell, 'init_metrics'):
-                        cell.init_metrics()
-                    if cell.quality is not None:
-                        quality_values.append(cell.quality)
-                    if cell.skewness is not None:
-                        skewness_values.append(cell.skewness)
+            quality_values, skewness_values = self._collect_quality_metrics(mesh_obj)
 
             if quality_values:
                 report_content += f"- **最小质量值**: {min(quality_values):.4f}\n"

@@ -201,6 +201,10 @@ class PartManager:
     def create_default_part_for_mesh(self, mesh_data):
         """为导入的网格创建Default部件"""
         try:
+            if hasattr(self.gui, '_create_default_part_for_mesh'):
+                self.gui._create_default_part_for_mesh(mesh_data)
+                return
+
             if not hasattr(self.gui, 'cas_parts_info') or self.gui.cas_parts_info is None:
                 self.gui.cas_parts_info = {}
 
@@ -243,6 +247,10 @@ class PartManager:
     def create_default_part_for_geometry(self, shape, stats):
         """为导入的几何创建Default部件"""
         try:
+            if hasattr(self.gui, '_create_default_part_for_geometry'):
+                self.gui._create_default_part_for_geometry(shape, stats)
+                return
+
             from OCC.Core.TopExp import TopExp_Explorer
             from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
 
