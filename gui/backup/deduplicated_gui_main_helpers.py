@@ -643,3 +643,9 @@ def toggle_fullscreen(self):
         self.showFullScreen()
         self.update_status("进入全屏模式")
 """
+
+GUI_MAIN_ON_PART_SELECT_BACKUP = """
+def on_part_select(self, index):
+    self.log_info("部件选择事件已触发")
+    self.update_status("已选中部件")
+"""

@@ -1255,8 +1255,12 @@ class PyMeshGenGUI(QMainWindow):
         """从cas文件的部件信息更新部件列表"""
         self.part_manager.update_parts_list_from_cas(parts_info=parts_info, update_status=False)
 
-    def on_part_select(self, index):
+    def on_part_select(self, item):
         """处理部件列表选择事件"""
+        if hasattr(item, 'text'):
+            self.part_manager.on_part_select(item)
+            return
+
         self.log_info("部件选择事件已触发")
         self.update_status("已选中部件")
 
