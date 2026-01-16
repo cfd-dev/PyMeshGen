@@ -983,7 +983,7 @@ class PyMeshGenGUI(QMainWindow):
                 self.log_info("模型树加载完成")
         except Exception as e:
             self.log_error(f"加载模型树失败: {str(e)}")
-                self.update_status("模型树加载失败")
+            self.update_status("模型树加载失败")
 
     def _ensure_cas_parts_info(self):
         """确保cas_parts_info已初始化"""
