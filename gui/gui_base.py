@@ -630,7 +630,9 @@ class PartListWidget:
         """处理项目点击事件，触发显示/隐藏逻辑"""
         # 状态已经在点击时自动切换（无论是点击复选框还是文本）
         # 触发显示/隐藏逻辑
-        if hasattr(self.parent, 'handle_part_visibility_change'):
+        if hasattr(self.parent, 'part_manager'):
+            self.parent.part_manager.handle_part_visibility_change(item.text(), item.checkState() == Qt.Checked)
+        elif hasattr(self.parent, 'handle_part_visibility_change'):
             self.parent.handle_part_visibility_change(item.text(), item.checkState() == Qt.Checked)
 
     def show_context_menu(self, position):
@@ -672,12 +674,15 @@ class PartListWidget:
 
     def show_selected_part(self):
         """显示选中部件 - 需要在主类中重写"""
-        pass
+        if hasattr(self.parent, 'part_manager'):
+            self.parent.part_manager.show_selected_part()
 
     def show_only_selected_part(self):
         """只显示选中部件 - 需要在主类中重写"""
-        pass
+        if hasattr(self.parent, 'part_manager'):
+            self.parent.part_manager.show_only_selected_part()
 
     def show_all_parts(self):
         """显示所有部件 - 需要在主类中重写"""
-        pass
+        if hasattr(self.parent, 'part_manager'):
+            self.parent.part_manager.show_all_parts()

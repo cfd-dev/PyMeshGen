@@ -166,7 +166,8 @@ class TestCASImportFixes(unittest.TestCase):
         self.app.mesh_status_label = self.mesh_status_label
         self.app.mesh_info_label = self.mesh_info_label
         self.app.parts_listbox = self.parts_listbox
-        self.app.update_parts_list_from_cas = Mock()
+        self.app.part_manager = Mock()
+        self.app.part_manager.update_parts_list_from_cas = Mock()
 
     def test_mesh_data_setting(self):
         """测试mesh_data设置"""
@@ -206,8 +207,8 @@ class TestCASImportFixes(unittest.TestCase):
             {'part_name': 'outlet', 'face_count': 20, 'nodes': [4, 5, 6], 'cells': [3, 4]}
         ]
 
-        self.app.update_parts_list_from_cas(mock_parts_info)
-        self.app.update_parts_list_from_cas.assert_called_with(mock_parts_info)
+        self.app.part_manager.update_parts_list_from_cas(parts_info=mock_parts_info, update_status=False)
+        self.app.part_manager.update_parts_list_from_cas.assert_called_with(parts_info=mock_parts_info, update_status=False)
         self.assertEqual(self.parts_listbox.size(), len(mock_parts_info), "部件列表更新失败")
 
 

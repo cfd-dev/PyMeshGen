@@ -27,26 +27,6 @@ class UIHelpers:
         if hasattr(self.gui, 'status_bar'):
             self.gui.status_bar.update_status(message)
 
-    def toggle_toolbar(self):
-        """切换功能区显示"""
-        if hasattr(self.gui, 'ribbon') and self.gui.ribbon:
-            if self.gui.ribbon.isVisible():
-                self.gui.ribbon.hide()
-                self.gui.update_status("功能区已隐藏")
-            else:
-                self.gui.ribbon.show()
-                self.gui.update_status("功能区已显示")
-
-    def toggle_statusbar(self):
-        """切换状态栏显示"""
-        if hasattr(self.gui, 'status_bar') and hasattr(self.gui.status_bar, 'status_bar'):
-            if self.gui.status_bar.status_bar.isVisible():
-                self.gui.status_bar.status_bar.hide()
-                self.gui.log_info("状态栏已隐藏")
-            else:
-                self.gui.status_bar.status_bar.show()
-                self.gui.log_info("状态栏已显示")
-
     def edit_params(self):
         """编辑全局参数"""
         from PyQt5.QtWidgets import QDialog

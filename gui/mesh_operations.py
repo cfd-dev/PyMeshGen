@@ -223,7 +223,7 @@ class MeshOperations:
                 self.gui._update_parts_list_from_generated_mesh(result_mesh)
 
                 # Refresh display to show all parts with different colors
-                self.gui.refresh_display_all_parts()
+                self.gui.part_manager.refresh_display_all_parts()
             else:
                 QMessageBox.warning(self.gui, "警告", "网格生成失败，未返回有效结果")
                 self.gui.log_info("网格生成失败，未返回有效结果")
@@ -651,7 +651,7 @@ class MeshOperations:
                         
                         self.gui.original_node_coords = self.gui.current_mesh.node_coords
 
-                        self.gui.update_parts_list_from_cas(new_parts_info)
+                        self.gui.part_manager.update_parts_list_from_cas(parts_info=new_parts_info, update_status=False)
                         
                         if hasattr(self.gui, 'model_tree_widget'):
                             self.gui.model_tree_widget.load_mesh(self.gui.current_mesh)

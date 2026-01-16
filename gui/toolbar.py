@@ -128,7 +128,15 @@ class ViewToolbar(QToolBar):
 
     def _emit_mode_change(self, mode):
         """Emit signal for mode change - to be connected externally"""
-        if hasattr(self.parent(), 'set_render_mode'):
+        view_controller = None
+        if hasattr(self.parent(), 'view_controller'):
+            view_controller = self.parent().view_controller
+        elif hasattr(self.window(), 'view_controller'):
+            view_controller = self.window().view_controller
+
+        if view_controller and hasattr(view_controller, 'set_render_mode'):
+            view_controller.set_render_mode(mode)
+        elif hasattr(self.parent(), 'set_render_mode'):
             self.parent().set_render_mode(mode)
         elif hasattr(self.window(), 'set_render_mode'):
             self.window().set_render_mode(mode)
@@ -152,7 +160,15 @@ class ViewToolbar(QToolBar):
         
         method_name = view_methods.get(view_type)
         if method_name:
-            if hasattr(self.parent(), method_name):
+            view_controller = None
+            if hasattr(self.parent(), 'view_controller'):
+                view_controller = self.parent().view_controller
+            elif hasattr(self.window(), 'view_controller'):
+                view_controller = self.window().view_controller
+
+            if view_controller and hasattr(view_controller, method_name):
+                getattr(view_controller, method_name)()
+            elif hasattr(self.parent(), method_name):
                 getattr(self.parent(), method_name)()
             elif hasattr(self.window(), method_name):
                 getattr(self.window(), method_name)()

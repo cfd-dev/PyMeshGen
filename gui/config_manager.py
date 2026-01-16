@@ -157,7 +157,7 @@ class ConfigManager:
                 )
 
                 if reply == QMessageBox.Yes:
-                    self.gui.generate_mesh()
+                    self.gui.mesh_operations.generate_mesh()
                     self.gui.update_status("配置导入并网格生成已启动")
                 else:
                     QMessageBox.information(self.gui, "成功", f"配置已成功从 {file_path} 导入")

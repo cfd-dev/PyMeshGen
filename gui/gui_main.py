@@ -345,11 +345,11 @@ class PyMeshGenGUI(QMainWindow):
 
             # Connect view buttons to their respective functions
             if button_name == 'surface':
-                button.clicked.connect(lambda: self.set_render_mode("surface"))
+                button.clicked.connect(lambda: self.view_controller.set_render_mode("surface"))
             elif button_name == 'wireframe':
-                button.clicked.connect(lambda: self.set_render_mode("wireframe"))
+                button.clicked.connect(lambda: self.view_controller.set_render_mode("wireframe"))
             elif button_name == 'surface-wireframe':
-                button.clicked.connect(lambda: self.set_render_mode("surface-wireframe"))
+                button.clicked.connect(lambda: self.view_controller.set_render_mode("surface-wireframe"))
 
         for button_name, button in self.ribbon.buttons.get('config', {}).items():
             icon_name = {
@@ -436,29 +436,21 @@ class PyMeshGenGUI(QMainWindow):
         if hasattr(self, 'ribbon') and self.ribbon:
             self.ribbon.toggle_content_visibility()
 
-    def set_render_mode(self, mode):
-        """设置渲染模式"""
-        self.view_controller.set_render_mode(mode)
-
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
         key = event.key()
         key_actions = {
-            Qt.Key_R: lambda: self.reset_view() or self.update_status("已重置视图 (R键)"),
-            Qt.Key_F: lambda: self.fit_view() or self.update_status("已适应视图 (F键)"),
-            Qt.Key_O: self._toggle_boundary_display,
-            Qt.Key_1: lambda: self.set_render_mode("surface"),
-            Qt.Key_2: lambda: self.set_render_mode("wireframe"),
-            Qt.Key_3: lambda: self.set_render_mode("surface-wireframe"),
+            Qt.Key_R: lambda: self.view_controller.reset_view() or self.update_status("已重置视图 (R键)"),
+            Qt.Key_F: lambda: self.view_controller.fit_view() or self.update_status("已适应视图 (F键)"),
+            Qt.Key_O: self.view_controller.toggle_boundary_display,
+            Qt.Key_1: lambda: self.view_controller.set_render_mode("surface"),
+            Qt.Key_2: lambda: self.view_controller.set_render_mode("wireframe"),
+            Qt.Key_3: lambda: self.view_controller.set_render_mode("surface-wireframe"),
         }
 
         action = key_actions.get(key)
         if action:
             action()
-
-    def _toggle_boundary_display(self):
-        """切换边界显示"""
-        self.view_controller.toggle_boundary_display()
 
     def new_config(self):
         """新建工程 - 清空当前所有数据，包括网格、配置参数等"""
@@ -707,7 +699,7 @@ class PyMeshGenGUI(QMainWindow):
                         self.log_info("网格已在视图区显示")
 
                         # Refresh display to show all parts with different colors
-                        self.refresh_display_all_parts()
+                        self.part_manager.refresh_display_all_parts()
                     else:
                         self.log_info("未找到网格显示组件")
 
@@ -836,7 +828,7 @@ class PyMeshGenGUI(QMainWindow):
                 
                 def step3_refresh_display():
                     self.update_status("正在刷新显示...")
-                    self.refresh_display_all_parts()
+                    self.part_manager.refresh_display_all_parts()
                     QTimer.singleShot(0, step4_complete)
                 
                 def step4_complete():
@@ -850,7 +842,7 @@ class PyMeshGenGUI(QMainWindow):
             else:
                 # Refresh display to show all parts with different colors
                 self.update_status("正在刷新显示...")
-                self.refresh_display_all_parts()
+                self.part_manager.refresh_display_all_parts()
                 
                 self.log_info(f"已导入网格: {mesh_data.file_path}")
                 self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
@@ -1160,54 +1152,6 @@ class PyMeshGenGUI(QMainWindow):
         self.log_info("已清空网格")
         self.update_status("已清空网格")
 
-    def reset_view(self):
-        """重置视图"""
-        self.view_controller.reset_view()
-
-    def fit_view(self):
-        """适应视图"""
-        self.view_controller.fit_view()
-
-    def set_view_x_positive(self):
-        """设置X轴正向视图"""
-        self.view_controller.set_view_x_positive()
-
-    def set_view_x_negative(self):
-        """设置X轴负向视图"""
-        self.view_controller.set_view_x_negative()
-
-    def set_view_y_positive(self):
-        """设置Y轴正向视图"""
-        self.view_controller.set_view_y_positive()
-
-    def set_view_y_negative(self):
-        """设置Y轴负向视图"""
-        self.view_controller.set_view_y_negative()
-
-    def set_view_z_positive(self):
-        """设置Z轴正向视图"""
-        self.view_controller.set_view_z_positive()
-
-    def set_view_z_negative(self):
-        """设置Z轴负向视图"""
-        self.view_controller.set_view_z_negative()
-
-    def set_view_isometric(self):
-        """设置等轴测视图"""
-        self.view_controller.set_view_isometric()
-
-    def add_part(self):
-        """添加部件"""
-        self.part_manager.add_part()
-
-    def remove_part(self):
-        """删除部件"""
-        self.part_manager.remove_part()
-
-    def edit_part(self):
-        """编辑部件参数（从右键菜单调用）"""
-        self.part_manager.edit_mesh_params()
-    
     def _execute_part_operation(self, operation_name, display_method, selected_part_name):
         """执行部件操作的通用方法
 
@@ -1248,35 +1192,11 @@ class PyMeshGenGUI(QMainWindow):
             except Exception as e:
                 self.log_error(f"{operation_name.split(' ')[0]}部件失败: {str(e)}")
 
-    def show_selected_part(self):
-        """显示选中部件（从右键菜单调用）"""
-        self.part_manager.show_selected_part()
-
-
-
-    def show_only_selected_part(self):
-        """只显示选中部件，隐藏其他所有部件（从右键菜单调用）"""
-        self.part_manager.show_only_selected_part()
-
-
-    def show_all_parts(self):
-        """显示所有部件（从右键菜单调用）"""
-        self.part_manager.show_all_parts()
-
-
     def update_params_display(self):
         """更新参数显示"""
         if not self.params:
             return
-        self.update_parts_list()
-
-    def update_parts_list(self):
-        """更新部件列表"""
         self.part_manager.update_parts_list(update_status=False)
-
-    def update_parts_list_from_cas(self, parts_info):
-        """从cas文件的部件信息更新部件列表"""
-        self.part_manager.update_parts_list_from_cas(parts_info=parts_info, update_status=False)
 
     def on_part_select(self, item):
         """处理部件列表选择事件"""
@@ -1287,29 +1207,6 @@ class PyMeshGenGUI(QMainWindow):
         self.log_info("部件选择事件已触发")
         self.update_status("已选中部件")
 
-    def handle_part_visibility_change(self, part_name, is_visible):
-        """处理部件可见性变化"""
-        self.part_manager.handle_part_visibility_change(part_name, is_visible)
-
-    def on_part_created(self, part_info):
-        """
-        处理新建部件的回调
-        
-        Args:
-            part_info: 部件信息字典，包含:
-                - part_name: 部件名称
-                - geometry_elements: 几何元素字典
-                - mesh_elements: 网格元素字典
-        """
-        self.part_manager.on_part_created(part_info)
-
-    def refresh_display_all_parts(self):
-        """刷新显示所有可见部件 - 优化版本，批量处理减少渲染次数"""
-        self.part_manager.refresh_display_all_parts()
-
-    def switch_display_mode(self, mode):
-        """切换显示模式"""
-        self.part_manager.switch_display_mode(mode)
 
     def log_info(self, message):
         """记录信息日志"""
@@ -1327,122 +1224,6 @@ class PyMeshGenGUI(QMainWindow):
         """更新状态栏信息"""
         self.ui_helpers.update_status(message)
 
-    def on_geometry_visibility_changed(self, element_type, visible):
-        """几何元素类别可见性改变时的回调"""
-        self.part_manager.on_geometry_visibility_changed(element_type, visible)
-
-    def on_geometry_element_visibility_changed(self, element_type, element_index, visible):
-        """单个几何元素可见性改变时的回调"""
-        self.part_manager.on_geometry_element_visibility_changed(element_type, element_index, visible)
-
-    def on_mesh_part_visibility_changed(self, visible):
-        """网格部件类别可见性改变时的回调"""
-        self.part_manager.on_mesh_part_visibility_changed(visible)
-
-    def on_mesh_part_element_visibility_changed(self, part_index, visible):
-        """单个网格部件可见性改变时的回调"""
-        self.part_manager.on_mesh_part_element_visibility_changed(part_index, visible)
-
-    def on_mesh_part_selected(self, part_data, part_index):
-        """网格部件被选中时的回调"""
-        self.part_manager.on_mesh_part_selected(part_data, part_index)
-
-    def _update_geometry_element_display(self):
-        """更新几何元素的显示"""
-        self.part_manager._update_geometry_element_display()
-
-    def _update_mesh_part_display(self):
-        """更新网格部件的显示"""
-        self.part_manager._update_mesh_part_display()
-
-    def _update_geometry_display_for_parts(self, visible_parts):
-        """根据可见部件更新几何元素的显示"""
-        self.part_manager._update_geometry_display_for_parts(visible_parts)
-
-    def on_geometry_element_selected(self, element_type, element_data, element_index):
-        """几何元素被选中时的回调"""
-        self.part_manager.on_geometry_element_selected(element_type, element_data, element_index)
-
-    def on_model_tree_visibility_changed(self, *args):
-        """
-        模型树可见性改变的回调
-        
-        Args:
-            可以是以下几种形式:
-            - (category, visible): 整个类别的可见性改变
-            - (category, element_type, visible): 类别下特定元素类型的可见性改变
-            - (category, element_type, element_index, visible): 特定元素的可见性改变
-        """
-        self.part_manager.on_model_tree_visibility_changed(*args)
-
-    def on_model_tree_selected(self, category, element_type, element_index, element_obj):
-        """
-        模型树元素被选中的回调
-        
-        Args:
-            category: 类别（"geometry", "mesh", "parts"）
-            element_type: 元素类型（"vertices", "edges", "faces", "bodies"）
-            element_index: 元素索引
-            element_obj: 元素对象
-        """
-        self.part_manager.on_model_tree_selected(category, element_type, element_index, element_obj)
-
-    def on_mesh_element_selected(self, element_type, element_data, element_index):
-        """网格元素被选中时的回调"""
-        self.part_manager.on_mesh_element_selected(element_type, element_data, element_index)
-
-    def on_part_selected(self, element_type, element_data, element_index):
-        """部件被选中时的回调"""
-        self.part_manager.on_part_selected(element_type, element_data, element_index)
-
-    def _get_edge_length(self, edge):
-        """获取边的长度"""
-        return self.part_manager._get_edge_length(edge)
-
-    def _get_face_area(self, face):
-        """获取面的面积"""
-        return self.part_manager._get_face_area(face)
-
-    def _get_solid_volume(self, solid):
-        """获取体的体积"""
-        return self.part_manager._get_solid_volume(solid)
-
-    def show_about(self):
-        """显示关于对话框"""
-        self.help_module.show_about()
-
-    def show_user_manual(self):
-        """显示用户手册 - 打开UserGuide.pdf或UserGuide.md文件"""
-        self.help_module.show_user_manual()
-
-    def zoom_in(self):
-        """放大视图"""
-        self.view_controller.zoom_in()
-
-    def zoom_out(self):
-        """缩小视图"""
-        self.view_controller.zoom_out()
-
-    def toggle_toolbar(self):
-        """切换功能区显示"""
-        self.view_controller.toggle_toolbar()
-
-    def toggle_statusbar(self):
-        """切换状态栏显示"""
-        self.view_controller.toggle_statusbar()
-
-    def edit_params(self):
-        """编辑全局参数"""
-        self.ui_helpers.edit_params()
-
-    def edit_mesh_params(self):
-        """编辑部件参数"""
-        self.part_manager.edit_mesh_params()
-
-    def edit_boundary_conditions(self):
-        """编辑边界条件"""
-        self.mesh_operations.edit_boundary_conditions()
-
     def import_config(self):
         """导入配置"""
         self.config_manager.import_config()
@@ -1454,10 +1235,6 @@ class PyMeshGenGUI(QMainWindow):
     def reset_config(self):
         """重置配置"""
         self.config_manager.reset_config()
-
-    def generate_mesh(self):
-        """生成网格 - 使用异步线程避免UI冻结"""
-        self.mesh_operations.generate_mesh()
 
     def _update_parts_list_from_generated_mesh(self, generated_mesh):
         """从生成的网格更新部件列表"""
@@ -1538,11 +1315,11 @@ class PyMeshGenGUI(QMainWindow):
                 # 更新cas_parts_info以包含新网格的实际部件信息
                 # self.cas_parts_info = updated_parts_info
                 # 更新部件列表显示
-                self.update_parts_list_from_cas(updated_parts_info)
+                self.part_manager.update_parts_list_from_cas(parts_info=updated_parts_info, update_status=False)
                 self.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
 
                 # Refresh display to show all parts with different colors
-                self.refresh_display_all_parts()
+                self.part_manager.refresh_display_all_parts()
             else:
                 # 如果没有部件信息，保持原有部件列表
                 self.log_info("生成的网格中未检测到部件信息，保持原有部件列表")
@@ -1714,52 +1491,6 @@ class PyMeshGenGUI(QMainWindow):
         else:
             self.log_info("未找到网格数据")
             self.update_status("未找到网格数据")
-
-    def check_mesh_quality(self):
-        """检查网格质量 - 显示网格质量skewness直方图"""
-        self.mesh_operations.check_mesh_quality()
-
-    def smooth_mesh(self):
-        """平滑网格 - 使用laplacian光滑算法"""
-        self.mesh_operations.smooth_mesh()
-
-    def optimize_mesh(self):
-        """优化网格 - 使用edge_swap和laplacian_smooth算法"""
-        self.mesh_operations.optimize_mesh()
-
-    def show_mesh_statistics(self):
-        """显示网格统计信息 - 包括网格单元信息和质量统计"""
-        self.mesh_operations.show_mesh_statistics()
-
-    def extract_boundary_mesh_info(self):
-        """提取边界网格及部件信息"""
-        self.mesh_operations.extract_boundary_mesh_info()
-
-
-    def export_mesh_report(self):
-        """导出网格报告 - 将网格生成的主要参数、部件参数和生成结果写到md文档中"""
-        self.mesh_operations.export_mesh_report()
-
-
-    def show_quick_start(self):
-        """显示快速入门"""
-        self.help_module.show_quick_start()
-
-    def check_for_updates(self):
-        """检查更新"""
-        self.help_module.check_for_updates()
-
-    def show_shortcuts(self):
-        """显示快捷键"""
-        self.help_module.show_shortcuts()
-
-    def set_background_color(self):
-        """设置视图区背景色"""
-        self.view_controller.set_background_color()
-
-    def toggle_fullscreen(self):
-        """切换全屏显示"""
-        self.view_controller.toggle_fullscreen()
 
     def closeEvent(self, event):
         """窗口关闭事件"""

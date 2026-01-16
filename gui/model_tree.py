@@ -39,6 +39,15 @@ class ModelTreeWidget:
 
         self._updating_items = False  # 标志：是否正在更新项（防止递归调用）
 
+    def _get_parent_handler(self, handler_name):
+        """获取父级处理函数（优先使用part_manager）"""
+        manager = getattr(self.parent, 'part_manager', None)
+        if manager and hasattr(manager, handler_name):
+            return getattr(manager, handler_name)
+        if hasattr(self.parent, handler_name):
+            return getattr(self.parent, handler_name)
+        return None
+
         self._create_tree_widget()
         self._setup_ui()
         self._init_tree_structure()
@@ -318,8 +327,9 @@ class ModelTreeWidget:
             if vertex_explorer.More() or edge_explorer.More() or face_explorer.More() or body_explorer.More():
                 QTimer.singleShot(0, process_batch)
             else:
-                if hasattr(self.parent, '_update_geometry_element_display'):
-                    self.parent._update_geometry_element_display()
+                handler = self._get_parent_handler('_update_geometry_element_display')
+                if handler:
+                    handler()
 
         QTimer.singleShot(0, process_batch)
 
@@ -878,11 +888,12 @@ class ModelTreeWidget:
             item: 树项
             element_data: 元素数据
         """
-        if not hasattr(self.parent, 'on_model_tree_visibility_changed'):
+        handler = self._get_parent_handler('on_model_tree_visibility_changed')
+        if not handler:
             return
 
         if isinstance(element_data, str):
-            self.parent.on_model_tree_visibility_changed(element_data, item.checkState(0) == Qt.Checked)
+            handler(element_data, item.checkState(0) == Qt.Checked)
         elif isinstance(element_data, tuple) and len(element_data) >= 2:
             category = element_data[0]
             
@@ -890,14 +901,14 @@ class ModelTreeWidget:
             # 我们只需要传递 category 和 element_index
             if category == 'parts' and len(element_data) >= 3:
                 element_index = element_data[2]
-                self.parent.on_model_tree_visibility_changed(category, element_index, item.checkState(0) == Qt.Checked)
+                handler(category, element_index, item.checkState(0) == Qt.Checked)
             else:
                 element_type = element_data[1]
                 if len(element_data) >= 4:
                     element_index = element_data[3]
-                    self.parent.on_model_tree_visibility_changed(category, element_type, element_index, item.checkState(0) == Qt.Checked)
+                    handler(category, element_type, element_index, item.checkState(0) == Qt.Checked)
                 else:
-                    self.parent.on_model_tree_visibility_changed(category, element_type, item.checkState(0) == Qt.Checked)
+                    handler(category, element_type, item.checkState(0) == Qt.Checked)
 
     def _handle_selection_change(self, item, element_data):
         """
@@ -907,7 +918,8 @@ class ModelTreeWidget:
             item: 树项
             element_data: 元素数据
         """
-        if not hasattr(self.parent, 'on_model_tree_selected'):
+        handler = self._get_parent_handler('on_model_tree_selected')
+        if not handler:
             return
 
         if isinstance(element_data, tuple) and len(element_data) >= 3:
@@ -919,12 +931,12 @@ class ModelTreeWidget:
                 element_index = element_data[2]
                 # 对于部件，element_type 可以是部件名称
                 element_type = item.text(0)
-                self.parent.on_model_tree_selected(category, element_type, element_index, part_data)
+                handler(category, element_type, element_index, part_data)
             elif len(element_data) >= 4:
                 element_type = element_data[1]
                 element_index = element_data[3]
                 element_obj = element_data[2] if len(element_data) >= 3 else None
-                self.parent.on_model_tree_selected(category, element_type, element_index, element_obj)
+                handler(category, element_type, element_index, element_obj)
 
     def _update_child_items(self, item, check_state):
         """
@@ -1069,8 +1081,9 @@ class ModelTreeWidget:
         
         self.tree.blockSignals(False)
         
-        if hasattr(self.parent, 'on_part_created'):
-            self.parent.on_part_created(part_info)
+        handler = self._get_parent_handler('on_part_created')
+        if handler:
+            handler(part_info)
 
     def get_visible_elements(self, category=None, element_type=None):
         """
