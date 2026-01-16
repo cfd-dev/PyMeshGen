@@ -367,7 +367,7 @@ class ViewController:
         """切换全屏模式"""
         if self.gui.isFullScreen():
             self.gui.showNormal()
-            self.gui.update_status("已退出全屏模式")
+            self.gui.update_status("退出全屏模式")
         else:
             self.gui.showFullScreen()
-            self.gui.update_status("已进入全屏模式")
+            self.gui.update_status("进入全屏模式")

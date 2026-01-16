@@ -614,3 +614,32 @@ def handle_part_visibility_change(self, part_name, is_visible):
     action = "显示" if is_visible else "隐藏"
     self.log_info(f"{action}部件: {actual_part_name}")
 """
+
+GUI_MAIN_SHOW_PARTS_BACKUP = """
+def show_selected_part(self):
+    QMessageBox.information(self, "提示", "显示选中部件功能请使用模型树复选框")
+
+def show_only_selected_part(self):
+    QMessageBox.information(self, "提示", "只显示选中部件功能请使用模型树复选框")
+
+def show_all_parts(self):
+    self.log_info("显示所有部件")
+    self.update_status("显示所有部件")
+
+    if hasattr(self, 'model_tree_widget'):
+        self.model_tree_widget.set_all_parts_visible(True)
+        self.refresh_display_all_parts()
+        self.log_info("成功显示所有部件")
+    else:
+        self.log_info("模型树组件未初始化")
+"""
+
+GUI_MAIN_TOGGLE_FULLSCREEN_BACKUP = """
+def toggle_fullscreen(self):
+    if self.isFullScreen():
+        self.showNormal()
+        self.update_status("退出全屏模式")
+    else:
+        self.showFullScreen()
+        self.update_status("进入全屏模式")
+"""

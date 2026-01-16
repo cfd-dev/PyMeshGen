@@ -1227,26 +1227,18 @@ class PyMeshGenGUI(QMainWindow):
 
     def show_selected_part(self):
         """显示选中部件（从右键菜单调用）"""
-        QMessageBox.information(self, "提示", "显示选中部件功能请使用模型树复选框")
+        self.part_manager.show_selected_part()
 
 
 
     def show_only_selected_part(self):
         """只显示选中部件，隐藏其他所有部件（从右键菜单调用）"""
-        QMessageBox.information(self, "提示", "只显示选中部件功能请使用模型树复选框")
+        self.part_manager.show_only_selected_part()
 
 
     def show_all_parts(self):
         """显示所有部件（从右键菜单调用）"""
-        self.log_info("显示所有部件")
-        self.update_status("显示所有部件")
-        
-        if hasattr(self, 'model_tree_widget'):
-            self.model_tree_widget.set_all_parts_visible(True)
-            self.refresh_display_all_parts()
-            self.log_info("成功显示所有部件")
-        else:
-            self.log_info("模型树组件未初始化")
+        self.part_manager.show_all_parts()
 
 
     def update_params_display(self):
@@ -1740,12 +1732,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def toggle_fullscreen(self):
         """切换全屏显示"""
-        if self.isFullScreen():
-            self.showNormal()
-            self.update_status("退出全屏模式")
-        else:
-            self.showFullScreen()
-            self.update_status("进入全屏模式")
+        self.view_controller.toggle_fullscreen()
 
     def closeEvent(self, event):
         """窗口关闭事件"""

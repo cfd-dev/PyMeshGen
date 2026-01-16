@@ -151,6 +151,26 @@ class PartManager:
 
             self.gui.props_text.setPlainText(info_text)
 
+    def show_selected_part(self):
+        """显示选中部件（从右键菜单调用）"""
+        QMessageBox.information(self.gui, "提示", "显示选中部件功能请使用模型树复选框")
+
+    def show_only_selected_part(self):
+        """只显示选中部件（从右键菜单调用）"""
+        QMessageBox.information(self.gui, "提示", "只显示选中部件功能请使用模型树复选框")
+
+    def show_all_parts(self):
+        """显示所有部件（从右键菜单调用）"""
+        self.gui.log_info("显示所有部件")
+        self.gui.update_status("显示所有部件")
+
+        if hasattr(self.gui, 'model_tree_widget'):
+            self.gui.model_tree_widget.set_all_parts_visible(True)
+            self.refresh_display_all_parts()
+            self.gui.log_info("成功显示所有部件")
+        else:
+            self.gui.log_info("模型树组件未初始化")
+
     def handle_part_visibility_change(self, item_or_name, is_visible=None):
         """处理部件可见性改变"""
         if isinstance(item_or_name, str):
