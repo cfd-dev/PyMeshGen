@@ -404,62 +404,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def set_render_mode(self, mode):
         """设置渲染模式"""
-        self.render_mode = mode
-        if hasattr(self, 'mesh_display'):
-            self.mesh_display.set_render_mode(mode)
-
-        if hasattr(self, 'geometry_actor') and self.geometry_actor:
-            if mode == "wireframe":
-                self.geometry_actor.SetVisibility(False)
-            elif mode == "surface-wireframe":
-                self.geometry_actor.SetVisibility(True)
-                self.geometry_actor.GetProperty().SetRepresentationToSurface()
-                self.geometry_actor.GetProperty().EdgeVisibilityOff()
-            else:
-                self.geometry_actor.SetVisibility(True)
-                self.geometry_actor.GetProperty().SetRepresentationToSurface()
-                self.geometry_actor.GetProperty().EdgeVisibilityOff()
-
-        if hasattr(self, 'geometry_edges_actor') and self.geometry_edges_actor:
-            if mode == "wireframe":
-                self.geometry_edges_actor.SetVisibility(True)
-            elif mode == "surface-wireframe":
-                self.geometry_edges_actor.SetVisibility(False)
-            else:
-                self.geometry_edges_actor.SetVisibility(False)
-
-        if hasattr(self, 'geometry_actors'):
-            for elem_type, actors in self.geometry_actors.items():
-                for actor in actors:
-                    if mode == "wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(False)
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    elif mode == "surface-wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    else:
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(False)
-
-        mode_messages = {
-            "surface": "渲染模式: 实体模式 (1键)",
-            "wireframe": "渲染模式: 线框模式 (2键)",
-            "surface-wireframe": "渲染模式: 实体+线框模式 (3键)",
-        }
-        self.update_status(mode_messages.get(mode, f"渲染模式: {mode}"))
-
-        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
-            self.mesh_display.render_window.Render()
+        self.view_controller.set_render_mode(mode)
 
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
@@ -479,10 +424,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def _toggle_boundary_display(self):
         """切换边界显示"""
-        new_state = not self.show_boundary
-        self.show_boundary = new_state
-        self.mesh_display.toggle_boundary_display(new_state)
-        self.update_status(f"边界显示: {'开启' if new_state else '关闭'} (O键)")
+        self.view_controller.toggle_boundary_display()
 
     def new_config(self):
         """新建工程 - 清空当前所有数据，包括网格、配置参数等"""
@@ -1496,23 +1438,19 @@ class PyMeshGenGUI(QMainWindow):
 
     def log_info(self, message):
         """记录信息日志"""
-        if hasattr(self, 'info_output'):
-            self.info_output.log_info(message)
+        self.ui_helpers.log_info(message)
 
     def log_error(self, message):
         """记录错误日志"""
-        if hasattr(self, 'info_output'):
-            self.info_output.log_error(message)
+        self.ui_helpers.log_error(message)
 
     def log_warning(self, message):
         """记录警告日志"""
-        if hasattr(self, 'info_output'):
-            self.info_output.log_warning(message)
+        self.ui_helpers.log_warning(message)
 
     def update_status(self, message):
         """更新状态栏信息"""
-        if hasattr(self, 'status_bar'):
-            self.status_bar.update_status(message)
+        self.ui_helpers.update_status(message)
 
     def on_geometry_visibility_changed(self, element_type, visible):
         """几何元素类别可见性改变时的回调"""

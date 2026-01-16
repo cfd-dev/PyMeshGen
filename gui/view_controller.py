@@ -142,7 +142,7 @@ class ViewController:
 
     def toggle_statusbar(self):
         """切换状态栏显示"""
-        if hasattr(self.gui, 'status_bar') and hasattr(self.gui.status_bar.status_bar):
+        if hasattr(self.gui, 'status_bar') and hasattr(self.gui.status_bar, 'status_bar'):
             if self.gui.status_bar.status_bar.isVisible():
                 self.gui.status_bar.status_bar.hide()
                 self.gui.log_info("状态栏已隐藏")
