@@ -884,6 +884,7 @@ class PyMeshGenGUI(QMainWindow):
             shape = result['shape']
             stats = result['stats']
             file_path = result['file_path']
+            file_ext = os.path.splitext(file_path)[1].lower()
 
             self.log_info(f"几何统计信息:")
             self.log_info(f"  - 顶点数: {stats['num_vertices']}")
@@ -903,26 +904,67 @@ class PyMeshGenGUI(QMainWindow):
 
             if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
                 from fileIO.occ_to_vtk import create_geometry_edges_actor
-                
-                self.geometry_actor = create_shape_actor(
-                    shape,
-                    mesh_quality=8.0,
-                    display_mode='surface',
-                    color=(0.8, 0.8, 0.9),
-                    opacity=0.8
-                )
-                self.mesh_display.renderer.AddActor(self.geometry_actor)
-                self.geometry_actors['main'] = [self.geometry_actor]
-                
-                self.geometry_edges_actor = create_geometry_edges_actor(
-                    shape,
-                    color=(0.0, 0.0, 0.0),
-                    line_width=1.5,
-                    sample_rate=0.5,
-                    max_points_per_edge=20
-                )
-                self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
-                self.geometry_actors['edges'] = [self.geometry_edges_actor]
+                stl_displayed = False
+
+                if file_ext == ".stl":
+                    try:
+                        import vtk
+
+                        reader = vtk.vtkSTLReader()
+                        reader.SetFileName(file_path)
+                        reader.Update()
+
+                        polydata = reader.GetOutput()
+                        if polydata and polydata.GetNumberOfPoints() > 0:
+                            mapper = vtk.vtkPolyDataMapper()
+                            mapper.SetInputData(polydata)
+
+                            self.geometry_actor = vtk.vtkActor()
+                            self.geometry_actor.SetMapper(mapper)
+                            self.geometry_actor.GetProperty().SetColor(0.8, 0.8, 0.9)
+                            self.geometry_actor.GetProperty().SetOpacity(0.8)
+
+                            edges_filter = vtk.vtkExtractEdges()
+                            edges_filter.SetInputData(polydata)
+                            edges_filter.Update()
+
+                            edges_mapper = vtk.vtkPolyDataMapper()
+                            edges_mapper.SetInputData(edges_filter.GetOutput())
+
+                            self.geometry_edges_actor = vtk.vtkActor()
+                            self.geometry_edges_actor.SetMapper(edges_mapper)
+                            self.geometry_edges_actor.GetProperty().SetColor(0.0, 0.0, 0.0)
+                            self.geometry_edges_actor.GetProperty().SetLineWidth(1.5)
+
+                            self.mesh_display.renderer.AddActor(self.geometry_actor)
+                            self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                            self.geometry_actors['main'] = [self.geometry_actor]
+                            self.geometry_actors['edges'] = [self.geometry_edges_actor]
+
+                            stl_displayed = True
+                    except Exception as e:
+                        self.log_warning(f"STL显示失败，回退到OCC显示: {str(e)}")
+
+                if not stl_displayed:
+                    self.geometry_actor = create_shape_actor(
+                        shape,
+                        mesh_quality=8.0,
+                        display_mode='surface',
+                        color=(0.8, 0.8, 0.9),
+                        opacity=0.8
+                    )
+                    self.mesh_display.renderer.AddActor(self.geometry_actor)
+                    self.geometry_actors['main'] = [self.geometry_actor]
+                    
+                    self.geometry_edges_actor = create_geometry_edges_actor(
+                        shape,
+                        color=(0.0, 0.0, 0.0),
+                        line_width=1.5,
+                        sample_rate=0.5,
+                        max_points_per_edge=20
+                    )
+                    self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                    self.geometry_actors['edges'] = [self.geometry_edges_actor]
                 
                 if self.render_mode == "wireframe":
                     self.geometry_actor.SetVisibility(False)
