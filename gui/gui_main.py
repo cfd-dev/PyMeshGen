@@ -1292,89 +1292,7 @@ class PyMeshGenGUI(QMainWindow):
                 - geometry_elements: 几何元素字典
                 - mesh_elements: 网格元素字典
         """
-        if not part_info:
-            return
-        
-        part_name = part_info.get('part_name', '新部件')
-        geometry_elements = part_info.get('geometry_elements', {})
-        mesh_elements = part_info.get('mesh_elements', {})
-        
-        # 初始化cas_parts_info（如果不存在）
-        if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
-            self.cas_parts_info = {}
-        
-        # 从DefaultPart中移除已分配的元素
-        if 'DefaultPart' in self.cas_parts_info:
-            default_part = self.cas_parts_info['DefaultPart']
-            
-            # 从网格元素中移除
-            if 'mesh_elements' in default_part:
-                default_mesh_elements = default_part['mesh_elements']
-                for elem_type, elem_list in mesh_elements.items():
-                    if elem_type in default_mesh_elements:
-                        for elem_idx in elem_list:
-                            if elem_idx in default_mesh_elements[elem_type]:
-                                default_mesh_elements[elem_type].remove(elem_idx)
-                
-                # 更新计数
-                default_part['num_vertices'] = len(default_mesh_elements.get('vertices', []))
-                default_part['num_edges'] = len(default_mesh_elements.get('edges', []))
-                default_part['num_faces'] = len(default_mesh_elements.get('faces', []))
-                default_part['num_bodies'] = len(default_mesh_elements.get('bodies', []))
-            
-            # 从几何元素中移除
-            if 'geometry_elements' in default_part:
-                default_geo_elements = default_part['geometry_elements']
-                for elem_type, elem_list in geometry_elements.items():
-                    if elem_type in default_geo_elements:
-                        for elem_idx in elem_list:
-                            if elem_idx in default_geo_elements[elem_type]:
-                                default_geo_elements[elem_type].remove(elem_idx)
-                
-                # 更新计数
-                default_part['num_vertices'] = len(default_geo_elements.get('vertices', []))
-                default_part['num_edges'] = len(default_geo_elements.get('edges', []))
-                default_part['num_faces'] = len(default_geo_elements.get('faces', []))
-                default_part['num_solids'] = len(default_geo_elements.get('bodies', []))
-            
-            self.log_info(f"已从DefaultPart中移除分配给 {part_name} 的元素")
-        
-        # 将新建部件的数据转换为与cas部件兼容的格式
-        converted_part_info = {
-            'type': 'user_created',
-            'bc_type': 'wall',
-            'faces': [],
-            'nodes': [],
-            'cells': [],
-            'geometry_elements': geometry_elements,
-            'mesh_elements': mesh_elements
-        }
-        
-        # 如果有网格数据，尝试提取面数据
-        if hasattr(self, 'current_mesh') and self.current_mesh:
-            if hasattr(self.current_mesh, 'cells'):
-                # 获取选中的网格面
-                selected_faces = mesh_elements.get('faces', [])
-                if selected_faces:
-                    for face_idx in selected_faces:
-                        if face_idx < len(self.current_mesh.cells):
-                            cell = self.current_mesh.cells[face_idx]
-                            converted_part_info['faces'].append({
-                                'nodes': list(cell) if hasattr(cell, '__iter__') else [cell]
-                            })
-        
-        # 将部件添加到cas_parts_info中
-        self.cas_parts_info[part_name] = converted_part_info
-        
-        # 更新部件列表显示
-        if hasattr(self, 'model_tree_widget'):
-            self.model_tree_widget.load_parts(self.cas_parts_info)
-        
-        self.log_info(f"已创建部件: {part_name}")
-        self.update_status(f"部件已创建: {part_name}")
-        
-        # 刷新显示
-        self.refresh_display_all_parts()
+        self.part_manager.on_part_created(part_info)
 
     def refresh_display_all_parts(self):
         """刷新显示所有可见部件 - 优化版本，批量处理减少渲染次数"""
@@ -1382,12 +1300,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def switch_display_mode(self, mode):
         """切换显示模式"""
-        if hasattr(self, 'mesh_display') and self.mesh_display:
-            self.mesh_display.set_render_mode(mode)
-            self.update_status(f"显示模式已切换为: {mode}")
-
-            # Refresh the display to apply the new mode to all visible parts
-            self.refresh_display_all_parts()
+        self.part_manager.switch_display_mode(mode)
 
     def log_info(self, message):
         """记录信息日志"""
@@ -1407,229 +1320,39 @@ class PyMeshGenGUI(QMainWindow):
 
     def on_geometry_visibility_changed(self, element_type, visible):
         """几何元素类别可见性改变时的回调"""
-        self._update_geometry_element_display()
+        self.part_manager.on_geometry_visibility_changed(element_type, visible)
 
     def on_geometry_element_visibility_changed(self, element_type, element_index, visible):
         """单个几何元素可见性改变时的回调"""
-        self._update_geometry_element_display()
+        self.part_manager.on_geometry_element_visibility_changed(element_type, element_index, visible)
 
     def on_mesh_part_visibility_changed(self, visible):
         """网格部件类别可见性改变时的回调"""
-        self._update_mesh_part_display()
+        self.part_manager.on_mesh_part_visibility_changed(visible)
 
     def on_mesh_part_element_visibility_changed(self, part_index, visible):
         """单个网格部件可见性改变时的回调"""
-        self._update_mesh_part_display()
+        self.part_manager.on_mesh_part_element_visibility_changed(part_index, visible)
 
     def on_mesh_part_selected(self, part_data, part_index):
         """网格部件被选中时的回调"""
-        part_name = part_data.get('part_name', f'Part_{part_index}') if isinstance(part_data, dict) else f'Part_{part_index}'
-        self.log_info(f"选中网格部件: {part_name}")
-
-        if hasattr(self, 'props_text'):
-            info_text = f"选中部件: {part_name}\n"
-            info_text += f"索引: {part_index}\n"
-
-            if isinstance(part_data, dict):
-                bc_type = part_data.get('bc_type', '未知')
-                info_text += f"边界条件: {bc_type}\n"
-
-                if 'faces' in part_data:
-                    info_text += f"面数量: {len(part_data['faces'])}\n"
-
-                if 'nodes' in part_data:
-                    info_text += f"节点数量: {len(part_data['nodes'])}\n"
-
-            self.props_text.setPlainText(info_text)
-            self.update_status(f"已选中网格部件: {part_name}")
+        self.part_manager.on_mesh_part_selected(part_data, part_index)
 
     def _update_geometry_element_display(self):
         """更新几何元素的显示"""
-        if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_geometry'):
-            return
-
-        visible_elements = self.model_tree_widget.get_visible_elements(category='geometry')
-
-        if hasattr(self, 'geometry_actors'):
-            for elem_type, actors in self.geometry_actors.items():
-                for actor in actors:
-                    if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                        self.mesh_display.renderer.RemoveActor(actor)
-
-        if hasattr(self, 'geometry_actor') and self.geometry_actor:
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                self.mesh_display.renderer.RemoveActor(self.geometry_actor)
-            self.geometry_actor = None
-
-        if hasattr(self, 'geometry_edges_actor') and self.geometry_edges_actor:
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                self.mesh_display.renderer.RemoveActor(self.geometry_edges_actor)
-            self.geometry_edges_actor = None
-
-        self.geometry_actors = {}
-
-        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor, create_shape_actor, create_geometry_edges_actor
-
-        if 'geometry' in visible_elements and 'vertices' in visible_elements['geometry'] and visible_elements['geometry']['vertices']:
-            self.geometry_actors['vertices'] = []
-            for elem_index, elem_data in visible_elements['geometry']['vertices']:
-                actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
-                self.geometry_actors['vertices'].append(actor)
-                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                    self.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'edges' in visible_elements['geometry'] and visible_elements['geometry']['edges']:
-            self.geometry_actors['edges'] = []
-            for elem_index, elem_data in visible_elements['geometry']['edges']:
-                actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
-                self.geometry_actors['edges'].append(actor)
-                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                    self.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'faces' in visible_elements['geometry'] and visible_elements['geometry']['faces']:
-            self.geometry_actors['faces'] = []
-            for elem_index, elem_data in visible_elements['geometry']['faces']:
-                actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
-                self.geometry_actors['faces'].append(actor)
-                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                    self.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'bodies' in visible_elements['geometry'] and visible_elements['geometry']['bodies']:
-            self.geometry_actors['bodies'] = []
-            for elem_index, elem_data in visible_elements['geometry']['bodies']:
-                actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
-                self.geometry_actors['bodies'].append(actor)
-                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                    self.mesh_display.renderer.AddActor(actor)
-
-        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
-            self.mesh_display.render_window.Render()
+        self.part_manager._update_geometry_element_display()
 
     def _update_mesh_part_display(self):
         """更新网格部件的显示"""
-        if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_mesh'):
-            return
-
-        # 使用 refresh_display_all_parts 来正确更新部件显示
-        self.refresh_display_all_parts()
+        self.part_manager._update_mesh_part_display()
 
     def _update_geometry_display_for_parts(self, visible_parts):
         """根据可见部件更新几何元素的显示"""
-        if not hasattr(self, 'model_tree_widget') or not hasattr(self, 'current_geometry'):
-            return
-
-        # 获取所有部件的几何元素索引
-        part_geometry_elements = {}
-        if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-            for part_name, part_data in self.cas_parts_info.items():
-                if 'geometry_elements' in part_data:
-                    part_geometry_elements[part_name] = part_data['geometry_elements']
-
-        # 如果没有部件包含几何元素，则显示所有几何元素
-        if not part_geometry_elements:
-            return
-
-        # 收集所有可见部件的几何元素索引
-        visible_geometry_indices = {'vertices': set(), 'edges': set(), 'faces': set(), 'bodies': set()}
-        for part_name in visible_parts:
-            if part_name in part_geometry_elements:
-                for elem_type, indices in part_geometry_elements[part_name].items():
-                    if elem_type in visible_geometry_indices:
-                        visible_geometry_indices[elem_type].update(indices)
-
-        # 获取当前几何元素的可见性
-        visible_elements = self.model_tree_widget.get_visible_elements(category='geometry')
-
-        # 移除所有几何元素actor
-        if hasattr(self, 'geometry_actors'):
-            for elem_type, actors in self.geometry_actors.items():
-                for actor in actors:
-                    if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                        self.mesh_display.renderer.RemoveActor(actor)
-
-        if hasattr(self, 'geometry_actor') and self.geometry_actor:
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                self.mesh_display.renderer.RemoveActor(self.geometry_actor)
-            self.geometry_actor = None
-
-        if hasattr(self, 'geometry_edges_actor') and self.geometry_edges_actor:
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                self.mesh_display.renderer.RemoveActor(self.geometry_edges_actor)
-            self.geometry_edges_actor = None
-
-        self.geometry_actors = {}
-
-        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
-
-        # 只显示属于可见部件的几何元素
-        if 'geometry' in visible_elements:
-            if 'vertices' in visible_elements['geometry']:
-                self.geometry_actors['vertices'] = []
-                for elem_index, elem_data in visible_elements['geometry']['vertices']:
-                    if visible_geometry_indices['vertices'] and elem_index in visible_geometry_indices['vertices']:
-                        actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
-                        self.geometry_actors['vertices'].append(actor)
-                        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                            self.mesh_display.renderer.AddActor(actor)
-
-            if 'edges' in visible_elements['geometry']:
-                self.geometry_actors['edges'] = []
-                for elem_index, elem_data in visible_elements['geometry']['edges']:
-                    if visible_geometry_indices['edges'] and elem_index in visible_geometry_indices['edges']:
-                        actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
-                        self.geometry_actors['edges'].append(actor)
-                        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                            self.mesh_display.renderer.AddActor(actor)
-
-            if 'faces' in visible_elements['geometry']:
-                self.geometry_actors['faces'] = []
-                for elem_index, elem_data in visible_elements['geometry']['faces']:
-                    if visible_geometry_indices['faces'] and elem_index in visible_geometry_indices['faces']:
-                        actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
-                        self.geometry_actors['faces'].append(actor)
-                        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                            self.mesh_display.renderer.AddActor(actor)
-
-            if 'bodies' in visible_elements['geometry']:
-                self.geometry_actors['bodies'] = []
-                for elem_index, elem_data in visible_elements['geometry']['bodies']:
-                    if visible_geometry_indices['bodies'] and elem_index in visible_geometry_indices['bodies']:
-                        actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
-                        self.geometry_actors['bodies'].append(actor)
-                        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                            self.mesh_display.renderer.AddActor(actor)
-
-        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'render_window'):
-            self.mesh_display.render_window.Render()
+        self.part_manager._update_geometry_display_for_parts(visible_parts)
 
     def on_geometry_element_selected(self, element_type, element_data, element_index):
         """几何元素被选中时的回调"""
-        element_name = f"{element_type}_{element_index}"
-        self.log_info(f"选中: {element_name}")
-
-        if hasattr(self, 'props_text'):
-            info_text = f"选中元素: {element_name}\n"
-            info_text += f"类型: {element_type}\n"
-            info_text += f"索引: {element_index}\n"
-
-            if element_type == "vertex":
-                from OCC.Core.BRep import BRep_Tool
-                pnt = BRep_Tool.Pnt(element_data)
-                info_text += f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})\n"
-            elif element_type == "edge":
-                edge_length = self._get_edge_length(element_data)
-                if edge_length is not None:
-                    info_text += f"长度: {edge_length:.3f}\n"
-            elif element_type == "face":
-                face_area = self._get_face_area(element_data)
-                if face_area is not None:
-                    info_text += f"面积: {face_area:.3f}\n"
-            elif element_type == "body":
-                body_volume = self._get_solid_volume(element_data)
-                if body_volume is not None:
-                    info_text += f"体积: {body_volume:.3f}\n"
-
-            self.props_text.setPlainText(info_text)
+        self.part_manager.on_geometry_element_selected(element_type, element_data, element_index)
 
     def on_model_tree_visibility_changed(self, *args):
         """
@@ -1641,38 +1364,7 @@ class PyMeshGenGUI(QMainWindow):
             - (category, element_type, visible): 类别下特定元素类型的可见性改变
             - (category, element_type, element_index, visible): 特定元素的可见性改变
         """
-        if len(args) == 2:
-            category, visible = args
-            
-            if category == 'geometry':
-                self._update_geometry_element_display()
-            elif category == 'mesh':
-                self._update_mesh_part_display()
-            elif category == 'parts':
-                self.refresh_display_all_parts()
-                
-        elif len(args) == 3:
-            category, arg2, visible = args
-            # 对于部件，arg2 是 element_index；对于其他类别，arg2 是 element_type
-            if category == 'parts':
-                element_index = arg2
-                self.refresh_display_all_parts()
-            else:
-                element_type = arg2
-                if category == 'geometry':
-                    self._update_geometry_element_display()
-                elif category == 'mesh':
-                    self._update_mesh_part_display()
-                
-        elif len(args) == 4:
-            category, element_type, element_index, visible = args
-            
-            if category == 'geometry':
-                self._update_geometry_element_display()
-            elif category == 'mesh':
-                self._update_mesh_part_display()
-            elif category == 'parts':
-                self.refresh_display_all_parts()
+        self.part_manager.on_model_tree_visibility_changed(*args)
 
     def on_model_tree_selected(self, category, element_type, element_index, element_obj):
         """
@@ -1735,43 +1427,15 @@ class PyMeshGenGUI(QMainWindow):
 
     def _get_edge_length(self, edge):
         """获取边的长度"""
-        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
-        from OCC.Core.BRep import BRep_Tool
-
-        try:
-            curve = BRep_Tool.Curve(edge)
-            if curve:
-                geom_curve, first, last = curve
-                if geom_curve:
-                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
-                    return length
-        except:
-            pass
-        return None
+        return self.part_manager._get_edge_length(edge)
 
     def _get_face_area(self, face):
         """获取面的面积"""
-        from OCC.Core.BRepGProp import brepgprop
-        from OCC.Core.GProp import GProp_GProps
-
-        try:
-            props = GProp_GProps()
-            brepgprop.SurfaceProperties(face, props)
-            return props.Mass()
-        except:
-            return None
+        return self.part_manager._get_face_area(face)
 
     def _get_solid_volume(self, solid):
         """获取体的体积"""
-        from OCC.Core.BRepGProp import brepgprop
-        from OCC.Core.GProp import GProp_GProps
-
-        try:
-            props = GProp_GProps()
-            brepgprop.VolumeProperties(solid, props)
-            return props.Mass()
-        except:
-            return None
+        return self.part_manager._get_solid_volume(solid)
 
     def show_about(self):
         """显示关于对话框"""

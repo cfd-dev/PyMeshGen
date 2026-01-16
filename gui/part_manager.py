@@ -166,22 +166,39 @@ class PartManager:
 
         self.gui.update_status(f"部件可见性已改变: {part_name}")
 
-    def on_part_created(self, part_name, geometry_elements=None, mesh_elements=None):
+    def on_part_created(self, part_info_or_name, geometry_elements=None, mesh_elements=None):
         """部件创建事件处理"""
+        skip_geometry_check = False
+        skip_empty_check = False
+
+        if isinstance(part_info_or_name, dict):
+            part_info = part_info_or_name
+            if not part_info:
+                return
+            part_name = part_info.get('part_name', '新部件')
+            geometry_elements = part_info.get('geometry_elements', {}) or {}
+            mesh_elements = part_info.get('mesh_elements', {}) or {}
+            skip_geometry_check = True
+            skip_empty_check = True
+        else:
+            part_name = part_info_or_name
+
         if not hasattr(self.gui, 'cas_parts_info'):
             self.gui.cas_parts_info = {}
 
-        if not hasattr(self.gui, 'current_geometry') or not self.gui.current_geometry:
-            QMessageBox.warning(self.gui, "警告", "请先导入几何模型")
-            self.gui.log_info("未找到几何模型，无法创建部件")
-            self.gui.update_status("未找到几何模型")
-            return
+        if not skip_geometry_check:
+            if not hasattr(self.gui, 'current_geometry') or not self.gui.current_geometry:
+                QMessageBox.warning(self.gui, "警告", "请先导入几何模型")
+                self.gui.log_info("未找到几何模型，无法创建部件")
+                self.gui.update_status("未找到几何模型")
+                return
 
-        if not geometry_elements and not mesh_elements:
-            QMessageBox.warning(self.gui, "警告", "请至少选择一个几何元素或网格元素")
-            self.gui.log_info("未选择任何元素，无法创建部件")
-            self.gui.update_status("未选择任何元素")
-            return
+        if not skip_empty_check:
+            if not geometry_elements and not mesh_elements:
+                QMessageBox.warning(self.gui, "警告", "请至少选择一个几何元素或网格元素")
+                self.gui.log_info("未选择任何元素，无法创建部件")
+                self.gui.update_status("未选择任何元素")
+                return
 
         if geometry_elements is None:
             geometry_elements = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
@@ -246,8 +263,8 @@ class PartManager:
         if hasattr(self.gui, 'parts_list_widget'):
             self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
 
-        if hasattr(self.gui, 'model_tree_widget') and 'DefaultPart' in self.gui.cas_parts_info:
-            self.gui.model_tree_widget.load_parts({'parts_info': self.gui.cas_parts_info})
+        if hasattr(self.gui, 'model_tree_widget'):
+            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
 
         self.gui.log_info(f"已创建部件: {part_name}")
         self.gui.update_status(f"部件已创建: {part_name}")
@@ -395,42 +412,6 @@ class PartManager:
                 if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
                     self.gui.mesh_display.renderer.AddActor(actor)
 
-        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
-            self.gui.mesh_display.render_window.Render()
-
-        render_mode = getattr(self.gui, 'render_mode', 'surface')
-        
-        if hasattr(self.gui, 'geometry_actors'):
-            for elem_type, actors in self.gui.geometry_actors.items():
-                for actor in actors:
-                    if render_mode == "wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(False)
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    elif render_mode == "surface-wireframe":
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(True)
-                    else:
-                        if elem_type == 'faces' or elem_type == 'bodies':
-                            actor.SetVisibility(True)
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                        elif elem_type == 'edges' or elem_type == 'vertices':
-                            actor.SetVisibility(False)
-        
-        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
-            if render_mode == "wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(True)
-            elif render_mode == "surface-wireframe":
-                self.gui.geometry_edges_actor.SetVisibility(True)
-            else:
-                self.gui.geometry_edges_actor.SetVisibility(False)
-        
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
 
@@ -594,33 +575,40 @@ class PartManager:
 
     def _get_edge_length(self, edge):
         """获取边的长度"""
+        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+        from OCC.Core.BRep import BRep_Tool
+
         try:
-            from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
-            from OCC.Core.GCPnts import GCPnts_AbscissaPoint
-            adaptor = BRepAdaptor_Curve(edge)
-            length = GCPnts_AbscissaPoint.Length(adaptor)
-            return length
-        except Exception:
-            return None
+            curve = BRep_Tool.Curve(edge)
+            if curve:
+                geom_curve, first, last = curve
+                if geom_curve:
+                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
+                    return length
+        except:
+            pass
+        return None
 
     def _get_face_area(self, face):
         """获取面的面积"""
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.GProp import GProp_GProps
+
         try:
-            from OCC.Core.BRepGProp import brepgprop_SurfaceProperties
-            from OCC.Core.GProp import GProp_GProps
             props = GProp_GProps()
-            brepgprop_SurfaceProperties(face, props)
+            brepgprop.SurfaceProperties(face, props)
             return props.Mass()
-        except Exception:
+        except:
             return None
 
     def _get_solid_volume(self, solid):
         """获取实体的体积"""
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.GProp import GProp_GProps
+
         try:
-            from OCC.Core.BRepGProp import brepgprop_VolumeProperties
-            from OCC.Core.GProp import GProp_GProps
             props = GProp_GProps()
-            brepgprop_VolumeProperties(solid, props)
+            brepgprop.VolumeProperties(solid, props)
             return props.Mass()
-        except Exception:
+        except:
             return None
