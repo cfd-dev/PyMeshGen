@@ -750,47 +750,6 @@ class PyMeshGenGUI(QMainWindow):
             self.log_info(f"打开工程失败：{str(e)}")
             self.update_status("工程打开失败")
 
-    def save_config(self):
-        """保存工程 - 将JSON配置文件和导入网格文件的路径保存到.pymg工程文件中"""
-        self.config_manager.save_config()
-
-    def import_mesh(self):
-        """导入网格（使用异步线程，避免GUI卡顿）"""
-        from gui.file_operations import FileOperations
-        from gui.import_thread import MeshImportThread
-
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "导入网格文件",
-            os.path.join(self.project_root, "meshes"),
-            "网格文件 (*.vtk *.vtu *.stl *.obj *.cas *.msh *.ply *.xdmf *.xmf *.off *.med *.mesh *.meshb *.bdf *.fem *.nas *.inp *.e *.exo *.ex2 *.su2 *.cgns *.avs *.vol *.mdpa *.h5m *.f3grid *.dat *.tec *.ugrid *.ele *.node *.xml *.post *.wkt *.hmf);;所有文件 (*.*)"
-        )
-
-        if file_path:
-            try:
-                file_ops = FileOperations(self.project_root, log_callback=self.log_info)
-
-                # 创建导入线程
-                self.import_thread = MeshImportThread(file_path, file_ops)
-
-                # 连接信号
-                self.import_thread.progress_updated.connect(self.on_import_progress)
-                self.import_thread.import_finished.connect(self.on_import_finished)
-                self.import_thread.import_failed.connect(self.on_import_failed)
-
-                # 禁用导入按钮，防止重复导入
-                self._reset_progress_cache("mesh")
-                self._set_ribbon_button_enabled('file', 'import', False)
-
-                # 启动线程
-                self.import_thread.start()
-                self.log_info(f"开始导入网格: {file_path}")
-                self.update_status("正在导入网格...")
-
-            except Exception as e:
-                QMessageBox.critical(self, "错误", f"导入网格失败: {str(e)}")
-                self.log_error(f"导入网格失败: {str(e)}")
-
     def on_import_progress(self, message, progress):
         """导入进度更新回调"""
         self._update_progress(message, progress, "mesh")
@@ -1220,10 +1179,6 @@ class PyMeshGenGUI(QMainWindow):
         """导出几何文件"""
         self.geometry_operations.export_geometry()
 
-    def export_mesh(self):
-        """导出网格"""
-        self.geometry_operations.export_mesh()
-
 
     def clear_mesh(self):
         """清空网格"""
@@ -1304,14 +1259,6 @@ class PyMeshGenGUI(QMainWindow):
     def update_status(self, message):
         """更新状态栏信息"""
         self.ui_helpers.update_status(message)
-
-    def import_config(self):
-        """导入配置"""
-        self.config_manager.import_config()
-
-    def export_config(self):
-        """导出配置"""
-        self.config_manager.export_config()
 
     def reset_config(self):
         """重置配置"""

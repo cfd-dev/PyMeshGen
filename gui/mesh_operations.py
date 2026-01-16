@@ -27,6 +27,88 @@ class MeshOperations:
     def __init__(self, gui_instance):
         self.gui = gui_instance
 
+    def import_mesh(self):
+        """导入网格（使用异步线程，避免GUI卡顿）"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from gui.file_operations import FileOperations
+        from gui.import_thread import MeshImportThread
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self.gui,
+            "导入网格文件",
+            os.path.join(self.gui.project_root, "meshes"),
+            "网格文件 (*.vtk *.vtu *.stl *.obj *.cas *.msh *.ply *.xdmf *.xmf *.off *.med *.mesh *.meshb *.bdf *.fem *.nas *.inp *.e *.exo *.ex2 *.su2 *.cgns *.avs *.vol *.mdpa *.h5m *.f3grid *.dat *.tec *.ugrid *.ele *.node *.xml *.post *.wkt *.hmf);;所有文件 (*.*)"
+        )
+
+        if file_path:
+            try:
+                file_ops = FileOperations(self.gui.project_root, log_callback=self.gui.log_info)
+
+                # 创建导入线程
+                self.gui.import_thread = MeshImportThread(file_path, file_ops)
+
+                # 连接信号
+                self.gui.import_thread.progress_updated.connect(self.gui.on_import_progress)
+                self.gui.import_thread.import_finished.connect(self.gui.on_import_finished)
+                self.gui.import_thread.import_failed.connect(self.gui.on_import_failed)
+
+                # 禁用导入按钮，防止重复导入
+                if hasattr(self.gui, '_reset_progress_cache'):
+                    self.gui._reset_progress_cache("mesh")
+                if hasattr(self.gui, '_set_ribbon_button_enabled'):
+                    self.gui._set_ribbon_button_enabled('file', 'import', False)
+
+                # 启动线程
+                self.gui.import_thread.start()
+                self.gui.log_info(f"开始导入网格: {file_path}")
+                self.gui.update_status("正在导入网格...")
+
+            except Exception as e:
+                QMessageBox.critical(self.gui, "错误", f"导入网格失败: {str(e)}")
+                self.gui.log_error(f"导入网格失败: {str(e)}")
+
+    def export_mesh(self):
+        """导出网格"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+        from gui.file_operations import FileOperations
+
+        if not self.gui.current_mesh:
+            QMessageBox.warning(self.gui, "警告", "没有可导出的网格")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.gui,
+            "导出网格文件",
+            os.path.join(self.gui.project_root, "meshes", "mesh.vtk"),
+            "网格文件 (*.vtk *.stl *.obj *.msh *.ply)"
+        )
+
+        if file_path:
+            try:
+                file_ops = FileOperations(self.gui.project_root)
+                vtk_poly_data = None
+                if isinstance(self.gui.current_mesh, dict):
+                    vtk_poly_data = self.gui.current_mesh.get('vtk_poly_data')
+
+                if vtk_poly_data:
+                    file_ops.export_mesh(vtk_poly_data, file_path)
+                else:
+                    if hasattr(self.gui.current_mesh, 'node_coords') and hasattr(self.gui.current_mesh, 'cell_container'):
+                        if hasattr(self.gui.current_mesh, 'save_to_vtkfile'):
+                            self.gui.current_mesh.save_to_vtkfile(file_path)
+                        else:
+                            QMessageBox.warning(self.gui, "警告", "当前网格格式不支持直接保存，请使用VTK格式")
+                            return
+                    else:
+                        QMessageBox.warning(self.gui, "警告", "无法获取有效的VTK数据进行导出")
+                        return
+
+                self.gui.log_info(f"已导出网格文件: {file_path}")
+                self.gui.update_status("已导出网格文件")
+            except Exception as e:
+                QMessageBox.critical(self.gui, "错误", f"导出网格失败: {str(e)}")
+                self.gui.log_error(f"导出网格失败: {str(e)}")
+
     def _require_mesh(self, log_message, status_message="未找到网格数据", prompt_message="请先生成或导入网格"):
         """确保存在当前网格，否则提示并返回None"""
         if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:

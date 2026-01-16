@@ -404,15 +404,15 @@ class RibbonWidget(QWidget):
         # File tab callbacks
         self.buttons['file']['new'].clicked.connect(_wrap(main_window.new_config, "新建工程"))
         self.buttons['file']['open'].clicked.connect(_wrap(main_window.open_config, "打开工程"))
-        self.buttons['file']['save'].clicked.connect(_wrap(main_window.save_config, "保存工程"))
-        self.buttons['file']['import'].clicked.connect(_wrap(main_window.import_mesh, "导入网格"))
-        self.buttons['file']['export'].clicked.connect(_wrap(main_window.export_mesh, "导出网格"))
+        self.buttons['file']['save'].clicked.connect(_wrap(main_window.config_manager.save_config, "保存工程"))
+        self.buttons['file']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
+        self.buttons['file']['export'].clicked.connect(_wrap(main_window.mesh_operations.export_mesh, "导出网格"))
         self.buttons['file']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
         self.buttons['file']['export_geometry'].clicked.connect(_wrap(main_window.export_geometry, "导出几何"))
 
         # Geometry tab callbacks
         self.buttons['geometry']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
-        self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.import_mesh, "导入网格"))
+        self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
         self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
 
         # View tab callbacks
@@ -435,8 +435,8 @@ class RibbonWidget(QWidget):
         # Config tab callbacks
         self.buttons['config']['params'].clicked.connect(_wrap(main_window.ui_helpers.edit_params, "编辑全局参数"))
         self.buttons['config']['mesh_params'].clicked.connect(_wrap(main_window.part_manager.edit_mesh_params, "编辑部件参数"))
-        self.buttons['config']['import_config'].clicked.connect(_wrap(main_window.import_config, "导入配置"))
-        self.buttons['config']['export_config'].clicked.connect(_wrap(main_window.export_config, "导出配置"))
+        self.buttons['config']['import_config'].clicked.connect(_wrap(main_window.config_manager.import_config, "导入配置"))
+        self.buttons['config']['export_config'].clicked.connect(_wrap(main_window.config_manager.export_config, "导出配置"))
 
         # Mesh tab callbacks
         self.buttons['mesh']['generate'].clicked.connect(_wrap(main_window.mesh_operations.generate_mesh, "开始生成网格"))
