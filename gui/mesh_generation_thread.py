@@ -21,6 +21,19 @@ for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront
     if subdir_path not in sys.path:
         sys.path.insert(0, subdir_path)
 
+PROGRESS_STEPS = [
+    (10, "正在初始化网格生成参数..."),
+    (20, "正在读取输入网格数据..."),
+    (30, "正在构造初始阵面..."),
+    (40, "正在计算网格尺寸场..."),
+    (50, "正在生成边界层网格..."),
+    (60, "正在推进生成网格..."),
+    (70, "正在优化网格质量..."),
+    (80, "正在合并网格..."),
+    (90, "正在保存网格文件..."),
+    (100, "网格生成完成")
+]
+
 
 class MeshGenerationSignals(QObject):
     """网格生成信号类"""
@@ -40,18 +53,7 @@ class MeshGenerationThread(QThread):
         self.gui_instance = gui_instance
         self.signals = MeshGenerationSignals()
         self._is_running = True
-        self._progress_steps = [
-            (10, "正在初始化网格生成参数..."),
-            (20, "正在读取输入网格数据..."),
-            (30, "正在构造初始阵面..."),
-            (40, "正在计算网格尺寸场..."),
-            (50, "正在生成边界层网格..."),
-            (60, "正在推进生成网格..."),
-            (70, "正在优化网格质量..."),
-            (80, "正在合并网格..."),
-            (90, "正在保存网格文件..."),
-            (100, "网格生成完成")
-        ]
+        self._progress_steps = PROGRESS_STEPS
 
     def run(self):
         """执行网格生成任务"""
@@ -106,18 +108,7 @@ class GUIAdapter:
         self._current_step = 0
         self.ax = None  # 添加ax属性，设置为None以避免core.py中的可视化调用
         self.canvas = None  # 添加canvas属性
-        self._progress_steps = [
-            (10, "正在初始化网格生成参数..."),
-            (20, "正在读取输入网格数据..."),
-            (30, "正在构造初始阵面..."),
-            (40, "正在计算网格尺寸场..."),
-            (50, "正在生成边界层网格..."),
-            (60, "正在推进生成网格..."),
-            (70, "正在优化网格质量..."),
-            (80, "正在合并网格..."),
-            (90, "正在保存网格文件..."),
-            (100, "网格生成完成")
-        ]
+        self._progress_steps = PROGRESS_STEPS
 
     def _update_progress(self, step_index):
         """更新进度"""

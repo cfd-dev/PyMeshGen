@@ -122,6 +122,9 @@ class MeshOperations:
                 from gui.mesh_generation_thread import MeshGenerationThread
                 self.gui.mesh_generation_thread = MeshGenerationThread(params, self.gui.current_mesh, self.gui)
 
+                if hasattr(self.gui, '_reset_progress_cache'):
+                    self.gui._reset_progress_cache("mesh_generation")
+
                 self.gui.mesh_generation_thread.signals.progress.connect(self._on_mesh_progress)
                 self.gui.mesh_generation_thread.signals.finished.connect(self._on_mesh_finished)
                 self.gui.mesh_generation_thread.signals.error.connect(self._on_mesh_error)
@@ -151,13 +154,18 @@ class MeshOperations:
         if self.gui.progress_dialog:
             self.gui.progress_dialog.setValue(progress)
             self.gui.progress_dialog.setLabelText(description)
-        self.gui.update_status(f"网格生成: {description} ({progress}%)")
+        if hasattr(self.gui, '_update_progress'):
+            self.gui._update_progress(f"网格生成: {description}", progress, "mesh_generation")
+        else:
+            self.gui.update_status(f"网格生成: {description} ({progress}%)")
 
     def _on_mesh_finished(self, result_mesh):
         """处理网格生成完成"""
         try:
             if self.gui.progress_dialog:
                 self.gui.progress_dialog.close()
+            if hasattr(self.gui, 'status_bar'):
+                self.gui.status_bar.hide_progress()
 
             if result_mesh:
                 self.gui.current_mesh = result_mesh
@@ -189,6 +197,8 @@ class MeshOperations:
         """处理网格生成错误"""
         if self.gui.progress_dialog:
             self.gui.progress_dialog.close()
+        if hasattr(self.gui, 'status_bar'):
+            self.gui.status_bar.hide_progress()
         QMessageBox.critical(self.gui, "错误", f"网格生成失败:\n{error_msg}")
         self.gui.log_error(f"网格生成失败: {error_msg}")
         self.gui.update_status("网格生成失败")
@@ -208,6 +218,8 @@ class MeshOperations:
             self.gui.update_status("网格生成已取消")
             if self.gui.progress_dialog:
                 self.gui.progress_dialog.close()
+            if hasattr(self.gui, 'status_bar'):
+                self.gui.status_bar.hide_progress()
 
     def check_mesh_quality(self):
         """检查网格质量 - 显示网格质量skewness直方图"""
