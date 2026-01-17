@@ -433,7 +433,7 @@ class RibbonWidget(QWidget):
         self.buttons['view']['background'].clicked.connect(_wrap(main_window.view_controller.set_background_color, "设置背景色"))
 
         # Config tab callbacks
-        self.buttons['config']['params'].clicked.connect(_wrap(main_window.ui_helpers.edit_params, "编辑全局参数"))
+        self.buttons['config']['params'].clicked.connect(_wrap(main_window.config_manager.edit_params, "编辑全局参数"))
         self.buttons['config']['mesh_params'].clicked.connect(_wrap(main_window.part_manager.edit_mesh_params, "编辑部件参数"))
         self.buttons['config']['import_config'].clicked.connect(_wrap(main_window.config_manager.import_config, "导入配置"))
         self.buttons['config']['export_config'].clicked.connect(_wrap(main_window.config_manager.export_config, "导出配置"))
