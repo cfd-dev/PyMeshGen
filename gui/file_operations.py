@@ -385,53 +385,188 @@ class FileOperations:
             
             # 提取节点坐标
             mesh_data.node_coords = reader.points.tolist() if hasattr(reader.points, 'tolist') else list(reader.points)
-            
-            # 提取单元数据
-            mesh_data.cells = []
-            for cell in reader.cells:
+
+            # 提取单元数据（区分表面与体单元）
+            surface_cells = []
+            volume_cells = []
+            line_cells = []
+            cell_groups = []
+            volume_parts_info = {}
+            section_entries = []
+
+            cell_info_list = reader.cell_info if reader.cell_info else []
+            for idx, cell in enumerate(reader.cells):
                 cell_data = cell['data']
-                for cell_nodes in cell_data:
-                    mesh_data.cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                num_cells = cell.get('num_cells', cell_data.shape[0])
+                nodes_per_cell = cell.get('num_nodes', cell_data.shape[1] if cell_data.ndim > 1 else 0)
+                cell_type = cell.get('type', '')
+                cell_info = cell_info_list[idx] if idx < len(cell_info_list) else {}
+                section_name = cell_info.get('name', f"Section_{idx}")
+                element_range = cell_info.get('element_range')
+
+                dimension = self._infer_cgns_cell_dimension(cell_type, nodes_per_cell)
+
+                section_entries.append({
+                    'name': section_name,
+                    'type': cell_type,
+                    'dimension': dimension,
+                    'num_cells': num_cells,
+                    'nodes_per_cell': nodes_per_cell,
+                    'element_range': element_range,
+                    'cell_data': cell_data
+                })
+
+            body_dim = 0
+            for entry in section_entries:
+                if entry['dimension'] in (2, 3):
+                    body_dim = max(body_dim, entry['dimension'])
+
+            boundary_names = set()
+            if reader.boundary_info:
+                for _, part_data in reader.boundary_info.items():
+                    boundary_names.add(part_data.get('bc_name') or part_data.get('family_name'))
+
+            volume_part_name = None
+            if body_dim == 2:
+                volume_part_name = self._get_cgns_volume_part_name(section_entries, boundary_names)
+
+            for entry in section_entries:
+                section_name = entry['name']
+                cell_type = entry['type']
+                dimension = entry['dimension']
+                num_cells = entry['num_cells']
+                nodes_per_cell = entry['nodes_per_cell']
+                element_range = entry['element_range']
+                cell_data = entry['cell_data']
+                indices = []
+
+                if body_dim == 2:
+                    if dimension == 2:
+                        start_index = len(surface_cells)
+                        for cell_nodes in cell_data:
+                            surface_cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                        indices = list(range(start_index, start_index + num_cells))
+                        part_key = volume_part_name or section_name
+                        part_entry = volume_parts_info.get(part_key, {'part_name': part_key})
+                        mesh_elements = part_entry.get('mesh_elements', {})
+                        mesh_elements.setdefault('faces', []).extend(indices)
+                        part_entry['mesh_elements'] = mesh_elements
+                        part_entry.setdefault('bc_type', 'volume')
+                        part_entry.setdefault('cell_type', cell_type)
+                        part_entry.setdefault('cell_dimension', dimension)
+                        volume_parts_info[section_name] = part_entry
+                    elif dimension == 1:
+                        start_index = len(line_cells)
+                        for cell_nodes in cell_data:
+                            line_cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                        indices = list(range(start_index, start_index + num_cells))
+                else:
+                    if dimension == 3:
+                        start_index = len(volume_cells)
+                        for cell_nodes in cell_data:
+                            volume_cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                        indices = list(range(start_index, start_index + num_cells))
+                        part_entry = volume_parts_info.get(section_name, {'part_name': section_name})
+                        mesh_elements = part_entry.get('mesh_elements', {})
+                        mesh_elements.setdefault('bodies', []).extend(indices)
+                        part_entry['mesh_elements'] = mesh_elements
+                        part_entry.setdefault('bc_type', 'volume')
+                        part_entry.setdefault('cell_type', cell_type)
+                        part_entry.setdefault('cell_dimension', dimension)
+                        volume_parts_info[section_name] = part_entry
+                    elif dimension == 2:
+                        start_index = len(surface_cells)
+                        for cell_nodes in cell_data:
+                            surface_cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                        indices = list(range(start_index, start_index + num_cells))
+                    elif dimension == 1:
+                        start_index = len(line_cells)
+                        for cell_nodes in cell_data:
+                            line_cells.append(cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes))
+                        indices = list(range(start_index, start_index + num_cells))
+
+                cell_groups.append({
+                    'name': section_name,
+                    'type': cell_type,
+                    'dimension': dimension,
+                    'num_cells': num_cells,
+                    'nodes_per_cell': nodes_per_cell,
+                    'indices': indices,
+                    'element_range': element_range
+                })
+
+            mesh_data.cells = surface_cells
+            mesh_data.volume_cells = volume_cells
+            mesh_data.cell_groups = cell_groups
+            if line_cells:
+                mesh_data.line_cells = line_cells
             
             # 提取元数据
             if reader.metadata:
                 mesh_data.metadata = reader.metadata
             
             # 提取边界信息并转换为parts_info
+            parts_info = {}
+            boundary_info_with_faces = {}
             if reader.boundary_info:
-                mesh_data.boundary_info = reader.boundary_info
-                
                 # 将boundary_info转换为parts_info格式，并提取faces数据
-                parts_info = {}
-                boundary_info_with_faces = {}
-                
                 for part_name, part_data in reader.boundary_info.items():
-                    point_range = part_data.get('point_range', [])
                     family_name = part_data.get('family_name', part_name)
-                    
-                    # 从point_range提取faces数据
-                    faces = self._extract_faces_from_point_range(reader.cells, point_range)
-                    
-                    parts_info[part_name] = {
-                        'bc_type': 'boundary',
+                    bc_name = part_data.get('bc_name') or part_name
+                    grid_location = (part_data.get('grid_location') or '').lower()
+                    element_indices = []
+
+                    element_list = part_data.get('element_list')
+                    element_range = part_data.get('element_range')
+                    point_list = part_data.get('point_list')
+                    point_range = part_data.get('point_range')
+
+                    if element_list:
+                        element_indices = [int(v) for v in element_list]
+                    elif element_range and len(element_range) >= 2:
+                        element_indices = list(range(int(element_range[0]), int(element_range[1]) + 1))
+                    elif grid_location not in ('vertex', 'vertices'):
+                        if point_list:
+                            element_indices = [int(v) for v in point_list]
+                        elif point_range and len(point_range) >= 2:
+                            element_indices = list(range(int(point_range[0]), int(point_range[1]) + 1))
+
+                    faces = self._extract_faces_from_element_indices(reader.cells, reader.cell_info, element_indices)
+
+                    boundary_part_name = bc_name
+                    if boundary_part_name in volume_parts_info:
+                        boundary_part_name = f"{boundary_part_name}_boundary"
+
+                    parts_info[boundary_part_name] = {
+                        'bc_type': part_data.get('bc_type', 'boundary'),
                         'point_range': point_range,
+                        'element_range': element_range,
                         'family_name': family_name,
-                        'part_name': part_name,
+                        'grid_location': part_data.get('grid_location'),
+                        'part_name': boundary_part_name,
                         'faces': faces
                     }
-                    
-                    boundary_info_with_faces[part_name] = {
-                        'bc_type': 'boundary',
+
+                    boundary_info_with_faces[boundary_part_name] = {
+                        'bc_type': part_data.get('bc_type', 'boundary'),
                         'point_range': point_range,
+                        'element_range': element_range,
                         'family_name': family_name,
                         'faces': faces
                     }
-                
-                mesh_data.parts_info = parts_info
-                mesh_data.boundary_info = boundary_info_with_faces
-            else:
-                mesh_data.boundary_info = {}
-                mesh_data.parts_info = {}
+
+            # 添加体单元部件信息
+            if volume_parts_info:
+                for part_name, section_data in volume_parts_info.items():
+                    target_name = part_name
+                    if target_name in parts_info:
+                        target_name = f"{target_name}_volume"
+                    updated_section = dict(section_data)
+                    updated_section['part_name'] = target_name
+                    parts_info[target_name] = updated_section
+
+            mesh_data.parts_info = parts_info
+            mesh_data.boundary_info = boundary_info_with_faces
             
             # 创建 VTK PolyData 对象用于可视化
             try:
@@ -463,18 +598,27 @@ class FileOperations:
             
             # 更新计数
             mesh_data.update_counts()
-            
+
+            self._log(self._format_cgns_summary(section_entries, body_dim))
+
             self._log(f"✅ 成功读取 CGNS 文件")
             self._log(f"   节点数: {len(mesh_data.node_coords)}")
             self._log(f"   单元数: {len(mesh_data.cells)}")
+            if mesh_data.volume_cells:
+                self._log(f"   体单元数: {len(mesh_data.volume_cells)}")
             
             # 记录边界信息
             if mesh_data.parts_info:
-                self._log(f"   边界数: {len(mesh_data.parts_info)}")
+                self._log(f"   部件数: {len(mesh_data.parts_info)}")
                 for part_name, part_data in mesh_data.parts_info.items():
-                    point_range = part_data.get('point_range', [])
-                    if point_range:
-                        self._log(f"   - {part_name}: 节点范围 [{point_range[0]}, {point_range[1]}]")
+                    range_info = part_data.get('element_range') or part_data.get('point_range')
+                    mesh_elements = part_data.get('mesh_elements', {})
+                    if range_info and len(range_info) >= 2:
+                        self._log(f"   - {part_name}: 单元范围 [{range_info[0]}, {range_info[1]}]")
+                    elif mesh_elements.get('bodies'):
+                        self._log(f"   - {part_name}: 体单元 {len(mesh_elements.get('bodies', []))} 个")
+                    elif part_data.get('faces'):
+                        self._log(f"   - {part_name}: 面 {len(part_data.get('faces', []))} 个")
                     else:
                         self._log(f"   - {part_name}")
             
@@ -532,6 +676,120 @@ class FileOperations:
             current_global_idx += num_cells
         
         return faces
+
+    def _extract_faces_from_element_indices(self, cells, cell_info, element_indices):
+        """从单元索引列表提取边界faces（2D面/1D线）"""
+        faces = []
+        if not element_indices:
+            return faces
+
+        current_global_idx = 1  # CGNS使用1基索引
+        for idx, cell_group in enumerate(cells):
+            cell_data = cell_group['data']
+            num_cells = cell_data.shape[0]
+            nodes_per_cell = cell_group.get('num_nodes', cell_data.shape[1] if cell_data.ndim > 1 else 0)
+            cell_type = cell_group.get('type', '')
+
+            dimension = self._infer_cgns_cell_dimension(cell_type, nodes_per_cell)
+            if dimension not in (1, 2):
+                current_global_idx += num_cells
+                continue
+
+            info = cell_info[idx] if cell_info and idx < len(cell_info) else {}
+            element_range = info.get('element_range')
+            if element_range and len(element_range) >= 2:
+                group_start = int(element_range[0])
+                group_end = int(element_range[1])
+            else:
+                group_start = current_global_idx
+                group_end = current_global_idx + num_cells - 1
+
+            for elem_id in element_indices:
+                if group_start <= elem_id <= group_end:
+                    local_index = elem_id - group_start
+                    if 0 <= local_index < num_cells:
+                        cell_nodes = cell_data[local_index]
+                        faces.append({
+                            'nodes': cell_nodes.tolist() if hasattr(cell_nodes, 'tolist') else list(cell_nodes)
+                        })
+
+            current_global_idx += num_cells
+
+        return faces
+
+    def _infer_cgns_cell_dimension(self, cell_type, nodes_per_cell):
+        """根据单元类型与节点数判断单元维度"""
+        cell_type = (cell_type or '').lower()
+        if 'bar' in cell_type or 'line' in cell_type:
+            return 1
+        if 'tri' in cell_type:
+            return 2
+        if 'quad' in cell_type:
+            return 2
+        if 'tet' in cell_type or 'hexa' in cell_type or 'hex' in cell_type or 'wedge' in cell_type or 'prism' in cell_type or 'penta' in cell_type or 'pyra' in cell_type:
+            return 3
+        if nodes_per_cell <= 2:
+            return 1
+        if nodes_per_cell in (3, 4):
+            return 2
+        return 3
+
+    def _get_cgns_volume_part_name(self, section_entries, boundary_names):
+        candidates = []
+        for entry in section_entries:
+            if entry['dimension'] != 2:
+                continue
+            section_name = entry['name']
+            if section_name in boundary_names:
+                continue
+            candidates.append(section_name)
+        if candidates:
+            unique = []
+            for name in candidates:
+                if name not in unique:
+                    unique.append(name)
+            for name in unique:
+                if name.lower() == 'fluid':
+                    return name
+            if len(unique) == 1:
+                return unique[0]
+        return "Fluid"
+
+    def _format_cgns_summary(self, section_entries, body_dim):
+        line_count = 0
+        tri_count = 0
+        quad_count = 0
+        volume_count = 0
+
+        for entry in section_entries:
+            dimension = entry['dimension']
+            cell_type = (entry.get('type') or '').lower()
+            count = entry.get('num_cells', 0)
+            if dimension == 1:
+                line_count += count
+            elif dimension == 2:
+                if 'tri' in cell_type:
+                    tri_count += count
+                elif 'quad' in cell_type:
+                    quad_count += count
+                else:
+                    tri_count += count
+            elif dimension == 3:
+                volume_count += count
+
+        summary = "   CGNS统计: "
+        parts = []
+        if line_count:
+            parts.append(f"线单元 {line_count}")
+        if quad_count:
+            parts.append(f"四边形 {quad_count}")
+        if tri_count:
+            parts.append(f"三角形 {tri_count}")
+        if volume_count:
+            parts.append(f"体单元 {volume_count}")
+        if not parts:
+            parts.append("未识别单元")
+        return summary + ", ".join(parts)
 
     def _import_cas(self, file_path):
         """导入CAS文件 - 用于CFD网格"""

@@ -1174,6 +1174,7 @@ class MeshDisplayArea:
 
             # 直接从mesh_data中获取部件信息，支持更多数据格式
             part_faces = []
+            part_data = None
 
             # 优先使用传递的parts_info
             if parts_info:
@@ -1276,6 +1277,12 @@ class MeshDisplayArea:
                             part_data = self.mesh_data[key]
                             part_faces = part_data.get('faces', []) if isinstance(part_data, dict) else []
                             break
+
+            # 如果已有部件数据但无面数据，避免回退显示整个网格
+            if not part_faces and part_data:
+                if render_immediately:
+                    self.render_window.Render()
+                return False
 
             # 检查是否有面数据
             if part_faces:
@@ -1380,6 +1387,18 @@ class MeshDisplayArea:
             print(f"显示部件时出错: {str(e)}")
             return False
 
+    def _is_volume_part(self, part_data):
+        if not isinstance(part_data, dict):
+            return False
+        mesh_elements = part_data.get('mesh_elements') or {}
+        if mesh_elements.get('bodies'):
+            return True
+        if part_data.get('cell_dimension') == 3:
+            return True
+        if part_data.get('bc_type') == 'volume':
+            return True
+        return False
+
     def show_only_selected_part(self, part_name, parts_info=None):
         """只显示选中的部件，隐藏其他所有部件
 
@@ -1404,23 +1423,31 @@ class MeshDisplayArea:
 
             # 直接从mesh_data中获取部件信息，支持更多数据格式
             part_faces = []
+            part_data = None
 
             # 优先使用传递的parts_info
             if parts_info:
                 if isinstance(parts_info, dict) and part_name in parts_info:
-                    part_faces = parts_info[part_name].get('faces', [])
+                    part_data = parts_info[part_name]
+                    part_faces = part_data.get('faces', [])
             # 然后检查mesh_data中是否有parts_info
             elif isinstance(self.mesh_data, dict) and 'parts_info' in self.mesh_data:
                 parts_info = self.mesh_data['parts_info']
                 if isinstance(parts_info, dict) and part_name in parts_info:
-                    part_faces = parts_info[part_name].get('faces', [])
+                    part_data = parts_info[part_name]
+                    part_faces = part_data.get('faces', [])
             # 检查是否有边界信息
             elif boundary_info and part_name in boundary_info:
                 part_data = boundary_info[part_name]
                 part_faces = part_data.get("faces", [])
             # 检查是否有直接的部件数据
             elif isinstance(self.mesh_data, dict) and part_name in self.mesh_data:
-                part_faces = self.mesh_data[part_name].get('faces', [])
+                part_data = self.mesh_data[part_name]
+                part_faces = part_data.get('faces', [])
+
+            # 如果已有部件数据但无面数据，避免回退显示整个网格
+            if not part_faces and part_data:
+                return False
 
             # 检查是否有面数据
             if part_faces:

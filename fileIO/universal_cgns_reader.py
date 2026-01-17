@@ -171,8 +171,11 @@ class UniversalCGNSReader:
                         idx_min = elem_range[0]
                         idx_max_or_count = elem_range[1]
 
-                        # 根据单元组名称推断单元类型
-                        cell_type = self._infer_cell_type(key)
+                        # 优先使用ElementType推断单元类型
+                        element_type_name = self._get_element_type_name(obj)
+                        cell_type = self._map_element_type_to_cell_type(element_type_name) if element_type_name else None
+                        if not cell_type:
+                            cell_type = self._infer_cell_type(key)
 
                         # 根据ElementConnectivity数据推断节点数
                         # 需要确定正确的单元数
@@ -183,6 +186,7 @@ class UniversalCGNSReader:
                         # 先尝试几种常见的节点数
                         possible_nodes_per_cell = [2, 3, 4, 5, 6, 8, 9, 10, 20, 27]
                         
+                        range_is_end = False
                         for nodes_per_cell in possible_nodes_per_cell:
                             expected_cells_from_data = elem_conn.shape[0] // nodes_per_cell
                             expected_cells_from_range = idx_max_or_count - idx_min + 1
@@ -190,27 +194,38 @@ class UniversalCGNSReader:
                             if expected_cells_from_data == expected_cells_from_range:
                                 # 格式1: [起始索引, 结束索引]
                                 num_cells = expected_cells_from_data
+                                range_is_end = True
                                 break
                             elif expected_cells_from_data == idx_max_or_count:
                                 # 格式2: [起始索引, 单元数]
                                 num_cells = expected_cells_from_data
+                                range_is_end = False
                                 break
                         else:
                             # 如果都不匹配，使用格式2
                             num_cells = idx_max_or_count
                             # 根据数据大小推断节点数
                             nodes_per_cell = elem_conn.shape[0] // num_cells
+                            range_is_end = False
 
                         # 重塑数据
                         cell_data = np.array(elem_conn).reshape(num_cells, nodes_per_cell) - 1
+
+                        if range_is_end:
+                            element_range_end = idx_max_or_count
+                        else:
+                            element_range_end = idx_min + num_cells - 1
 
                         # 保存单元信息
                         cell_info = {
                             'name': key,
                             'type': cell_type,
                             'count': num_cells,
-                            'nodes_per_cell': nodes_per_cell
+                            'nodes_per_cell': nodes_per_cell,
+                            'element_range': [int(idx_min), int(element_range_end)]
                         }
+                        if element_type_name:
+                            cell_info['element_type_name'] = element_type_name
                         self.cell_info.append(cell_info)
 
                         # 保存单元数据
@@ -226,6 +241,64 @@ class UniversalCGNSReader:
                         continue
 
         return cells
+
+    def _get_element_type_name(self, obj: h5py.Group) -> Optional[str]:
+        if "ElementType" not in obj.keys():
+            return None
+        element_type_obj = obj["ElementType"]
+        data = None
+        if isinstance(element_type_obj, h5py.Group) and " data" in element_type_obj.keys():
+            data = element_type_obj[" data"][()]
+        elif isinstance(element_type_obj, h5py.Dataset):
+            data = element_type_obj[()]
+
+        if data is None:
+            return None
+
+        if isinstance(data, np.ndarray):
+            if data.size == 0:
+                return None
+            data = data.flat[0]
+
+        if isinstance(data, bytes):
+            return data.decode("utf-8", errors="ignore").rstrip("\x00")
+        if isinstance(data, str):
+            return data.strip()
+
+        try:
+            value = int(data)
+        except (TypeError, ValueError):
+            return None
+
+        try:
+            from data_structure.cgns_types import CGNSElementType, CGNSElementTypeName
+            return CGNSElementTypeName.get_name(CGNSElementType(value))
+        except Exception:
+            return None
+
+    def _map_element_type_to_cell_type(self, element_type_name: Optional[str]) -> Optional[str]:
+        if not element_type_name:
+            return None
+        name = element_type_name.lower()
+        if "bar" in name or "line" in name:
+            return "line"
+        if "tri" in name:
+            return "triangle"
+        if "quad" in name:
+            return "quad"
+        if "tet" in name or "tetra" in name:
+            return "tetra"
+        if "hex" in name or "hexa" in name:
+            return "hexahedron"
+        if "penta" in name or "wedge" in name or "prism" in name:
+            return "wedge"
+        if "pyra" in name:
+            return "pyramid"
+        if "node" in name:
+            return "node"
+        if "mixed" in name:
+            return "mixed"
+        return None
 
     def _infer_cell_type(self, name: str) -> str:
         """根据单元组名称推断单元类型"""
@@ -245,9 +318,7 @@ class UniversalCGNSReader:
             return "quad"
         elif "bar" in name_lower or "line" in name_lower:
             return "line"
-        else:
-            # 默认为四面体
-            return "tetra"
+        return None
 
     def _read_metadata(self, f: h5py.File, base: h5py.Group, zone: h5py.Group) -> Dict[str, Any]:
         """读取元数据"""
@@ -299,6 +370,27 @@ class UniversalCGNSReader:
         boundary_info = {}
 
         try:
+            def _read_index_list(node):
+                if isinstance(node, h5py.Group) and ' data' in node.keys():
+                    return node[' data'][:].flatten().tolist()
+                if isinstance(node, h5py.Dataset):
+                    return node[:].flatten().tolist()
+                return None
+
+            def _read_string(node, default=None):
+                if isinstance(node, h5py.Group) and ' data' in node.keys():
+                    data = node[' data']
+                    try:
+                        return data[:].tobytes().decode('utf-8').rstrip('\x00')
+                    except Exception:
+                        return default
+                if isinstance(node, h5py.Dataset):
+                    try:
+                        return node[:].tobytes().decode('utf-8').rstrip('\x00')
+                    except Exception:
+                        return default
+                return default
+
             # 查找ZoneBC节点
             zone_bc = zone.get('ZoneBC')
             if not zone_bc:
@@ -313,28 +405,28 @@ class UniversalCGNSReader:
                 if not isinstance(bc, h5py.Group):
                     continue
 
-                # 读取PointRange
-                point_range = None
-                if 'PointRange' in bc.keys():
-                    point_range_obj = bc['PointRange']
-                    if isinstance(point_range_obj, h5py.Group) and ' data' in point_range_obj.keys():
-                        data = point_range_obj[' data']
-                        point_range = data[:].flatten().tolist()
+                # 读取PointRange/PointList/ElementRange/ElementList
+                point_range = _read_index_list(bc.get('PointRange'))
+                point_list = _read_index_list(bc.get('PointList'))
+                element_range = _read_index_list(bc.get('ElementRange'))
+                element_list = _read_index_list(bc.get('ElementList'))
+
+                # 读取GridLocation与BCType
+                grid_location = _read_string(bc.get('GridLocation'))
+                bc_type = _read_string(bc.get('BCType'), default=bc_name)
 
                 # 读取FamilyName
-                family_name = bc_name
-                if 'FamilyName' in bc.keys():
-                    family_name_obj = bc['FamilyName']
-                    if isinstance(family_name_obj, h5py.Group) and ' data' in family_name_obj.keys():
-                        data = family_name_obj[' data']
-                        try:
-                            family_name = data[:].tobytes().decode('utf-8').rstrip('\x00')
-                        except:
-                            family_name = bc_name
+                family_name = _read_string(bc.get('FamilyName'), default=bc_name)
 
                 # 保存边界信息
                 boundary_info[family_name] = {
+                    'bc_name': bc_name,
                     'point_range': point_range,
+                    'point_list': point_list,
+                    'element_range': element_range,
+                    'element_list': element_list,
+                    'grid_location': grid_location,
+                    'bc_type': bc_type,
                     'family_name': family_name
                 }
 
