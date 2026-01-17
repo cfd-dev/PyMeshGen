@@ -895,13 +895,14 @@ class PyMeshGenGUI(QMainWindow):
             self.geometry_edges_actor = None
             self.geometry_points_actor = None
 
-            self.update_status("正在创建几何显示...")
+            # 对于STL文件，立即创建显示；对于非STL文件，仅存储几何数据，等待模型树加载后显示
+            if file_ext == ".stl":
+                self.update_status("正在创建几何显示...")
 
-            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
-                from fileIO.occ_to_vtk import create_geometry_edges_actor
-                stl_displayed = False
+                if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                    from fileIO.occ_to_vtk import create_geometry_edges_actor
+                    stl_displayed = False
 
-                if file_ext == ".stl":
                     try:
                         import vtk
 
@@ -940,50 +941,54 @@ class PyMeshGenGUI(QMainWindow):
                     except Exception as e:
                         self.log_warning(f"STL显示失败，回退到OCC显示: {str(e)}")
 
-                if not stl_displayed:
-                    has_surface = (stats.get('num_faces', 0) + stats.get('num_solids', 0)) > 0
-                    has_edges = stats.get('num_edges', 0) > 0
-                    has_vertices = stats.get('num_vertices', 0) > 0
+                    if not stl_displayed:
+                        has_surface = (stats.get('num_faces', 0) + stats.get('num_solids', 0)) > 0
+                        has_edges = stats.get('num_edges', 0) > 0
+                        has_vertices = stats.get('num_vertices', 0) > 0
 
-                    if has_surface:
-                        self.geometry_actor = create_shape_actor(
-                            shape,
-                            mesh_quality=8.0,
-                            display_mode='surface',
-                            color=(0.8, 0.8, 0.9),
-                            opacity=0.8
-                        )
-                        self.mesh_display.renderer.AddActor(self.geometry_actor)
-                        self.geometry_actors['main'] = [self.geometry_actor]
+                        if has_surface:
+                            self.geometry_actor = create_shape_actor(
+                                shape,
+                                mesh_quality=8.0,
+                                display_mode='surface',
+                                color=(0.8, 0.8, 0.9),
+                                opacity=0.8
+                            )
+                            self.mesh_display.renderer.AddActor(self.geometry_actor)
+                            self.geometry_actors['main'] = [self.geometry_actor]
 
-                    if has_edges:
-                        self.geometry_edges_actor = create_geometry_edges_actor(
-                            shape,
-                            color=(0.0, 0.0, 0.0),
-                            line_width=1.5,
-                            sample_rate=0.5,
-                            max_points_per_edge=20
-                        )
-                        self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
-                        self.geometry_actors['edges'] = [self.geometry_edges_actor]
+                        if has_edges:
+                            self.geometry_edges_actor = create_geometry_edges_actor(
+                                shape,
+                                color=(0.0, 0.0, 0.0),
+                                line_width=1.5,
+                                sample_rate=0.5,
+                                max_points_per_edge=20
+                            )
+                            self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                            self.geometry_actors['edges'] = [self.geometry_edges_actor]
 
-                    if has_vertices:
-                        self.geometry_points_actor = create_shape_actor(
-                            shape,
-                            mesh_quality=8.0,
-                            display_mode='points',
-                            color=(1.0, 0.0, 0.0),
-                            opacity=1.0
-                        )
-                        self.mesh_display.renderer.AddActor(self.geometry_points_actor)
-                        self.geometry_actors['points'] = [self.geometry_points_actor]
+                        if has_vertices:
+                            self.geometry_points_actor = create_shape_actor(
+                                shape,
+                                mesh_quality=8.0,
+                                display_mode='points',
+                                color=(1.0, 0.0, 0.0),
+                                opacity=1.0
+                            )
+                            self.mesh_display.renderer.AddActor(self.geometry_points_actor)
+                            self.geometry_actors['points'] = [self.geometry_points_actor]
 
-                self.geometry_display_source = "stl" if stl_displayed else "occ"
-                
-                if hasattr(self, 'view_controller'):
-                    self.view_controller._apply_render_mode_to_geometry(self.render_mode)
-                
-                self.mesh_display.fit_view()
+                    self.geometry_display_source = "stl" if stl_displayed else "occ"
+
+                    if hasattr(self, 'view_controller'):
+                        self.view_controller._apply_render_mode_to_geometry(self.render_mode)
+
+                    self.mesh_display.fit_view()
+            else:
+                # 对于非STL文件，不创建初始显示，等待模型树加载完成后显示
+                self.geometry_display_source = "occ"
+                self.log_info(f"非STL文件，跳过初始显示，等待模型树加载...")
 
             self.log_info(f"已导入几何: {file_path}")
             self.update_status("已导入几何")
@@ -1007,23 +1012,100 @@ class PyMeshGenGUI(QMainWindow):
         try:
             if hasattr(self, 'model_tree_widget'):
                 self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
-                
+
                 if hasattr(self, 'cas_parts_info'):
                     self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
                 else:
                     self.log_info(f"导入几何前cas_parts_info不存在")
-                
+
                 if not self._has_geometry_parts_info():
                     self.log_info("开始创建Default部件...")
                     self._create_default_part_for_geometry(shape, stats)
                 else:
                     self.log_info("已存在几何部件信息，跳过Default部件创建")
-                
+
+                # 检查文件扩展名，如果是非STL文件，在模型树加载完成后显示几何
+                file_ext = os.path.splitext(file_path)[1].lower()
+                if file_ext != ".stl":
+                    # 延迟一点时间，确保模型树完全加载
+                    QTimer.singleShot(200, lambda: self._show_non_stl_geometry_after_tree_loaded(shape, stats))
+
                 self.update_status("已导入几何")
                 self.log_info("模型树加载完成")
         except Exception as e:
             self.log_error(f"加载模型树失败: {str(e)}")
             self.update_status("模型树加载失败")
+
+    def _show_non_stl_geometry_after_tree_loaded(self, shape, stats):
+        """在模型树加载完成后显示非STL文件的几何"""
+        try:
+            self.update_status("正在创建几何显示...")
+
+            if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                from fileIO.occ_to_vtk import create_shape_actor, create_geometry_edges_actor
+
+                # 清除之前的几何actors（如果有的话）
+                if hasattr(self, 'geometry_actors') and self.geometry_actors:
+                    for actor_list in self.geometry_actors.values():
+                        for actor in actor_list:
+                            self.mesh_display.renderer.RemoveActor(actor)
+
+                # 重新初始化几何actors
+                self.geometry_actors = {}
+                self.geometry_actor = None
+                self.geometry_edges_actor = None
+                self.geometry_points_actor = None
+
+                # 创建新的几何actors
+                has_surface = (stats.get('num_faces', 0) + stats.get('num_solids', 0)) > 0
+                has_edges = stats.get('num_edges', 0) > 0
+                has_vertices = stats.get('num_vertices', 0) > 0
+
+                if has_surface:
+                    self.geometry_actor = create_shape_actor(
+                        shape,
+                        mesh_quality=8.0,
+                        display_mode='surface',
+                        color=(0.8, 0.8, 0.9),
+                        opacity=0.8
+                    )
+                    self.mesh_display.renderer.AddActor(self.geometry_actor)
+                    self.geometry_actors['main'] = [self.geometry_actor]
+
+                if has_edges:
+                    self.geometry_edges_actor = create_geometry_edges_actor(
+                        shape,
+                        color=(0.0, 0.0, 0.0),
+                        line_width=1.5,
+                        sample_rate=0.5,
+                        max_points_per_edge=20
+                    )
+                    self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
+                    self.geometry_actors['edges'] = [self.geometry_edges_actor]
+
+                if has_vertices:
+                    self.geometry_points_actor = create_shape_actor(
+                        shape,
+                        mesh_quality=8.0,
+                        display_mode='points',
+                        color=(1.0, 0.0, 0.0),
+                        opacity=1.0
+                    )
+                    self.mesh_display.renderer.AddActor(self.geometry_points_actor)
+                    self.geometry_actors['points'] = [self.geometry_points_actor]
+
+                self.geometry_display_source = "occ"
+
+                if hasattr(self, 'view_controller'):
+                    self.view_controller._apply_render_mode_to_geometry(self.render_mode)
+
+                self.mesh_display.fit_view()
+
+                self.update_status("几何显示已创建")
+                self.log_info("非STL文件几何显示已创建")
+        except Exception as e:
+            self.log_error(f"创建非STL几何显示失败: {str(e)}")
+            self.update_status("几何显示创建失败")
 
     def _ensure_cas_parts_info(self):
         """确保cas_parts_info已初始化"""

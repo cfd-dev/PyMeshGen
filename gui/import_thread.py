@@ -18,11 +18,18 @@ class GeometryImportThread(QThread):
     import_finished = pyqtSignal(object)  # 导入的几何形状
     import_failed = pyqtSignal(str)  # 错误信息
 
-    def __init__(self, file_path, create_vtk_actors=True):
+    def __init__(self, file_path, create_vtk_actors=None):
         super().__init__()
         self.file_path = file_path
         self._is_running = True
-        self.create_vtk_actors = create_vtk_actors
+
+        # 如果create_vtk_actors参数未指定，则根据文件扩展名决定
+        if create_vtk_actors is None:
+            file_ext = os.path.splitext(file_path)[1].lower()
+            # 对于STL文件，创建VTK actors；对于其他文件，延迟到模型树加载后显示
+            self.create_vtk_actors = (file_ext == '.stl')
+        else:
+            self.create_vtk_actors = create_vtk_actors
 
     def run(self):
         """执行几何导入操作"""
