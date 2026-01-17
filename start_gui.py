@@ -30,7 +30,6 @@ def main():
     print("正在启动PyMeshGen图形用户界面...")
     print("=" * 30)
 
-    # Launch the PyQt version
     try:
         print("启动GUI...")
         from gui.gui_main import main as gui_main

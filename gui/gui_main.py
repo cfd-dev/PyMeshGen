@@ -60,6 +60,12 @@ def _register_qt_metatypes():
     elif hasattr(QtCore, "QMetaType") and hasattr(QtCore.QMetaType, "registerType"):
         QtCore.QMetaType.registerType(QtGui.QTextCursor)
 
+# 在模块导入时立即注册 QTextCursor 元类型，确保所有线程/信号在使用前已注册该类型
+try:
+    _register_qt_metatypes()
+except Exception:
+    pass
+
 
 class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
@@ -71,7 +77,6 @@ class PyMeshGenGUI(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        _register_qt_metatypes()
         self._setup_window()
         self._setup_fonts()
         self._initialize_modules()

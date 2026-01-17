@@ -603,7 +603,7 @@ class FileOperations:
 
             self._log(f"✅ 成功读取 CGNS 文件")
             self._log(f"   节点数: {len(mesh_data.node_coords)}")
-            self._log(f"   单元数: {len(mesh_data.cells)}")
+            self._log(f"   面单元数: {len(mesh_data.cells)}")
             if mesh_data.volume_cells:
                 self._log(f"   体单元数: {len(mesh_data.volume_cells)}")
             
@@ -617,8 +617,8 @@ class FileOperations:
                         self._log(f"   - {part_name}: 单元范围 [{range_info[0]}, {range_info[1]}]")
                     elif mesh_elements.get('bodies'):
                         self._log(f"   - {part_name}: 体单元 {len(mesh_elements.get('bodies', []))} 个")
-                    elif part_data.get('faces'):
-                        self._log(f"   - {part_name}: 面 {len(part_data.get('faces', []))} 个")
+                    elif mesh_elements.get('faces'):
+                        self._log(f"   - {part_name}: 面 {len(mesh_elements.get('faces', []))} 个")
                     else:
                         self._log(f"   - {part_name}")
             
