@@ -16,8 +16,9 @@ from unittest.mock import Mock
 # 添加项目根目录到sys.path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-sys.path.insert(0, str(project_root / 'data_structure'))
-sys.path.insert(0, str(project_root / 'utils'))
+
+# 导入不依赖GUI的模块
+from utils.message import info, error, warning, debug, verbose, set_debug_level, DEBUG_LEVEL_INFO
 
 try:
     from parameters import Parameters
@@ -25,9 +26,8 @@ try:
     from data_structure.basic_elements import Part, Connector
     from gui.gui_main import PyMeshGenGUI
     from gui.mesh_display import MeshDisplayArea
-    from utils.message import info, error, warning, debug, verbose, set_debug_level, DEBUG_LEVEL_INFO
 except ImportError as e:
-    print(f"导入模块失败: {e}")
+    print(f"导入GUI模块失败: {e}")
 
 
 class TestGUIFunctions(unittest.TestCase):
@@ -298,6 +298,12 @@ class TestImportMesh(unittest.TestCase):
 
     def setUp(self):
         """测试前的设置"""
+        try:
+            from gui.gui_main import PyMeshGenGUI
+            from gui.mesh_display import MeshDisplayArea
+        except ImportError:
+            self.skipTest("PyQt5未安装，跳过GUI相关测试")
+
         self.root = Mock()
         self.root.configure = Mock()
 

@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import Qt
 
+from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
+
 
 class PartManager:
     """部件管理器 - 负责管理网格部件的创建、编辑、删除和显示"""
@@ -121,6 +123,82 @@ class PartManager:
                 self.gui.update_status("部件列表已从CAS更新")
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
+
+    def update_parts_list_from_generated_mesh(self, generated_mesh):
+        """从生成的网格更新部件列表"""
+        try:
+            updated_parts_info = {}
+
+            new_node_coords = None
+            if hasattr(generated_mesh, 'node_coords'):
+                new_node_coords = generated_mesh.node_coords
+
+            node_mapping = None
+            if self.gui.original_node_coords and new_node_coords:
+                node_mapping = self.gui._create_node_index_mapping(
+                    self.gui.original_node_coords,
+                    new_node_coords
+                )
+                if node_mapping:
+                    self.gui.log_info(f"已创建节点索引映射，映射了 {len(node_mapping)} 个节点")
+
+            if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
+                if node_mapping:
+                    mapped_parts_info = self.gui._map_parts_info_to_new_mesh(
+                        self.gui.cas_parts_info,
+                        node_mapping
+                    )
+                    for part_name, part_data in mapped_parts_info.items():
+                        if part_name not in PARTS_INFO_RESERVED_KEYS:
+                            updated_parts_info[part_name] = part_data
+                else:
+                    for part_name, part_data in self.gui.cas_parts_info.items():
+                        if part_name not in PARTS_INFO_RESERVED_KEYS:
+                            updated_parts_info[part_name] = part_data
+
+            if hasattr(generated_mesh, 'cell_container') and generated_mesh.cell_container:
+                for cell in generated_mesh.cell_container:
+                    part_name = getattr(cell, 'part_name', 'interior')
+                    if part_name is None or part_name == '':
+                        part_name = 'interior'
+
+                    if part_name not in updated_parts_info:
+                        updated_parts_info[part_name] = {
+                            'part_name': part_name,
+                            'bc_type': 'interior',
+                            'node_count': 0,
+                            'nodes': []
+                        }
+
+                    if part_name in updated_parts_info:
+                        updated_parts_info[part_name]['node_count'] += 1
+
+            if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
+                for part_name, part_data in generated_mesh.parts_info.items():
+                    if part_name not in PARTS_INFO_RESERVED_KEYS:
+                        if part_name not in updated_parts_info:
+                            updated_parts_info[part_name] = part_data
+                        else:
+                            if isinstance(part_data, dict):
+                                updated_parts_info[part_name].update(part_data)
+
+            if hasattr(generated_mesh, 'boundary_nodes') and generated_mesh.boundary_nodes:
+                extracted_parts = self.gui._extract_parts_from_boundary_nodes(generated_mesh.boundary_nodes)
+                if extracted_parts:
+                    for part_name, part_data in extracted_parts.items():
+                        if (part_name not in updated_parts_info):
+                            updated_parts_info[part_name] = part_data
+
+            if updated_parts_info:
+                self.update_parts_list_from_cas(parts_info=updated_parts_info, update_status=False)
+                self.gui.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
+
+                self.refresh_display_all_parts()
+            else:
+                self.gui.log_info("生成的网格中未检测到部件信息，保持原有部件列表")
+
+        except Exception as e:
+            self.gui.log_error(f"更新部件列表失败: {str(e)}")
 
     def on_part_select(self, item):
         """部件选中事件处理"""

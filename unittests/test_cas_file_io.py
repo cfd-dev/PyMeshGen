@@ -142,6 +142,11 @@ class TestCASImportFixes(unittest.TestCase):
 
     def setUp(self):
         """测试前的设置"""
+        try:
+            from gui.gui_main import PyMeshGenGUI
+        except ImportError:
+            self.skipTest("PyQt5未安装，跳过GUI相关测试")
+
         from unittest.mock import Mock
         self.root = Mock()
         self.root.configure = Mock()
@@ -160,7 +165,6 @@ class TestCASImportFixes(unittest.TestCase):
         self.mesh_display = Mock()
         self.mesh_display.mesh_data = None
 
-        from gui.gui_main import PyMeshGenGUI
         self.app = Mock(spec=PyMeshGenGUI)
         self.app.mesh_display = self.mesh_display
         self.app.mesh_status_label = self.mesh_status_label

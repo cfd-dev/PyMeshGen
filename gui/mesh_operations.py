@@ -302,7 +302,7 @@ class MeshOperations:
                     self.gui.model_tree_widget.load_mesh(result_mesh)
 
                 # 更新部件列表以显示新网格的部件信息
-                self.gui._update_parts_list_from_generated_mesh(result_mesh)
+                self.gui.part_manager.update_parts_list_from_generated_mesh(result_mesh)
 
                 # Refresh display to show all parts with different colors
                 self.gui.part_manager.refresh_display_all_parts()

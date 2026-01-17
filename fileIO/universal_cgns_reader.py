@@ -174,9 +174,7 @@ class UniversalCGNSReader:
                         # 优先使用ElementType推断单元类型
                         element_type_name = self._get_element_type_name(obj)
                         cell_type = self._map_element_type_to_cell_type(element_type_name) if element_type_name else None
-                        if not cell_type:
-                            cell_type = self._infer_cell_type(key)
-
+                        
                         # 根据ElementConnectivity数据推断节点数
                         # 需要确定正确的单元数
                         # ElementRange有两种格式：
@@ -207,6 +205,10 @@ class UniversalCGNSReader:
                             # 根据数据大小推断节点数
                             nodes_per_cell = elem_conn.shape[0] // num_cells
                             range_is_end = False
+                        
+                        # 如果仍然无法推断单元类型，使用节点数推断
+                        if not cell_type:
+                            cell_type = self._infer_cell_type(key, nodes_per_cell)
 
                         # 重塑数据
                         cell_data = np.array(elem_conn).reshape(num_cells, nodes_per_cell) - 1
@@ -300,8 +302,8 @@ class UniversalCGNSReader:
             return "mixed"
         return None
 
-    def _infer_cell_type(self, name: str) -> str:
-        """根据单元组名称推断单元类型"""
+    def _infer_cell_type(self, name: str, nodes_per_cell: int = None) -> str:
+        """根据单元组名称和节点数推断单元类型"""
         name_lower = name.lower()
         
         if "tet" in name_lower:
@@ -318,6 +320,56 @@ class UniversalCGNSReader:
             return "quad"
         elif "bar" in name_lower or "line" in name_lower:
             return "line"
+        
+        # 如果无法从名称推断，尝试根据节点数推断
+        if nodes_per_cell is not None:
+            if nodes_per_cell == 2:
+                return "line"
+            elif nodes_per_cell == 3:
+                return "triangle"
+            elif nodes_per_cell == 4:
+                return "quad"
+            elif nodes_per_cell == 5:
+                return "pyramid"
+            elif nodes_per_cell == 6:
+                return "wedge"
+            elif nodes_per_cell == 8:
+                return "hexahedron"
+            elif nodes_per_cell == 10:
+                return "tetra10"
+            elif nodes_per_cell == 20:
+                return "hexahedron20"
+            elif nodes_per_cell == 27:
+                return "hexahedron27"
+            elif nodes_per_cell == 9:
+                return "quad9"
+            elif nodes_per_cell == 14:
+                return "pyramid14"
+            elif nodes_per_cell == 18:
+                return "wedge18"
+            elif nodes_per_cell == 15:
+                return "triangle15"
+            elif nodes_per_cell == 6 and "tri" in name_lower:
+                return "triangle6"
+            elif nodes_per_cell == 8 and "tri" in name_lower:
+                return "triangle8"
+            elif nodes_per_cell == 9 and "tri" in name_lower:
+                return "triangle9"
+            elif nodes_per_cell == 12 and "tri" in name_lower:
+                return "triangle12"
+            else:
+                # 对于无法识别的节点数，使用通用类型
+                # 根据节点数选择最接近的已知类型
+                if nodes_per_cell <= 4:
+                    return "triangle" if nodes_per_cell == 3 else "quad"
+                elif nodes_per_cell <= 6:
+                    return "wedge"
+                elif nodes_per_cell <= 8:
+                    return "hexahedron"
+                else:
+                    # 对于高阶单元，尝试使用VTK_LAGRANGE类型
+                    return f"VTK_LAGRANGE_TRIANGLE" if "tri" in name_lower else "quad"
+        
         return None
 
     def _read_metadata(self, f: h5py.File, base: h5py.Group, zone: h5py.Group) -> Dict[str, Any]:
@@ -450,7 +502,16 @@ class UniversalCGNSReader:
             # 转换单元格式
             cells = []
             for cell in self.cells:
+                # 检查单元类型是否有效
+                if cell['type'] is None:
+                    print(f"⚠️ 跳过单元组，单元类型为None: {cell.get('name', 'unknown')}, 节点数: {cell.get('num_nodes', 'unknown')}")
+                    continue
                 cells.append((cell['type'], cell['data']))
+
+            # 检查是否有有效的单元
+            if not cells:
+                print(f"❌ 没有有效的单元数据可转换")
+                return None
 
             mesh = meshio.Mesh(
                 points=self.points,
@@ -465,6 +526,8 @@ class UniversalCGNSReader:
 
         except Exception as e:
             print(f"❌ 转换失败: {e}")
+            import traceback
+            traceback.print_exc()
             return None
 
     def print_summary(self):

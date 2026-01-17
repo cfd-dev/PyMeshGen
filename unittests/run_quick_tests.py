@@ -8,15 +8,9 @@ import unittest
 import sys
 from pathlib import Path
 
-# 添加项目根目录和子目录到Python路径
+# 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
-
-# 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
-    subdir_path = project_root / subdir
-    if subdir_path.exists():
-        sys.path.insert(0, str(subdir_path))
 
 # 导入所有测试模块
 import test_vtk_file_io

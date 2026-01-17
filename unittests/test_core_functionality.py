@@ -17,12 +17,6 @@ import numpy as np
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-# 添加子目录到Python路径
-for subdir in ["fileIO", "data_structure", "meshsize", "adfront2", "optimize", "utils", "gui"]:
-    subdir_path = project_root / subdir
-    if subdir_path.exists():
-        sys.path.insert(0, str(subdir_path))
-
 
 class TestCoreFunctionality(unittest.TestCase):
     """核心功能测试类"""
@@ -52,16 +46,22 @@ class TestCoreFunctionality(unittest.TestCase):
         try:
             from gui.gui_main import PyMeshGenGUI
             self.assertTrue(True, "GUI模块导入成功")
-        except Exception as e:
-            self.fail(f"GUI模块导入失败: {e}")
+        except ImportError as e:
+            if "PyQt5" in str(e):
+                self.skipTest("PyQt5未安装，跳过GUI模块导入测试")
+            else:
+                self.fail(f"GUI模块导入失败: {e}")
 
     def test_file_operations(self):
         """测试文件操作功能"""
         try:
             from gui.file_operations import FileOperations
             self.assertTrue(True, "文件操作模块导入成功")
-        except Exception as e:
-            self.fail(f"文件操作模块导入失败: {e}")
+        except ImportError as e:
+            if "PyQt5" in str(e):
+                self.skipTest("PyQt5未安装，跳过文件操作模块导入测试")
+            else:
+                self.fail(f"文件操作模块导入失败: {e}")
 
     def test_import_functionality(self):
         """测试导入功能"""
