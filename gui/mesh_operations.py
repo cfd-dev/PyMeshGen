@@ -280,6 +280,12 @@ class MeshOperations:
             self.gui._update_progress(f"网格生成: {description}", progress, "mesh_generation")
         else:
             self.gui.update_status(f"网格生成: {description} ({progress}%)")
+        if progress >= 100:
+            if self.gui.progress_dialog:
+                self.gui.progress_dialog.close()
+                self.gui.progress_dialog = None
+            if hasattr(self.gui, 'status_bar'):
+                self.gui.status_bar.hide_progress()
 
     def _on_mesh_finished(self, result_mesh):
         """处理网格生成完成"""
