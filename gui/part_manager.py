@@ -803,9 +803,9 @@ class PartManager:
             info_text += f"索引: {element_index}\n"
 
             if element_type == "vertex":
-                from OCC.Core.BRep import BRep_Tool
-                pnt = BRep_Tool.Pnt(element_data)
-                info_text += f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})\n"
+                pnt = self._get_vertex_point(element_data)
+                if pnt is not None:
+                    info_text += f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})\n"
             elif element_type == "edge":
                 edge_length = self._get_edge_length(element_data)
                 if edge_length is not None:
@@ -855,21 +855,29 @@ class PartManager:
             elif category == 'parts':
                 self.refresh_display_all_parts()
 
-    def _get_edge_length(self, edge):
-        """获取边的长度"""
-        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+    def _get_vertex_point(self, vertex):
+        """获取顶点的坐标"""
         from OCC.Core.BRep import BRep_Tool
 
         try:
-            curve = BRep_Tool.Curve(edge)
-            if curve:
-                geom_curve, first, last = curve
-                if geom_curve:
-                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
-                    return length
-        except:
-            pass
-        return None
+            return BRep_Tool.Pnt(vertex)
+        except Exception as e:
+            import logging
+            logging.error(f"获取顶点坐标失败: {e}")
+            return None
+
+    def _get_edge_length(self, edge):
+        """获取边的长度"""
+        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+
+        try:
+            adaptor = BRepAdaptor_Curve(edge)
+            return GCPnts_AbscissaPoint.Length(adaptor)
+        except Exception as e:
+            import logging
+            logging.error(f"获取边长度失败: {e}")
+            return None
 
     def _get_face_area(self, face):
         """获取面的面积"""

@@ -251,10 +251,6 @@ class ModelTreeWidget:
                         vertex_item.setText(1, "")
                         vertex_item.setCheckState(0, Qt.Checked)
                         vertex_item.setData(0, Qt.UserRole, ("geometry", "vertices", vertex, vertex_count))
-
-                        pnt = self._get_vertex_point(vertex)
-                        if pnt:
-                            vertex_item.setToolTip(0, f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})")
                     
                     vertex_count += 1
                     vertex_explorer.Next()
@@ -270,10 +266,6 @@ class ModelTreeWidget:
                         edge_item.setText(1, "")
                         edge_item.setCheckState(0, Qt.Checked)
                         edge_item.setData(0, Qt.UserRole, ("geometry", "edges", edge, edge_count))
-
-                        edge_length = self._get_edge_length(edge)
-                        if edge_length is not None:
-                            edge_item.setToolTip(0, f"长度: {edge_length:.3f}")
                     
                     edge_count += 1
                     edge_explorer.Next()
@@ -289,10 +281,6 @@ class ModelTreeWidget:
                         face_item.setText(1, "")
                         face_item.setCheckState(0, Qt.Checked)
                         face_item.setData(0, Qt.UserRole, ("geometry", "faces", face, face_count))
-
-                        face_area = self._get_face_area(face)
-                        if face_area is not None:
-                            face_item.setToolTip(0, f"面积: {face_area:.3f}")
                     
                     face_count += 1
                     face_explorer.Next()
@@ -308,10 +296,6 @@ class ModelTreeWidget:
                         body_item.setText(1, "")
                         body_item.setCheckState(0, Qt.Checked)
                         body_item.setData(0, Qt.UserRole, ("geometry", "bodies", solid, body_count))
-
-                        body_volume = self._get_solid_volume(solid)
-                        if body_volume is not None:
-                            body_item.setToolTip(0, f"体积: {body_volume:.3f}")
                     
                     body_count += 1
                     body_explorer.Next()
@@ -433,10 +417,6 @@ class ModelTreeWidget:
                 vertex_item.setText(1, "")
                 vertex_item.setCheckState(0, Qt.Checked)
                 vertex_item.setData(0, Qt.UserRole, ("geometry", "vertices", vertex, vertex_count))
-
-                pnt = self._get_vertex_point(vertex)
-                if pnt:
-                    vertex_item.setToolTip(0, f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})")
             
             vertex_count += 1
             explorer.Next()
@@ -451,10 +431,6 @@ class ModelTreeWidget:
                 edge_item.setText(1, "")
                 edge_item.setCheckState(0, Qt.Checked)
                 edge_item.setData(0, Qt.UserRole, ("geometry", "edges", edge, edge_count))
-
-                edge_length = self._get_edge_length(edge)
-                if edge_length is not None:
-                    edge_item.setToolTip(0, f"长度: {edge_length:.3f}")
             
             edge_count += 1
             explorer.Next()
@@ -469,10 +445,6 @@ class ModelTreeWidget:
                 face_item.setText(1, "")
                 face_item.setCheckState(0, Qt.Checked)
                 face_item.setData(0, Qt.UserRole, ("geometry", "faces", face, face_count))
-
-                face_area = self._get_face_area(face)
-                if face_area is not None:
-                    face_item.setToolTip(0, f"面积: {face_area:.3f}")
             
             face_count += 1
             explorer.Next()
@@ -487,10 +459,6 @@ class ModelTreeWidget:
                 body_item.setText(1, "")
                 body_item.setCheckState(0, Qt.Checked)
                 body_item.setData(0, Qt.UserRole, ("geometry", "bodies", solid, body_count))
-
-                body_volume = self._get_solid_volume(solid)
-                if body_volume is not None:
-                    body_item.setToolTip(0, f"体积: {body_volume:.3f}")
             
             body_count += 1
             explorer.Next()
@@ -769,86 +737,6 @@ class ModelTreeWidget:
 
         self.tree.blockSignals(False)
 
-    def _get_vertex_point(self, vertex):
-        """
-        获取顶点的坐标
-
-        Args:
-            vertex: OpenCASCADE TopoDS_Vertex对象
-
-        Returns:
-            gp_Pnt对象
-        """
-        from OCC.Core.BRep import BRep_Tool
-        try:
-            return BRep_Tool.Pnt(vertex)
-        except:
-            return None
-
-    def _get_edge_length(self, edge):
-        """
-        获取边的长度
-
-        Args:
-            edge: OpenCASCADE TopoDS_Edge对象
-
-        Returns:
-            边的长度
-        """
-        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
-        from OCC.Core.BRep import BRep_Tool
-
-        try:
-            curve = BRep_Tool.Curve(edge)
-            if curve:
-                geom_curve, first, last = curve
-                if geom_curve:
-                    length = GCPnts_AbscissaPoint.Length(geom_curve, first, last)
-                    return length
-        except:
-            pass
-        return None
-
-    def _get_face_area(self, face):
-        """
-        获取面的面积
-
-        Args:
-            face: OpenCASCADE TopoDS_Face对象
-
-        Returns:
-            面的面积
-        """
-        from OCC.Core.BRepGProp import brepgprop
-        from OCC.Core.GProp import GProp_GProps
-
-        try:
-            props = GProp_GProps()
-            brepgprop.SurfaceProperties(face, props)
-            return props.Mass()
-        except:
-            return None
-
-    def _get_solid_volume(self, solid):
-        """
-        获取体的体积
-
-        Args:
-            solid: OpenCASCADE TopoDS_Solid对象
-
-        Returns:
-            体的体积
-        """
-        from OCC.Core.BRepGProp import brepgprop
-        from OCC.Core.GProp import GProp_GProps
-
-        try:
-            props = GProp_GProps()
-            brepgprop.VolumeProperties(solid, props)
-            return props.Mass()
-        except:
-            return None
-
     def _on_item_changed(self, item, column):
         """
         树项改变时的回调
@@ -1016,6 +904,34 @@ class ModelTreeWidget:
         collapse_action.triggered.connect(lambda: item.setExpanded(False))
         menu.addAction(collapse_action)
 
+        if isinstance(element_data, tuple) and len(element_data) >= 3:
+            category = element_data[0]
+            element_type = element_data[1]
+            element_obj = element_data[2]
+
+            if category == 'geometry':
+                menu.addSeparator()
+
+                if element_type == 'vertices':
+                    view_coords_action = QAction("查看坐标", self.tree)
+                    view_coords_action.triggered.connect(lambda: self._show_vertex_properties(element_obj, item))
+                    menu.addAction(view_coords_action)
+
+                elif element_type == 'edges':
+                    view_length_action = QAction("查看长度", self.tree)
+                    view_length_action.triggered.connect(lambda: self._show_edge_properties(element_obj, item))
+                    menu.addAction(view_length_action)
+
+                elif element_type == 'faces':
+                    view_area_action = QAction("查看面积", self.tree)
+                    view_area_action.triggered.connect(lambda: self._show_face_properties(element_obj, item))
+                    menu.addAction(view_area_action)
+
+                elif element_type == 'bodies':
+                    view_volume_action = QAction("查看体积", self.tree)
+                    view_volume_action.triggered.connect(lambda: self._show_solid_properties(element_obj, item))
+                    menu.addAction(view_volume_action)
+
         if element_data == "parts":
             menu.addSeparator()
             create_part_action = QAction("创建部件", self.tree)
@@ -1024,6 +940,107 @@ class ModelTreeWidget:
 
         if not menu.isEmpty():
             menu.exec_(self.tree.mapToGlobal(position))
+
+    def _show_vertex_properties(self, vertex, item):
+        """
+        显示顶点属性（按需计算）
+
+        Args:
+            vertex: OpenCASCADE TopoDS_Vertex对象
+            item: 树项
+        """
+        from OCC.Core.BRep import BRep_Tool
+
+        try:
+            pnt = BRep_Tool.Pnt(vertex)
+            coords = f"({pnt.X():.6f}, {pnt.Y():.6f}, {pnt.Z():.6f})"
+
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"顶点坐标: {coords}")
+
+            self.tree.blockSignals(True)
+            item.setToolTip(0, f"坐标: ({pnt.X():.3f}, {pnt.Y():.3f}, {pnt.Z():.3f})")
+            self.tree.blockSignals(False)
+        except Exception as e:
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"获取顶点坐标失败: {str(e)}")
+
+    def _show_edge_properties(self, edge, item):
+        """
+        显示边属性（按需计算）
+
+        Args:
+            edge: OpenCASCADE TopoDS_Edge对象
+            item: 树项
+        """
+        from OCC.Core.GCPnts import GCPnts_AbscissaPoint
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+
+        try:
+            adaptor = BRepAdaptor_Curve(edge)
+            length = GCPnts_AbscissaPoint.Length(adaptor)
+
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"边长度: {length:.6f}")
+
+            self.tree.blockSignals(True)
+            item.setToolTip(0, f"长度: {length:.3f}")
+            self.tree.blockSignals(False)
+        except Exception as e:
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"获取边长度失败: {str(e)}")
+
+    def _show_face_properties(self, face, item):
+        """
+        显示面属性（按需计算）
+
+        Args:
+            face: OpenCASCADE TopoDS_Face对象
+            item: 树项
+        """
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.GProp import GProp_GProps
+
+        try:
+            props = GProp_GProps()
+            brepgprop.SurfaceProperties(face, props)
+            area = props.Mass()
+
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"面面积: {area:.6f}")
+
+            self.tree.blockSignals(True)
+            item.setToolTip(0, f"面积: {area:.3f}")
+            self.tree.blockSignals(False)
+        except Exception as e:
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"获取面面积失败: {str(e)}")
+
+    def _show_solid_properties(self, solid, item):
+        """
+        显示体属性（按需计算）
+
+        Args:
+            solid: OpenCASCADE TopoDS_Solid对象
+            item: 树项
+        """
+        from OCC.Core.BRepGProp import brepgprop
+        from OCC.Core.GProp import GProp_GProps
+
+        try:
+            props = GProp_GProps()
+            brepgprop.VolumeProperties(solid, props)
+            volume = props.Mass()
+
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"体体积: {volume:.6f}")
+
+            self.tree.blockSignals(True)
+            item.setToolTip(0, f"体积: {volume:.3f}")
+            self.tree.blockSignals(False)
+        except Exception as e:
+            if hasattr(self.parent, 'log_info'):
+                self.parent.log_info(f"获取体体积失败: {str(e)}")
 
     def _set_item_visibility(self, item, visible):
         """
