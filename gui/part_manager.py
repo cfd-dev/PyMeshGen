@@ -167,11 +167,14 @@ class PartManager:
                             'part_name': part_name,
                             'bc_type': 'interior',
                             'node_count': 0,
-                            'nodes': []
+                            'nodes': [],
+                            'faces': []
                         }
 
                     if part_name in updated_parts_info:
                         updated_parts_info[part_name]['node_count'] += 1
+                        if hasattr(cell, 'node_ids') and cell.node_ids:
+                            updated_parts_info[part_name]['faces'].append({'nodes': cell.node_ids})
 
             if hasattr(generated_mesh, 'parts_info') and generated_mesh.parts_info:
                 for part_name, part_data in generated_mesh.parts_info.items():
