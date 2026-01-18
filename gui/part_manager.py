@@ -394,8 +394,12 @@ class PartManager:
 
         # Get all currently checked parts from geometry tree widget
         visible_parts = []
+        parts_visible = True
+        mesh_visible = True
         if hasattr(self.gui, 'model_tree_widget'):
             visible_parts = self.gui.model_tree_widget.get_visible_parts()
+            parts_visible = self.gui.model_tree_widget.is_category_visible('parts')
+            mesh_visible = self.gui.model_tree_widget.is_category_visible('mesh')
         elif hasattr(self.gui, 'parts_list_widget'):
             for i in range(self.gui.parts_list_widget.parts_list.count()):
                 item = self.gui.parts_list_widget.parts_list.item(i)
@@ -404,7 +408,7 @@ class PartManager:
                     visible_parts.append(part_name)
 
         # Display only visible parts - 批量处理以提高性能
-        if visible_parts:
+        if mesh_visible and parts_visible and visible_parts:
             # 批量显示所有部件，只渲染一次
             for part_name in visible_parts:
                 self.gui.mesh_display.display_part(part_name, parts_info=self.gui.cas_parts_info, render_immediately=False)
@@ -617,6 +621,13 @@ class PartManager:
         """更新几何元素的显示"""
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
             return
+        if not self.gui.model_tree_widget.is_category_visible('geometry'):
+            self._hide_geometry_element_actors()
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(getattr(self.gui, 'render_mode', 'surface'))
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
+            return
 
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':
             self._update_stl_geometry_visibility()
@@ -638,6 +649,7 @@ class PartManager:
         # 获取可见元素
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
         visible_parts = self.gui.model_tree_widget.get_visible_parts()
+        geometry_visible = self.gui.model_tree_widget.is_category_visible('geometry')
 
         # 从模型树获取所有几何元素（不仅仅是可见的）
         all_elements = self._get_all_geometry_elements_from_tree()
@@ -653,7 +665,7 @@ class PartManager:
                 if isinstance(part_data, dict) and 'geometry_elements' in part_data:
                     part_geometry_elements[part_name] = part_data['geometry_elements']
 
-        if part_geometry_elements and not (len(part_geometry_elements) == 1 and 'DefaultPart' in part_geometry_elements and len(visible_parts) == len(part_geometry_elements)):
+        if geometry_visible and part_geometry_elements and not (len(part_geometry_elements) == 1 and 'DefaultPart' in part_geometry_elements and len(visible_parts) == len(part_geometry_elements)):
             allowed_indices = {'vertices': set(), 'edges': set(), 'faces': set(), 'bodies': set()}
             for part_name in visible_parts:
                 if part_name in part_geometry_elements:
@@ -793,6 +805,13 @@ class PartManager:
     def _update_geometry_display_for_parts(self, visible_parts):
         """根据可见部件更新几何元素的显示"""
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
+            return
+        if not self.gui.model_tree_widget.is_category_visible('geometry'):
+            self._hide_geometry_element_actors()
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(getattr(self.gui, 'render_mode', 'surface'))
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
             return
 
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':

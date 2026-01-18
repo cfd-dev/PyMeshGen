@@ -811,11 +811,13 @@ class PyMeshGenGUI(QMainWindow):
                     self.model_tree_widget.load_parts(mesh_data)
                     # 如果网格文件本身包含部件信息，保留这些信息
                     if hasattr(mesh_data, 'parts_info') and mesh_data.parts_info:
-                        self.cas_parts_info = mesh_data.parts_info.copy()
+                        self._merge_parts_info(mesh_data.parts_info)
                         self.log_info(f"已保留网格文件中的部件信息，共 {len(mesh_data.parts_info)} 个部件")
                     # 如果没有预设部件，自动创建Default部件
                     elif not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
                         self._create_default_part_for_mesh(mesh_data)
+                    if hasattr(self, 'model_tree_widget') and hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                        self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
                     QTimer.singleShot(0, step3_refresh_display)
                 
                 def step3_refresh_display():
@@ -1120,6 +1122,40 @@ class PyMeshGenGUI(QMainWindow):
         """确保cas_parts_info已初始化"""
         if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
             self.cas_parts_info = {}
+
+    def _merge_parts_info(self, parts_info):
+        """合并部件信息，保留已有几何元素"""
+        self._ensure_cas_parts_info()
+        if not parts_info:
+            return
+
+        parts_iter = []
+        if isinstance(parts_info, dict):
+            for part_name, part_data in parts_info.items():
+                if isinstance(part_data, dict):
+                    parts_iter.append((part_name, part_data))
+        elif isinstance(parts_info, list):
+            for idx, part_data in enumerate(parts_info):
+                if isinstance(part_data, dict):
+                    part_name = part_data.get('part_name', f'部件_{idx}')
+                    parts_iter.append((part_name, part_data))
+
+        for part_name, part_data in parts_iter:
+            existing_part = self.cas_parts_info.get(part_name)
+            if isinstance(existing_part, dict):
+                for key, value in part_data.items():
+                    if key == 'geometry_elements' and existing_part.get('geometry_elements'):
+                        continue
+                    if key == 'part_name':
+                        existing_part.setdefault('part_name', value)
+                    else:
+                        existing_part[key] = value
+                existing_part.setdefault('part_name', part_name)
+                self.cas_parts_info[part_name] = existing_part
+            else:
+                part_copy = part_data.copy()
+                part_copy.setdefault('part_name', part_name)
+                self.cas_parts_info[part_name] = part_copy
 
     def _has_geometry_parts_info(self):
         """检查是否已有几何部件信息"""

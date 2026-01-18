@@ -1224,6 +1224,14 @@ class ModelTreeWidget:
 
         return visible_parts
 
+    def is_category_visible(self, category):
+        """检查顶层类别是否可见"""
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            if item.data(0, Qt.UserRole) == category:
+                return item.checkState(0) != Qt.Unchecked
+        return False
+
     def set_all_parts_visible(self, visible=True):
         """
         设置所有部件的可见性
