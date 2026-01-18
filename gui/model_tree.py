@@ -784,7 +784,7 @@ class ModelTreeWidget:
             handler(element_data, item.checkState(0) == Qt.Checked)
         elif isinstance(element_data, tuple) and len(element_data) >= 2:
             category = element_data[0]
-            
+
             # 对于部件，element_data 格式为 ("parts", part_data, part_count)
             # 我们只需要传递 category 和 element_index
             if category == 'parts' and len(element_data) >= 3:
@@ -835,9 +835,12 @@ class ModelTreeWidget:
             check_state: 选中状态
         """
         self.tree.blockSignals(True)
-        for i in range(item.childCount()):
-            child = item.child(i)
-            child.setCheckState(0, check_state)
+        def update_descendants(parent_item):
+            for i in range(parent_item.childCount()):
+                child = parent_item.child(i)
+                child.setCheckState(0, check_state)
+                update_descendants(child)
+        update_descendants(item)
         self.tree.blockSignals(False)
 
     def _update_parent_item(self, item):
@@ -872,6 +875,7 @@ class ModelTreeWidget:
         else:
             parent.setCheckState(0, Qt.PartiallyChecked)
         self.tree.blockSignals(False)
+        self._update_parent_item(parent)
 
     def _show_context_menu(self, position):
         """
@@ -903,6 +907,16 @@ class ModelTreeWidget:
         collapse_action = QAction("折叠", self.tree)
         collapse_action.triggered.connect(lambda: item.setExpanded(False))
         menu.addAction(collapse_action)
+
+        if element_data in ("geometry", "mesh", "parts"):
+            menu.addSeparator()
+            full_action = QAction("整体显示", self.tree)
+            full_action.triggered.connect(lambda: self._set_display_mode("full"))
+            menu.addAction(full_action)
+
+            element_action = QAction("元素显示", self.tree)
+            element_action.triggered.connect(lambda: self._set_display_mode("elements"))
+            menu.addAction(element_action)
 
         if isinstance(element_data, tuple) and len(element_data) >= 3:
             category = element_data[0]
@@ -1050,9 +1064,21 @@ class ModelTreeWidget:
             item: 树项
             visible: 是否可见
         """
-        self.tree.blockSignals(True)
-        item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
-        self.tree.blockSignals(False)
+        target_state = Qt.Checked if visible else Qt.Unchecked
+        if item.checkState(0) == target_state:
+            return
+        item.setCheckState(0, target_state)
+
+    def _set_display_mode(self, mode):
+        """设置全局显示模式并刷新"""
+        if hasattr(self.parent, 'display_mode'):
+            self.parent.display_mode = mode
+        else:
+            self.parent.display_mode = mode
+
+        handler = self._get_parent_handler('on_display_mode_changed')
+        if handler:
+            handler(mode)
 
     def _create_part_dialog(self):
         """显示创建部件对话框"""

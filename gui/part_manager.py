@@ -621,72 +621,167 @@ class PartManager:
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':
             self._update_stl_geometry_visibility()
             return
+        display_mode = getattr(self.gui, 'display_mode', 'full')
+        if display_mode != 'elements':
+            self._hide_geometry_element_actors()
+            render_mode = getattr(self.gui, 'render_mode', 'surface')
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
+            return
 
+        # 初始化几何actors缓存（如果尚未初始化）
+        if not hasattr(self.gui, 'geometry_actors_cache'):
+            self.gui.geometry_actors_cache = {}
+
+        # 获取可见元素
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
+        visible_parts = self.gui.model_tree_widget.get_visible_parts()
 
-        if hasattr(self.gui, 'geometry_actors'):
-            for elem_type, actors in self.gui.geometry_actors.items():
-                for actor in actors:
-                    if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                        self.gui.mesh_display.renderer.RemoveActor(actor)
+        # 从模型树获取所有几何元素（不仅仅是可见的）
+        all_elements = self._get_all_geometry_elements_from_tree()
 
-        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_actor)
-            self.gui.geometry_actor = None
+        # 更新actors缓存，确保每个元素都有对应的actor
+        self._update_actors_cache(all_elements)
 
-        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_edges_actor)
-            self.gui.geometry_edges_actor = None
-        
-        if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_points_actor)
-            self.gui.geometry_points_actor = None
+        # 根据可见部件过滤元素索引
+        allowed_indices = None
+        part_geometry_elements = {}
+        if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
+            for part_name, part_data in self.gui.cas_parts_info.items():
+                if isinstance(part_data, dict) and 'geometry_elements' in part_data:
+                    part_geometry_elements[part_name] = part_data['geometry_elements']
 
-        self.gui.geometry_actors = {}
+        if part_geometry_elements and not (len(part_geometry_elements) == 1 and 'DefaultPart' in part_geometry_elements and len(visible_parts) == len(part_geometry_elements)):
+            allowed_indices = {'vertices': set(), 'edges': set(), 'faces': set(), 'bodies': set()}
+            for part_name in visible_parts:
+                if part_name in part_geometry_elements:
+                    for elem_type, indices in part_geometry_elements[part_name].items():
+                        if elem_type in allowed_indices:
+                            allowed_indices[elem_type].update(indices)
 
-        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor, create_shape_actor, create_geometry_edges_actor
+        # 设置actors的可见性
+        type_visibility = self._get_element_type_visibility(visible_parts=visible_parts)
+        self._set_actors_visibility(visible_elements, allowed_indices=allowed_indices, type_visibility=type_visibility)
 
-        if 'geometry' in visible_elements and 'vertices' in visible_elements['geometry'] and visible_elements['geometry']['vertices']:
-            self.gui.geometry_actors['vertices'] = []
-            for elem_index, elem_data in visible_elements['geometry']['vertices']:
-                actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
-                self.gui.geometry_actors['vertices'].append(actor)
-                if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                    self.gui.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'edges' in visible_elements['geometry'] and visible_elements['geometry']['edges']:
-            self.gui.geometry_actors['edges'] = []
-            for elem_index, elem_data in visible_elements['geometry']['edges']:
-                actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
-                self.gui.geometry_actors['edges'].append(actor)
-                if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                    self.gui.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'faces' in visible_elements['geometry'] and visible_elements['geometry']['faces']:
-            self.gui.geometry_actors['faces'] = []
-            for elem_index, elem_data in visible_elements['geometry']['faces']:
-                actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
-                self.gui.geometry_actors['faces'].append(actor)
-                if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                    self.gui.mesh_display.renderer.AddActor(actor)
-
-        if 'geometry' in visible_elements and 'bodies' in visible_elements['geometry'] and visible_elements['geometry']['bodies']:
-            self.gui.geometry_actors['bodies'] = []
-            for elem_index, elem_data in visible_elements['geometry']['bodies']:
-                actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
-                self.gui.geometry_actors['bodies'].append(actor)
-                if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                    self.gui.mesh_display.renderer.AddActor(actor)
-
+        # 应用渲染模式
         render_mode = getattr(self.gui, 'render_mode', 'surface')
         if hasattr(self.gui, 'view_controller'):
             self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
 
+        # 刷新渲染窗口
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
+
+    def _get_all_geometry_elements_from_tree(self):
+        """从模型树获取所有几何元素"""
+        all_elements = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
+
+        geometry_item = None
+        for i in range(self.gui.model_tree_widget.tree.topLevelItemCount()):
+            item = self.gui.model_tree_widget.tree.topLevelItem(i)
+            if item.data(0, Qt.UserRole) == 'geometry':
+                geometry_item = item
+                break
+
+        if geometry_item:
+            for j in range(geometry_item.childCount()):
+                element_type_item = geometry_item.child(j)
+                element_type_data = element_type_item.data(0, Qt.UserRole)
+
+                if isinstance(element_type_data, tuple) and len(element_type_data) >= 2:
+                    elem_category, elem_type = element_type_data[0], element_type_data[1]
+
+                    if elem_type in all_elements:
+                        for k in range(element_type_item.childCount()):
+                            element_item = element_type_item.child(k)
+                            element_data = element_item.data(0, Qt.UserRole)
+
+                            if isinstance(element_data, tuple) and len(element_data) >= 4:
+                                elem_category_data, elem_type_data, elem_obj, elem_index = element_data
+                                if elem_type_data == elem_type:
+                                    all_elements[elem_type].append((elem_index, elem_obj))
+
+        return all_elements
+
+    def _update_actors_cache(self, all_elements):
+        """更新actors缓存，为新元素创建actors"""
+        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
+
+        # 为每种类型的元素更新actors缓存
+        for elem_type, elements in all_elements.items():
+            if elem_type not in self.gui.geometry_actors_cache:
+                self.gui.geometry_actors_cache[elem_type] = {}
+
+            # 检查是否有新元素需要创建actor
+            for elem_index, elem_obj in elements:
+                if elem_index not in self.gui.geometry_actors_cache[elem_type]:
+                    # 创建新的actor
+                    if elem_type == 'vertices':
+                        actor = create_vertex_actor(elem_obj, color=(1.0, 0.0, 0.0), point_size=8.0)
+                    elif elem_type == 'edges':
+                        actor = create_edge_actor(elem_obj, color=(0.0, 0.0, 1.0), line_width=2.0)
+                    elif elem_type == 'faces':
+                        actor = create_face_actor(elem_obj, color=(0.0, 1.0, 0.0), opacity=0.6)
+                    elif elem_type == 'bodies':
+                        actor = create_solid_actor(elem_obj, color=(0.8, 0.8, 0.9), opacity=0.5)
+                    else:
+                        continue
+
+                    # 添加到渲染器
+                    if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
+                        self.gui.mesh_display.renderer.AddActor(actor)
+
+                    # 缓存actor
+                    self.gui.geometry_actors_cache[elem_type][elem_index] = actor
+
+    def _set_actors_visibility(self, visible_elements, allowed_indices=None, type_visibility=None):
+        """设置actors的可见性"""
+        # 首先将所有actors设为不可见
+        for elem_type, actors_dict in self.gui.geometry_actors_cache.items():
+            for actor in actors_dict.values():
+                actor.SetVisibility(False)
+
+        # 然后将可见的actors设为可见
+        if 'geometry' in visible_elements:
+            for elem_type, elements in visible_elements['geometry'].items():
+                if type_visibility is not None and not type_visibility.get(elem_type, False):
+                    continue
+                if elem_type in self.gui.geometry_actors_cache:
+                    for elem_index, elem_obj in elements:
+                        if allowed_indices is not None and elem_index not in allowed_indices.get(elem_type, set()):
+                            continue
+                        if elem_index in self.gui.geometry_actors_cache[elem_type]:
+                            actor = self.gui.geometry_actors_cache[elem_type][elem_index]
+                            actor.SetVisibility(True)
+
+    def _hide_geometry_element_actors(self):
+        """隐藏几何元素actors"""
+        if not hasattr(self.gui, 'geometry_actors_cache'):
+            return
+        for actors_dict in self.gui.geometry_actors_cache.values():
+            for actor in actors_dict.values():
+                actor.SetVisibility(False)
+
+    def _get_element_type_visibility(self, visible_parts=None, render_mode=None):
+        """获取元素类型可见性（与渲染模式和类型勾选一致）"""
+        state = self._get_geometry_visibility_state(visible_parts=visible_parts, render_mode=render_mode)
+        return {
+            'faces': state['show_faces'],
+            'bodies': state['show_faces'],
+            'edges': state['show_edges'],
+            'vertices': state['show_vertices']
+        }
+
+    def cleanup_geometry_actors(self):
+        """清理几何actors缓存"""
+        if hasattr(self.gui, 'geometry_actors_cache'):
+            for elem_type, actors_dict in self.gui.geometry_actors_cache.items():
+                for actor in actors_dict.values():
+                    if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
+                        self.gui.mesh_display.renderer.RemoveActor(actor)
+            self.gui.geometry_actors_cache = {}
 
     def _update_mesh_part_display(self):
         """更新网格部件的显示"""
@@ -703,15 +798,40 @@ class PartManager:
         if getattr(self.gui, 'geometry_display_source', None) == 'stl':
             self._update_stl_geometry_visibility(visible_parts=visible_parts)
             return
+        display_mode = getattr(self.gui, 'display_mode', 'full')
+        if display_mode != 'elements':
+            self._update_geometry_element_display()
+            return
 
+        # 检查是否存在部件几何元素映射
         part_geometry_elements = {}
         if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
             for part_name, part_data in self.gui.cas_parts_info.items():
-                if 'geometry_elements' in part_data:
+                if isinstance(part_data, dict) and 'geometry_elements' in part_data:
                     part_geometry_elements[part_name] = part_data['geometry_elements']
 
-        # 如果没有部件包含几何元素，则显示所有几何元素
-        if not part_geometry_elements:
+        # 没有可见部件时，隐藏所有几何元素显示
+        if not visible_parts:
+            self._hide_geometry_element_actors()
+            render_mode = getattr(self.gui, 'render_mode', 'surface')
+            if hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller._apply_render_mode_to_geometry(render_mode)
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
+            return
+
+        # 如果没有部件包含几何元素，或者只有DefaultPart且所有部件都可见，则显示所有几何元素
+        if not part_geometry_elements or (len(part_geometry_elements) == 1 and 'DefaultPart' in part_geometry_elements and len(visible_parts) == len(part_geometry_elements)):
+            # 没有部件几何元素映射，或所有部件都可见，使用标准的几何元素显示
+            if not hasattr(self.gui, 'geometry_actors_cache'):
+                self.gui.geometry_actors_cache = {}
+            visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
+            all_elements = self._get_all_geometry_elements_from_tree()
+            self._update_actors_cache(all_elements)
+            type_visibility = self._get_element_type_visibility(visible_parts=visible_parts)
+            self._set_actors_visibility(visible_elements, type_visibility=type_visibility)
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
             return
 
         # 收集所有可见部件的几何元素索引
@@ -722,72 +842,14 @@ class PartManager:
                     if elem_type in visible_geometry_indices:
                         visible_geometry_indices[elem_type].update(indices)
 
-        # 获取当前几何元素的可视性
+        # 使用缓存的actors机制来设置可见性
+        if not hasattr(self.gui, 'geometry_actors_cache'):
+            self.gui.geometry_actors_cache = {}
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
-
-        # 移除所有几何元素actor
-        if hasattr(self.gui, 'geometry_actors'):
-            for elem_type, actors in self.gui.geometry_actors.items():
-                for actor in actors:
-                    if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                        self.gui.mesh_display.renderer.RemoveActor(actor)
-
-        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_actor)
-            self.gui.geometry_actor = None
-
-        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_edges_actor)
-            self.gui.geometry_edges_actor = None
-
-        if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
-            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_points_actor)
-            self.gui.geometry_points_actor = None
-
-        self.gui.geometry_actors = {}
-
-        from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
-
-        # 只显示属于可见部件的几何元素
-        if 'geometry' in visible_elements:
-            if 'vertices' in visible_elements['geometry']:
-                self.gui.geometry_actors['vertices'] = []
-                for elem_index, elem_data in visible_elements['geometry']['vertices']:
-                    if visible_geometry_indices['vertices'] and elem_index in visible_geometry_indices['vertices']:
-                        actor = create_vertex_actor(elem_data, color=(1.0, 0.0, 0.0), point_size=8.0)
-                        self.gui.geometry_actors['vertices'].append(actor)
-                        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                            self.gui.mesh_display.renderer.AddActor(actor)
-
-            if 'edges' in visible_elements['geometry']:
-                self.gui.geometry_actors['edges'] = []
-                for elem_index, elem_data in visible_elements['geometry']['edges']:
-                    if visible_geometry_indices['edges'] and elem_index in visible_geometry_indices['edges']:
-                        actor = create_edge_actor(elem_data, color=(0.0, 0.0, 1.0), line_width=2.0)
-                        self.gui.geometry_actors['edges'].append(actor)
-                        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                            self.gui.mesh_display.renderer.AddActor(actor)
-
-            if 'faces' in visible_elements['geometry']:
-                self.gui.geometry_actors['faces'] = []
-                for elem_index, elem_data in visible_elements['geometry']['faces']:
-                    if visible_geometry_indices['faces'] and elem_index in visible_geometry_indices['faces']:
-                        actor = create_face_actor(elem_data, color=(0.0, 1.0, 0.0), opacity=0.6)
-                        self.gui.geometry_actors['faces'].append(actor)
-                        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                            self.gui.mesh_display.renderer.AddActor(actor)
-
-            if 'bodies' in visible_elements['geometry']:
-                self.gui.geometry_actors['bodies'] = []
-                for elem_index, elem_data in visible_elements['geometry']['bodies']:
-                    if visible_geometry_indices['bodies'] and elem_index in visible_geometry_indices['bodies']:
-                        actor = create_solid_actor(elem_data, color=(0.8, 0.8, 0.9), opacity=0.5)
-                        self.gui.geometry_actors['bodies'].append(actor)
-                        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
-                            self.gui.mesh_display.renderer.AddActor(actor)
+        all_elements = self._get_all_geometry_elements_from_tree()
+        self._update_actors_cache(all_elements)
+        type_visibility = self._get_element_type_visibility(visible_parts=visible_parts)
+        self._set_actors_visibility(visible_elements, allowed_indices=visible_geometry_indices, type_visibility=type_visibility)
 
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
@@ -854,6 +916,13 @@ class PartManager:
                 self._update_mesh_part_display()
             elif category == 'parts':
                 self.refresh_display_all_parts()
+
+    def on_display_mode_changed(self, mode):
+        """全局显示模式切换回调"""
+        if hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller._apply_render_mode_to_geometry(getattr(self.gui, 'render_mode', 'surface'))
+        self._update_geometry_element_display()
+        self.refresh_display_all_parts()
 
     def _get_vertex_point(self, vertex):
         """获取顶点的坐标"""

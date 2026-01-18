@@ -437,9 +437,9 @@ def create_edge_actor(edge: TopoDS_Edge,
 
 
 def create_face_actor(face: TopoDS_Face,
-                     color: Tuple[float, float, float] = (0.0, 1.0, 0.0),
-                     opacity: float = 0.8,
-                     mesh_quality: float = 1.0) -> vtk.vtkActor:
+                      color: Tuple[float, float, float] = (0.0, 1.0, 0.0),
+                      opacity: float = 0.8,
+                      mesh_quality: float = 1.0) -> vtk.vtkActor:
     """
     为面创建VTK Actor
     
@@ -459,6 +459,8 @@ def create_face_actor(face: TopoDS_Face,
     points = vtk.vtkPoints()
     triangles = vtk.vtkCellArray()
     
+    BRepMesh_IncrementalMesh(face, mesh_quality, False, True, True).Perform()
+
     loc = TopLoc_Location()
     triangulation = BRep_Tool.Triangulation(face, loc)
     

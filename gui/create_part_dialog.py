@@ -314,35 +314,20 @@ class CreatePartDialog(QDialog):
                 child.setCheckState(0, item.checkState(0))
         elif isinstance(data, tuple) and len(data) >= 3:
             element_type, index, element = data[0], data[1], data[2]
-            
-            if element_type == "vertex":
+            key_map = {
+                "vertex": "vertices",
+                "edge": "edges",
+                "face": "faces",
+                "body": "bodies"
+            }
+            key = key_map.get(element_type)
+            if key:
                 if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_geometry_elements["vertices"]:
-                        self.selected_geometry_elements["vertices"].append(index)
+                    if index not in self.selected_geometry_elements[key]:
+                        self.selected_geometry_elements[key].append(index)
                 else:
-                    if index in self.selected_geometry_elements["vertices"]:
-                        self.selected_geometry_elements["vertices"].remove(index)
-            elif element_type == "edge":
-                if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_geometry_elements["edges"]:
-                        self.selected_geometry_elements["edges"].append(index)
-                else:
-                    if index in self.selected_geometry_elements["edges"]:
-                        self.selected_geometry_elements["edges"].remove(index)
-            elif element_type == "face":
-                if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_geometry_elements["faces"]:
-                        self.selected_geometry_elements["faces"].append(index)
-                else:
-                    if index in self.selected_geometry_elements["faces"]:
-                        self.selected_geometry_elements["faces"].remove(index)
-            elif element_type == "body":
-                if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_geometry_elements["bodies"]:
-                        self.selected_geometry_elements["bodies"].append(index)
-                else:
-                    if index in self.selected_geometry_elements["bodies"]:
-                        self.selected_geometry_elements["bodies"].remove(index)
+                    if index in self.selected_geometry_elements[key]:
+                        self.selected_geometry_elements[key].remove(index)
         
         self.geometry_tree.blockSignals(False)
     
@@ -363,21 +348,20 @@ class CreatePartDialog(QDialog):
                 child.setCheckState(0, item.checkState(0))
         elif isinstance(data, tuple) and len(data) >= 3:
             element_type, index, element = data[0], data[1], data[2]
-            
-            if element_type == "vertex":
+            key_map = {
+                "vertex": "vertices",
+                "edge": "edges",
+                "face": "faces",
+                "body": "bodies"
+            }
+            key = key_map.get(element_type)
+            if key:
                 if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_mesh_elements["vertices"]:
-                        self.selected_mesh_elements["vertices"].append(index)
+                    if index not in self.selected_mesh_elements[key]:
+                        self.selected_mesh_elements[key].append(index)
                 else:
-                    if index in self.selected_mesh_elements["vertices"]:
-                        self.selected_mesh_elements["vertices"].remove(index)
-            elif element_type == "face":
-                if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_mesh_elements["faces"]:
-                        self.selected_mesh_elements["faces"].append(index)
-                else:
-                    if index in self.selected_mesh_elements["faces"]:
-                        self.selected_mesh_elements["faces"].remove(index)
+                    if index in self.selected_mesh_elements[key]:
+                        self.selected_mesh_elements[key].remove(index)
         
         self.mesh_tree.blockSignals(False)
     

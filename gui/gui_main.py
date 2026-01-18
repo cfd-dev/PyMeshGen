@@ -176,7 +176,7 @@ class PyMeshGenGUI(QMainWindow):
         self.import_thread = None             # 导入操作的线程实例
         self._progress_cache = {}             # 进度日志缓存，用于节流输出
         self.geometry_display_source = None   # 几何显示来源（stl/occ）
-        self.geometry_display_mode = "full"   # 几何显示模式（full/elements）
+        self.display_mode = "full"           # 显示模式（full/elements）
         self.geometry_element_actor_cache = {}  # 几何元素actor缓存
 
     def _create_widgets(self):
@@ -889,11 +889,20 @@ class PyMeshGenGUI(QMainWindow):
             bbox_min, bbox_max = stats['bounding_box']
             self.log_info(f"  - 边界框: ({bbox_min[0]:.2f}, {bbox_min[1]:.2f}, {bbox_min[2]:.2f}) 到 ({bbox_max[0]:.2f}, {bbox_max[1]:.2f}, {bbox_max[2]:.2f})")
 
+            # 如果之前有几何，清理其actors缓存
+            if hasattr(self, 'part_manager') and hasattr(self.part_manager, 'cleanup_geometry_actors'):
+                self.part_manager.cleanup_geometry_actors()
+
             self.current_geometry = shape
             self.geometry_actors = {}
             self.geometry_actor = None
             self.geometry_edges_actor = None
             self.geometry_points_actor = None
+
+            # 初始化几何actors缓存
+            if hasattr(self, 'part_manager'):
+                if not hasattr(self, 'geometry_actors_cache'):
+                    self.geometry_actors_cache = {}
 
             # 对于STL文件，立即创建显示；对于非STL文件，仅存储几何数据，等待模型树加载后显示
             if file_ext == ".stl":

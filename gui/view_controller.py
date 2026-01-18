@@ -151,8 +151,8 @@ class ViewController:
                 self.gui.log_info("状态栏已显示")
 
     def _apply_render_mode_to_geometry(self, mode):
-        geometry_display_mode = getattr(self.gui, 'geometry_display_mode', 'full')
-        use_element_display = geometry_display_mode == "elements"
+        display_mode = getattr(self.gui, 'display_mode', 'full')
+        use_element_display = display_mode == "elements"
 
         state = None
         if hasattr(self.gui, 'part_manager') and hasattr(self.gui.part_manager, '_get_geometry_visibility_state'):
