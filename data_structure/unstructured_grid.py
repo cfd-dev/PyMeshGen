@@ -9,7 +9,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fileIO.vtk_io import write_vt
+from fileIO.vtk_io import write_vtk
 from data_structure.vtk_types import VTKCellType
 from utils.message import warning, info
 
