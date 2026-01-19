@@ -28,7 +28,7 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     Returns:
         Unstructured_Grid: The smoothed grid
     """
-    timer = TimeSpan("开始角度基础平滑优化...")
+    timer = TimeSpan("开始基于角度平滑优化...")
     
     # Make sure node2node connectivity is initialized
     if not hasattr(unstr_grid, 'node2node') or unstr_grid.node2node is None:
@@ -41,7 +41,7 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     original_coords = node_coords.copy()
     
     for iteration in range(iterations):
-        info(f"角度基础平滑第 {iteration + 1} 次迭代")
+        info(f"基于角度平滑第 {iteration + 1} 次迭代")
         
         new_coords = node_coords.copy()
         
