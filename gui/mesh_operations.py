@@ -16,7 +16,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QComboBox, QSpinBox
+from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QComboBox, QSpinBox, QDoubleSpinBox
 from PyQt5.QtCore import Qt
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
@@ -461,6 +461,7 @@ class MeshOperations:
             method_combo.addItem("Laplacian", "laplacian")
             method_combo.addItem("基于角度的平滑", "angle_based")
             method_combo.addItem("基于GetMe方法的平滑", "getme")
+            method_combo.addItem("节点扰动", "perturbation")
             method_layout.addWidget(method_label)
             method_layout.addWidget(method_combo)
 
@@ -472,6 +473,15 @@ class MeshOperations:
             iter_layout.addWidget(iter_label)
             iter_layout.addWidget(iter_spin)
 
+            ratio_layout = QHBoxLayout()
+            ratio_label = QLabel("扰动比例:")
+            ratio_spin = QDoubleSpinBox()
+            ratio_spin.setRange(0.0, 10.0)
+            ratio_spin.setSingleStep(0.05)
+            ratio_spin.setValue(0.8)
+            ratio_layout.addWidget(ratio_label)
+            ratio_layout.addWidget(ratio_spin)
+
             button_layout = QHBoxLayout()
             ok_button = QPushButton("确定")
             cancel_button = QPushButton("取消")
@@ -481,10 +491,21 @@ class MeshOperations:
 
             layout.addLayout(method_layout)
             layout.addLayout(iter_layout)
+            layout.addLayout(ratio_layout)
             layout.addLayout(button_layout)
 
             ok_button.clicked.connect(dialog.accept)
             cancel_button.clicked.connect(dialog.reject)
+
+            def _sync_controls():
+                is_perturb = (method_combo.currentData() == "perturbation")
+                iter_label.setVisible(not is_perturb)
+                iter_spin.setVisible(not is_perturb)
+                ratio_label.setVisible(is_perturb)
+                ratio_spin.setVisible(is_perturb)
+
+            method_combo.currentIndexChanged.connect(_sync_controls)
+            _sync_controls()
 
             if dialog.exec_() != QDialog.Accepted:
                 self.gui.log_info("已取消网格平滑")
@@ -493,8 +514,9 @@ class MeshOperations:
 
             method_key = method_combo.currentData() or "laplacian"
             iterations = int(iter_spin.value())
+            ratio = float(ratio_spin.value())
 
-            from optimize.optimize import laplacian_smooth, smooth_mesh_angle_based, smooth_mesh_getme
+            from optimize.optimize import laplacian_smooth, smooth_mesh_angle_based, smooth_mesh_getme, node_perturbation
 
             if method_key == "angle_based":
                 method_name = "基于角度的平滑"
@@ -502,12 +524,15 @@ class MeshOperations:
             elif method_key == "getme":
                 method_name = "基于GetMe方法的平滑"
                 smooth_func = lambda m: smooth_mesh_getme(m, iterations=iterations)
+            elif method_key == "perturbation":
+                method_name = "节点扰动"
+                smooth_func = lambda m: node_perturbation(m, ratio=ratio)
             else:
                 method_name = "Laplacian"
                 smooth_func = lambda m: laplacian_smooth(m, num_iter=iterations)
 
-            self.gui.log_info(f"开始进行{method_name}平滑处理...")
-            self.gui.update_status(f"正在进行{method_name}平滑处理...")
+            self.gui.log_info(f"开始进行{method_name}处理...")
+            self.gui.update_status(f"正在进行{method_name}处理...")
 
             start_time = time.time()
 
@@ -515,6 +540,8 @@ class MeshOperations:
 
             if hasattr(self.gui.current_mesh, 'unstr_grid'):
                 self.gui.current_mesh.unstr_grid = smoothed_mesh
+                if hasattr(smoothed_mesh, 'node_coords'):
+                    self.gui.current_mesh.node_coords = smoothed_mesh.node_coords
             else:
                 self.gui.current_mesh = smoothed_mesh
 
@@ -522,9 +549,13 @@ class MeshOperations:
 
             if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
                 self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
+            if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
+                self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
+                self.gui.mesh_display.display_mesh(render_immediately=False)
 
             self.gui.log_info(f"{method_name}平滑处理完成，耗时: {end_time - start_time:.3f}秒")
-            self.gui.log_info(f"光滑后网格包含 {len(smoothed_mesh.cell_container)} 个单元")
+            if hasattr(smoothed_mesh, 'cell_container'):
+                self.gui.log_info(f"光滑后网格包含 {len(smoothed_mesh.cell_container)} 个单元")
             self.gui.update_status("网格光滑处理完成")
 
             if hasattr(self.gui, 'canvas'):
