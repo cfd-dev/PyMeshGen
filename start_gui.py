@@ -17,8 +17,8 @@ sys.path.insert(0, str(project_root))
 # 添加子目录到Python路径
 for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
-    if subdir_path.exists():
-        sys.path.insert(0, str(subdir_path))
+    if subdir_path.exists() and str(subdir_path) not in sys.path:
+        sys.path.append(str(subdir_path))
 
 # 添加 meshio 到 Python 路径
 meshio_path = project_root / "3rd_party" / "meshio" / "src"

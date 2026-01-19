@@ -31,7 +31,7 @@ SUB_DIRS = [
 
 for dir_path in SUB_DIRS:
     if dir_path not in sys.path:
-        sys.path.insert(0, dir_path)
+        sys.path.append(dir_path)
 
 # Import modules after setting up paths
 from gui.gui_base import (

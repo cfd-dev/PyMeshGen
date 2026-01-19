@@ -19,7 +19,7 @@ if PROJECT_ROOT not in sys.path:
 for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils"]:
     subdir_path = os.path.join(PROJECT_ROOT, subdir)
     if subdir_path not in sys.path:
-        sys.path.insert(0, subdir_path)
+        sys.path.append(subdir_path)
 
 PROGRESS_STEPS = [
     (10, "正在初始化网格生成参数..."),

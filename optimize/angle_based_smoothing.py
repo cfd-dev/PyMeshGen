@@ -8,11 +8,10 @@ adapted for the PyMeshGen project's data structures.
 import numpy as np
 from math import acos, cos, sin
 from utils.geom_toolkit import calculate_distance, triangle_area
-from data_structure.unstructured_grid import Unstructured_Grid as UnstructuredGrid
 from data_structure.basic_elements import Triangle
 from utils.timer import TimeSpan
 from utils.message import info, debug, warning, error
-from optimize.mesh_quality import triangle_shape_quality
+from .mesh_quality import triangle_shape_quality
 
 
 def angle_based_smoothing(unstr_grid, iterations=1):
@@ -23,11 +22,11 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     the angles formed by its neighboring nodes, which helps preserve geometric features.
     
     Args:
-        unstr_grid: UnstructuredGrid object containing the mesh
+        unstr_grid: Unstructured_Grid object containing the mesh
         iterations: Number of smoothing iterations to perform (default: 1)
     
     Returns:
-        UnstructuredGrid: The smoothed grid
+        Unstructured_Grid: The smoothed grid
     """
     timer = TimeSpan("开始角度基础平滑优化...")
     
@@ -137,17 +136,17 @@ def angle_based_smoothing(unstr_grid, iterations=1):
 
 def getme_method(unstr_grid, iterations=1):
     """
-    GetMe method implementation for mesh smoothing.
+    GetMe (Geometric Element Transfer and Mesh Enhancement) method implementation.
     
     This method uses quality-based weighting to determine optimal node positions
-    based on the quality of surrounding triangles.
+    based on quality of surrounding triangles.
     
     Args:
-        unstr_grid: UnstructuredGrid object containing the mesh
+        unstr_grid: Unstructured_Grid object containing the mesh
         iterations: Number of smoothing iterations to perform (default: 1)
     
     Returns:
-        UnstructuredGrid: The smoothed grid
+        Unstructured_Grid: The smoothed grid
     """
     timer = TimeSpan("开始GetMe方法优化...")
     
@@ -187,9 +186,10 @@ def getme_method(unstr_grid, iterations=1):
             # Process each triangle formed with consecutive neighbors
             for i in range(len(extended_neighbor_ids) - 1):
                 # Get three points: current node, current neighbor, next neighbor
-                p1 = node_coords[node_id]  # Current node
-                p2 = node_coords[extended_neighbor_ids[i]]  # Current neighbor
-                p3 = node_coords[extended_neighbor_ids[i + 1]]  # Next neighbor
+                # Use 2D coordinates for GetMe transformation (preserve original z if present)
+                p1 = node_coords[node_id][:2]  # Current node
+                p2 = node_coords[extended_neighbor_ids[i]][:2]  # Current neighbor
+                p3 = node_coords[extended_neighbor_ids[i + 1]][:2]  # Next neighbor
                 
                 # Calculate quality of the triangle before transformation
                 quality_before = _calculate_triangle_quality(p1, p2, p3)

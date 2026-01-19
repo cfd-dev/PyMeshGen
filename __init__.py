@@ -26,8 +26,8 @@ SUBDIRS = [
 
 for subdir in SUBDIRS:
     subdir_path = project_root / subdir
-    if subdir_path.exists():
-        sys.path.insert(0, str(subdir_path))
+    if subdir_path.exists() and str(subdir_path) not in sys.path:
+        sys.path.append(str(subdir_path))
 
 # Import main functions for easy access
 from .core import generate_mesh

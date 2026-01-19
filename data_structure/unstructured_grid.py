@@ -9,13 +9,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from fileIO.vtk_io import write_vtk, parse_vtk_msh
+from fileIO.vtk_io import write_vt
 from data_structure.vtk_types import VTKCellType
 from utils.message import warning, info
-from utils.timer import TimeSpan
-from data_structure.basic_elements import Triangle, Quadrilateral
-from optimize.mesh_quality import quadrilateral_quality2
-from utils import geom_toolkit as geom_tool
 
 
 class Unstructured_Grid:

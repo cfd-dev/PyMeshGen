@@ -26,7 +26,6 @@ sys.path.append(str(root_dir / "utils"))
 
 from utils.timer import TimeSpan
 from utils.message import info, debug, warning, error
-from data_structure.unstructured_grid import Unstructured_Grid as UnstructuredGrid
 from optimize import node_perturbation
 from utils.geom_toolkit import (
     point_in_polygon,
@@ -57,7 +56,7 @@ def adam_optimization_smoothing(unstr_grid,
     by perturbing node positions to minimize a quality objective function.
     
     Args:
-        unstr_grid: UnstructuredGrid object containing the mesh
+        unstr_grid: Unstructured_Grid object containing the mesh
         movement_factor: Maximum displacement factor for node movement (default: 0.1)
         iteration_limit: Maximum number of optimization iterations (default: 100)
         learning_rate: Learning rate for Adam optimizer (default: 0.2)
@@ -69,7 +68,7 @@ def adam_optimization_smoothing(unstr_grid,
         pre_smooth_iter: Number of Laplacian pre-smoothing steps (default: 2)
     
     Returns:
-        UnstructuredGrid: The smoothed grid
+        Unstructured_Grid: The smoothed grid
     """
     timer = TimeSpan("开始Adam优化平滑...")
     
@@ -297,14 +296,14 @@ def drl_smoothing(mesh_data,
     for improving mesh quality.
     
     Args:
-        mesh_data: UnstructuredGrid object containing the mesh
+        mesh_data: Unstructured_Grid object containing the mesh
         max_ring_nodes: Maximum number of ring nodes to consider (default: 10)
         shape_coeff: Shape quality weight in reward calculation (default: 0.5)
         min_coeff: MinQuality weight in reward calculation (default: 0.5)
         iterations: Number of smoothing iterations (default: 1)
     
     Returns:
-        UnstructuredGrid: The smoothed grid
+        Unstructured_Grid: The smoothed grid
     """
     timer = TimeSpan("开始深度强化学习平滑...")
     

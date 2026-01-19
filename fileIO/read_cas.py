@@ -10,6 +10,16 @@ from data_structure.fluent_types import (
     FLUENT_BOUNDARY_TYPES,
     CELL_ZONE_TYPE,
 )
+from data_structure.basic_elements import (
+    NodeElement,
+    Triangle,
+    Quadrilateral,
+    Tetrahedron,
+    Pyramid,
+    Prism,
+    Hexahedron,
+)
+from data_structure.unstructured_grid import Unstructured_Grid
 
 # 预编译正则表达式模式
 HEX_PATTERN = re.compile(r"[0-9a-fA-F]+")
@@ -247,17 +257,6 @@ def reconstruct_mesh_from_cas(raw_cas_data):
     Returns:
         Unstructured_Grid: 转换后的非结构化网格对象
     """
-    from data_structure.basic_elements import (
-        NodeElement,
-        Triangle,
-        Quadrilateral,
-        Tetrahedron,
-        Pyramid,
-        Prism,
-        Hexahedron,
-    )
-    from data_structure.unstructured_grid import Unstructured_Grid
-
     # 提取节点坐标并转换为numpy数组以提高性能
     node_coords = raw_cas_data["nodes"]
     num_nodes = len(node_coords)

@@ -10,12 +10,7 @@ from data_structure.basic_elements import Triangle, Quadrilateral
 import sys
 from pathlib import Path
 
-# Ensure the optimize module directory is in the path
-optimize_dir = str(Path(__file__).parent)
-if optimize_dir not in sys.path:
-    sys.path.insert(0, optimize_dir)
-
-from mesh_quality import quadrilateral_quality2, triangle_shape_quality
+from .mesh_quality import quadrilateral_quality2, triangle_shape_quality
 
 # Import angle-based smoothing functions
 from .angle_based_smoothing import (

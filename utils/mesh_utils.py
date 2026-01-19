@@ -11,7 +11,7 @@ import heapq
 from itertools import combinations
 
 from data_structure.basic_elements import Triangle, Quadrilateral
-from optimize.mesh_quality import quadrilateral_quality2
+from optimize import mesh_quality
 from utils.message import info
 from utils.timer import TimeSpan
 from utils import geom_toolkit as geom_tool
@@ -78,7 +78,7 @@ def merge_triangles_to_quads(unstr_grid):
         tri1.init_metrics()
         tri2.init_metrics()
         tri_quality = (tri1.quality + tri2.quality) / 2
-        quad_quality = quadrilateral_quality2(
+        quad_quality = mesh_quality.quadrilateral_quality2(
             node_coords[a], node_coords[c], node_coords[b], node_coords[d]
         )
 

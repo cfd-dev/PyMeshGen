@@ -6,6 +6,9 @@ optimize subpackage for PyMeshGen
 
 import importlib
 
+# 直接导入 mesh_quality 模块，因为它不会导致循环导入
+from . import mesh_quality
+
 # 缓存已导入的模块
 _module_cache = {}
 
@@ -17,9 +20,6 @@ _IMPORT_MAP = {
     'hybrid_smooth': ('optimize', 'hybrid_smooth'),
     'optimize_hybrid_grid': ('optimize', 'optimize_hybrid_grid'),
     'node_perturbation': ('optimize', 'node_perturbation'),
-    
-    # 从 mesh_quality 导入的模块
-    'mesh_quality': ('mesh_quality', None),
     
     # 从 angle_based_smoothing 导入的函数
     'smooth_mesh_angle_based': ('angle_based_smoothing', 'smooth_mesh_angle_based'),
@@ -98,4 +98,7 @@ def __dir__():
     Returns:
         可用属性名的列表
     """
-    return list(_IMPORT_MAP.keys())
+    attributes = list(_IMPORT_MAP.keys())
+    # 添加直接导入的模块
+    attributes.append('mesh_quality')
+    return attributes
