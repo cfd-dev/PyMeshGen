@@ -478,7 +478,7 @@ class MeshOperations:
             ratio_spin = QDoubleSpinBox()
             ratio_spin.setRange(0.0, 10.0)
             ratio_spin.setSingleStep(0.05)
-            ratio_spin.setValue(0.8)
+            ratio_spin.setValue(0.5)
             ratio_layout.addWidget(ratio_label)
             ratio_layout.addWidget(ratio_spin)
 
