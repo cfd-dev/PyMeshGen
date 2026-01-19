@@ -461,6 +461,7 @@ class MeshOperations:
             method_combo.addItem("Laplacian", "laplacian")
             method_combo.addItem("基于角度的平滑", "angle_based")
             method_combo.addItem("基于GetMe方法的平滑", "getme")
+            method_combo.addItem("基于NN的平滑", "nn_based")
             method_combo.addItem("节点扰动", "perturbation")
             method_layout.addWidget(method_label)
             method_layout.addWidget(method_combo)
@@ -516,7 +517,13 @@ class MeshOperations:
             iterations = int(iter_spin.value())
             ratio = float(ratio_spin.value())
 
-            from optimize.optimize import laplacian_smooth, smooth_mesh_angle_based, smooth_mesh_getme, node_perturbation
+            from optimize.optimize import (
+                laplacian_smooth,
+                smooth_mesh_angle_based,
+                smooth_mesh_getme,
+                smooth_mesh_nn,
+                node_perturbation,
+            )
 
             if method_key == "angle_based":
                 method_name = "基于角度的平滑"
@@ -527,6 +534,14 @@ class MeshOperations:
             elif method_key == "perturbation":
                 method_name = "节点扰动"
                 smooth_func = lambda m: node_perturbation(m, ratio=ratio)
+            elif method_key == "nn_based":
+                if smooth_mesh_nn is None:
+                    QMessageBox.information(self.gui, "提示", "当前环境未安装Torch，无法使用NN平滑")
+                    self.gui.log_info("NN平滑不可用：未安装Torch")
+                    self.gui.update_status("NN平滑不可用")
+                    return
+                method_name = "基于NN的平滑"
+                smooth_func = lambda m: smooth_mesh_nn(m, iterations=iterations)
             else:
                 method_name = "Laplacian"
                 smooth_func = lambda m: laplacian_smooth(m, num_iter=iterations)

@@ -24,6 +24,8 @@ from .angle_based_smoothing import (
 try:
     from .nn_smoothing import (
         nn_smoothing_adam,
+        nn_based_smoothing,
+        smooth_mesh_nn,
         smooth_mesh_drl,
         adam_optimization_smoothing,
         drl_smoothing
@@ -32,6 +34,8 @@ try:
 except ImportError:
     TORCH_AVAILABLE = False
     nn_smoothing_adam = None
+    nn_based_smoothing = None
+    smooth_mesh_nn = None
     smooth_mesh_drl = None
     adam_optimization_smoothing = None
     drl_smoothing = None

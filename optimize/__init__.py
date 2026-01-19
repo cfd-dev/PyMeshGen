@@ -29,6 +29,8 @@ _IMPORT_MAP = {
     
     # 从 nn_smoothing 导入的函数（可选依赖）
     'nn_smoothing_adam': ('nn_smoothing', 'nn_smoothing_adam'),
+    'nn_based_smoothing': ('nn_smoothing', 'nn_based_smoothing'),
+    'smooth_mesh_nn': ('nn_smoothing', 'smooth_mesh_nn'),
     'smooth_mesh_drl': ('nn_smoothing', 'smooth_mesh_drl'),
     'adam_optimization_smoothing': ('nn_smoothing', 'adam_optimization_smoothing'),
     'drl_smoothing': ('nn_smoothing', 'drl_smoothing'),

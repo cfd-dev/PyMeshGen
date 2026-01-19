@@ -38,6 +38,109 @@ from visualization.mesh_visualization import Visualization, plot_polygon
 from utils.geom_normalization import normalize_polygon, denormalize_point, normalize_point
 from data_structure.basic_elements import Triangle, Quadrilateral
 
+_NN_MODEL_CACHE = None
+
+
+def _load_nn_models():
+    """Load pre-trained ring-based NN models (opt3-opt9) once and cache them."""
+    global _NN_MODEL_CACHE
+    if _NN_MODEL_CACHE is not None:
+        return _NN_MODEL_CACHE
+
+    model_dir = root_dir / "neural" / "NN_Smoothing" / "model"
+    models = {}
+    for ring_nodes in range(3, 10):
+        model_path = model_dir / f"opt{ring_nodes}.pkl"
+        if not model_path.exists():
+            raise FileNotFoundError(f"缺少NN模型文件: {model_path}")
+        model = torch.load(model_path, weights_only=False)
+        model.eval()
+        models[ring_nodes] = model
+
+    _NN_MODEL_CACHE = models
+    return models
+
+
+def nn_based_smoothing(unstr_grid, iterations=1):
+    """
+    Neural Network-based smoothing using pre-trained ring models (opt3-opt9).
+
+    This method is adapted from neural/NN_Smoothing/NN_Smoothing.py to operate
+    directly on Unstructured_Grid and preserve boundary nodes.
+
+    Args:
+        unstr_grid: Unstructured_Grid object containing the mesh
+        iterations: Number of smoothing iterations to perform (default: 1)
+
+    Returns:
+        Unstructured_Grid: The smoothed grid
+    """
+    timer = TimeSpan("开始NN平滑优化...")
+
+    # 使用基于边的邻接关系，保证与训练数据一致
+    unstr_grid.init_node2node()
+    unstr_grid.cyclic_node2node()
+
+    models = _load_nn_models()
+    boundary_nodes = set(unstr_grid.boundary_nodes_list) if hasattr(unstr_grid, 'boundary_nodes_list') else set()
+
+    node_coords = np.array(unstr_grid.node_coords, dtype=float)
+
+    for iteration in range(iterations):
+        info(f"NN平滑第 {iteration + 1} 次迭代")
+
+        for node_id in range(len(node_coords)):
+            if node_id in boundary_nodes:
+                continue
+
+            if node_id not in unstr_grid.node2node:
+                continue
+
+            neighbor_ids = unstr_grid.node2node[node_id]
+            if not neighbor_ids:
+                continue
+
+            ring_count = len(neighbor_ids)
+            neighbor_coords = node_coords[neighbor_ids]
+
+            # ring nodes数量小于3或者大于9，直接用laplacian光滑
+            if ring_count < 3 or ring_count > 9:
+                node_coords[node_id] = np.mean(neighbor_coords, axis=0)
+                continue
+
+            model = models.get(ring_count)
+            if model is None:
+                node_coords[node_id] = np.mean(neighbor_coords, axis=0)
+                continue
+
+            # 仅使用XY平面输入模型，保持Z坐标不变
+            ring_xy = neighbor_coords[:, :2].reshape(-1).astype(np.float32)
+            ringx = ring_xy[0::2]
+            ringy = ring_xy[1::2]
+
+            ringxmin = ringx.min()
+            ringxmax = ringx.max()
+            ringymin = ringy.min()
+            ringymax = ringy.max()
+
+            max_length = max(ringxmax - ringxmin, ringymax - ringymin)
+            if max_length <= 0:
+                continue
+
+            ring_xy[0::2] = (ringx - ringxmin) / max_length
+            ring_xy[1::2] = (ringy - ringymin) / max_length
+
+            with torch.no_grad():
+                ring_tensor = torch.from_numpy(ring_xy)
+                new_xy = model(ring_tensor).cpu().numpy()
+
+            node_coords[node_id, 0:2] = new_xy * max_length + np.array([ringxmin, ringymin])
+
+    unstr_grid.node_coords = node_coords.tolist()
+
+    timer.show_to_console("NN平滑完成.")
+    return unstr_grid
+
 
 def adam_optimization_smoothing(unstr_grid, 
                                movement_factor=0.1, 
@@ -388,4 +491,24 @@ def smooth_mesh_drl(mesh_data,
         return result
     except Exception as e:
         error(f"DRL平滑失败: {str(e)}")
+        raise
+
+
+def smooth_mesh_nn(mesh_data, iterations=1):
+    """
+    GUI-friendly interface for NN-based smoothing.
+
+    Args:
+        mesh_data: The mesh data to smooth
+        iterations: Number of smoothing iterations
+
+    Returns:
+        Smoothed mesh data
+    """
+    try:
+        result = nn_based_smoothing(mesh_data, iterations)
+        info(f"NN平滑完成，迭代次数: {iterations}")
+        return result
+    except Exception as e:
+        error(f"NN平滑失败: {str(e)}")
         raise
