@@ -116,8 +116,14 @@ def angle_based_smoothing(unstr_grid, iterations=1):
                 count += 1
             
             if count > 0:
-                new_coords[node_id][0] = new_x / count
-                new_coords[node_id][1] = new_y / count
+                new_x /= count
+                new_y /= count
+                
+                # Check if new position improves local mesh quality
+                # Only update if quality is improved (smart smoothing)
+                if _is_improved_locally(node_coords, neighbor_ids, node_id, new_x, new_y):
+                    new_coords[node_id][0] = new_x
+                    new_coords[node_id][1] = new_y
         
         # Update coordinates for next iteration
         node_coords = new_coords
@@ -125,7 +131,7 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     # Update the grid with new coordinates
     unstr_grid.node_coords = node_coords.tolist()
     
-    timer.show_to_console("角度基础平滑完成.")
+    timer.show_to_console("基于角度的平滑完成.")
     return unstr_grid
 
 
@@ -237,7 +243,7 @@ def getme_method(unstr_grid, iterations=1):
     # Update the grid with new coordinates
     unstr_grid.node_coords = node_coords.tolist()
     
-    timer.show_to_console("GetMe方法完成.")
+    timer.show_to_console("基于GetMe方法的平滑完成.")
     return unstr_grid
 
 
@@ -252,6 +258,51 @@ def _calculate_triangle_quality(p1, p2, p3):
 def _calculate_triangle_area(p1, p2, p3):
     """Calculate the area of a triangle using the existing function from geom_toolkit."""
     return triangle_area(p1, p2, p3)
+
+
+def _is_improved_locally(node_coords, neighbor_ids, node_id, new_x, new_y):
+    """
+    Check if moving a node to a new position improves local mesh quality.
+    
+    This function calculates the quality of triangles around the node before and after
+    the proposed move, and returns True only if the quality improves.
+    
+    Args:
+        node_coords: Current node coordinates array
+        neighbor_ids: List of neighbor node IDs
+        node_id: ID of the node to check
+        new_x: New x-coordinate for the node
+        new_y: New y-coordinate for the node
+    
+    Returns:
+        bool: True if the new position improves quality, False otherwise
+    """
+    # Get current node position
+    old_pos = node_coords[node_id]
+    new_pos = np.array([new_x, new_y])
+    
+    # Calculate quality before move
+    quality_before = 0.0
+    quality_after = 0.0
+    
+    num_neighbors = len(neighbor_ids)
+    for i in range(num_neighbors):
+        # Get triangle vertices: current node, neighbor i, neighbor i+1
+        p1_old = old_pos
+        p2_old = node_coords[neighbor_ids[i]]
+        p3_old = node_coords[neighbor_ids[(i + 1) % num_neighbors]]
+        
+        # Calculate quality of this triangle
+        q_before = _calculate_triangle_quality(p1_old, p2_old, p3_old)
+        quality_before += q_before
+        
+        # Calculate quality with new position
+        p1_new = new_pos
+        q_after = _calculate_triangle_quality(p1_new, p2_old, p3_old)
+        quality_after += q_after
+    
+    # Return True if average quality improves
+    return quality_after > quality_before
 
 
 def _rotate_point_around_midpoint(p1, p2, angle_degrees):
@@ -292,10 +343,10 @@ def smooth_mesh_angle_based(mesh_data, iterations=1):
     """
     try:
         result = angle_based_smoothing(mesh_data, iterations)
-        info(f"角度基础平滑完成，迭代次数: {iterations}")
+        info(f"基于角度的平滑完成，迭代次数: {iterations}")
         return result
     except Exception as e:
-        error(f"角度基础平滑失败: {str(e)}")
+        error(f"基于角度的平滑失败: {str(e)}")
         raise
 
 
@@ -312,8 +363,8 @@ def smooth_mesh_getme(mesh_data, iterations=1):
     """
     try:
         result = getme_method(mesh_data, iterations)
-        info(f"GetMe方法平滑完成，迭代次数: {iterations}")
+        info(f"基于GetMe方法的平滑完成，迭代次数: {iterations}")
         return result
     except Exception as e:
-        error(f"GetMe方法平滑失败: {str(e)}")
+        error(f"基于GetMe方法的平滑失败: {str(e)}")
         raise

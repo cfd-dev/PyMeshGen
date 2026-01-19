@@ -16,7 +16,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton
+from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QComboBox, QSpinBox
 from PyQt5.QtCore import Qt
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
@@ -449,14 +449,69 @@ class MeshOperations:
             if not self._require_cell_container(mesh_obj, "当前网格格式不支持光滑处理", "当前网格格式不支持光滑处理"):
                 return
 
-            from optimize.optimize import laplacian_smooth
+            dialog = QDialog(self.gui)
+            dialog.setWindowTitle("网格平滑设置")
+            dialog.setModal(True)
 
-            self.gui.log_info("开始进行laplacian光滑处理...")
-            self.gui.update_status("正在进行网格光滑处理...")
+            layout = QVBoxLayout(dialog)
+
+            method_layout = QHBoxLayout()
+            method_label = QLabel("平滑算法:")
+            method_combo = QComboBox()
+            method_combo.addItem("Laplacian", "laplacian")
+            method_combo.addItem("基于角度的平滑", "angle_based")
+            method_combo.addItem("基于GetMe方法的平滑", "getme")
+            method_layout.addWidget(method_label)
+            method_layout.addWidget(method_combo)
+
+            iter_layout = QHBoxLayout()
+            iter_label = QLabel("迭代次数:")
+            iter_spin = QSpinBox()
+            iter_spin.setRange(1, 100)
+            iter_spin.setValue(3)
+            iter_layout.addWidget(iter_label)
+            iter_layout.addWidget(iter_spin)
+
+            button_layout = QHBoxLayout()
+            ok_button = QPushButton("确定")
+            cancel_button = QPushButton("取消")
+            button_layout.addStretch()
+            button_layout.addWidget(ok_button)
+            button_layout.addWidget(cancel_button)
+
+            layout.addLayout(method_layout)
+            layout.addLayout(iter_layout)
+            layout.addLayout(button_layout)
+
+            ok_button.clicked.connect(dialog.accept)
+            cancel_button.clicked.connect(dialog.reject)
+
+            if dialog.exec_() != QDialog.Accepted:
+                self.gui.log_info("已取消网格平滑")
+                self.gui.update_status("已取消网格平滑")
+                return
+
+            method_key = method_combo.currentData() or "laplacian"
+            iterations = int(iter_spin.value())
+
+            from optimize.optimize import laplacian_smooth, smooth_mesh_angle_based, smooth_mesh_getme
+
+            if method_key == "angle_based":
+                method_name = "基于角度的平滑"
+                smooth_func = lambda m: smooth_mesh_angle_based(m, iterations=iterations)
+            elif method_key == "getme":
+                method_name = "基于GetMe方法的平滑"
+                smooth_func = lambda m: smooth_mesh_getme(m, iterations=iterations)
+            else:
+                method_name = "Laplacian"
+                smooth_func = lambda m: laplacian_smooth(m, num_iter=iterations)
+
+            self.gui.log_info(f"开始进行{method_name}平滑处理...")
+            self.gui.update_status(f"正在进行{method_name}平滑处理...")
 
             start_time = time.time()
 
-            smoothed_mesh = laplacian_smooth(mesh_obj, num_iter=3)
+            smoothed_mesh = smooth_func(mesh_obj)
 
             if hasattr(self.gui.current_mesh, 'unstr_grid'):
                 self.gui.current_mesh.unstr_grid = smoothed_mesh
@@ -468,7 +523,7 @@ class MeshOperations:
             if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
                 self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
 
-            self.gui.log_info(f"laplacian光滑处理完成，耗时: {end_time - start_time:.3f}秒")
+            self.gui.log_info(f"{method_name}平滑处理完成，耗时: {end_time - start_time:.3f}秒")
             self.gui.log_info(f"光滑后网格包含 {len(smoothed_mesh.cell_container)} 个单元")
             self.gui.update_status("网格光滑处理完成")
 
