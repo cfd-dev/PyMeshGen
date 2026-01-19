@@ -1,19 +1,19 @@
 import heapq
 import numpy as np
 from math import sqrt
-from front2d import Front
+from data_structure.front2d import Front
 from adfront2 import Adfront2
-from message import info, debug, verbose, warning, error
-from basic_elements import NodeElement, LineSegment, Triangle, Quadrilateral
+from utils.message import info, debug, verbose, warning, error
+from data_structure.basic_elements import NodeElement, LineSegment, Triangle, Quadrilateral
 from utils.timer import TimeSpan
-from geom_toolkit import (
+from utils.geom_toolkit import (
     calculate_angle,
     is_left2d,
     quadrilateral_area,
     fast_distance_check,
     point_to_segment_distance,
 )
-from mesh_quality import triangle_shape_quality, quadrilateral_quality2
+from optimize.mesh_quality import triangle_shape_quality, quadrilateral_quality2
 
 
 class Adfront2Hybrid(Adfront2):

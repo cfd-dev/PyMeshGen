@@ -8,7 +8,7 @@ adapted for the PyMeshGen project's data structures.
 import numpy as np
 from math import acos, cos, sin
 from utils.geom_toolkit import calculate_distance, triangle_area
-from data_structure.unstructured_grid import UnstructuredGrid
+from data_structure.unstructured_grid import Unstructured_Grid as UnstructuredGrid
 from data_structure.basic_elements import Triangle
 from utils.timer import TimeSpan
 from utils.message import info, debug, warning, error
@@ -311,7 +311,7 @@ def smooth_mesh_getme(mesh_data, iterations=1):
         Smoothed mesh data
     """
     try:
-        result = get_me_method(mesh_data, iterations)
+        result = getme_method(mesh_data, iterations)
         info(f"GetMe方法平滑完成，迭代次数: {iterations}")
         return result
     except Exception as e:

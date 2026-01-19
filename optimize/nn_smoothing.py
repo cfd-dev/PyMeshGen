@@ -26,7 +26,7 @@ sys.path.append(str(root_dir / "utils"))
 
 from utils.timer import TimeSpan
 from utils.message import info, debug, warning, error
-from data_structure.unstructured_grid import UnstructuredGrid
+from data_structure.unstructured_grid import Unstructured_Grid as UnstructuredGrid
 from optimize import node_perturbation
 from utils.geom_toolkit import (
     point_in_polygon,

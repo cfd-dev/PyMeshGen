@@ -20,18 +20,26 @@ from mesh_quality import quadrilateral_quality2
 # Import angle-based smoothing functions
 from .angle_based_smoothing import (
     angle_based_smoothing,
-    get_me_method,
+    getme_method,
     smooth_mesh_angle_based,
     smooth_mesh_getme
 )
 
-# Import neural network smoothing functions
-from .nn_smoothing import (
-    nn_smoothing_adam,
-    smooth_mesh_drl,
-    adam_optimization_smoothing,
-    drl_smoothing
-)
+# Import neural network smoothing functions (optional, requires torch)
+try:
+    from .nn_smoothing import (
+        nn_smoothing_adam,
+        smooth_mesh_drl,
+        adam_optimization_smoothing,
+        drl_smoothing
+    )
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    nn_smoothing_adam = None
+    smooth_mesh_drl = None
+    adam_optimization_smoothing = None
+    drl_smoothing = None
 
 def optimize_hybrid_grid(hybrid_grid):
     """调用外部混合网格优化软件进行优化"""  
