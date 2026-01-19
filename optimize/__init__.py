@@ -6,9 +6,9 @@ optimize subpackage for PyMeshGen
 
 def __getattr__(name):
     """延迟导入优化模块，避免循环依赖"""
-    if name in ['edge_swap', 'laplacian_smooth', 'hybrid_smooth', 'optimize_hybrid_grid']:
+    if name in ['edge_swap', 'laplacian_smooth', 'hybrid_smooth', 'optimize_hybrid_grid', 'node_perturbation']:
         from .optimize import (
-            edge_swap, laplacian_smooth, hybrid_smooth, optimize_hybrid_grid
+            edge_swap, laplacian_smooth, hybrid_smooth, optimize_hybrid_grid, node_perturbation
         )
         return locals()[name]
     elif name == 'mesh_quality':

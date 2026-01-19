@@ -311,12 +311,23 @@ def hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8):
 
 def quadrilateral_skewness(p1, p2, p3, p4):
     """计算四边形的偏斜度"""
+    # 将坐标转换为2D（取前两个分量）
+    def to_2d(p):
+        if len(p) >= 2:
+            return [p[0], p[1]]
+        return p
+
+    p1_2d = to_2d(p1)
+    p2_2d = to_2d(p2)
+    p3_2d = to_2d(p3)
+    p4_2d = to_2d(p4)
+
     # 四边形的四个内角
     angles = [
-        calculate_angle(p3, p2, p1),
-        calculate_angle(p4, p3, p2),
-        calculate_angle(p1, p4, p3),
-        calculate_angle(p2, p1, p4),
+        calculate_angle(p3_2d, p2_2d, p1_2d),
+        calculate_angle(p4_2d, p3_2d, p2_2d),
+        calculate_angle(p1_2d, p4_2d, p3_2d),
+        calculate_angle(p2_2d, p1_2d, p4_2d),
     ]
 
     # 检查内角和是否为360度
@@ -368,17 +379,28 @@ def quadrilateral_shape_quality(p1, p2, p3, p4):
     """计算四边形质量（基于子三角形质量的最小组合）"""
     from data_structure.basic_elements import LineSegment
 
+    # 将坐标转换为2D（取前两个分量）
+    def to_2d(p):
+        if len(p) >= 2:
+            return [p[0], p[1]]
+        return p
+
+    p1_2d = to_2d(p1)
+    p2_2d = to_2d(p2)
+    p3_2d = to_2d(p3)
+    p4_2d = to_2d(p4)
+
     # 检查四边形有效性
-    if not is_valid_quadrilateral(p1, p2, p3, p4):
+    if not is_valid_quadrilateral(p1_2d, p2_2d, p3_2d, p4_2d):
         return 0.0
 
     # 凸性检查（使用现有is_convex函数适配）
-    if not is_convex(0, 1, 2, 3, [p1, p2, p3, p4]):
+    if not is_convex(0, 1, 2, 3, [p1_2d, p2_2d, p3_2d, p4_2d]):
         return 0.0
 
     # 计算对角线交点
-    seg1 = LineSegment(p1, p3)
-    seg2 = LineSegment(p2, p4)
+    seg1 = LineSegment(p1_2d, p3_2d)
+    seg2 = LineSegment(p2_2d, p4_2d)
 
     if not seg1.is_intersect(seg2):
         return 0.0
@@ -386,27 +408,30 @@ def quadrilateral_shape_quality(p1, p2, p3, p4):
     # 获取交点坐标（新增交点计算逻辑）
     def line_intersection(line1, line2):
         # 实现线段交点计算
-        x1, y1 = line1.p1
-        x2, y2 = line1.p2
-        x3, y3 = line2.p1
-        x4, y4 = line2.p2
+        x1, y1 = line1.p1[0], line1.p1[1]
+        x2, y2 = line1.p2[0], line1.p2[1]
+        x3, y3 = line2.p1[0], line2.p1[1]
+        x4, y4 = line2.p2[0], line2.p2[1]
 
         denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
-        if denom == 0:
+        if abs(denom) < 1e-10:
             return None
         u = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
         x = x1 + u * (x2 - x1)
         y = y1 + u * (y2 - y1)
-        return (x, y)
+        return [x, y]
 
     po = line_intersection(seg1, seg2)
+    
+    if po is None:
+        return 0.0
 
     try:
         # 计算四个子三角形质量
-        q1 = triangle_shape_quality(p1, p2, po)
-        q2 = triangle_shape_quality(p2, p3, po)
-        q3 = triangle_shape_quality(p3, p4, po)
-        q4 = triangle_shape_quality(p4, p1, po)
+        q1 = triangle_shape_quality(p1_2d, p2_2d, po)
+        q2 = triangle_shape_quality(p2_2d, p3_2d, po)
+        q3 = triangle_shape_quality(p3_2d, p4_2d, po)
+        q4 = triangle_shape_quality(p4_2d, p1_2d, po)
     except ValueError:
         return 0.0
 
