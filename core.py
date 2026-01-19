@@ -22,7 +22,7 @@ from utils.message import info
 
 # 混合网格生成相关导入
 from adfront2.adfront2_hybrid import Adfront2Hybrid
-from optimize.optimize import merge_elements, optimize_hybrid_grid
+from optimize.optimize import optimize_hybrid_grid
 
 
 def generate_mesh(parameters, mesh_data=None, gui_instance=None):
@@ -196,7 +196,7 @@ def generate_mesh(parameters, mesh_data=None, gui_instance=None):
     
     if parameters.mesh_type == 3:  # 三角形/四边形混合网格
         # 合并三角形生成混合网格
-        hybrid_grid = merge_elements(triangular_grid)
+        hybrid_grid = triangular_grid.merge_elements()
         # 优化混合网格
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)
         unstr_grid_list.append(hybrid_grid)

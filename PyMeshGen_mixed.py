@@ -29,7 +29,6 @@ from adfront2_hybrid import Adfront2Hybrid
 from optimize import (
     edge_swap,
     laplacian_smooth,
-    merge_elements,
     hybrid_smooth,
     optimize_hybrid_grid,
 )
@@ -145,7 +144,7 @@ def PyMeshGen_mixed(parameters=None):
         triangular_grid = laplacian_smooth(triangular_grid, 3)
         unstr_grid_list.append(triangular_grid)
     elif parameters.mesh_type == 3:
-        hybrid_grid = merge_elements(triangular_grid)
+        hybrid_grid = triangular_grid.merge_elements()
         # hybrid_grid = hybrid_smooth(hybrid_grid, 3)
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)
         unstr_grid_list.append(hybrid_grid)
