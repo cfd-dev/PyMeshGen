@@ -77,6 +77,16 @@ class StatusBar:
 
         # 将进度条添加到状态栏右侧
         self.status_bar.addPermanentWidget(self.progress_widget)
+        self._mesh_dim_label = QLabel("网格维度: 2D")
+        self._mesh_dim_label.setStyleSheet("""
+            QLabel {
+                font-size: 9pt;
+                color: #333333;
+                padding: 1px 6px;
+                border: 1px solid transparent;
+            }
+        """)
+        self.status_bar.addPermanentWidget(self._mesh_dim_label)
 
     def update_status(self, message):
         """更新状态栏信息"""
@@ -104,6 +114,11 @@ class StatusBar:
         self.progress_label.setVisible(False)
         self.progress_bar.setVisible(False)
         self.progress_bar.setValue(0)
+
+    def update_mesh_dimension(self, dimension):
+        """更新网格维度显示"""
+        label = "2D" if dimension == 2 else "3D"
+        self._mesh_dim_label.setText(f"网格维度: {label}")
 
 
 class InfoOutput:

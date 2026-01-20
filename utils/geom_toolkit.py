@@ -3,6 +3,20 @@ import numpy as np
 import math
 
 
+def detect_mesh_dimension(mesh_data, default_dim=2):
+    """根据网格元数据判断网格维度（不基于坐标）"""
+    if mesh_data is None:
+        return default_dim
+    if isinstance(mesh_data, dict):
+        dimension = mesh_data.get('dimensions') or mesh_data.get('dimension')
+        if dimension in (2, 3):
+            return int(dimension)
+        return default_dim
+    if hasattr(mesh_data, 'dimensions') and mesh_data.dimensions in (2, 3):
+        return int(mesh_data.dimensions)
+    return default_dim
+
+
 def point_to_segment_distance(point, segment_start, segment_end):
     """
     计算点到线段的最短距离（使用numpy）

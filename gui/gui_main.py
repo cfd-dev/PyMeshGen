@@ -67,6 +67,9 @@ except Exception:
     pass
 
 
+GLOBAL_MESH_DIMENSION = 2
+
+
 class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
 
@@ -166,6 +169,7 @@ class PyMeshGenGUI(QMainWindow):
         self.params = None                    # 网格生成的参数配置
         self.mesh_generator = None            # 网格生成器实例
         self.current_mesh = None              # 当前生成的网格对象
+        self.mesh_dimension = GLOBAL_MESH_DIMENSION  # 当前网格维度
         self.cas_parts_info = None            # CAS文件的部件信息
         self.original_node_coords = None      # 原始节点坐标
         self.parts_params = []                # 部件参数列表
@@ -192,6 +196,7 @@ class PyMeshGenGUI(QMainWindow):
         self._create_main_layout(main_layout)
 
         self.status_bar = StatusBar(self)
+        self.status_bar.update_mesh_dimension(self.mesh_dimension)
 
     def _create_main_layout(self, main_layout):
         """创建主布局"""
@@ -785,6 +790,13 @@ class PyMeshGenGUI(QMainWindow):
         """导入完成回调 - 优化版本，使用QTimer分步处理避免UI卡顿"""
         try:
             self.current_mesh = mesh_data
+            try:
+                from utils.geom_toolkit import detect_mesh_dimension
+                self.mesh_dimension = detect_mesh_dimension(mesh_data, default_dim=self.mesh_dimension)
+            except Exception:
+                pass
+            if hasattr(self, 'status_bar'):
+                self.status_bar.update_mesh_dimension(self.mesh_dimension)
 
             if hasattr(self, 'mesh_display'):
                 self.update_status("正在显示网格...")
@@ -1349,6 +1361,9 @@ class PyMeshGenGUI(QMainWindow):
     def clear_mesh(self):
         """清空网格"""
         self.current_mesh = None
+        self.mesh_dimension = GLOBAL_MESH_DIMENSION
+        if hasattr(self, 'status_bar'):
+            self.status_bar.update_mesh_dimension(self.mesh_dimension)
         if hasattr(self, 'mesh_display'):
             self.mesh_display.clear()
         self.log_info("已清空网格")

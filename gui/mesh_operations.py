@@ -16,7 +16,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QComboBox, QSpinBox, QDoubleSpinBox
+from PyQt5.QtWidgets import QProgressDialog, QMessageBox, QDialog, QVBoxLayout, QPushButton, QHBoxLayout, QLabel, QComboBox, QSpinBox, QDoubleSpinBox, QButtonGroup, QRadioButton
 from PyQt5.QtCore import Qt
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
@@ -66,6 +66,60 @@ class MeshOperations:
             except Exception as e:
                 QMessageBox.critical(self.gui, "错误", f"导入网格失败: {str(e)}")
                 self.gui.log_error(f"导入网格失败: {str(e)}")
+
+    def set_mesh_dimension(self):
+        """设置网格维度"""
+        dialog = QDialog(self.gui)
+        dialog.setWindowTitle("设置网格维度")
+        dialog.setModal(True)
+
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel("请选择网格维度:")
+        layout.addWidget(label)
+
+        button_group = QButtonGroup(dialog)
+        radio_2d = QRadioButton("2D")
+        radio_3d = QRadioButton("3D")
+        button_group.addButton(radio_2d, 2)
+        button_group.addButton(radio_3d, 3)
+
+        current_dim = getattr(self.gui, 'mesh_dimension', 2)
+        if current_dim == 3:
+            radio_3d.setChecked(True)
+        else:
+            radio_2d.setChecked(True)
+
+        layout.addWidget(radio_2d)
+        layout.addWidget(radio_3d)
+
+        button_layout = QHBoxLayout()
+        ok_button = QPushButton("确定")
+        cancel_button = QPushButton("取消")
+        button_layout.addStretch()
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+
+        ok_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+
+        if dialog.exec_() != QDialog.Accepted:
+            self.gui.log_info("已取消网格维度设置")
+            self.gui.update_status("已取消网格维度设置")
+            return
+
+        selected_dim = button_group.checkedId()
+        if selected_dim not in (2, 3):
+            return
+
+        self.gui.mesh_dimension = selected_dim
+        if hasattr(self.gui.current_mesh, 'dimensions'):
+            self.gui.current_mesh.dimensions = selected_dim
+        if hasattr(self.gui, 'status_bar'):
+            self.gui.status_bar.update_mesh_dimension(selected_dim)
+        self.gui.log_info(f"网格维度已设置为 {selected_dim}D")
+        self.gui.update_status("网格维度已更新")
 
     def export_mesh(self):
         """导出网格"""
@@ -300,6 +354,14 @@ class MeshOperations:
 
                 self.gui.log_info("网格生成完成")
                 self.gui.update_status("网格生成完成")
+
+                try:
+                    from utils.geom_toolkit import detect_mesh_dimension
+                    self.gui.mesh_dimension = detect_mesh_dimension(result_mesh, default_dim=self.gui.mesh_dimension)
+                except Exception:
+                    pass
+                if hasattr(self.gui, 'status_bar'):
+                    self.gui.status_bar.update_mesh_dimension(self.gui.mesh_dimension)
 
                 self.gui.display_mesh()
 

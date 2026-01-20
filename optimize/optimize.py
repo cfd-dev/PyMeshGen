@@ -544,7 +544,7 @@ def laplacian_smooth(unstr_grid, num_iter=10):
     return unstr_grid
 
 def node_perturbation(unstr_grid, ratio=0.8):
-    """对网格节点进行随机扰动（仅在XY平面内）
+    """对网格节点进行随机扰动（自动适配2D/3D）
     Args:
         ratio: 扰动比例（相对于节点周边边长的平均值）
     """
@@ -553,6 +553,7 @@ def node_perturbation(unstr_grid, ratio=0.8):
     # 获取节点坐标和边界信息
     node_coords = np.array(unstr_grid.node_coords)
     boundary_nodes = set(unstr_grid.boundary_nodes_list)
+    mesh_dim = geom_tool.detect_mesh_dimension(unstr_grid, default_dim=2)
     
     # 构建节点到边的映射
     node_edges = {}  # node_id -> list of edge lengths
@@ -565,10 +566,13 @@ def node_perturbation(unstr_grid, ratio=0.8):
                 node1 = nodes[i]
                 node2 = nodes[(i + 1) % num_nodes]
                 
-                # 计算边长（仅XY平面）
+                # 计算边长（2D用XY，3D使用XYZ）
                 coord1 = node_coords[node1]
                 coord2 = node_coords[node2]
-                edge_length = np.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)
+                if mesh_dim == 2:
+                    edge_length = np.sqrt((coord1[0] - coord2[0])**2 + (coord1[1] - coord2[1])**2)
+                else:
+                    edge_length = np.linalg.norm(coord1[:3] - coord2[:3])
                 
                 # 添加到两个节点的边长列表
                 if node1 not in node_edges:
@@ -588,17 +592,19 @@ def node_perturbation(unstr_grid, ratio=0.8):
         if i in boundary_nodes:
             continue
         
-        # 仅在XY平面内生成随机方向向量
-        direction = np.random.normal(size=2)
+        # 生成随机方向向量（2D/3D）
+        direction = np.random.normal(size=mesh_dim)
         direction /= np.linalg.norm(direction)  # 单位向量
         
         # 计算扰动幅度（基于节点周边边长的最小值）
         max_shift = node_scale[i] * ratio
         shift = direction * np.random.uniform(0, max_shift)
         
-        # 仅在XY平面应用扰动，保持Z坐标不变
+        # 应用扰动（2D仅XY，3D为XYZ）
         node_coords[i, 0] += shift[0]
         node_coords[i, 1] += shift[1]
+        if mesh_dim == 3 and node_coords.shape[1] > 2:
+            node_coords[i, 2] += shift[2]
         
     # 更新回网格结构
     unstr_grid.node_coords = node_coords.tolist()
