@@ -535,17 +535,17 @@ def reconstruct_mesh_from_cas(raw_cas_data):
         if zone["type"] == "faces":
             bc_type = zone.get("bc_type", "unspecified")
             part_name = zone.get("part_name", f"zone_{zone_id}")
+            zone_faces = zone["data"]
 
             # 收集该边界的所有面
-            boundary_faces = []
-            for face in zone["data"]:
-                boundary_faces.append(
-                    {
-                        "nodes": [node - 1 for node in face["nodes"]],  # 转换为0基索引
-                        "left_cell": face["left_cell"] - 1,  # 转换为0基索引
-                        "right_cell": face["right_cell"] - 1,  # 转换为0基索引
-                    }
-                )
+            boundary_faces = [
+                {
+                    "nodes": [node - 1 for node in face["nodes"]],  # 转换为0基索引
+                    "left_cell": face["left_cell"] - 1,  # 转换为0基索引
+                    "right_cell": face["right_cell"] - 1,  # 转换为0基索引
+                }
+                for face in zone_faces
+            ]
 
             # 添加到边界信息，已经转换为0-based索引
             boundary_info[part_name] = {"bc_type": bc_type, "faces": boundary_faces}
