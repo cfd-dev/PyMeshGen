@@ -114,8 +114,8 @@ class MeshOperations:
             return
 
         self.gui.mesh_dimension = selected_dim
-        if hasattr(self.gui.current_mesh, 'dimensions'):
-            self.gui.current_mesh.dimensions = selected_dim
+        if hasattr(self.gui.current_mesh, 'dimension'):
+            self.gui.current_mesh.dimension = selected_dim
         if hasattr(self.gui, 'status_bar'):
             self.gui.status_bar.update_mesh_dimension(selected_dim)
         self.gui.log_info(f"网格维度已设置为 {selected_dim}D")
@@ -356,8 +356,8 @@ class MeshOperations:
                 self.gui.update_status("网格生成完成")
 
                 try:
-                    from utils.geom_toolkit import detect_mesh_dimension
-                    self.gui.mesh_dimension = detect_mesh_dimension(result_mesh, default_dim=self.gui.mesh_dimension)
+                    from utils.geom_toolkit import detect_mesh_dimension_by_metadata
+                    self.gui.mesh_dimension = detect_mesh_dimension_by_metadata(result_mesh, default_dim=self.gui.mesh_dimension)
                 except Exception:
                     pass
                 if hasattr(self.gui, 'status_bar'):
@@ -907,9 +907,9 @@ class MeshOperations:
             num_boundary_nodes = len(mesh_obj.boundary_nodes)
 
             if num_nodes > 0:
-                dim = len(mesh_obj.node_coords[0])
+                dimension = mesh_obj.dimension
             else:
-                dim = 0
+                dimension = 0
 
             mesh_obj.calculate_edges()
             num_edges = len(mesh_obj.edges)
@@ -942,7 +942,7 @@ class MeshOperations:
                     quadrilateral_count += 1
 
             stats_info = f"网格统计信息:\n"
-            stats_info += f"  维度: {dim}\n"
+            stats_info += f"  维度: {dimension}\n"
             stats_info += f"  总单元数: {num_cells}\n"
             stats_info += f"  节点数: {num_nodes}\n"
             stats_info += f"  边界节点数: {num_boundary_nodes}\n"

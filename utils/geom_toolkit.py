@@ -2,18 +2,65 @@ from math import sqrt, isnan, isinf
 import numpy as np
 import math
 
+def detect_mesh_dimension_by_cell_type(cell_type_container):
+    """根据单元类型判断网格维度（不基于坐标）"""
+    if cell_type_container is None:
+        return 2
+    
+    if not isinstance(cell_type_container, list) or len(cell_type_container) == 0:
+        return 2
+    
+    from data_structure.vtk_types import VTKCellType
+    
+    # 定义2D和3D单元类型
+    cell_types_2d = {
+        VTKCellType.TRIANGLE,
+        VTKCellType.TRIANGLE_STRIP,
+        VTKCellType.POLYGON,
+        VTKCellType.PIXEL,
+        VTKCellType.QUAD
+    }
+    
+    cell_types_3d = {
+        VTKCellType.TETRA,
+        VTKCellType.VOXEL,
+        VTKCellType.HEXAHEDRON,
+        VTKCellType.WEDGE,
+        VTKCellType.PYRAMID,
+        VTKCellType.PENTAGONAL_PRISM,
+        VTKCellType.HEXAGONAL_PRISM
+    }
+    
+    # 遍历所有单元类型，判断维度
+    has_2d = False
+    has_3d = False
+    
+    for cell_type in cell_type_container:
+        if cell_type in cell_types_2d:
+            has_2d = True
+        elif cell_type in cell_types_3d:
+            has_3d = True
+    
+    # 如果同时存在2D和3D单元，优先返回3D
+    if has_3d:
+        return 3
+    elif has_2d:
+        return 2
+    else:
+        # 如果没有找到已知的2D或3D单元类型，返回默认维度2
+        return 2
 
-def detect_mesh_dimension(mesh_data, default_dim=2):
+def detect_mesh_dimension_by_metadata(mesh_data, default_dim=2):
     """根据网格元数据判断网格维度（不基于坐标）"""
     if mesh_data is None:
         return default_dim
     if isinstance(mesh_data, dict):
-        dimension = mesh_data.get('dimensions') or mesh_data.get('dimension')
+        dimension = mesh_data.get('dimension')
         if dimension in (2, 3):
             return int(dimension)
         return default_dim
-    if hasattr(mesh_data, 'dimensions') and mesh_data.dimensions in (2, 3):
-        return int(mesh_data.dimensions)
+    if hasattr(mesh_data, 'dimension') and mesh_data.dimension in (2, 3):
+        return int(mesh_data.dimension)
     return default_dim
 
 

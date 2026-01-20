@@ -553,7 +553,7 @@ def node_perturbation(unstr_grid, ratio=0.8):
     # 获取节点坐标和边界信息
     node_coords = np.array(unstr_grid.node_coords)
     boundary_nodes = set(unstr_grid.boundary_nodes_list)
-    mesh_dim = geom_tool.detect_mesh_dimension(unstr_grid, default_dim=2)
+    mesh_dim = geom_tool.detect_mesh_dimension_by_metadata(unstr_grid, default_dim=2)
     
     # 构建节点到边的映射
     node_edges = {}  # node_id -> list of edge lengths

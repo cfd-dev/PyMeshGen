@@ -420,6 +420,7 @@ class FileOperations:
             for entry in section_entries:
                 if entry['dimension'] in (2, 3):
                     body_dim = max(body_dim, entry['dimension'])
+            mesh_data.dimension = body_dim if body_dim in (2, 3) else 2
 
             boundary_names = set()
             if reader.boundary_info:

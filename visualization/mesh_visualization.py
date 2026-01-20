@@ -335,7 +335,7 @@ def visualize_unstr_grid_2d(unstr_grid, ax=None):
 
     ax.scatter(xs, ys, c="red", s=1, alpha=0.7, label="Nodes")
     # 绘制边
-    if unstr_grid.dim == 2:
+    if unstr_grid.dimension == 2:
         unstr_grid.calculate_edges()
     for edge in unstr_grid.edges:
         x = [unstr_grid.node_coords[i][0] for i in edge]

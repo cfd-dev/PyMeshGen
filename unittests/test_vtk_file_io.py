@@ -78,7 +78,7 @@ class TestVTKFileIO(unittest.TestCase):
 
                     valid_cells = [cell for cell in mesh.cell_container if cell is not None]
                     self.assertGreater(len(valid_cells), 0)
-                    self.assertGreater(mesh.dim, 0)
+                    self.assertGreater(mesh.dimension, 0)
                 except ValueError as e:
                     if "节点数量不足" in str(e):
                         self.skipTest(f"VTK文件 {vtk_file} 包含无效单元，跳过测试: {e}")
@@ -93,13 +93,13 @@ class TestVTKFileIO(unittest.TestCase):
                     node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, part_ids = read_vtk(vtk_file)
                     mesh = reconstruct_mesh_from_vtk(node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container)
 
-                    self.assertIn(mesh.dim, [2, 3])
+                    self.assertIn(mesh.dimension, [2, 3])
                     self.assertIsNotNone(mesh.bbox)
                     self.assertIsInstance(mesh.bbox, list)
 
-                    if mesh.dim == 2:
+                    if mesh.dimension == 2:
                         self.assertEqual(len(mesh.bbox), 4)
-                    elif mesh.dim == 3:
+                    elif mesh.dimension == 3:
                         self.assertEqual(len(mesh.bbox), 6)
                 except ValueError as e:
                     if "节点数量不足" in str(e):
@@ -336,9 +336,9 @@ class TestTetrahedronVTKIO(unittest.TestCase):
         
         node_coords = [node.coords for node in nodes]
         boundary_nodes = nodes
-        mesh = Unstructured_Grid([tetra], node_coords, boundary_nodes)
+        mesh = Unstructured_Grid([tetra], node_coords, boundary_nodes, grid_dimension=3)
         
-        self.assertEqual(mesh.dim, 3)
+        self.assertEqual(mesh.dimension, 3)
         self.assertIsNotNone(mesh.bbox)
         self.assertEqual(len(mesh.bbox), 6)
         
@@ -354,7 +354,7 @@ class TestTetrahedronVTKIO(unittest.TestCase):
         
         read_mesh = parse_vtk_msh(vtk_path)
         
-        self.assertEqual(read_mesh.dim, 3)
+        self.assertEqual(read_mesh.dimension, 3)
         self.assertIsNotNone(read_mesh.bbox)
         self.assertEqual(len(read_mesh.bbox), 6)
         

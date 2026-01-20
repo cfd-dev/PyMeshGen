@@ -2,6 +2,8 @@ import numpy as np
 
 from utils.message import info
 from data_structure.vtk_types import VTKCellType
+from utils.geom_toolkit import detect_mesh_dimension_by_cell_type
+
 
 
 def write_vtk(
@@ -195,13 +197,13 @@ def read_vtk(filename):
         i += 1
 
     # Return part_ids if available, otherwise return None
-    result = node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
+    raw_vtk_mesh = node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container
     if 'part_ids' in locals():
-        result = result + (part_ids,)
+        raw_vtk_mesh = raw_vtk_mesh + (part_ids,)
     else:
-        result = result + (None,)
+        raw_vtk_mesh = raw_vtk_mesh + (None,)
 
-    return result
+    return raw_vtk_mesh
 
 
 def reconstruct_mesh_from_vtk(
@@ -294,19 +296,22 @@ def reconstruct_mesh_from_vtk(
 
         cell_container[idx] = cell
 
+    # 根据当前的单元类型判断网格维度
+    dimension = detect_mesh_dimension_by_cell_type(cell_type_container)
+
     boundary_nodes = [node_container[idx] for idx in boundary_nodes_idx if idx < len(node_container)]
     unstr_grid = Unstructured_Grid(
-            cell_container, node_coords, boundary_nodes
+            cell_container, node_coords, boundary_nodes, dimension
     )  # 注意这里的cell_container是修改过的，已经包含了单元对象而不是索引列表
     return unstr_grid
 
 
 def parse_vtk_msh(filename):
-    result = read_vtk(filename)
-    if len(result) == 5:
-        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = result
+    raw_vtk_mesh = read_vtk(filename)
+    if len(raw_vtk_mesh) == 5:
+        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = raw_vtk_mesh
     else:
-        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = result + (None,)
+        node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids = raw_vtk_mesh + (None,)
 
     unstr_grid = reconstruct_mesh_from_vtk(
         node_coords, cell_idx_container, boundary_nodes_idx, cell_type_container, cell_part_ids

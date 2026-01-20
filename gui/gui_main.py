@@ -790,11 +790,19 @@ class PyMeshGenGUI(QMainWindow):
         """导入完成回调 - 优化版本，使用QTimer分步处理避免UI卡顿"""
         try:
             self.current_mesh = mesh_data
-            try:
-                from utils.geom_toolkit import detect_mesh_dimension
-                self.mesh_dimension = detect_mesh_dimension(mesh_data, default_dim=self.mesh_dimension)
-            except Exception:
-                pass
+            mesh_dimension = None
+            if isinstance(mesh_data, dict):
+                mesh_dimension = mesh_data.get('dimension')
+            elif hasattr(mesh_data, 'dimension'):
+                mesh_dimension = mesh_data.dimension
+            if mesh_dimension in (2, 3):
+                self.mesh_dimension = int(mesh_dimension)
+            else:
+                try:
+                    from utils.geom_toolkit import detect_mesh_dimension_by_metadata
+                    self.mesh_dimension = detect_mesh_dimension_by_metadata(mesh_data, default_dim=self.mesh_dimension)
+                except Exception:
+                    pass
             if hasattr(self, 'status_bar'):
                 self.status_bar.update_mesh_dimension(self.mesh_dimension)
 

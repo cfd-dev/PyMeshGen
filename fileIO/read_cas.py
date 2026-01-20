@@ -44,7 +44,7 @@ def parse_fluent_msh(file_path):
         "zones": {},
         "comments": [],
         "output_prompts": [],
-        "dimensions": 0,
+        "dimension": 0,
     }
 
     # 使用生成器逐行读取，避免一次性加载所有行到内存
@@ -72,7 +72,7 @@ def parse_fluent_msh(file_path):
         if line.startswith("(2 "):
             numbers = re.findall(r"\d+", line)
             if len(numbers) >= 2:
-                raw_cas_data["dimensions"] = int(numbers[1])
+                raw_cas_data["dimension"] = int(numbers[1])
             else:
                 raise ValueError(f"Invalid dimension line: {line}")
             continue
@@ -175,8 +175,8 @@ def parse_fluent_msh(file_path):
                 # 移除行尾的结束标记 '))'
                 line = line.replace("))", "").strip()
                 coords = list(map(float, line.split()))
-                for i in range(0, len(coords), raw_cas_data["dimensions"]):
-                    raw_cas_data["nodes"].append(coords[i : i + raw_cas_data["dimensions"]])
+                for i in range(0, len(coords), raw_cas_data["dimension"]):
+                    raw_cas_data["nodes"].append(coords[i : i + raw_cas_data["dimension"]])
             continue
 
         if current_section == "faces":
@@ -309,7 +309,7 @@ def reconstruct_mesh_from_cas(raw_cas_data):
             cell_faces[right_cell].append(face)
 
     # 首先确定网格维度
-    grid_dimension = raw_cas_data.get("dimensions", 2)
+    grid_dimension = raw_cas_data.get("dimension", 2)
     
     # 预定义辅助函数，避免在循环中重复定义
     def get_triangle_center(nodes):
@@ -551,7 +551,9 @@ def reconstruct_mesh_from_cas(raw_cas_data):
             boundary_info[part_name] = {"bc_type": bc_type, "faces": boundary_faces}
 
     # 创建Unstructured_Grid对象
-    unstr_grid = Unstructured_Grid(cell_container, node_coords, boundary_nodes)
+    unstr_grid = Unstructured_Grid(
+        cell_container, node_coords, boundary_nodes, grid_dimension
+   )
 
     # 设置边界信息
     unstr_grid.boundary_info = boundary_info

@@ -15,7 +15,8 @@ from utils.message import warning, info
 
 
 class Unstructured_Grid:
-    def __init__(self, cell_container, node_coords, boundary_nodes):
+    def __init__(self, cell_container, node_coords, boundary_nodes, grid_dimension=2):
+        self.dimension = grid_dimension
         self.cell_container = cell_container
         self.node_coords = node_coords
         self.boundary_nodes = boundary_nodes
@@ -29,15 +30,14 @@ class Unstructured_Grid:
         self.edges = []
         self.node2node = None
         self.node2cell = None
-
-        self.dim = len(node_coords[0])
+        
         self.bbox = [
             min(coord[0] for coord in node_coords),
             min(coord[1] for coord in node_coords),
             max(coord[0] for coord in node_coords),
             max(coord[1] for coord in node_coords),
         ]
-        if self.dim >= 3:
+        if self.dimension >= 3:
             self.bbox.extend([
                 min(coord[2] for coord in node_coords),
                 max(coord[2] for coord in node_coords),
@@ -120,7 +120,7 @@ class Unstructured_Grid:
         self.num_edges = len(self.edges)
 
         mesh_summary = f"Mesh Summary:\n"
-        mesh_summary += f"  Dimension: {self.dim}\n"
+        mesh_summary += f"  Dimension: {self.dimension}\n"
         mesh_summary += f"  Number of Cells: {self.num_cells}\n"
         mesh_summary += f"  Number of Nodes: {self.num_nodes}\n"
         mesh_summary += f"  Number of Boundary Nodes: {self.num_boundary_nodes}\n"
@@ -300,7 +300,7 @@ class Unstructured_Grid:
         # ax.text(x, y, str(i), fontsize=8, ha="center", va="center")
 
         # 绘制边
-        if self.dim == 2:
+        if self.dimension == 2:
             self.calculate_edges()
 
         for edge in self.edges:

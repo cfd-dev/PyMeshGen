@@ -5,6 +5,7 @@
 数据转换模块
 用于将不同类型的网格数据转换为统一格式，供底层算法使用
 """
+from utils.geom_toolkit import detect_mesh_dimension_by_metadata
 
 def convert_to_internal_mesh_format(mesh_data):
     """
@@ -19,14 +20,14 @@ def convert_to_internal_mesh_format(mesh_data):
             'nodes': 节点坐标列表，每个元素为[x, y, z]
             'faces': 面列表，每个元素为包含nodes, right_cell, bc_type, part_name等信息的字典
             'zones': 部件信息，格式：{part_name: part_data}
-            'dimensions': 网格维度
+            'dimension': 网格维度
         }
     """
     internal_mesh = {
         'nodes': [],
         'faces': [],
         'zones': {},
-        'dimensions': 2,  # 默认2D网格
+        'dimension': 2,  # 默认2D网格
         'node_count': 0,
         'face_count': 0,
         'cell_count': 0,
@@ -43,18 +44,18 @@ def convert_to_internal_mesh_format(mesh_data):
         
         # 先只考虑2维，后续再拓展到3维
         # 先获取网格维度，用于后续的节点坐标处理
-        # if hasattr(mesh_data, 'dimensions'):
-        #     mesh_dimensions = mesh_data.dimensions
+        # if hasattr(mesh_data, 'dimension'):
+        #     mesh_dimension = mesh_data.dimension
         # else:
         #     # 根据节点坐标推断维度
         #     if node_coords and len(node_coords[0]) > 2:
-        #         mesh_dimensions = 3
+        #         mesh_dimension = 3
         #     else:
-        #         mesh_dimensions = 2
+        #         mesh_dimension = 2
         
         # 设置网格维度
-        mesh_dimensions = 2
-        internal_mesh['dimensions'] = mesh_dimensions
+        mesh_dimension = 2
+        internal_mesh['dimension'] = mesh_dimension
         
         # 对于2D网格，去掉z坐标
         processed_nodes = []
@@ -62,7 +63,7 @@ def convert_to_internal_mesh_format(mesh_data):
             # 确保节点坐标是列表或元组
             if isinstance(node, (list, tuple)):
                 # 如果是3D坐标且网格是2D，只保留x和y
-                if mesh_dimensions == 2 and len(node) >= 2:
+                if mesh_dimension == 2 and len(node) >= 2:
                     processed_nodes.append(node[:2])
                 else:
                     processed_nodes.append(node)
@@ -160,17 +161,10 @@ def convert_to_internal_mesh_format(mesh_data):
         node_coords = mesh_data.get('node_coords', [])
         
         # 先获取网格维度，用于后续的节点坐标处理
-        if 'dimensions' in mesh_data:
-            mesh_dimensions = mesh_data['dimensions']
-        else:
-            # 根据节点坐标推断维度
-            if node_coords and len(node_coords[0]) > 2:
-                mesh_dimensions = 3
-            else:
-                mesh_dimensions = 2
+        mesh_dimension = detect_mesh_dimension_by_metadata(mesh_data)
         
         # 设置网格维度
-        internal_mesh['dimensions'] = mesh_dimensions
+        internal_mesh['dimension'] = mesh_dimension
         
         # 对于2D网格，去掉z坐标
         processed_nodes = []
@@ -178,7 +172,7 @@ def convert_to_internal_mesh_format(mesh_data):
             # 确保节点坐标是列表或元组
             if isinstance(node, (list, tuple)):
                 # 如果是3D坐标且网格是2D，只保留x和y
-                if mesh_dimensions == 2 and len(node) >= 2:
+                if mesh_dimension == 2 and len(node) >= 2:
                     processed_nodes.append(node[:2])
                 else:
                     processed_nodes.append(node)

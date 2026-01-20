@@ -25,7 +25,7 @@ class MeshData:
         self.cells = []  # 单元列表，每个元素为节点索引列表
         self.num_points = 0  # 节点数量
         self.num_cells = 0  # 单元数量
-        self.dimensions = 2  # 网格维度 (2D/3D)
+        self.dimension = 2  # 网格维度 (2D/3D)
         
         # 扩展数据
         self.vtk_poly_data = None  # VTK多边形数据对象
@@ -52,7 +52,7 @@ class MeshData:
         """
         # 基本属性
         self.mesh_type = mesh_dict.get('type', None)
-        self.dimensions = mesh_dict.get('dimensions', 2)
+        self.dimension = mesh_dict.get('dimension', 2)
         self.file_path = mesh_dict.get('file_path', None)
         
         # 网格数据
@@ -84,7 +84,7 @@ class MeshData:
             'cells': self.cells,
             'num_points': self.num_points,
             'num_cells': self.num_cells,
-            'dimensions': self.dimensions,
+            'dimension': self.dimension,
             'vtk_poly_data': self.vtk_poly_data,
             'unstr_grid': self.unstr_grid,
             'parts_info': self.parts_info,
