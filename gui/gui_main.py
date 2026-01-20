@@ -355,7 +355,8 @@ class PyMeshGenGUI(QMainWindow):
                 'import': 'document-import',
                 'export': 'document-export',
                 'import_geometry': 'document-import',
-                'export_geometry': 'document-export'
+                'export_geometry': 'document-export',
+                'mesh_dimension': 'mesh-dimension'
             }.get(button_name, 'document-new')
             button.setIcon(get_icon(icon_name))
 

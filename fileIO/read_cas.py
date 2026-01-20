@@ -47,200 +47,196 @@ def parse_fluent_msh(file_path):
         "dimension": 0,
     }
 
-    # 使用生成器逐行读取，避免一次性加载所有行到内存
     with open(file_path, "r") as f:
-        lines = [line.strip() for line in f if line.strip()]
+        current_section = None
+        current_zone = None
 
-    current_section = None
-    current_zone = None
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            # 处理注释和输出提示
+            if line.startswith("(0"):
+                raw_cas_data["comments"].append(line[2:].strip())
+                continue
+            elif (
+                line.startswith("(1 ")
+                and not line.startswith("(10 ")
+                and not line.startswith("(12 ")
+                and not line.startswith("(13 ")
+            ):
+                raw_cas_data["output_prompts"].append(line[2:].strip())
+                continue
 
-    for line in lines:
-        # 处理注释和输出提示
-        if line.startswith("(0"):
-            raw_cas_data["comments"].append(line[2:].strip())
-            continue
-        elif (
-            line.startswith("(1 ")
-            and not line.startswith("(10 ")
-            and not line.startswith("(12 ")
-            and not line.startswith("(13 ")
-        ):
-            raw_cas_data["output_prompts"].append(line[2:].strip())
-            continue
-
-        # 处理维度信息
-        if line.startswith("(2 "):
-            numbers = re.findall(r"\d+", line)
-            if len(numbers) >= 2:
-                raw_cas_data["dimension"] = int(numbers[1])
-            else:
-                raise ValueError(f"Invalid dimension line: {line}")
-            continue
-
-        # 处理节点数量
-        if line.startswith("(10 (0"):
-            raw_cas_data["node_count"] = int(line.split()[3], 16)
-            continue
-
-        # 处理面数量
-        if line.startswith("(13 (0"):
-            raw_cas_data["face_count"] = int(line.split()[3], 16)
-            continue
-
-        # 处理单元数量
-        if line.startswith("(12 (0"):
-            raw_cas_data["cell_count"] = int(line.split()[3], 16)
-            continue
-
-        # 处理节点坐标
-        if NODE_SECTION_PATTERN.match(line):
-            current_section = "nodes"
-            continue
-
-        # 处理面数据
-        face_match = FACE_SECTION_PATTERN.match(line)
-        if face_match:
-            current_section = "faces"
-            zone_id = int(face_match.group(1))
-            face_start_idx = int(face_match.group(2), 16)
-            face_end_idx = int(face_match.group(3), 16)
-            face_count_section = face_end_idx - face_start_idx + 1
-            bc_type = int(face_match.group(4), 16)
-            face_type = int(face_match.group(5))
-            current_zone = {
-                "type": "faces",
-                "zone_id": zone_id,
-                "start_idx": face_start_idx,
-                "end_idx": face_end_idx,
-                "bc_type": bc_type,
-                "face_type": face_type,
-                "part_name": [],
-                "face_count_section": face_count_section,
-                "data": [],
-            }
-            raw_cas_data["zones"][f"zone_{zone_id}"] = current_zone
-            continue
-
-        # 处理单元数据
-        cell_match = CELL_SECTION_PATTERN.match(line)
-        if cell_match:
-            current_section = "cells"
-            zone_id = int(cell_match.group(1))
-            cell_start_idx = int(cell_match.group(2), 16)
-            cell_end_idx = int(cell_match.group(3), 16)
-            cell_zone_type = int(cell_match.group(4))
-            cell_type = int(cell_match.group(5))
-            cell_count = cell_end_idx - cell_start_idx + 1
-            current_zone = {
-                "type": "cells",
-                "zone_id": zone_id,
-                "start_idx": cell_start_idx,
-                "end_idx": cell_end_idx,
-                "cell_zone_type": cell_zone_type,
-                "cell_type": cell_type,
-                "cell_type_array": [],
-                "part_name": [],
-                "cell_count": cell_count,
-            }
-            raw_cas_data["zones"][f"zone_{zone_id}"] = current_zone
-            continue
-
-        # 处理边界条件
-        if line.startswith("(45"):
-            match = BC_PATTERN.match(line)
-            if match:
-                zone_id = int(match.group(1))
-                bc_type = match.group(2)
-                part_name = match.group(3).strip() if match.group(3) else None
-
-                # 清理边界名称中的多余字符
-                if part_name:
-                    part_name = part_name.split(")", 1)[0].strip()
-
-                if f"zone_{zone_id}" in raw_cas_data["zones"]:
-                    zone = raw_cas_data["zones"][f"zone_{zone_id}"]
-                    zone["bc_type"] = bc_type
-                    zone["part_name"] = part_name
+            # 处理维度信息
+            if line.startswith("(2 "):
+                numbers = re.findall(r"\d+", line)
+                if len(numbers) >= 2:
+                    raw_cas_data["dimension"] = int(numbers[1])
                 else:
-                    print(f"Warning: Zone {zone_id} not found for BC: {line}")
-            else:
-                print(f"Warning: Unparsed BC line: {line}")
-            continue
+                    raise ValueError(f"Invalid dimension line: {line}")
+                continue
 
-        # 处理当前section的数据
-        if current_section == "nodes":
-            if line == "))":
-                current_section = None
-            else:
-                # 移除行尾的结束标记 '))'
-                line = line.replace("))", "").strip()
-                coords = list(map(float, line.split()))
-                for i in range(0, len(coords), raw_cas_data["dimension"]):
-                    raw_cas_data["nodes"].append(coords[i : i + raw_cas_data["dimension"]])
-            continue
+            # 处理节点数量
+            if line.startswith("(10 (0"):
+                raw_cas_data["node_count"] = int(line.split()[3], 16)
+                continue
 
-        if current_section == "faces":
-            if line == "))":
-                current_section = None
-            else:
-                # 移除行尾的结束标记 '))'
-                line = line.replace("))", "").strip()
-                # 处理十六进制面数据
-                hex_values = HEX_PATTERN.findall(line)
-                dec_values = [int(h, 16) for h in hex_values]
+            # 处理面数量
+            if line.startswith("(13 (0"):
+                raw_cas_data["face_count"] = int(line.split()[3], 16)
+                continue
 
-                if face_type == FLUENT_FACE_TYPES["MIXED"]:
-                    nnodes = dec_values[0]
-                    face = {
-                        "nnodes": dec_values[0],
-                        "nodes": dec_values[1 : 1 + nnodes],
-                        "left_cell": dec_values[1 + nnodes],
-                        "right_cell": dec_values[2 + nnodes],
-                    }
+            # 处理单元数量
+            if line.startswith("(12 (0"):
+                raw_cas_data["cell_count"] = int(line.split()[3], 16)
+                continue
+
+            # 处理节点坐标
+            if NODE_SECTION_PATTERN.match(line):
+                current_section = "nodes"
+                continue
+
+            # 处理面数据
+            face_match = FACE_SECTION_PATTERN.match(line)
+            if face_match:
+                current_section = "faces"
+                zone_id = int(face_match.group(1))
+                face_start_idx = int(face_match.group(2), 16)
+                face_end_idx = int(face_match.group(3), 16)
+                face_count_section = face_end_idx - face_start_idx + 1
+                bc_type = int(face_match.group(4), 16)
+                face_type = int(face_match.group(5))
+                current_zone = {
+                    "type": "faces",
+                    "zone_id": zone_id,
+                    "start_idx": face_start_idx,
+                    "end_idx": face_end_idx,
+                    "bc_type": bc_type,
+                    "face_type": face_type,
+                    "part_name": [],
+                    "face_count_section": face_count_section,
+                    "data": [],
+                }
+                raw_cas_data["zones"][f"zone_{zone_id}"] = current_zone
+                continue
+
+            # 处理单元数据
+            cell_match = CELL_SECTION_PATTERN.match(line)
+            if cell_match:
+                current_section = "cells"
+                zone_id = int(cell_match.group(1))
+                cell_start_idx = int(cell_match.group(2), 16)
+                cell_end_idx = int(cell_match.group(3), 16)
+                cell_zone_type = int(cell_match.group(4))
+                cell_type = int(cell_match.group(5))
+                cell_count = cell_end_idx - cell_start_idx + 1
+                current_zone = {
+                    "type": "cells",
+                    "zone_id": zone_id,
+                    "start_idx": cell_start_idx,
+                    "end_idx": cell_end_idx,
+                    "cell_zone_type": cell_zone_type,
+                    "cell_type": cell_type,
+                    "cell_type_array": [],
+                    "part_name": [],
+                    "cell_count": cell_count,
+                }
+                raw_cas_data["zones"][f"zone_{zone_id}"] = current_zone
+                continue
+
+            # 处理边界条件
+            if line.startswith("(45"):
+                match = BC_PATTERN.match(line)
+                if match:
+                    zone_id = int(match.group(1))
+                    bc_type = match.group(2)
+                    part_name = match.group(3).strip() if match.group(3) else None
+
+                    # 清理边界名称中的多余字符
+                    if part_name:
+                        part_name = part_name.split(")", 1)[0].strip()
+
+                    if f"zone_{zone_id}" in raw_cas_data["zones"]:
+                        zone = raw_cas_data["zones"][f"zone_{zone_id}"]
+                        zone["bc_type"] = bc_type
+                        zone["part_name"] = part_name
+                    else:
+                        print(f"Warning: Zone {zone_id} not found for BC: {line}")
                 else:
-                    face = {"nnodes": 0, "nodes": [], "left_cell": [], "right_cell": []}
-                    if face_type == FLUENT_FACE_TYPES["LINEAR"]:
-                        face["nnodes"] = 2
-                    elif face_type == FLUENT_FACE_TYPES["TRI"]:
-                        face["nnodes"] = 3
-                    elif face_type == FLUENT_FACE_TYPES["QUAD"]:
-                        face["nnodes"] = 4
+                    print(f"Warning: Unparsed BC line: {line}")
+                continue
 
-                    nnodes = face["nnodes"]
-                    face["nodes"] = dec_values[0:nnodes]
-                    face["left_cell"] = dec_values[nnodes]
-                    face["right_cell"] = dec_values[1 + nnodes]
+            # 处理当前section的数据
+            if current_section == "nodes":
+                if line == "))":
+                    current_section = None
+                else:
+                    # 移除行尾的结束标记 '))'
+                    line = line.replace("))", "").strip()
+                    coords = list(map(float, line.split()))
+                    for i in range(0, len(coords), raw_cas_data["dimension"]):
+                        raw_cas_data["nodes"].append(coords[i : i + raw_cas_data["dimension"]])
+                continue
 
-                current_zone["data"].append(face)
-            continue
+            if current_section == "faces":
+                if line == "))":
+                    current_section = None
+                else:
+                    # 移除行尾的结束标记 '))'
+                    line = line.replace("))", "").strip()
+                    # 处理十六进制面数据
+                    hex_values = HEX_PATTERN.findall(line)
+                    dec_values = [int(h, 16) for h in hex_values]
 
-        if current_section == "cells":
-            if line == "))":
-                current_section = None
-            else:
-                # 移除行尾的结束标记 '))'
-                line = line.replace("))", "").strip()
-                dec_values = line.split()
-                # 分离单元类型
-                for h in dec_values:
-                    cell_type = int(h)
-                    current_zone["cell_type_array"].append(cell_type)
-            continue
+                    if face_type == FLUENT_FACE_TYPES["MIXED"]:
+                        nnodes = dec_values[0]
+                        face = {
+                            "nnodes": dec_values[0],
+                            "nodes": dec_values[1 : 1 + nnodes],
+                            "left_cell": dec_values[1 + nnodes],
+                            "right_cell": dec_values[2 + nnodes],
+                        }
+                    else:
+                        face = {"nnodes": 0, "nodes": [], "left_cell": [], "right_cell": []}
+                        if face_type == FLUENT_FACE_TYPES["LINEAR"]:
+                            face["nnodes"] = 2
+                        elif face_type == FLUENT_FACE_TYPES["TRI"]:
+                            face["nnodes"] = 3
+                        elif face_type == FLUENT_FACE_TYPES["QUAD"]:
+                            face["nnodes"] = 4
 
-    # 收集faces数据到cas_data['faces']
+                        nnodes = face["nnodes"]
+                        face["nodes"] = dec_values[0:nnodes]
+                        face["left_cell"] = dec_values[nnodes]
+                        face["right_cell"] = dec_values[1 + nnodes]
+
+                    current_zone["data"].append(face)
+                continue
+
+            if current_section == "cells":
+                if line == "))":
+                    current_section = None
+                else:
+                    # 移除行尾的结束标记 '))'
+                    line = line.replace("))", "").strip()
+                    dec_values = line.split()
+                    # 分离单元类型
+                    for h in dec_values:
+                        cell_type = int(h)
+                        current_zone["cell_type_array"].append(cell_type)
+                continue
+
+    # 收集faces数据到cas_data['faces']，避免重复创建字典对象
     for zone in raw_cas_data["zones"].values():
         if zone["type"] == "faces":
             bc_type = zone.get("bc_type", "internal")
             part_name = zone.get("part_name", "unspecified")
-            for face in zone["data"]:
-                face_with_bc = {
-                    "nodes": face["nodes"],
-                    "left_cell": face["left_cell"],
-                    "right_cell": face["right_cell"],
-                    "bc_type": bc_type,
-                    "part_name": part_name,
-                }
-                raw_cas_data["faces"].append(face_with_bc)
+            zone_faces = zone["data"]
+            for face in zone_faces:
+                face["bc_type"] = bc_type
+                face["part_name"] = part_name
+            raw_cas_data["faces"].extend(zone_faces)
 
     timer.show_to_console("解析fluent .cas网格..., Done.")
 
@@ -574,10 +570,5 @@ def parse_cas_to_unstr_grid(cas_file_path):
     Returns:
         Unstructured_Grid: 转换后的非结构化网格对象
     """
-    # 首先解析cas文件
-    raw_cas_data = parse_fluent_msh(cas_file_path)
-
-    # 然后将解析后的数据转换为Unstructured_Grid对象
-    unstr_grid = reconstruct_mesh_from_cas(raw_cas_data)
-
-    return unstr_grid
+    # 直接解析并转换为网格对象
+    return reconstruct_mesh_from_cas(parse_fluent_msh(cas_file_path))
