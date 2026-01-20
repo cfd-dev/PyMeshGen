@@ -166,6 +166,7 @@ class PyMeshGenGUI(QMainWindow):
         
         初始化GUI类中的所有数据成员，设置它们的初始值
         """
+        global GLOBAL_MESH_DIMENSION
         self.params = None                    # 网格生成的参数配置
         self.mesh_generator = None            # 网格生成器实例
         self.current_mesh = None              # 当前生成的网格对象
@@ -786,6 +787,30 @@ class PyMeshGenGUI(QMainWindow):
         """导入进度更新回调"""
         self._update_progress(message, progress, "mesh")
 
+    def _apply_mesh_dimension(self, dimension, update_mesh=True):
+        """同步网格维度到全局变量、当前网格和状态栏"""
+        if dimension not in (2, 3):
+            return
+        dimension = int(dimension)
+        global GLOBAL_MESH_DIMENSION
+        GLOBAL_MESH_DIMENSION = dimension
+        self.mesh_dimension = dimension
+        if update_mesh and hasattr(self, 'current_mesh') and self.current_mesh:
+            if isinstance(self.current_mesh, dict):
+                self.current_mesh['dimension'] = dimension
+                if 'unstr_grid' in self.current_mesh:
+                    unstr_grid = self.current_mesh.get('unstr_grid')
+                    if hasattr(unstr_grid, 'dimension'):
+                        unstr_grid.dimension = dimension
+            else:
+                if hasattr(self.current_mesh, 'dimension'):
+                    self.current_mesh.dimension = dimension
+                if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
+                    if hasattr(self.current_mesh.unstr_grid, 'dimension'):
+                        self.current_mesh.unstr_grid.dimension = dimension
+        if hasattr(self, 'status_bar'):
+            self.status_bar.update_mesh_dimension(dimension)
+
     def on_import_finished(self, mesh_data):
         """导入完成回调 - 优化版本，使用QTimer分步处理避免UI卡顿"""
         try:
@@ -796,15 +821,14 @@ class PyMeshGenGUI(QMainWindow):
             elif hasattr(mesh_data, 'dimension'):
                 mesh_dimension = mesh_data.dimension
             if mesh_dimension in (2, 3):
-                self.mesh_dimension = int(mesh_dimension)
+                self._apply_mesh_dimension(mesh_dimension)
             else:
                 try:
                     from utils.geom_toolkit import detect_mesh_dimension_by_metadata
-                    self.mesh_dimension = detect_mesh_dimension_by_metadata(mesh_data, default_dim=self.mesh_dimension)
+                    resolved_dim = detect_mesh_dimension_by_metadata(mesh_data, default_dim=self.mesh_dimension)
+                    self._apply_mesh_dimension(resolved_dim)
                 except Exception:
                     pass
-            if hasattr(self, 'status_bar'):
-                self.status_bar.update_mesh_dimension(self.mesh_dimension)
 
             if hasattr(self, 'mesh_display'):
                 self.update_status("正在显示网格...")
@@ -1369,9 +1393,7 @@ class PyMeshGenGUI(QMainWindow):
     def clear_mesh(self):
         """清空网格"""
         self.current_mesh = None
-        self.mesh_dimension = GLOBAL_MESH_DIMENSION
-        if hasattr(self, 'status_bar'):
-            self.status_bar.update_mesh_dimension(self.mesh_dimension)
+        self._apply_mesh_dimension(GLOBAL_MESH_DIMENSION, update_mesh=False)
         if hasattr(self, 'mesh_display'):
             self.mesh_display.clear()
         self.log_info("已清空网格")

@@ -286,7 +286,7 @@ class FileOperations:
             if unstructured_grid:
                 mesh_dim = self._infer_dimension_from_vtk_cells(unstructured_grid)
             else:
-                mesh_dim = None
+                mesh_dim = self._infer_dimension_from_vtk_cells(poly_data)
             if mesh_dim in (2, 3):
                 mesh_data.dimension = mesh_dim
             else:

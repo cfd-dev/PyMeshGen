@@ -113,11 +113,14 @@ class MeshOperations:
         if selected_dim not in (2, 3):
             return
 
-        self.gui.mesh_dimension = selected_dim
-        if hasattr(self.gui.current_mesh, 'dimension'):
-            self.gui.current_mesh.dimension = selected_dim
-        if hasattr(self.gui, 'status_bar'):
-            self.gui.status_bar.update_mesh_dimension(selected_dim)
+        if hasattr(self.gui, '_apply_mesh_dimension'):
+            self.gui._apply_mesh_dimension(selected_dim)
+        else:
+            self.gui.mesh_dimension = selected_dim
+            if hasattr(self.gui.current_mesh, 'dimension'):
+                self.gui.current_mesh.dimension = selected_dim
+            if hasattr(self.gui, 'status_bar'):
+                self.gui.status_bar.update_mesh_dimension(selected_dim)
         self.gui.log_info(f"网格维度已设置为 {selected_dim}D")
         self.gui.update_status("网格维度已更新")
 
@@ -357,10 +360,14 @@ class MeshOperations:
 
                 try:
                     from utils.geom_toolkit import detect_mesh_dimension_by_metadata
-                    self.gui.mesh_dimension = detect_mesh_dimension_by_metadata(result_mesh, default_dim=self.gui.mesh_dimension)
+                    resolved_dim = detect_mesh_dimension_by_metadata(result_mesh, default_dim=self.gui.mesh_dimension)
+                    if hasattr(self.gui, '_apply_mesh_dimension'):
+                        self.gui._apply_mesh_dimension(resolved_dim)
+                    else:
+                        self.gui.mesh_dimension = resolved_dim
                 except Exception:
                     pass
-                if hasattr(self.gui, 'status_bar'):
+                if hasattr(self.gui, 'status_bar') and not hasattr(self.gui, '_apply_mesh_dimension'):
                     self.gui.status_bar.update_mesh_dimension(self.gui.mesh_dimension)
 
                 self.gui.display_mesh()
