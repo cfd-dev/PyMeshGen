@@ -410,7 +410,7 @@ def edge_swap(unstr_grid):
 
         c, d = other_points
 
-        # 凸性检查
+        # 凸性检查 TODO 为何无需检查，忘记了
         # if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
         #     continue
 
