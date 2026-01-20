@@ -411,8 +411,8 @@ def edge_swap(unstr_grid):
         c, d = other_points
 
         # 凸性检查
-        if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
-            continue
+        # if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
+        #     continue
 
         # 计算交换前的最小角
         # 修复：直接传递node_ids而不是Triangle对象
