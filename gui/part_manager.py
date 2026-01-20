@@ -133,6 +133,7 @@ class PartManager:
             if hasattr(generated_mesh, 'node_coords'):
                 new_node_coords = generated_mesh.node_coords
 
+            # FIXME 对于初始边界重新离散了的情况，如含有match边界，保存的original_coords是旧的，而不是重新离散后的，导致映射后仍然是乱序的
             node_mapping = None
             if self.gui.original_node_coords and new_node_coords:
                 node_mapping = self.gui._create_node_index_mapping(

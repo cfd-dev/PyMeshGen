@@ -10,6 +10,48 @@ class ConfigManager:
     def __init__(self, gui):
         self.gui = gui
 
+    def _mesh_params_to_dict(self, mesh_params):
+        """将网格参数对象转换为配置字典"""
+        if isinstance(mesh_params, dict):
+            return {
+                "max_size": mesh_params.get("max_size", 1e6),
+                "PRISM_SWITCH": mesh_params.get("PRISM_SWITCH", "off"),
+                "first_height": mesh_params.get("first_height", 0.1),
+                "growth_rate": mesh_params.get("growth_rate", 1.2),
+                "growth_method": mesh_params.get("growth_method", "geometric"),
+                "max_layers": mesh_params.get("max_layers", 3),
+                "full_layers": mesh_params.get("full_layers", 0),
+                "multi_direction": mesh_params.get("multi_direction", False),
+            }
+
+        return {
+            "max_size": mesh_params.max_size,
+            "PRISM_SWITCH": mesh_params.PRISM_SWITCH,
+            "first_height": mesh_params.first_height,
+            "growth_rate": mesh_params.growth_rate,
+            "growth_method": mesh_params.growth_method,
+            "max_layers": mesh_params.max_layers,
+            "full_layers": mesh_params.full_layers,
+            "multi_direction": mesh_params.multi_direction,
+        }
+
+    def _part_to_config(self, part_param):
+        """将Part对象转换为配置字典（保留曲线参数）"""
+        part_config = {"part_name": part_param.part_name}
+        part_config.update(self._mesh_params_to_dict(part_param.part_params))
+
+        curves = []
+        if hasattr(part_param, "connectors") and part_param.connectors:
+            for connector in part_param.connectors:
+                if connector.curve_name == "default":
+                    continue
+                curve_config = {"curve_name": connector.curve_name}
+                curve_config.update(self._mesh_params_to_dict(connector.param))
+                curves.append(curve_config)
+
+        part_config["curves"] = curves
+        return part_config
+
     def save_config(self):
         """保存工程 - 将JSON配置文件和导入网格文件的路径保存到.pymg工程文件中"""
         try:
@@ -46,18 +88,7 @@ class ConfigManager:
                 if hasattr(self.gui.params, 'part_params'):
                     part_configs = []
                     for part_param in self.gui.params.part_params:
-                        part_config = {
-                            "part_name": part_param.part_name,
-                            "max_size": part_param.part_params.max_size,
-                            "PRISM_SWITCH": part_param.part_params.PRISM_SWITCH,
-                            "first_height": part_param.part_params.first_height,
-                            "growth_rate": part_param.part_params.growth_rate,
-                            "growth_method": part_param.part_params.growth_method,
-                            "max_layers": part_param.part_params.max_layers,
-                            "full_layers": part_param.part_params.full_layers,
-                            "multi_direction": part_param.part_params.multi_direction
-                        }
-                        part_configs.append(part_config)
+                        part_configs.append(self._part_to_config(part_param))
                     config_info["parts"] = part_configs
 
                 project_data["config"] = config_info
@@ -129,18 +160,7 @@ class ConfigManager:
 
                 self.gui.parts_params = []
                 for part_param in self.gui.params.part_params:
-                    part_dict = {
-                        "part_name": part_param.part_name,
-                        "max_size": part_param.part_params.max_size,
-                        "PRISM_SWITCH": part_param.part_params.PRISM_SWITCH,
-                        "first_height": part_param.part_params.first_height,
-                        "growth_rate": part_param.part_params.growth_rate,
-                        "growth_method": part_param.part_params.growth_method,
-                        "max_layers": part_param.part_params.max_layers,
-                        "full_layers": part_param.part_params.full_layers,
-                        "multi_direction": part_param.part_params.multi_direction
-                    }
-                    self.gui.parts_params.append(part_dict)
+                    self.gui.parts_params.append(self._part_to_config(part_param))
 
                 if hasattr(self.gui, 'part_list_widget'):
                     self.gui.part_list_widget.clear()

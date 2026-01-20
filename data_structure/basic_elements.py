@@ -1058,10 +1058,10 @@ class Connector:
                 p1, p2 = p2, p1
 
             node1 = NodeElementALM(
-                coords=p1, idx=-1, bc_type=old_bc_type, match_bound=match_bound
+                coords=p1, idx=-1, bc_type=old_bc_type, match_bound=match_bound, part_name=self.part_name
             )
             node2 = NodeElementALM(
-                coords=p2, idx=-1, bc_type=old_bc_type, match_bound=match_bound
+                coords=p2, idx=-1, bc_type=old_bc_type, match_bound=match_bound, part_name=self.part_name
             )
             self.front_list.append(Front(node1, node2, -1, old_bc_type, self.part_name))
 
