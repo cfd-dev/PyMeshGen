@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import heapq
+from collections import deque
 from itertools import combinations
 
 from utils import geom_toolkit as geom_tool
@@ -339,125 +340,163 @@ def compute_rectangular_position(prev, curr, next):
 def edge_swap(unstr_grid):
     timer = TimeSpan("开始进行边交换优化...")
     node_coords = unstr_grid.node_coords
+    node_coords_2d = [
+        coords[:2] if hasattr(coords, "__len__") and len(coords) > 2 else coords
+        for coords in node_coords
+    ]
+
+    def triangle_edges(node_ids):
+        a, b, c = node_ids[:3]
+        return [
+            tuple(sorted((a, b))),
+            tuple(sorted((b, c))),
+            tuple(sorted((c, a))),
+        ]
+
     edge_map = {}
 
     # 构建边到单元的映射
     for cell_idx, cell in enumerate(unstr_grid.cell_container):
-        for i, j in combinations(sorted(cell.node_ids), 2):
-            edge = (i, j)
-            if edge not in edge_map:
-                edge_map[edge] = []
-            edge_map[edge].append(cell_idx)
+        if type(cell).__name__ != 'Triangle':
+            continue
+        for edge in triangle_edges(cell.node_ids):
+            edge_map.setdefault(edge, []).append(cell_idx)
 
-    swapped = True
+    edge_queue = deque()
+    in_queue = set()
+
+    def enqueue(edge):
+        if edge in in_queue:
+            return
+        cells = edge_map.get(edge)
+        if cells and len(cells) == 2:
+            edge_queue.append(edge)
+            in_queue.add(edge)
+
+    for edge, cells in edge_map.items():
+        if len(cells) == 2:
+            edge_queue.append(edge)
+            in_queue.add(edge)
+
     num_swapped = 0
-    while swapped:
-        swapped = False
-        # 使用当前edge_map的快照避免迭代修改问题
-        for edge, cells in list(edge_map.items()):
-            # 仅处理内部边（被两个单元共享）
-            if len(cells) != 2:
-                continue
-            if edge == (194, 24) or edge == (24, 194):
-                kkk = 0
+    while edge_queue:
+        edge = edge_queue.popleft()
+        in_queue.discard(edge)
+        cells = edge_map.get(edge)
+        # 仅处理内部边（被两个单元共享）
+        if not cells or len(cells) != 2:
+            continue
+        if edge == (194, 24) or edge == (24, 194):
+            kkk = 0
 
-            cell1_idx, cell2_idx = cells
-            cell1 = unstr_grid.cell_container[cell1_idx]
-            cell2 = unstr_grid.cell_container[cell2_idx]
-            # 使用字符串类型比较代替isinstance，避免导入路径问题
-            if not (type(cell1).__name__ == 'Triangle' and type(cell2).__name__ == 'Triangle'):
-                continue  # 非三角形单元跳过
+        cell1_idx, cell2_idx = cells
+        cell1 = unstr_grid.cell_container[cell1_idx]
+        cell2 = unstr_grid.cell_container[cell2_idx]
+        # 使用字符串类型比较代替isinstance，避免导入路径问题
+        if not (type(cell1).__name__ == 'Triangle' and type(cell2).__name__ == 'Triangle'):
+            continue  # 非三角形单元跳过
 
-            # 确认公共边
-            common_edge = set(cell1.node_ids) & set(cell2.node_ids)
-            if len(common_edge) != 2:
-                continue  # 数据异常
+        # 确认公共边
+        common_edge = set(cell1.node_ids) & set(cell2.node_ids)
+        if len(common_edge) != 2:
+            continue  # 数据异常
 
-            a, b = sorted(common_edge)
-            other_points = list(
-                (set(cell1.node_ids) | set(cell2.node_ids)) - common_edge
+        a, b = sorted(common_edge)
+        other_points = list(
+            (set(cell1.node_ids) | set(cell2.node_ids)) - common_edge
+        )
+        if len(other_points) != 2:
+            continue  # 无法构成四边形
+
+        c, d = other_points
+
+        # 凸性检查
+        if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
+            continue
+
+        # 计算交换前的最小角
+        # 修复：直接传递node_ids而不是Triangle对象
+        current_min = min(
+            geom_tool.calculate_min_angle(cell1.node_ids, node_coords_2d),
+            geom_tool.calculate_min_angle(cell2.node_ids, node_coords_2d),
+        )
+
+        # 交换后的单元
+        swapped_cell1 = [a, c, d]
+        swapped_cell2 = [b, c, d]
+
+        # 确保构成的单元节点逆时针
+        if not geom_tool.is_left2d(node_coords_2d[a], node_coords_2d[c], node_coords_2d[d]):
+            swapped_cell1 = [d, c, a]
+        if not geom_tool.is_left2d(node_coords_2d[b], node_coords_2d[c], node_coords_2d[d]):
+            swapped_cell2 = [d, c, b]
+
+        # 有效性检查
+        if not (
+            geom_tool.is_valid_triangle(swapped_cell1, node_coords_2d)
+            and geom_tool.is_valid_triangle(swapped_cell2, node_coords_2d)
+        ):
+            continue
+
+        # 计算交换后的最小角
+        swapped_min = min(
+            geom_tool.calculate_min_angle(swapped_cell1, node_coords_2d),
+            geom_tool.calculate_min_angle(swapped_cell2, node_coords_2d),
+        )
+
+        # 交换条件：最小角优化且不创建新边界边
+        if swapped_min > current_min and not (
+            c in unstr_grid.boundary_nodes_list
+            and d in unstr_grid.boundary_nodes_list
+        ):
+            old_edges = triangle_edges(cell1.node_ids) + triangle_edges(cell2.node_ids)
+            new_edges1 = triangle_edges(swapped_cell1)
+            new_edges2 = triangle_edges(swapped_cell2)
+            new_edges = new_edges1 + new_edges2
+
+            # 执行交换
+            # 创建新的Triangle对象
+            new_cell1 = Triangle(
+                node_coords[swapped_cell1[0]],
+                node_coords[swapped_cell1[1]],
+                node_coords[swapped_cell1[2]],
+                cell1.part_name,
+                cell1.idx,
+                node_ids=swapped_cell1,
             )
-            if len(other_points) != 2:
-                continue  # 无法构成四边形
-
-            c, d = other_points
-
-            # 凸性检查
-            if not geom_tool.is_convex(a, c, b, d, node_coords):
-                continue
-
-            # 计算交换前的最小角
-            # 修复：直接传递node_ids而不是Triangle对象
-            current_min = min(
-                geom_tool.calculate_min_angle(cell1.node_ids, node_coords),
-                geom_tool.calculate_min_angle(cell2.node_ids, node_coords),
+            new_cell2 = Triangle(
+                node_coords[swapped_cell2[0]],
+                node_coords[swapped_cell2[1]],
+                node_coords[swapped_cell2[2]],
+                cell2.part_name,
+                cell2.idx,
+                node_ids=swapped_cell2,
             )
 
-            # 交换后的单元
-            swapped_cell1 = [a, c, d]
-            swapped_cell2 = [b, c, d]
+            unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点
+            unstr_grid.cell_container[cell2_idx] = new_cell2  # 修改点
+            num_swapped += 1
 
-            # 确保构成的单元节点逆时针
-            if not geom_tool.is_left2d(node_coords[a], node_coords[c], node_coords[d]):
-                swapped_cell1 = [d, c, a]
-            if not geom_tool.is_left2d(node_coords[b], node_coords[c], node_coords[d]):
-                swapped_cell2 = [d, c, b]
+            for old_edge in old_edges:
+                cells_for_edge = edge_map.get(old_edge)
+                if not cells_for_edge:
+                    continue
+                if cell1_idx in cells_for_edge:
+                    cells_for_edge.remove(cell1_idx)
+                if cell2_idx in cells_for_edge:
+                    cells_for_edge.remove(cell2_idx)
+                if not cells_for_edge:
+                    edge_map.pop(old_edge, None)
 
-            # 有效性检查
-            if not (
-                geom_tool.is_valid_triangle(swapped_cell1, node_coords)
-                and geom_tool.is_valid_triangle(swapped_cell2, node_coords)
-            ):
-                continue
+            for new_edge in new_edges:
+                cells_for_edge = edge_map.setdefault(new_edge, [])
+                if cell1_idx not in cells_for_edge and new_edge in new_edges1:
+                    cells_for_edge.append(cell1_idx)
+                if cell2_idx not in cells_for_edge and new_edge in new_edges2:
+                    cells_for_edge.append(cell2_idx)
 
-            # 计算交换后的最小角
-            swapped_min = min(
-                geom_tool.calculate_min_angle(swapped_cell1, node_coords),
-                geom_tool.calculate_min_angle(swapped_cell2, node_coords),
-            )
-
-            # 凸性检查
-            # if not geom_tool.is_convex(a, c, b, d, node_coords):
-            #     continue
-
-            # 交换条件：最小角优化且不创建新边界边
-            if swapped_min > current_min and not (
-                c in unstr_grid.boundary_nodes_list
-                and d in unstr_grid.boundary_nodes_list
-            ):
-                # 执行交换
-                # 创建新的Triangle对象
-                new_cell1 = Triangle(
-                    node_coords[swapped_cell1[0]],
-                    node_coords[swapped_cell1[1]],
-                    node_coords[swapped_cell1[2]],
-                    cell1.part_name,
-                    cell1.idx,
-                    node_ids=swapped_cell1,
-                )
-                new_cell2 = Triangle(
-                    node_coords[swapped_cell2[0]],
-                    node_coords[swapped_cell2[1]],
-                    node_coords[swapped_cell2[2]],
-                    cell2.part_name,
-                    cell2.idx,
-                    node_ids=swapped_cell2,
-                )
-
-                unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点
-                unstr_grid.cell_container[cell2_idx] = new_cell2  # 修改点
-                swapped = True
-                num_swapped += 1
-
-        # 重新构建边映射
-        if swapped:
-            edge_map = {}
-            for cell_idx, cell in enumerate(unstr_grid.cell_container):
-                for i, j in combinations(sorted(cell.node_ids), 2):
-                    edge = (i, j)
-                    if edge not in edge_map:
-                        edge_map[edge] = []
-                    edge_map[edge].append(cell_idx)
+            for affected_edge in set(old_edges + new_edges):
+                enqueue(affected_edge)
 
     info(f"共进行了{num_swapped}次边交换.")
     timer.show_to_console("边交换优化完成.")
