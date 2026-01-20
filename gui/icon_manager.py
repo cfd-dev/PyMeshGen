@@ -118,6 +118,8 @@ class IconManager:
             self._draw_mesh_smooth_icon(painter, size, primary_color)
         elif icon_name in ['mesh-optimize', 'optimize-mesh', 'mesh_optimize', 'optimize']:
             self._draw_mesh_optimize_icon(painter, size, accent_color)
+        elif icon_name in ['mesh-dimension', 'mesh_dimension', 'mesh-dim', 'dimension']:
+            self._draw_mesh_dimension_icon(painter, size, primary_color)
         elif icon_name in ['part-params', 'edit-part', 'part_params', 'part-params']:
             self._draw_part_params_icon(painter, size, primary_color)
         elif icon_name in ['config-import', 'import-config', 'config_import', 'import']:
@@ -257,6 +259,31 @@ class IconManager:
             painter.rotate(i * 60)
             painter.drawRect(-2, -10, 4, 4)  # Small rectangle as gear tooth
             painter.restore()
+
+    def _draw_mesh_dimension_icon(self, painter, size, color):
+        """Draw mesh dimension icon"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+
+        offset = 4
+        rect_size = size - 12
+        back_x = 6
+        back_y = 6
+        front_x = back_x + offset
+        front_y = back_y + offset
+
+        painter.drawRect(back_x, back_y, rect_size, rect_size)
+        painter.drawRect(front_x, front_y, rect_size, rect_size)
+
+        painter.drawLine(back_x, back_y, front_x, front_y)
+        painter.drawLine(back_x + rect_size, back_y, front_x + rect_size, front_y)
+        painter.drawLine(back_x, back_y + rect_size, front_x, front_y + rect_size)
+
+        font = painter.font()
+        font.setPointSize(6)
+        painter.setFont(font)
+        painter.drawText(2, size - 4, "2D/3D")
     
     def _draw_part_params_icon(self, painter, size, color):
         """Draw part parameters icon"""

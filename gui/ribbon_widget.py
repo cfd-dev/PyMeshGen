@@ -208,7 +208,7 @@ class RibbonWidget(QWidget):
         layout.addWidget(io_group)
 
         dimension_group = RibbonGroup("")
-        self.buttons['file']['mesh_dimension'] = dimension_group.add_large_button("网格维度", tooltip="设置网格维度")
+        self.buttons['file']['mesh_dimension'] = dimension_group.add_large_button("网格维度", icon=get_icon('mesh-dimension'), tooltip="设置网格维度")
         layout.addWidget(dimension_group)
 
         layout.addStretch(1)
