@@ -351,6 +351,8 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
         coords[:2] if hasattr(coords, "__len__") and len(coords) > 2 else coords
         for coords in node_coords
     ]
+    from data_structure.basic_elements import NodeElement
+    node_container = [NodeElement(coords, idx) for idx, coords in enumerate(node_coords)]
 
     def triangle_edges(node_ids):
         a, b, c = node_ids[:3]
@@ -407,6 +409,7 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
     num_swapped = 0
     iteration_count = 0
     max_iter = max_iterations or len(edge_map) * 10  # 默认最大迭代次数
+    pass_swaps = 0
 
     while edge_queue and iteration_count < max_iter:
         edge = edge_queue.popleft()
@@ -428,14 +431,36 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
         if len(common_edge) != 2:
             continue  # 数据异常
 
-        a, b = sorted(common_edge)
         other_points = list(
             (set(cell1.node_ids) | set(cell2.node_ids)) - common_edge
         )
         if len(other_points) != 2:
             continue  # 无法构成四边形
 
-        c, d = other_points
+        quad_nodes = list(common_edge) + other_points
+        try:
+            sorted_quad_nodes = geom_tool.sort_quadrilateral_nodes(quad_nodes, node_container)
+        except Exception:
+            continue
+
+        common_edge_set = set(common_edge)
+        edge_index = None
+        for i in range(4):
+            if {
+                sorted_quad_nodes[i],
+                sorted_quad_nodes[(i + 1) % 4],
+            } == common_edge_set:
+                edge_index = i
+                break
+        if edge_index is None:
+            continue
+
+        if edge_index != 0:
+            sorted_quad_nodes = (
+                sorted_quad_nodes[edge_index:] + sorted_quad_nodes[:edge_index]
+            )
+
+        a, b, c, d = sorted_quad_nodes
 
         # 获取四个顶点的坐标
         pt_a = np.array(node_coords_2d[a])
@@ -447,14 +472,20 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
         # 当前配置：边ab连接三角形abc和abd
         # 目标配置：边cd连接三角形acd和bcd
         # 如果d在三角形abc的外接圆内，或a在三角形bcd的外接圆内，则应交换
-        should_swap = (circumcircle_contains(pt_a, pt_b, pt_c, pt_d) or
-                      circumcircle_contains(pt_b, pt_c, pt_d, pt_a))
+        should_swap = (
+            circumcircle_contains(pt_a, pt_b, pt_c, pt_d)
+            or circumcircle_contains(pt_b, pt_c, pt_d, pt_a)
+        )
 
         # 额外检查：不创建新的边界边
         if should_swap and not (
             c in unstr_grid.boundary_nodes_list
             and d in unstr_grid.boundary_nodes_list
         ):
+            current_min = min(
+                geom_tool.calculate_min_angle(cell1.node_ids, node_coords_2d),
+                geom_tool.calculate_min_angle(cell2.node_ids, node_coords_2d),
+            )
             # 交换后的单元
             swapped_cell1 = [a, c, d]
             swapped_cell2 = [b, c, d]
@@ -470,6 +501,12 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
                 geom_tool.is_valid_triangle(swapped_cell1, node_coords_2d)
                 and geom_tool.is_valid_triangle(swapped_cell2, node_coords_2d)
             ):
+                swapped_min = min(
+                    geom_tool.calculate_min_angle(swapped_cell1, node_coords_2d),
+                    geom_tool.calculate_min_angle(swapped_cell2, node_coords_2d),
+                )
+                if swapped_min <= current_min:
+                    continue
                 old_edges = triangle_edges(cell1.node_ids) + triangle_edges(cell2.node_ids)
                 new_edges1 = triangle_edges(swapped_cell1)
                 new_edges2 = triangle_edges(swapped_cell2)
@@ -497,6 +534,7 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
                 unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点
                 unstr_grid.cell_container[cell2_idx] = new_cell2  # 修改点
                 num_swapped += 1
+                pass_swaps += 1
 
                 for old_edge in old_edges:
                     cells_for_edge = edge_map.get(old_edge)
@@ -520,6 +558,10 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
                     enqueue(affected_edge)
 
         iteration_count += 1
+        if edge_queue and iteration_count % len(edge_map) == 0:
+            if pass_swaps == 0:
+                break
+            pass_swaps = 0
 
         # 每处理一定数量的边后给出进度提示
         if iteration_count % 1000 == 0:

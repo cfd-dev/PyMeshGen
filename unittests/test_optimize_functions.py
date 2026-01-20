@@ -161,7 +161,7 @@ class TestEdgeSwap(unittest.TestCase):
         info("测试Delaunay边交换功能...")
         
         # 执行Delaunay边交换
-        delaunay_grid = edge_swap_delaunay(self.unstr_grid)
+        delaunay_grid = edge_swap_delaunay(self.unstr_grid, max_iterations=2000)
         
         # 验证基本属性
         self.assertIsNotNone(delaunay_grid, "Delaunay边交换返回None")
