@@ -466,6 +466,14 @@ class MeshOperations:
             method_layout.addWidget(method_label)
             method_layout.addWidget(method_combo)
 
+            lap_iter_layout = QHBoxLayout()
+            lap_iter_label = QLabel("Laplacian迭代次数:")
+            lap_iter_spin = QSpinBox()
+            lap_iter_spin.setRange(1, 50)
+            lap_iter_spin.setValue(3)
+            lap_iter_layout.addWidget(lap_iter_label)
+            lap_iter_layout.addWidget(lap_iter_spin)
+
             iter_layout = QHBoxLayout()
             iter_label = QLabel("迭代次数:")
             iter_spin = QSpinBox()
@@ -592,21 +600,212 @@ class MeshOperations:
             if not self._require_cell_container(mesh_obj, "当前网格格式不支持优化处理", "当前网格格式不支持优化处理"):
                 return
 
-            from optimize.optimize import edge_swap, laplacian_smooth
+            dialog = QDialog(self.gui)
+            dialog.setWindowTitle("网格优化设置")
+            dialog.setModal(True)
+
+            layout = QVBoxLayout(dialog)
+
+            method_layout = QHBoxLayout()
+            method_label = QLabel("优化算法:")
+            method_combo = QComboBox()
+            method_combo.addItem("边交换 + Laplacian", "classic")
+            method_combo.addItem("Adam优化(神经网络)", "adam")
+            method_layout.addWidget(method_label)
+            method_layout.addWidget(method_combo)
+
+            lap_iter_layout = QHBoxLayout()
+            lap_iter_label = QLabel("Laplacian迭代次数:")
+            lap_iter_spin = QSpinBox()
+            lap_iter_spin.setRange(1, 50)
+            lap_iter_spin.setValue(3)
+            lap_iter_layout.addWidget(lap_iter_label)
+            lap_iter_layout.addWidget(lap_iter_spin)
+
+            iter_layout = QHBoxLayout()
+            iter_label = QLabel("迭代次数:")
+            iter_spin = QSpinBox()
+            iter_spin.setRange(1, 500)
+            iter_spin.setValue(100)
+            iter_layout.addWidget(iter_label)
+            iter_layout.addWidget(iter_spin)
+
+            lr_layout = QHBoxLayout()
+            lr_label = QLabel("学习率:")
+            lr_spin = QDoubleSpinBox()
+            lr_spin.setRange(0.0, 1.0)
+            lr_spin.setSingleStep(0.05)
+            lr_spin.setValue(0.2)
+            lr_layout.addWidget(lr_label)
+            lr_layout.addWidget(lr_spin)
+
+            movement_layout = QHBoxLayout()
+            movement_label = QLabel("位移限制:")
+            movement_spin = QDoubleSpinBox()
+            movement_spin.setRange(0.0, 1.0)
+            movement_spin.setSingleStep(0.01)
+            movement_spin.setValue(0.1)
+            movement_layout.addWidget(movement_label)
+            movement_layout.addWidget(movement_spin)
+
+            tol_layout = QHBoxLayout()
+            tol_label = QLabel("收敛容差:")
+            tol_spin = QDoubleSpinBox()
+            tol_spin.setRange(0.0, 1.0)
+            tol_spin.setSingleStep(0.01)
+            tol_spin.setValue(0.1)
+            tol_layout.addWidget(tol_label)
+            tol_layout.addWidget(tol_spin)
+
+            obj_layout = QHBoxLayout()
+            obj_label = QLabel("目标函数:")
+            obj_combo = QComboBox()
+            obj_combo.addItem("L1", "L1")
+            obj_combo.addItem("L2", "L2")
+            obj_combo.addItem("Loo", "Loo")
+            obj_layout.addWidget(obj_label)
+            obj_layout.addWidget(obj_combo)
+
+            pre_layout = QHBoxLayout()
+            pre_label = QLabel("预平滑次数:")
+            pre_spin = QSpinBox()
+            pre_spin.setRange(0, 10)
+            pre_spin.setValue(2)
+            pre_layout.addWidget(pre_label)
+            pre_layout.addWidget(pre_spin)
+
+            inner_layout = QHBoxLayout()
+            inner_label = QLabel("内层步数:")
+            inner_spin = QSpinBox()
+            inner_spin.setRange(1, 10)
+            inner_spin.setValue(1)
+            inner_layout.addWidget(inner_label)
+            inner_layout.addWidget(inner_spin)
+
+            lr_step_layout = QHBoxLayout()
+            lr_step_label = QLabel("LR步长:")
+            lr_step_spin = QSpinBox()
+            lr_step_spin.setRange(1, 20)
+            lr_step_spin.setValue(1)
+            lr_step_layout.addWidget(lr_step_label)
+            lr_step_layout.addWidget(lr_step_spin)
+
+            lr_gamma_layout = QHBoxLayout()
+            lr_gamma_label = QLabel("LR衰减:")
+            lr_gamma_spin = QDoubleSpinBox()
+            lr_gamma_spin.setRange(0.1, 1.0)
+            lr_gamma_spin.setSingleStep(0.05)
+            lr_gamma_spin.setValue(0.9)
+            lr_gamma_layout.addWidget(lr_gamma_label)
+            lr_gamma_layout.addWidget(lr_gamma_spin)
+
+            button_layout = QHBoxLayout()
+            ok_button = QPushButton("确定")
+            cancel_button = QPushButton("取消")
+            button_layout.addStretch()
+            button_layout.addWidget(ok_button)
+            button_layout.addWidget(cancel_button)
+
+            layout.addLayout(method_layout)
+            layout.addLayout(lap_iter_layout)
+            layout.addLayout(iter_layout)
+            layout.addLayout(lr_layout)
+            layout.addLayout(movement_layout)
+            layout.addLayout(tol_layout)
+            layout.addLayout(obj_layout)
+            layout.addLayout(pre_layout)
+            layout.addLayout(inner_layout)
+            layout.addLayout(lr_step_layout)
+            layout.addLayout(lr_gamma_layout)
+            layout.addLayout(button_layout)
+
+            ok_button.clicked.connect(dialog.accept)
+            cancel_button.clicked.connect(dialog.reject)
+
+            def _sync_optimize_controls():
+                is_adam = (method_combo.currentData() == "adam")
+                lap_iter_label.setVisible(not is_adam)
+                lap_iter_spin.setVisible(not is_adam)
+                iter_label.setVisible(is_adam)
+                iter_spin.setVisible(is_adam)
+                lr_label.setVisible(is_adam)
+                lr_spin.setVisible(is_adam)
+                movement_label.setVisible(is_adam)
+                movement_spin.setVisible(is_adam)
+                tol_label.setVisible(is_adam)
+                tol_spin.setVisible(is_adam)
+                obj_label.setVisible(is_adam)
+                obj_combo.setVisible(is_adam)
+                pre_label.setVisible(is_adam)
+                pre_spin.setVisible(is_adam)
+                inner_label.setVisible(is_adam)
+                inner_spin.setVisible(is_adam)
+                lr_step_label.setVisible(is_adam)
+                lr_step_spin.setVisible(is_adam)
+                lr_gamma_label.setVisible(is_adam)
+                lr_gamma_spin.setVisible(is_adam)
+                dialog.adjustSize()
+                dialog.setFixedSize(dialog.sizeHint())
+
+            method_combo.currentIndexChanged.connect(_sync_optimize_controls)
+            _sync_optimize_controls()
+
+            if dialog.exec_() != QDialog.Accepted:
+                self.gui.log_info("已取消网格优化")
+                self.gui.update_status("已取消网格优化")
+                return
+
+            method_key = method_combo.currentData() or "classic"
+            laplacian_iters = int(lap_iter_spin.value())
+            iterations = int(iter_spin.value())
+            learning_rate = float(lr_spin.value())
+            movement_factor = float(movement_spin.value())
+            convergence_tolerance = float(tol_spin.value())
+            obj_func = obj_combo.currentData() or "L1"
+            pre_smooth_iter = int(pre_spin.value())
+            inner_steps = int(inner_spin.value())
+            lr_step_size = int(lr_step_spin.value())
+            lr_gamma = float(lr_gamma_spin.value())
+
+            from optimize.optimize import edge_swap, laplacian_smooth, nn_smoothing_adam
 
             self.gui.log_info("开始进行网格优化...")
             self.gui.update_status("正在进行网格优化...")
 
-            self.gui.log_info("正在进行边交换优化...")
             start_time = time.time()
 
-            optimized_mesh = edge_swap(mesh_obj)
+            if method_key == "adam":
+                if nn_smoothing_adam is None:
+                    QMessageBox.information(self.gui, "提示", "当前环境未安装Torch，无法使用Adam优化")
+                    self.gui.log_info("Adam优化不可用：未安装Torch")
+                    self.gui.update_status("Adam优化不可用")
+                    return
 
-            self.gui.log_info("正在进行laplacian光滑优化...")
-            optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=3)
+                method_name = "Adam优化"
+                optimized_mesh = nn_smoothing_adam(
+                    mesh_obj,
+                    movement_factor=movement_factor,
+                    iteration_limit=iterations,
+                    learning_rate=learning_rate,
+                    convergence_tolerance=convergence_tolerance,
+                    obj_func=obj_func,
+                    lr_step_size=lr_step_size,
+                    lr_gamma=lr_gamma,
+                    inner_steps=inner_steps,
+                    pre_smooth_iter=pre_smooth_iter,
+                )
+            else:
+                method_name = "边交换 + Laplacian"
+                self.gui.log_info("正在进行边交换优化...")
+                optimized_mesh = edge_swap(mesh_obj)
+
+                self.gui.log_info("正在进行laplacian光滑优化...")
+                optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=laplacian_iters)
 
             if hasattr(self.gui.current_mesh, 'unstr_grid'):
                 self.gui.current_mesh.unstr_grid = optimized_mesh
+                if hasattr(optimized_mesh, 'node_coords'):
+                    self.gui.current_mesh.node_coords = optimized_mesh.node_coords
             else:
                 self.gui.current_mesh = optimized_mesh
 
@@ -614,8 +813,11 @@ class MeshOperations:
 
             if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
                 self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
+            if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
+                self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
+                self.gui.mesh_display.display_mesh(render_immediately=False)
 
-            self.gui.log_info(f"网格优化完成，总耗时: {end_time - start_time:.3f}秒")
+            self.gui.log_info(f"{method_name}完成，总耗时: {end_time - start_time:.3f}秒")
             self.gui.log_info(f"优化后网格包含 {len(optimized_mesh.cell_container)} 个单元")
             self.gui.update_status("网格优化完成")
 
