@@ -211,6 +211,9 @@ class MeshImportThread(QThread):
                         progress = 60 + int(20 * i / total_cells)
                         self.progress_updated.emit(f"处理网格单元... ({i}/{total_cells})", progress)
 
+            if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
+                mesh_data.dimension = int(unstr_grid.dimension)
+
             self.progress_updated.emit("提取边界信息...", 80)
 
             if not self._is_running:

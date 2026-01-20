@@ -45,6 +45,27 @@ class FileOperations:
         if not os.path.exists(self.mesh_dir):
             os.makedirs(self.mesh_dir, exist_ok=True)
 
+    def _infer_dimension_from_vtk_cells(self, vtk_grid):
+        """根据VTK单元类型推断网格维度（2D/3D）"""
+        if vtk_grid is None or not hasattr(vtk_grid, 'GetCellTypes'):
+            return None
+        vtk_cell_types = vtk.vtkCellTypes()
+        vtk_grid.GetCellTypes(vtk_cell_types)
+        if vtk_cell_types.GetNumberOfTypes() == 0:
+            return None
+        from data_structure.vtk_types import VTKCellType
+        from utils.geom_toolkit import detect_mesh_dimension_by_cell_type
+        cell_types = []
+        for i in range(vtk_cell_types.GetNumberOfTypes()):
+            cell_type = vtk_cell_types.GetCellType(i)
+            try:
+                cell_types.append(VTKCellType(cell_type))
+            except ValueError:
+                continue
+        if not cell_types:
+            return None
+        return detect_mesh_dimension_by_cell_type(cell_types)
+
     def _log(self, message, level="info"):
         """记录日志到GUI信息窗口"""
         if self.log_callback:
@@ -118,6 +139,14 @@ class FileOperations:
                 cell_data = cell_block.data
                 for cell in cell_data:
                     mesh_data.cells.append(cell.tolist() if hasattr(cell, 'tolist') else list(cell))
+
+            # 设置网格维度（优先使用单元拓扑维度）
+            cell_dims = [getattr(cell_block, 'dim', None) for cell_block in mesh.cells]
+            cell_dims = [dim for dim in cell_dims if dim in (2, 3)]
+            if cell_dims:
+                mesh_data.dimension = max(cell_dims)
+            else:
+                mesh_data.dimension = 2
             
             # 提取点数据（如果有）
             if mesh.point_data:
@@ -172,6 +201,7 @@ class FileOperations:
             # 检查文件扩展名，使用合适的读取器
             file_ext = os.path.splitext(file_path)[1].lower()
             poly_data = None
+            unstructured_grid = None
             
             if file_ext == '.vtk':
                 # 先读取文件头，确定文件类型
@@ -195,10 +225,11 @@ class FileOperations:
                     reader.ReadAllScalarsOn()
                     reader.ReadAllVectorsOn()
                     reader.Update()
+                    unstructured_grid = reader.GetOutput()
                     
                     # 将UnstructuredGrid转换为PolyData
                     geometry_filter = vtk.vtkGeometryFilter()
-                    geometry_filter.SetInputData(reader.GetOutput())
+                    geometry_filter.SetInputData(unstructured_grid)
                     geometry_filter.Update()
                     poly_data = geometry_filter.GetOutput()
                 else:
@@ -208,10 +239,11 @@ class FileOperations:
                     reader.ReadAllScalarsOn()
                     reader.ReadAllVectorsOn()
                     reader.Update()
+                    unstructured_grid = reader.GetOutput()
                     
                     # 将UnstructuredGrid转换为PolyData
                     geometry_filter = vtk.vtkGeometryFilter()
-                    geometry_filter.SetInputData(reader.GetOutput())
+                    geometry_filter.SetInputData(unstructured_grid)
                     geometry_filter.Update()
                     poly_data = geometry_filter.GetOutput()
             
@@ -251,6 +283,14 @@ class FileOperations:
             mesh_data.node_coords = node_coords
             mesh_data.cells = cell_data
             mesh_data.vtk_poly_data = poly_data
+            if unstructured_grid:
+                mesh_dim = self._infer_dimension_from_vtk_cells(unstructured_grid)
+            else:
+                mesh_dim = None
+            if mesh_dim in (2, 3):
+                mesh_data.dimension = mesh_dim
+            else:
+                mesh_data.dimension = 2
             mesh_data.update_counts()
             
             return mesh_data
@@ -305,6 +345,7 @@ class FileOperations:
             mesh_data.node_coords = node_coords
             mesh_data.cells = cell_data
             mesh_data.vtk_poly_data = poly_data
+            mesh_data.dimension = 2
             mesh_data.update_counts()
             
             return mesh_data
@@ -359,6 +400,7 @@ class FileOperations:
             mesh_data.node_coords = node_coords
             mesh_data.cells = cell_data
             mesh_data.vtk_poly_data = poly_data
+            mesh_data.dimension = 2
             mesh_data.update_counts()
             
             return mesh_data
@@ -838,6 +880,10 @@ class FileOperations:
                     mesh_data.node_coords = node_coords
                     mesh_data.cells = cells
                     mesh_data.unstr_grid = unstr_grid  # 保留原始对象
+                    if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
+                        mesh_data.dimension = int(unstr_grid.dimension)
+                    else:
+                        mesh_data.dimension = 2
 
                     # Extract parts information from boundary_info
                     boundary_info = getattr(unstr_grid, 'boundary_info', {})
@@ -874,6 +920,8 @@ class FileOperations:
                         # 从字典更新MeshData对象
                         mesh_data.node_coords = vtk_mesh_data.get('node_coords', [])
                         mesh_data.cells = vtk_mesh_data.get('cells', [])
+                        from utils.geom_toolkit import detect_mesh_dimension_by_metadata
+                        mesh_data.dimension = detect_mesh_dimension_by_metadata(vtk_mesh_data, default_dim=mesh_data.dimension)
 
                         # Extract parts information from the imported data
                         parts_info = vtk_mesh_data.get('parts_info', {})
@@ -895,6 +943,10 @@ class FileOperations:
                         # 如果返回的是Unstructured_Grid对象
                         mesh_data.unstr_grid = vtk_mesh_data
                         mesh_data.node_coords = getattr(vtk_mesh_data, 'node_coords', [])
+                        if hasattr(vtk_mesh_data, 'dimension') and vtk_mesh_data.dimension in (2, 3):
+                            mesh_data.dimension = int(vtk_mesh_data.dimension)
+                        else:
+                            mesh_data.dimension = 2
 
                         # Extract parts information from boundary_info
                         boundary_info = getattr(vtk_mesh_data, 'boundary_info', {})
@@ -928,11 +980,13 @@ class FileOperations:
             if 'FLUENT' in content.upper() or 'CASE' in content.upper():
                 # 这是一个CAS文件，但需要更复杂的解析逻辑
                 # 这里返回一个基本结构
+                mesh_data.dimension = 2
                 mesh_data.update_counts()
                 return mesh_data
             else:
                 print("文件不包含FLUENT或CASE标识，可能不是有效的CAS文件")
                 # 即使不是标准CAS文件，也返回一个基本结构而不是None
+                mesh_data.dimension = 2
                 mesh_data.update_counts()
                 return mesh_data
 
@@ -1005,6 +1059,7 @@ class FileOperations:
             # 更新MeshData对象
             mesh_data.node_coords = nodes
             mesh_data.cells = elements
+            mesh_data.dimension = 2
             mesh_data.update_counts()
             
             return mesh_data
@@ -1061,6 +1116,7 @@ class FileOperations:
             mesh_data.node_coords = node_coords
             mesh_data.cells = cell_data
             mesh_data.vtk_poly_data = poly_data
+            mesh_data.dimension = 2
             mesh_data.update_counts()
             
             return mesh_data
