@@ -337,6 +337,205 @@ def compute_rectangular_position(prev, curr, next):
     return curr + ideal_vec
 
 
+def edge_swap_delaunay(unstr_grid, max_iterations=None):
+    """
+    边交换优化函数
+
+    Args:
+        unstr_grid: 非结构化网格
+        max_iterations: 最大迭代次数，防止无限循环
+    """
+    timer = TimeSpan("开始进行边交换优化...")
+    node_coords = unstr_grid.node_coords
+    node_coords_2d = [
+        coords[:2] if hasattr(coords, "__len__") and len(coords) > 2 else coords
+        for coords in node_coords
+    ]
+
+    def triangle_edges(node_ids):
+        a, b, c = node_ids[:3]
+        return [
+            tuple(sorted((a, b))),
+            tuple(sorted((b, c))),
+            tuple(sorted((c, a))),
+        ]
+
+    def circumcircle_contains(p1, p2, p3, p_test):
+        """检查点p_test是否在由p1,p2,p3构成的三角形的外接圆内"""
+        # 使用行列式方法计算外接圆
+        x1, y1 = p1
+        x2, y2 = p2
+        x3, y3 = p3
+        xt, yt = p_test
+
+        # 计算行列式的值
+        matrix_det = np.array([
+            [x1*x1 + y1*y1, x1, y1, 1],
+            [x2*x2 + y2*y2, x2, y2, 1],
+            [x3*x3 + y3*y3, x3, y3, 1],
+            [xt*xt + yt*yt, xt, yt, 1]
+        ])
+
+        det_value = np.linalg.det(matrix_det)
+        return det_value > 0  # 如果det > 0，则点在圆内
+
+    edge_map = {}
+
+    # 构建边到单元的映射
+    for cell_idx, cell in enumerate(unstr_grid.cell_container):
+        if type(cell).__name__ != 'Triangle':
+            continue
+        for edge in triangle_edges(cell.node_ids):
+            edge_map.setdefault(edge, []).append(cell_idx)
+
+    edge_queue = deque()
+    in_queue = set()
+
+    def enqueue(edge):
+        if edge in in_queue:
+            return
+        cells = edge_map.get(edge)
+        if cells and len(cells) == 2:
+            edge_queue.append(edge)
+            in_queue.add(edge)
+
+    for edge, cells in edge_map.items():
+        if len(cells) == 2:
+            edge_queue.append(edge)
+            in_queue.add(edge)
+
+    num_swapped = 0
+    iteration_count = 0
+    max_iter = max_iterations or len(edge_map) * 10  # 默认最大迭代次数
+
+    while edge_queue and iteration_count < max_iter:
+        edge = edge_queue.popleft()
+        in_queue.discard(edge)
+        cells = edge_map.get(edge)
+        # 仅处理内部边（被两个单元共享）
+        if not cells or len(cells) != 2:
+            continue
+
+        cell1_idx, cell2_idx = cells
+        cell1 = unstr_grid.cell_container[cell1_idx]
+        cell2 = unstr_grid.cell_container[cell2_idx]
+        # 使用字符串类型比较代替isinstance，避免导入路径问题
+        if not (type(cell1).__name__ == 'Triangle' and type(cell2).__name__ == 'Triangle'):
+            continue  # 非三角形单元跳过
+
+        # 确认公共边
+        common_edge = set(cell1.node_ids) & set(cell2.node_ids)
+        if len(common_edge) != 2:
+            continue  # 数据异常
+
+        a, b = sorted(common_edge)
+        other_points = list(
+            (set(cell1.node_ids) | set(cell2.node_ids)) - common_edge
+        )
+        if len(other_points) != 2:
+            continue  # 无法构成四边形
+
+        c, d = other_points
+
+        # 获取四个顶点的坐标
+        pt_a = np.array(node_coords_2d[a])
+        pt_b = np.array(node_coords_2d[b])
+        pt_c = np.array(node_coords_2d[c])
+        pt_d = np.array(node_coords_2d[d])
+
+        # 使用Delaunay准则：检查是否应该交换边
+        # 当前配置：边ab连接三角形abc和abd
+        # 目标配置：边cd连接三角形acd和bcd
+        # 如果d在三角形abc的外接圆内，或a在三角形bcd的外接圆内，则应交换
+        should_swap = (circumcircle_contains(pt_a, pt_b, pt_c, pt_d) or
+                      circumcircle_contains(pt_b, pt_c, pt_d, pt_a))
+
+        # 额外检查：不创建新的边界边
+        if should_swap and not (
+            c in unstr_grid.boundary_nodes_list
+            and d in unstr_grid.boundary_nodes_list
+        ):
+            # 交换后的单元
+            swapped_cell1 = [a, c, d]
+            swapped_cell2 = [b, c, d]
+
+            # 确保构成的单元节点逆时针
+            if not geom_tool.is_left2d(node_coords_2d[a], node_coords_2d[c], node_coords_2d[d]):
+                swapped_cell1 = [d, c, a]
+            if not geom_tool.is_left2d(node_coords_2d[b], node_coords_2d[c], node_coords_2d[d]):
+                swapped_cell2 = [d, c, b]
+
+            # 有效性检查
+            if (
+                geom_tool.is_valid_triangle(swapped_cell1, node_coords_2d)
+                and geom_tool.is_valid_triangle(swapped_cell2, node_coords_2d)
+            ):
+                old_edges = triangle_edges(cell1.node_ids) + triangle_edges(cell2.node_ids)
+                new_edges1 = triangle_edges(swapped_cell1)
+                new_edges2 = triangle_edges(swapped_cell2)
+                new_edges = new_edges1 + new_edges2
+
+                # 执行交换
+                # 创建新的Triangle对象
+                new_cell1 = Triangle(
+                    node_coords[swapped_cell1[0]],
+                    node_coords[swapped_cell1[1]],
+                    node_coords[swapped_cell1[2]],
+                    cell1.part_name,
+                    cell1.idx,
+                    node_ids=swapped_cell1,
+                )
+                new_cell2 = Triangle(
+                    node_coords[swapped_cell2[0]],
+                    node_coords[swapped_cell2[1]],
+                    node_coords[swapped_cell2[2]],
+                    cell2.part_name,
+                    cell2.idx,
+                    node_ids=swapped_cell2,
+                )
+
+                unstr_grid.cell_container[cell1_idx] = new_cell1  # 修改点
+                unstr_grid.cell_container[cell2_idx] = new_cell2  # 修改点
+                num_swapped += 1
+
+                for old_edge in old_edges:
+                    cells_for_edge = edge_map.get(old_edge)
+                    if not cells_for_edge:
+                        continue
+                    if cell1_idx in cells_for_edge:
+                        cells_for_edge.remove(cell1_idx)
+                    if cell2_idx in cells_for_edge:
+                        cells_for_edge.remove(cell2_idx)
+                    if not cells_for_edge:
+                        edge_map.pop(old_edge, None)
+
+                for new_edge in new_edges:
+                    cells_for_edge = edge_map.setdefault(new_edge, [])
+                    if cell1_idx not in cells_for_edge and new_edge in new_edges1:
+                        cells_for_edge.append(cell1_idx)
+                    if cell2_idx not in cells_for_edge and new_edge in new_edges2:
+                        cells_for_edge.append(cell2_idx)
+
+                for affected_edge in set(old_edges + new_edges):
+                    enqueue(affected_edge)
+
+        iteration_count += 1
+
+        # 每处理一定数量的边后给出进度提示
+        if iteration_count % 1000 == 0:
+            info(f"边交换迭代: {iteration_count}/{max_iter}, 已交换: {num_swapped}")
+
+    if iteration_count >= max_iter:
+        info(f"达到最大迭代次数 {max_iter}，停止边交换。最终交换次数: {num_swapped}")
+    else:
+        info(f"边交换完成，总共处理了 {iteration_count} 条边，进行了 {num_swapped} 次交换。")
+
+    info(f"共进行了{num_swapped}次边交换.")
+    timer.show_to_console("边交换优化完成.")
+
+    return unstr_grid
+
+
 def edge_swap(unstr_grid):
     timer = TimeSpan("开始进行边交换优化...")
     node_coords = unstr_grid.node_coords
