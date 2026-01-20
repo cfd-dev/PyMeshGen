@@ -1100,27 +1100,30 @@ class MeshOperations:
                         self.gui.current_mesh.num_boundary_nodes = len(new_boundary_nodes)
                         self.gui.current_mesh.unstr_grid = None
                         
+                        mapped_parts_info = self.gui._map_parts_info_to_new_mesh(parts_info, old_to_new_node_map)
                         new_parts_info = {}
                         for part_name in boundary_part_names:
-                            if part_name in parts_info:
-                                new_parts_info[part_name] = parts_info[part_name]
+                            if part_name in mapped_parts_info:
+                                part_data = mapped_parts_info[part_name]
+                                if isinstance(part_data, dict):
+                                    part_data = dict(part_data)
+                                    part_data.setdefault('bc_type', 'boundary')
+                                new_parts_info[part_name] = part_data
                         self.gui.current_mesh.parts_info = new_parts_info
                         self.gui.current_mesh.boundary_info = new_parts_info
 
-                        self.gui.cas_parts_info = parts_info
+                        self.gui.cas_parts_info = new_parts_info
                         
                         self.gui.original_node_coords = self.gui.current_mesh.node_coords
 
-                        self.gui.part_manager.update_parts_list_from_cas(parts_info=new_parts_info, update_status=False)
-                        
+                        # 更新模型树要放在前，更新部件列表要放在后，按道理前后不影响 FIXME
                         if hasattr(self.gui, 'model_tree_widget'):
                             self.gui.model_tree_widget.load_mesh(self.gui.current_mesh)
+
+                        self.gui.part_manager.update_parts_list_from_cas(parts_info=new_parts_info, update_status=False)
                         
-                        if hasattr(self.gui, 'mesh_display'):
-                            self.gui.mesh_display.clear_mesh_actors()
-                            self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
-                            self.gui.mesh_display.display_mesh(render_immediately=False)
-                        
+                        self.gui.part_manager.refresh_display_all_parts()
+
                         self.gui.log_info(f"边界提取完成: 保留 {len(new_cell_container)} 个单元, {len(new_node_coords)} 个节点, {len(boundary_part_names)} 个边界部件, 原始共 {len(parts_info)} 个部件")
                         self.gui.update_status(f"边界提取完成: {len(boundary_part_names)} 个边界部件")
                     else:
