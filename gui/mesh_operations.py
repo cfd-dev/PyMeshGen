@@ -634,6 +634,10 @@ class MeshOperations:
                 self.gui.current_mesh.unstr_grid = smoothed_mesh
                 if hasattr(smoothed_mesh, 'node_coords'):
                     self.gui.current_mesh.node_coords = smoothed_mesh.node_coords
+                if hasattr(smoothed_mesh, 'cell_container'):
+                    self.gui.current_mesh.cells = [list(cell.node_ids) for cell in smoothed_mesh.cell_container]
+                    if hasattr(self.gui.current_mesh, 'update_counts'):
+                        self.gui.current_mesh.update_counts()
             else:
                 self.gui.current_mesh = smoothed_mesh
 
@@ -875,6 +879,10 @@ class MeshOperations:
                 self.gui.current_mesh.unstr_grid = optimized_mesh
                 if hasattr(optimized_mesh, 'node_coords'):
                     self.gui.current_mesh.node_coords = optimized_mesh.node_coords
+                if hasattr(optimized_mesh, 'cell_container'):
+                    self.gui.current_mesh.cells = [list(cell.node_ids) for cell in optimized_mesh.cell_container]
+                    if hasattr(self.gui.current_mesh, 'update_counts'):
+                        self.gui.current_mesh.update_counts()
             else:
                 self.gui.current_mesh = optimized_mesh
 

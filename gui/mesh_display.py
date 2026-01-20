@@ -249,21 +249,40 @@ class MeshDisplayArea:
                     else:
                         points.InsertNextPoint(coord[0], coord[1], coord[2])
 
-            def add_cell(cell):
+            def add_cell(cell, cell_obj=None):
                 """添加单元到VTK单元集"""
-                if len(cell) == 3:
-                    triangle = vtk.vtkTriangle()
-                    triangle.GetPointIds().SetId(0, cell[0])
-                    triangle.GetPointIds().SetId(1, cell[1])
-                    triangle.GetPointIds().SetId(2, cell[2])
-                    polys.InsertNextCell(triangle)
-                elif len(cell) == 4:
-                    quad = vtk.vtkQuad()
-                    quad.GetPointIds().SetId(0, cell[0])
-                    quad.GetPointIds().SetId(1, cell[1])
-                    quad.GetPointIds().SetId(2, cell[2])
-                    quad.GetPointIds().SetId(3, cell[3])
-                    polys.InsertNextCell(quad)
+                if cell_obj is not None:
+                    node_ids = cell_obj.node_ids
+                    num_nodes = len(node_ids)
+                    cell_type = type(cell_obj)
+                else:
+                    node_ids = cell
+                    num_nodes = len(cell)
+                    cell_type = None
+
+                vtk_cell = None
+                if num_nodes == 3:
+                    vtk_cell = vtk.vtkTriangle()
+                elif num_nodes == 4:
+                    if cell_type is not None:
+                        from data_structure.basic_elements import Tetrahedron
+                        if isinstance(cell_obj, Tetrahedron):
+                            vtk_cell = vtk.vtkTetra()
+                        else:
+                            vtk_cell = vtk.vtkQuad()
+                    else:
+                        vtk_cell = vtk.vtkQuad()
+                elif num_nodes == 5:
+                    vtk_cell = vtk.vtkPyramid()
+                elif num_nodes == 6:
+                    vtk_cell = vtk.vtkWedge()
+                elif num_nodes == 8:
+                    vtk_cell = vtk.vtkHexahedron()
+
+                if vtk_cell is not None:
+                    for i, node_id in enumerate(node_ids):
+                        vtk_cell.GetPointIds().SetId(i, node_id)
+                    polys.InsertNextCell(vtk_cell)
 
             if isinstance(self.mesh_data, dict):
                 if 'type' in self.mesh_data:
@@ -316,73 +335,9 @@ class MeshDisplayArea:
                     coord = node_coords[i]
                     add_point(coord)
 
-                # 预导入单元类型以避免循环中重复导入
-                from data_structure.basic_elements import (
-                    Quadrilateral, Tetrahedron, Pyramid, Prism, Hexahedron
-                )
-
                 for cell in cell_container:
-                    if cell is None:
-                        continue
-                    node_ids = cell.node_ids
-                    num_nodes = len(node_ids)
-                    
-                    if num_nodes == 3:
-                        triangle = vtk.vtkTriangle()
-                        triangle.GetPointIds().SetId(0, node_ids[0])
-                        triangle.GetPointIds().SetId(1, node_ids[1])
-                        triangle.GetPointIds().SetId(2, node_ids[2])
-                        polys.InsertNextCell(triangle)
-                    elif num_nodes == 4:
-                        # 检查单元类型：四边形(2D)或四面体(3D)
-                        if isinstance(cell, Tetrahedron):
-                            tetra = vtk.vtkTetra()
-                            tetra.GetPointIds().SetId(0, node_ids[0])
-                            tetra.GetPointIds().SetId(1, node_ids[1])
-                            tetra.GetPointIds().SetId(2, node_ids[2])
-                            tetra.GetPointIds().SetId(3, node_ids[3])
-                            polys.InsertNextCell(tetra)
-                        elif isinstance(cell, Quadrilateral):
-                            quad = vtk.vtkQuad()
-                            quad.GetPointIds().SetId(0, node_ids[0])
-                            quad.GetPointIds().SetId(1, node_ids[1])
-                            quad.GetPointIds().SetId(2, node_ids[2])
-                            quad.GetPointIds().SetId(3, node_ids[3])
-                            polys.InsertNextCell(quad)
-                    elif num_nodes == 5:
-                        # 金字塔单元
-                        if isinstance(cell, Pyramid):
-                            pyramid = vtk.vtkPyramid()
-                            pyramid.GetPointIds().SetId(0, node_ids[0])
-                            pyramid.GetPointIds().SetId(1, node_ids[1])
-                            pyramid.GetPointIds().SetId(2, node_ids[2])
-                            pyramid.GetPointIds().SetId(3, node_ids[3])
-                            pyramid.GetPointIds().SetId(4, node_ids[4])
-                            polys.InsertNextCell(pyramid)
-                    elif num_nodes == 6:
-                        # 三棱柱单元
-                        if isinstance(cell, Prism):
-                            wedge = vtk.vtkWedge()
-                            wedge.GetPointIds().SetId(0, node_ids[0])
-                            wedge.GetPointIds().SetId(1, node_ids[1])
-                            wedge.GetPointIds().SetId(2, node_ids[2])
-                            wedge.GetPointIds().SetId(3, node_ids[3])
-                            wedge.GetPointIds().SetId(4, node_ids[4])
-                            wedge.GetPointIds().SetId(5, node_ids[5])
-                            polys.InsertNextCell(wedge)
-                    elif num_nodes == 8:
-                        # 六面体单元
-                        if isinstance(cell, Hexahedron):
-                            hexahedron = vtk.vtkHexahedron()
-                            hexahedron.GetPointIds().SetId(0, node_ids[0])
-                            hexahedron.GetPointIds().SetId(1, node_ids[1])
-                            hexahedron.GetPointIds().SetId(2, node_ids[2])
-                            hexahedron.GetPointIds().SetId(3, node_ids[3])
-                            hexahedron.GetPointIds().SetId(4, node_ids[4])
-                            hexahedron.GetPointIds().SetId(5, node_ids[5])
-                            hexahedron.GetPointIds().SetId(6, node_ids[6])
-                            hexahedron.GetPointIds().SetId(7, node_ids[7])
-                            polys.InsertNextCell(hexahedron)
+                    if cell is not None:
+                        add_cell(None, cell_obj=cell)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
