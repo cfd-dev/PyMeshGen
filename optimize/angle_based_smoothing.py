@@ -1,16 +1,100 @@
 """
 Angle-based smoothing algorithm implementation for mesh optimization.
 
-This module implements the angleBasedSmoothing and GetMe methods from the C++ version,
+This module implements the angleBasedSmoothing, smartangleBasedSmoothing, and GetMe methods from the C++ version,
 adapted for the PyMeshGen project's data structures.
 """
 
 import numpy as np
-from math import acos, cos, sin
+from math import acos, cos, sin, pi
 from utils.geom_toolkit import triangle_area
 from utils.timer import TimeSpan
 from utils.message import info, error
 from .mesh_quality import triangle_shape_quality
+
+
+def compute_local_angle_quality(p, ring_points):
+    """
+    计算一个点与其周围邻居的局部角度质量。
+    
+    该函数遍历环中的每个连续点对，计算它们与中心点形成的三个角度，
+    并返回最小角度的偏差（理想最小角度为0度）。
+    
+    Args:
+        p: 中心点坐标 [x, y] 或 [x, y, z]
+        ring_points: 环形邻居点列表，按顺序排列
+    
+    Returns:
+        float: 局部角度质量指标（值越大表示质量越好）
+    """
+    min_angle = 360.0
+    max_angle = 0.0
+    
+    num_ring = len(ring_points)
+    if num_ring < 3:
+        return 0.0
+    
+    for i in range(num_ring):
+        p_curr = np.array(ring_points[i])
+        p_next = np.array(ring_points[(i + 1) % num_ring])
+        p_center = np.array(p)
+        
+        v = p_next - p_curr
+        v0 = p_center - p_next
+        v1 = p_center - p_curr
+        
+        v_norm = np.linalg.norm(v)
+        v0_norm = np.linalg.norm(v0)
+        v1_norm = np.linalg.norm(v1)
+        
+        if v_norm == 0 or v0_norm == 0 or v1_norm == 0:
+            continue
+        
+        v_unit = v / v_norm
+        v0_unit = v0 / v0_norm
+        v1_unit = v1 / v1_norm
+        
+        dot_v_v0 = np.dot(v_unit, v0_unit)
+        dot_v_v1 = np.dot(v_unit, v1_unit)
+        dot_v0_v1 = np.dot(v0_unit, v1_unit)
+        
+        dot_v_v0 = np.clip(dot_v_v0, -1.0, 1.0)
+        dot_v_v1 = np.clip(dot_v_v1, -1.0, 1.0)
+        dot_v0_v1 = np.clip(dot_v0_v1, -1.0, 1.0)
+        
+        angle0 = acos(-dot_v_v0) * 180.0 / pi
+        angle1 = acos(dot_v_v1) * 180.0 / pi
+        angle2 = acos(dot_v0_v1) * 180.0 / pi
+        
+        for angle in [angle0, angle1, angle2]:
+            if angle < min_angle:
+                min_angle = angle
+            if angle > max_angle:
+                max_angle = angle
+    
+    return abs(min_angle - 0.0) + 0.0 * abs(max_angle - 60.0)
+
+
+def is_improved_locally(node_coords, node_id, new_position, neighbor_ids):
+    """
+    检查将节点移动到新位置是否改善了局部网格质量。
+    
+    Args:
+        node_coords: 所有节点的坐标数组
+        node_id: 当前节点的ID
+        new_position: 新的位置 [x, y] 或 [x, y, z]
+        neighbor_ids: 邻居节点的ID列表
+    
+    Returns:
+        bool: 如果新位置改善了局部质量则返回True，否则返回False
+    """
+    origin = np.array(node_coords[node_id])
+    ring_points = [np.array(node_coords[nid]) for nid in neighbor_ids]
+    
+    quality_new = compute_local_angle_quality(new_position, ring_points)
+    quality_old = compute_local_angle_quality(origin, ring_points)
+    
+    return quality_new >= quality_old
 
 
 def angle_based_smoothing(unstr_grid, iterations=1):
@@ -29,11 +113,8 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     """
     timer = TimeSpan("开始基于角度平滑优化...")
 
-    # 使用基于边的顶点邻接关系作为一环邻居，
-    # 而 init_node2node_by_cell 会把同一单元内的非边相邻节点也加入（例如四边形对角点）。
-    # 这会破坏角度排序并导致平滑结果错误，因此这里强制使用基于边的邻接关系。
+    # 初始化邻接关系（用于回退顺序）
     unstr_grid.init_node2node()
-    # 将邻居按极角排序成环，匹配 C++ 中围绕顶点的遍历顺序
     unstr_grid.cyclic_node2node()
 
     # Get boundary nodes
@@ -41,10 +122,16 @@ def angle_based_smoothing(unstr_grid, iterations=1):
     
     node_coords = np.array(unstr_grid.node_coords, dtype=float)
     
+    # 将所有坐标统一为2维，避免维度不匹配错误
+    node_coords_2d = np.array([
+        coords[:2] if hasattr(coords, "__len__") and len(coords) > 2 else coords
+        for coords in node_coords
+    ], dtype=float)
+    
     for iteration in range(iterations):
         info(f"基于角度平滑第 {iteration + 1} 次迭代")
         
-        for node_id in range(len(node_coords)):
+        for node_id in range(len(node_coords_2d)):
             # 边界点保持不动
             if node_id in boundary_nodes:
                 continue  # Skip boundary nodes
@@ -53,7 +140,9 @@ def angle_based_smoothing(unstr_grid, iterations=1):
             if node_id not in unstr_grid.node2node:
                 continue
                 
-            neighbor_ids = unstr_grid.node2node[node_id]
+            neighbor_ids = unstr_grid.build_topological_ring(node_id)
+            if not neighbor_ids:
+                neighbor_ids = unstr_grid.node2node[node_id]
             # 至少需要 3 个邻居才能构成连续三元组
             if not neighbor_ids or len(neighbor_ids) < 3:
                 continue
@@ -70,11 +159,11 @@ def angle_based_smoothing(unstr_grid, iterations=1):
                 vvm_idx = neighbor_ids[(i + 1) % num_neighbors]  # vv_it + 1
                 vvn_idx = neighbor_ids[(i + 2) % num_neighbors]  # vv_it + 2
                 
-                # 坐标获取（当前点与三个相邻点）
-                curr_node_pos = node_coords[node_id]  # Current node position
-                vvp_pos = node_coords[vvp_idx]  # Previous neighbor
-                vvm_pos = node_coords[vvm_idx]  # Current neighbor
-                vvn_pos = node_coords[vvn_idx]  # Next neighbor
+                # 坐标获取（当前点与三个相邻点）- 使用2D坐标
+                curr_node_pos = node_coords_2d[node_id]  # Current node position
+                vvp_pos = node_coords_2d[vvp_idx]  # Previous neighbor
+                vvm_pos = node_coords_2d[vvm_idx]  # Current neighbor
+                vvn_pos = node_coords_2d[vvn_idx]  # Next neighbor
                 
                 # 以 vvm 为旋转中心构造向量（与 smoothing.cpp 一致）
                 v = curr_node_pos - vvm_pos  # Vector from vvm to current node
@@ -118,13 +207,154 @@ def angle_based_smoothing(unstr_grid, iterations=1):
             
             # 取平均得到新位置（与 C++ 中 cog/valence 一致）
             if count > 0:
-                node_coords[node_id][0] = new_x / count
-                node_coords[node_id][1] = new_y / count
+                node_coords_2d[node_id][0] = new_x / count
+                node_coords_2d[node_id][1] = new_y / count
     
-    # Update the grid with new coordinates
-    unstr_grid.node_coords = node_coords.tolist()
+    # 将2D坐标转换回原始格式（保留z坐标如果存在）
+    if len(node_coords[0]) > 2:
+        # 原始坐标是3D，保留z坐标
+        unstr_grid.node_coords = [
+            [node_coords_2d[i][0], node_coords_2d[i][1], node_coords[i][2]]
+            for i in range(len(node_coords_2d))
+        ]
+    else:
+        # 原始坐标是2D，直接使用2D坐标
+        unstr_grid.node_coords = node_coords_2d.tolist()
     
     timer.show_to_console("基于角度的平滑完成.")
+    return unstr_grid
+
+
+def smart_angle_based_smoothing(unstr_grid, iterations=1):
+    """
+    Smart angle-based smoothing algorithm implementation with local quality check.
+    
+    This algorithm is similar to angle_based_smoothing, but only moves a node
+    if the new position improves the local mesh quality. This prevents degradation
+    of mesh quality during smoothing.
+    
+    Args:
+        unstr_grid: Unstructured_Grid object containing the mesh
+        iterations: Number of smoothing iterations to perform (default: 1)
+    
+    Returns:
+        Unstructured_Grid: The smoothed grid
+    """
+    timer = TimeSpan("开始智能基于角度平滑优化...")
+
+    # 初始化邻接关系（用于回退顺序）
+    unstr_grid.init_node2node()
+    unstr_grid.cyclic_node2node()
+
+    # Get boundary nodes
+    boundary_nodes = set(unstr_grid.boundary_nodes_list) if hasattr(unstr_grid, 'boundary_nodes_list') else set()
+    
+    node_coords = np.array(unstr_grid.node_coords, dtype=float)
+    
+    # 将所有坐标统一为2维，避免维度不匹配错误
+    node_coords_2d = np.array([
+        coords[:2] if hasattr(coords, "__len__") and len(coords) > 2 else coords
+        for coords in node_coords
+    ], dtype=float)
+    
+    for iteration in range(iterations):
+        info(f"智能基于角度平滑第 {iteration + 1} 次迭代")
+        
+        for node_id in range(len(node_coords_2d)):
+            # 边界点保持不动
+            if node_id in boundary_nodes:
+                continue  # Skip boundary nodes
+            
+            # 取当前节点的一环邻居（已被 cyclic_node2node 排序成闭环）
+            if node_id not in unstr_grid.node2node:
+                continue
+                
+            neighbor_ids = unstr_grid.build_topological_ring(node_id)
+            if not neighbor_ids:
+                neighbor_ids = unstr_grid.node2node[node_id]
+            # 至少需要 3 个邻居才能构成连续三元组
+            if not neighbor_ids or len(neighbor_ids) < 3:
+                continue
+            
+            # 计算新位置：对每个连续三元组计算旋转贡献并求平均
+            new_x, new_y = 0.0, 0.0
+            count = 0
+            
+            # 遍历每个邻居作为 vv_it（C++），并构造 vvp/vvm/vvn
+            num_neighbors = len(neighbor_ids)
+            for i in range(num_neighbors):
+                # 三个连续邻居（对应 C++ 的 vvp_it / vvm_it / vvn_it）
+                vvp_idx = neighbor_ids[i]  # vv_it
+                vvm_idx = neighbor_ids[(i + 1) % num_neighbors]  # vv_it + 1
+                vvn_idx = neighbor_ids[(i + 2) % num_neighbors]  # vv_it + 2
+                
+                # 坐标获取（当前点与三个相邻点）- 使用2D坐标
+                curr_node_pos = node_coords_2d[node_id]  # Current node position
+                vvp_pos = node_coords_2d[vvp_idx]  # Previous neighbor
+                vvm_pos = node_coords_2d[vvm_idx]  # Current neighbor
+                vvn_pos = node_coords_2d[vvn_idx]  # Next neighbor
+                
+                # 以 vvm 为旋转中心构造向量（与 smoothing.cpp 一致）
+                v = curr_node_pos - vvm_pos  # Vector from vvm to current node
+                v1 = vvp_pos - vvm_pos  # Vector from vvm to vvp
+                v2 = vvn_pos - vvm_pos  # Vector from vvm to vvn
+                
+                # 归一化向量以计算夹角
+                v_norm = np.linalg.norm(v)
+                v1_norm = np.linalg.norm(v1)
+                v2_norm = np.linalg.norm(v2)
+                
+                # 与 C++ 行为一致：遇到退化情况则跳过该三元组
+                if v_norm == 0 or v1_norm == 0 or v2_norm == 0:
+                    continue
+                
+                v_unit = v / v_norm
+                v1_unit = v1 / v1_norm
+                v2_unit = v2 / v2_norm
+                
+                # 计算点乘并转成夹角
+                dot_v1_v = np.dot(v1_unit, v_unit)
+                dot_v2_v = np.dot(v2_unit, v_unit)
+                
+                # 数值安全：夹角计算前裁剪到 [-1, 1]
+                dot_v1_v = np.clip(dot_v1_v, -1.0, 1.0)
+                dot_v2_v = np.clip(dot_v2_v, -1.0, 1.0)
+                
+                # beta 角：对应 -(0.5 * (acos(v1|v) - acos(v2|v)))
+                beta = -0.5 * (acos(dot_v1_v) - acos(dot_v2_v))
+                
+                # 将当前点绕 vvm 旋转 beta，得到该三元组贡献
+                dx = curr_node_pos[0] - vvm_pos[0]
+                dy = curr_node_pos[1] - vvm_pos[1]
+                
+                new_x_contrib = vvm_pos[0] + dx * cos(beta) - dy * sin(beta)
+                new_y_contrib = vvm_pos[1] + dx * sin(beta) + dy * cos(beta)
+                
+                new_x += new_x_contrib
+                new_y += new_y_contrib
+                count += 1
+            
+            # 取平均得到新位置（与 C++ 中 cog/valence 一致）
+            if count > 0:
+                new_position = [new_x / count, new_y / count]
+                
+                # 检查新位置是否改善了局部质量
+                if is_improved_locally(node_coords_2d, node_id, new_position, neighbor_ids):
+                    node_coords_2d[node_id][0] = new_position[0]
+                    node_coords_2d[node_id][1] = new_position[1]
+    
+    # 将2D坐标转换回原始格式（保留z坐标如果存在）
+    if len(node_coords[0]) > 2:
+        # 原始坐标是3D，保留z坐标
+        unstr_grid.node_coords = [
+            [node_coords_2d[i][0], node_coords_2d[i][1], node_coords[i][2]]
+            for i in range(len(node_coords_2d))
+        ]
+    else:
+        # 原始坐标是2D，直接使用2D坐标
+        unstr_grid.node_coords = node_coords_2d.tolist()
+    
+    timer.show_to_console("智能基于角度的平滑完成.")
     return unstr_grid
 
 
@@ -301,4 +531,24 @@ def smooth_mesh_getme(mesh_data, iterations=1):
         return result
     except Exception as e:
         error(f"基于GetMe方法的平滑失败: {str(e)}")
+        raise
+
+
+def smooth_mesh_smart_angle_based(mesh_data, iterations=1):
+    """
+    GUI-friendly interface for smart angle-based smoothing.
+    
+    Args:
+        mesh_data: The mesh data to smooth
+        iterations: Number of smoothing iterations (default: 1)
+    
+    Returns:
+        Smoothed mesh data
+    """
+    try:
+        result = smart_angle_based_smoothing(mesh_data, iterations)
+        info(f"智能基于角度的平滑完成，迭代次数: {iterations}")
+        return result
+    except Exception as e:
+        error(f"智能基于角度的平滑失败: {str(e)}")
         raise

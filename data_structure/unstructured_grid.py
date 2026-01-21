@@ -451,6 +451,58 @@ class Unstructured_Grid:
 
             self.node2node[node_idx] = sorted_neighbors
 
+    def build_topological_ring(self, node_id):
+        """基于单元拓扑构建节点的一环有序邻居"""
+        next_map = {}
+        prev_map = {}
+        neighbors = set()
+
+        for cell in self.cell_container:
+            if cell is None or not hasattr(cell, "node_ids"):
+                continue
+            node_ids = cell.node_ids
+            if not node_ids:
+                continue
+            try:
+                idx = node_ids.index(node_id)
+            except ValueError:
+                continue
+
+            prev_id = node_ids[idx - 1]
+            next_id = node_ids[(idx + 1) % len(node_ids)]
+
+            neighbors.add(prev_id)
+            neighbors.add(next_id)
+
+            if prev_id in next_map and next_map[prev_id] != next_id:
+                return None
+            if next_id in prev_map and prev_map[next_id] != prev_id:
+                return None
+            next_map[prev_id] = next_id
+            prev_map[next_id] = prev_id
+
+        if not next_map:
+            return None
+
+        start = next(iter(next_map))
+        ordered = [start]
+        current = start
+        while True:
+            nxt = next_map.get(current)
+            if nxt is None:
+                return None
+            if nxt == start:
+                break
+            if nxt in ordered:
+                return None
+            ordered.append(nxt)
+            current = nxt
+
+        if len(ordered) != len(neighbors):
+            return None
+
+        return ordered
+
     def init_node2cell(self):
         """初始化节点关联的单元列表"""
         self.node2cell = {}

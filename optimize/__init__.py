@@ -24,7 +24,9 @@ _IMPORT_MAP = {
     # 从 angle_based_smoothing 导入的函数
     'smooth_mesh_angle_based': ('angle_based_smoothing', 'smooth_mesh_angle_based'),
     'smooth_mesh_getme': ('angle_based_smoothing', 'smooth_mesh_getme'),
+    'smooth_mesh_smart_angle_based': ('angle_based_smoothing', 'smooth_mesh_smart_angle_based'),
     'angle_based_smoothing': ('angle_based_smoothing', 'angle_based_smoothing'),
+    'smart_angle_based_smoothing': ('angle_based_smoothing', 'smart_angle_based_smoothing'),
     'getme_method': ('angle_based_smoothing', 'getme_method'),
     
     # 从 nn_smoothing 导入的函数（可选依赖）

@@ -597,6 +597,7 @@ class MeshOperations:
             from optimize.optimize import (
                 laplacian_smooth,
                 smooth_mesh_angle_based,
+                smooth_mesh_smart_angle_based,
                 smooth_mesh_getme,
                 smooth_mesh_nn,
                 node_perturbation,
@@ -604,7 +605,8 @@ class MeshOperations:
 
             if method_key == "angle_based":
                 method_name = "基于角度的平滑"
-                smooth_func = lambda m: smooth_mesh_angle_based(m, iterations=iterations)
+                # smooth_func = lambda m: smooth_mesh_angle_based(m, iterations=iterations)
+                smooth_func = lambda m: smooth_mesh_smart_angle_based(m, iterations=iterations)
             elif method_key == "getme":
                 method_name = "基于GetMe方法的平滑"
                 smooth_func = lambda m: smooth_mesh_getme(m, iterations=iterations)

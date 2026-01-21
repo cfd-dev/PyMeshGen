@@ -16,8 +16,10 @@ from .mesh_quality import quadrilateral_quality2, triangle_shape_quality
 # Import angle-based smoothing functions
 from .angle_based_smoothing import (
     angle_based_smoothing,
+    smart_angle_based_smoothing,
     getme_method,
     smooth_mesh_angle_based,
+    smooth_mesh_smart_angle_based,
     smooth_mesh_getme
 )
 
