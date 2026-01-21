@@ -479,21 +479,18 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
         # 使用Delaunay准则：检查是否应该交换边
         # 当前配置：边ab连接三角形abc和abd
         # 目标配置：边cd连接三角形acd和bcd
-        # 如果d在三角形abc的外接圆内，或a在三角形bcd的外接圆内，则应交换
+        # 如果d在三角形abc的外接圆内，或c在三角形abd的外接圆内，则应交换
         should_swap = (
             circumcircle_contains(pt_a, pt_b, pt_c, pt_d)
-            or circumcircle_contains(pt_b, pt_c, pt_d, pt_a)
+            or circumcircle_contains(pt_a, pt_b, pt_d, pt_c)
         )
 
         # 额外检查：不创建新的边界边
+        # 如果c或d中任意一个是边界节点，交换边cd可能会修改边界拓扑
         if should_swap and not (
             c in unstr_grid.boundary_nodes_list
-            and d in unstr_grid.boundary_nodes_list
+            or d in unstr_grid.boundary_nodes_list
         ):
-            current_min = min(
-                geom_tool.calculate_min_angle(cell1.node_ids, node_coords_2d),
-                geom_tool.calculate_min_angle(cell2.node_ids, node_coords_2d),
-            )
             # 交换后的单元
             swapped_cell1 = [a, c, d]
             swapped_cell2 = [b, c, d]
@@ -509,12 +506,8 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
                 geom_tool.is_valid_triangle(swapped_cell1, node_coords_2d)
                 and geom_tool.is_valid_triangle(swapped_cell2, node_coords_2d)
             ):
-                swapped_min = min(
-                    geom_tool.calculate_min_angle(swapped_cell1, node_coords_2d),
-                    geom_tool.calculate_min_angle(swapped_cell2, node_coords_2d),
-                )
-                if swapped_min <= current_min:
-                    continue
+                # Delaunay准则已经隐含了最大化最小角的性质
+                # 因此不需要额外的角度比较，直接执行交换
                 old_edges = triangle_edges(cell1.node_ids) + triangle_edges(cell2.node_ids)
                 new_edges1 = triangle_edges(swapped_cell1)
                 new_edges2 = triangle_edges(swapped_cell2)

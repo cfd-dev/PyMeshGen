@@ -870,7 +870,8 @@ class MeshOperations:
                 
                 for _ in range(laplacian_iters):
                     self.gui.log_info(f"正在进行第{_}轮边交换优化...")
-                    optimized_mesh = edge_swap(mesh_obj)
+                    # optimized_mesh = edge_swap(mesh_obj)
+                    optimized_mesh = edge_swap_delaunay(mesh_obj)
 
                     self.gui.log_info(f"正在进行第{_}轮laplacian光滑优化...")
                     optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=1)
