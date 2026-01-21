@@ -433,6 +433,7 @@ class MeshOperations:
                     quality_avg = sum(quality_values) / len(quality_values)
 
                     quality_stats = f"质量统计信息:\n"
+                    quality_stats += f"  (质量值为1.0时最佳)\n"
                     quality_stats += f"  最小质量值: {quality_min:.4f}\n"
                     quality_stats += f"  最大质量值: {quality_max:.4f}\n"
                     quality_stats += f"  平均质量值: {quality_avg:.4f}\n"

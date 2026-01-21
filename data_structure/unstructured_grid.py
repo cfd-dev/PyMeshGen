@@ -149,6 +149,7 @@ class Unstructured_Grid:
         # 输出质量信息
         if quality_values and skewness_values:
             quality_stats = f"Quality Statistics:\n"
+            quality_stats += f"  (Quality=1.0 is the best)\n"
             quality_stats += f"  Min Quality: {min(quality_values):.4f}\n"
             quality_stats += f"  Max Quality: {max(quality_values):.4f}\n"
             quality_stats += f"  Mean Quality: {np.mean(quality_values):.4f}\n\n"
