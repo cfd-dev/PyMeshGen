@@ -639,12 +639,8 @@ class MeshOperations:
 
             end_time = time.time()
 
-            if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
-                self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
             if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
-                self.gui.mesh_display.clear_mesh_actors()
-                self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
-                self.gui.mesh_display.display_mesh(render_immediately=False)
+                self.gui.mesh_display.display_mesh(self.gui.current_mesh, render_immediately=False)
 
             self.gui.log_info(f"{method_name}平滑处理完成，耗时: {end_time - start_time:.3f}秒")
             if hasattr(smoothed_mesh, 'cell_container'):
@@ -661,6 +657,8 @@ class MeshOperations:
 
     def optimize_mesh(self):
         """优化网格 - 使用edge_swap和laplacian_smooth算法"""
+        from utils.message import set_gui_instance
+        
         try:
             if not self._require_mesh("未找到网格数据，无法进行优化"):
                 return
@@ -838,7 +836,6 @@ class MeshOperations:
             lr_gamma = float(lr_gamma_spin.value())
 
             from optimize.optimize import edge_swap, laplacian_smooth, nn_smoothing_adam, edge_swap_delaunay
-            from utils.message import set_gui_instance
 
             self.gui.log_info("开始进行网格优化...")
             self.gui.update_status("正在进行网格优化...")
@@ -892,12 +889,8 @@ class MeshOperations:
 
             end_time = time.time()
 
-            if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
-                self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
             if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
-                self.gui.mesh_display.clear_mesh_actors()
-                self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
-                self.gui.mesh_display.display_mesh(render_immediately=False)
+                self.gui.mesh_display.display_mesh(self.gui.current_mesh, render_immediately=False)
 
             self.gui.log_info(f"{method_name}完成，总耗时: {end_time - start_time:.3f}秒")
             self.gui.log_info(f"优化后网格包含 {len(optimized_mesh.cell_container)} 个单元")
