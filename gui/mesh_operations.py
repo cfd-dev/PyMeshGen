@@ -642,6 +642,7 @@ class MeshOperations:
             if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
                 self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
             if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
+                self.gui.mesh_display.clear_mesh_actors()
                 self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
                 self.gui.mesh_display.display_mesh(render_immediately=False)
 
@@ -837,9 +838,13 @@ class MeshOperations:
             lr_gamma = float(lr_gamma_spin.value())
 
             from optimize.optimize import edge_swap, laplacian_smooth, nn_smoothing_adam, edge_swap_delaunay
+            from utils.message import set_gui_instance
 
             self.gui.log_info("开始进行网格优化...")
             self.gui.update_status("正在进行网格优化...")
+
+            # 设置GUI实例到消息系统，以便优化函数可以输出到GUI
+            set_gui_instance(self.gui)
 
             start_time = time.time()
 
@@ -890,6 +895,7 @@ class MeshOperations:
             if hasattr(self.gui, 'mesh_visualizer') and self.gui.mesh_visualizer:
                 self.gui.mesh_visualizer.update_mesh(self.gui.current_mesh)
             if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
+                self.gui.mesh_display.clear_mesh_actors()
                 self.gui.mesh_display.set_mesh_data(self.gui.current_mesh)
                 self.gui.mesh_display.display_mesh(render_immediately=False)
 
@@ -904,6 +910,10 @@ class MeshOperations:
             QMessageBox.critical(self.gui, "错误", f"网格优化失败：{str(e)}")
             self.gui.log_info(f"网格优化失败：{str(e)}")
             self.gui.update_status("网格优化失败")
+
+        finally:
+            # 重置GUI实例，避免影响其他操作
+            set_gui_instance(None)
 
     def show_mesh_statistics(self):
         """显示网格统计信息 - 包括网格单元信息和质量统计"""

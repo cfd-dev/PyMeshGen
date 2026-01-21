@@ -628,6 +628,11 @@ def edge_swap(unstr_grid):
             in_queue.add(edge)
 
     num_swapped = 0
+    total_edges = len(edge_queue)
+    processed_edges = 0
+    
+    info(f"开始边交换优化，共 {total_edges} 条边需要处理...")
+    
     while edge_queue:
         edge = edge_queue.popleft()
         in_queue.discard(edge)
@@ -746,8 +751,15 @@ def edge_swap(unstr_grid):
 
             for affected_edge in set(old_edges + new_edges):
                 enqueue(affected_edge)
+        
+        processed_edges += 1
+        
+        # 每处理100条边输出一次进度
+        if processed_edges % 100 == 0:
+            progress_percent = (processed_edges / total_edges) * 100
+            verbose(f"边交换进度: {processed_edges}/{total_edges} ({progress_percent:.1f}%), 已交换: {num_swapped}")
 
-    info(f"共进行了{num_swapped}次边交换.")
+    info(f"边交换优化完成，共处理 {processed_edges} 条边，进行了 {num_swapped} 次边交换.")
     timer.show_to_console("边交换优化完成.")
 
     return unstr_grid

@@ -285,6 +285,8 @@ class MeshDisplayArea:
                     polys.InsertNextCell(vtk_cell)
 
             if isinstance(self.mesh_data, dict):
+                if 'unstr_grid' in self.mesh_data:
+                    return self.create_vtk_mesh_from_unstr_grid(self.mesh_data['unstr_grid'])
                 if 'type' in self.mesh_data:
                     if self.mesh_data['type'] in ['vtk', 'stl', 'obj', 'ply']:
                         if 'node_coords' not in self.mesh_data or 'cells' not in self.mesh_data:
@@ -314,6 +316,8 @@ class MeshDisplayArea:
                         for cell in cells:
                             add_cell(cell)
 
+            elif hasattr(self.mesh_data, 'unstr_grid') and self.mesh_data.unstr_grid:
+                return self.create_vtk_mesh_from_unstr_grid(self.mesh_data.unstr_grid)
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
                 # 对于CAS类型的MeshData对象，直接使用node_coords和cells属性
                 node_coords = self.mesh_data.node_coords

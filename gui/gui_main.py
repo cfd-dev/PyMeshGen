@@ -1468,6 +1468,11 @@ class PyMeshGenGUI(QMainWindow):
         """记录警告日志"""
         self.ui_helpers.log_warning(message)
 
+    def append_info_output(self, message):
+        """添加信息到输出窗口，供 utils.message 模块调用"""
+        if hasattr(self, 'info_output'):
+            self.info_output.append_info_output(message)
+
     def update_status(self, message):
         """更新状态栏信息"""
         self.ui_helpers.update_status(message)
