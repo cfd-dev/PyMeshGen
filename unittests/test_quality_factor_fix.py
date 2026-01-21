@@ -18,7 +18,11 @@ from optimize.mesh_quality import (
     tetrahedron_shape_quality,
     prism_shape_quality,
     hexahedron_shape_quality,
-    pyramid_shape_quality
+    pyramid_shape_quality,
+    tetrahedron_skewness,
+    prism_skewness,
+    hexahedron_skewness,
+    pyramid_skewness,
 )
 
 
@@ -36,6 +40,9 @@ class TestMeshQuality(unittest.TestCase):
         tet_quality = tetrahedron_shape_quality(p1, p2, p3, p4)
         self.assertAlmostEqual(tet_quality, 1.0, places=5,
                               msg="理想四面体质量应接近1.0")
+        tet_skewness = tetrahedron_skewness(p1, p2, p3, p4)
+        self.assertAlmostEqual(tet_skewness, 1.0, places=4,
+                              msg="理想四面体偏斜度应接近1.0")
     
     def test_ideal_prism(self):
         """测试理想三棱柱的质量值应接近1.0"""
@@ -49,6 +56,9 @@ class TestMeshQuality(unittest.TestCase):
         prism_quality = prism_shape_quality(p1, p2, p3, p4, p5, p6)
         self.assertAlmostEqual(prism_quality, 1.0, places=5,
                               msg="理想三棱柱质量应接近1.0")
+        prism_skew = prism_skewness(p1, p2, p3, p4, p5, p6)
+        self.assertAlmostEqual(prism_skew, 1.0, places=5,
+                              msg="理想三棱柱偏斜度应接近1.0")
     
     def test_ideal_hexahedron(self):
         """测试理想六面体的质量值应接近1.0"""
@@ -64,6 +74,9 @@ class TestMeshQuality(unittest.TestCase):
         hex_quality = hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8)
         self.assertAlmostEqual(hex_quality, 1.0, places=5,
                               msg="理想六面体质量应接近1.0")
+        hex_skew = hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8)
+        self.assertAlmostEqual(hex_skew, 1.0, places=5,
+                              msg="理想六面体偏斜度应接近1.0")
     
     def test_ideal_pyramid(self):
         """测试理想金字塔的质量值应接近1.0"""
@@ -78,6 +91,9 @@ class TestMeshQuality(unittest.TestCase):
         pyramid_quality = pyramid_shape_quality(p1, p2, p3, p4, p5)
         self.assertAlmostEqual(pyramid_quality, 1.0, places=5,
                               msg="理想金字塔质量应接近1.0")
+        pyramid_skew = pyramid_skewness(p1, p2, p3, p4, p5)
+        self.assertAlmostEqual(pyramid_skew, 1.0, places=3,
+                              msg="理想金字塔偏斜度应接近1.0")
     
     def test_degenerate_tetrahedron(self):
         """测试退化四面体的质量值应为0或很小"""

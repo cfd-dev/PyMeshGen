@@ -143,40 +143,43 @@ def prism_skewness(p1, p2, p3, p4, p5, p6):
 
     # 计算两个面之间的二面角
     def dihedral_angle(n1, n2):
-        cos_angle = np.dot(n1, n2)
+        cos_angle = abs(np.dot(n1, n2))
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cos_angle))
 
-    # 计算所有二面角
-    dihedral_angles = []
+    def max_deviation(angles, ideal):
+        if ideal >= 90.0:
+            return max((ideal - angle) / ideal for angle in angles)
+        deviations = []
+        for angle in angles:
+            if angle >= ideal:
+                deviations.append((angle - ideal) / (90.0 - ideal))
+            else:
+                deviations.append((ideal - angle) / ideal)
+        return max(deviations)
 
     # 侧面之间的二面角（3个）
-    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p2-p5
-    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p3-p6
-    dihedral_angles.append(dihedral_angle(n5, n3))  # 棱 p1-p4
+    side_angles = [
+        dihedral_angle(n3, n4),  # 棱 p2-p5
+        dihedral_angle(n4, n5),  # 棱 p3-p6
+        dihedral_angle(n5, n3),  # 棱 p1-p4
+    ]
 
     # 侧面与底面之间的二面角（6个）
-    dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p1-p2
-    dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
-    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p3-p1
-    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p4-p5
-    dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p5-p6
-    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p6-p4
+    base_angles = [
+        dihedral_angle(n1, n3),  # 棱 p1-p2
+        dihedral_angle(n1, n4),  # 棱 p2-p3
+        dihedral_angle(n1, n5),  # 棱 p3-p1
+        dihedral_angle(n2, n3),  # 棱 p4-p5
+        dihedral_angle(n2, n4),  # 棱 p5-p6
+        dihedral_angle(n2, n5),  # 棱 p6-p4
+    ]
 
-    # 计算最大和最小二面角
-    max_angle = max(dihedral_angles)
-    min_angle = min(dihedral_angles)
-
-    # 理想正三棱柱的二面角
-    # 侧面之间的二面角为 90 度（正方形）
-    # 侧面与底面之间的二面角约为 90 度（对于正三棱柱）
-    # 使用平均值作为理想角度
-    ideal_angle = 90.0
-
-    # 计算偏斜度
-    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
-    skew2 = (ideal_angle - min_angle) / ideal_angle
-    skewness = 1.0 - max([skew1, skew2])
+    # 理想正三棱柱的二面角（内部角）
+    # 侧面之间为 60 度，侧面与底面之间为 90 度
+    side_deviation = max_deviation(side_angles, 60.0)
+    base_deviation = max_deviation(base_angles, 90.0)
+    skewness = 1.0 - max(side_deviation, base_deviation)
 
     # 确保偏斜度在[0, 1]范围内
     skewness = max(0.0, min(1.0, skewness))
@@ -263,41 +266,45 @@ def hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8):
 
     # 计算两个面之间的二面角
     def dihedral_angle(n1, n2):
-        cos_angle = np.dot(n1, n2)
+        cos_angle = abs(np.dot(n1, n2))
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cos_angle))
 
-    # 计算所有二面角
-    dihedral_angles = []
+    def max_deviation(angles, ideal):
+        if ideal >= 90.0:
+            return max((ideal - angle) / ideal for angle in angles)
+        deviations = []
+        for angle in angles:
+            if angle >= ideal:
+                deviations.append((angle - ideal) / (90.0 - ideal))
+            else:
+                deviations.append((ideal - angle) / ideal)
+        return max(deviations)
 
     # 侧面之间的二面角（4个）
-    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p2-p6
-    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p3-p7
-    dihedral_angles.append(dihedral_angle(n5, n6))  # 棱 p4-p8
-    dihedral_angles.append(dihedral_angle(n6, n3))  # 棱 p1-p5
+    side_angles = [
+        dihedral_angle(n3, n4),  # 棱 p2-p6
+        dihedral_angle(n4, n5),  # 棱 p3-p7
+        dihedral_angle(n5, n6),  # 棱 p4-p8
+        dihedral_angle(n6, n3),  # 棱 p1-p5
+    ]
 
     # 侧面与底面之间的二面角（8个）
-    dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p1-p2
-    dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
-    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p3-p4
-    dihedral_angles.append(dihedral_angle(n1, n6))  # 棱 p4-p1
-    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p5-p6
-    dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p6-p7
-    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p7-p8
-    dihedral_angles.append(dihedral_angle(n2, n6))  # 棱 p8-p5
-
-    # 计算最大和最小二面角
-    max_angle = max(dihedral_angles)
-    min_angle = min(dihedral_angles)
+    base_angles = [
+        dihedral_angle(n1, n3),  # 棱 p1-p2
+        dihedral_angle(n1, n4),  # 棱 p2-p3
+        dihedral_angle(n1, n5),  # 棱 p3-p4
+        dihedral_angle(n1, n6),  # 棱 p4-p1
+        dihedral_angle(n2, n3),  # 棱 p5-p6
+        dihedral_angle(n2, n4),  # 棱 p6-p7
+        dihedral_angle(n2, n5),  # 棱 p7-p8
+        dihedral_angle(n2, n6),  # 棱 p8-p5
+    ]
 
     # 理想正六面体（立方体）的二面角
-    # 所有相邻面之间的二面角都是 90 度
-    ideal_angle = 90.0
-
-    # 计算偏斜度
-    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
-    skew2 = (ideal_angle - min_angle) / ideal_angle
-    skewness = 1.0 - max([skew1, skew2])
+    side_deviation = max_deviation(side_angles, 90.0)
+    base_deviation = max_deviation(base_angles, 90.0)
+    skewness = 1.0 - max(side_deviation, base_deviation)
 
     # 确保偏斜度在[0, 1]范围内
     skewness = max(0.0, min(1.0, skewness))
@@ -508,11 +515,22 @@ def tetrahedron_skewness(p1, p2, p3, p4):
 
     # 计算两个面之间的二面角
     def dihedral_angle(n1, n2):
-        cos_angle = np.dot(n1, n2)
+        cos_angle = abs(np.dot(n1, n2))
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cos_angle))
 
-    # 六条棱对应的二面角
+    def max_deviation(angles, ideal):
+        if ideal >= 90.0:
+            return max((ideal - angle) / ideal for angle in angles)
+        deviations = []
+        for angle in angles:
+            if angle >= ideal:
+                deviations.append((angle - ideal) / (90.0 - ideal))
+            else:
+                deviations.append((ideal - angle) / ideal)
+        return max(deviations)
+
+    # 六条棱对应的二面角（内部角）
     dihedral_angles.append(dihedral_angle(n1, n2))  # 棱 p3-p4
     dihedral_angles.append(dihedral_angle(n1, n3))  # 棱 p2-p4
     dihedral_angles.append(dihedral_angle(n1, n4))  # 棱 p2-p3
@@ -520,18 +538,13 @@ def tetrahedron_skewness(p1, p2, p3, p4):
     dihedral_angles.append(dihedral_angle(n2, n4))  # 棱 p1-p3
     dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p1-p2
 
-    # 检查二面角和（理想正四面体的二面角约为70.53度，六个二面角和约为423.18度）
-    # 这里不做严格检查，因为四面体的二面角和不是固定值
-
-    # 计算最大和最小二面角
-    max_angle = max(dihedral_angles)
-    min_angle = min(dihedral_angles)
-
-    # 理想正四面体的二面角约为70.53度
+    # 理想正四面体的内部二面角约为 70.53 度
     ideal_angle = 70.53
 
     # 计算偏斜度
-    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
+    max_angle = max(dihedral_angles)
+    min_angle = min(dihedral_angles)
+    skew1 = (max_angle - ideal_angle) / (90.0 - ideal_angle)
     skew2 = (ideal_angle - min_angle) / ideal_angle
     skewness = 1.0 - max([skew1, skew2])
 
@@ -608,39 +621,42 @@ def pyramid_skewness(p1, p2, p3, p4, p5):
 
     # 计算两个面之间的二面角
     def dihedral_angle(n1, n2):
-        cos_angle = np.dot(n1, n2)
+        cos_angle = abs(np.dot(n1, n2))
         cos_angle = np.clip(cos_angle, -1.0, 1.0)
         return np.degrees(np.arccos(cos_angle))
 
-    # 计算所有二面角
-    dihedral_angles = []
-
     # 侧面之间的二面角（4个）
-    dihedral_angles.append(dihedral_angle(n1, n2))  # 棱 p3-p5
-    dihedral_angles.append(dihedral_angle(n2, n3))  # 棱 p4-p5
-    dihedral_angles.append(dihedral_angle(n3, n4))  # 棱 p1-p5
-    dihedral_angles.append(dihedral_angle(n4, n1))  # 棱 p2-p5
+    side_angles = [
+        dihedral_angle(n1, n2),  # 棱 p3-p5
+        dihedral_angle(n2, n3),  # 棱 p4-p5
+        dihedral_angle(n3, n4),  # 棱 p1-p5
+        dihedral_angle(n4, n1),  # 棱 p2-p5
+    ]
 
     # 侧面与底面之间的二面角（4个）
-    dihedral_angles.append(dihedral_angle(n1, n5))  # 棱 p2-p3
-    dihedral_angles.append(dihedral_angle(n2, n5))  # 棱 p3-p4
-    dihedral_angles.append(dihedral_angle(n3, n5))  # 棱 p4-p1
-    dihedral_angles.append(dihedral_angle(n4, n5))  # 棱 p1-p2
+    base_angles = [
+        dihedral_angle(n1, n5),  # 棱 p2-p3
+        dihedral_angle(n2, n5),  # 棱 p3-p4
+        dihedral_angle(n3, n5),  # 棱 p4-p1
+        dihedral_angle(n4, n5),  # 棱 p1-p2
+    ]
 
-    # 计算最大和最小二面角
-    max_angle = max(dihedral_angles)
-    min_angle = min(dihedral_angles)
+    def max_deviation(angles, ideal):
+        if ideal >= 90.0:
+            return max((ideal - angle) / ideal for angle in angles)
+        deviations = []
+        for angle in angles:
+            if angle >= ideal:
+                deviations.append((angle - ideal) / (90.0 - ideal))
+            else:
+                deviations.append((ideal - angle) / ideal)
+        return max(deviations)
 
-    # 理想正金字塔的二面角
-    # 侧面之间的二面角约为 109.47 度（正四面体的二面角）
-    # 侧面与底面之间的二面角约为 54.74 度
-    # 使用平均值作为理想角度
-    ideal_angle = 82.1
-
-    # 计算偏斜度
-    skew1 = (max_angle - ideal_angle) / (180 - ideal_angle)
-    skew2 = (ideal_angle - min_angle) / ideal_angle
-    skewness = 1.0 - max([skew1, skew2])
+    # 理想正金字塔的内部二面角
+    # 侧面之间约为 70.53 度，侧面与底面约为 54.74 度
+    side_deviation = max_deviation(side_angles, 70.53)
+    base_deviation = max_deviation(base_angles, 54.74)
+    skewness = 1.0 - max(side_deviation, base_deviation)
 
     # 确保偏斜度在[0, 1]范围内
     skewness = max(0.0, min(1.0, skewness))
