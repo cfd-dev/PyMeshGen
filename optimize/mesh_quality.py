@@ -74,7 +74,7 @@ def triangle_skewness(p1, p2, p3):
 
 
 def prism_shape_quality(p1, p2, p3, p4, p5, p6):
-    """计算三棱柱网格质量（基于体积与棱长立方比）
+    """计算三棱柱网格质量（基于体积与棱长平方比）
     三棱柱由两个三角形底面和三个矩形侧面组成
     p1, p2, p3: 下底面三角形顶点
     p4, p5, p6: 上底面三角形顶点（与下底面对应）
@@ -95,28 +95,23 @@ def prism_shape_quality(p1, p2, p3, p4, p5, p6):
     # 计算体积
     volume = prism_volume(p1, p2, p3, p4, p5, p6)
 
-    # 计算边长立方和
-    edge_cubes_sum = sum(e**3 for e in edges)
+    # 计算边长平方和
+    edge_lengths_squared_sum = sum(e**2 for e in edges)
 
-    # 质量指标：体积与边长立方比的标准化
-    if edge_cubes_sum == 0 or volume <= 0:
+    # 质量指标：体积与边长平方比的标准化
+    if edge_lengths_squared_sum == 0 or volume <= 0:
         return 0.0
 
     # 标准化因子（理想正三棱柱的质量为1）
     # 正三棱柱：底面为正三角形，侧面为正方形
     # 设底面边长为a，高为h，则体积 V = (sqrt(3)/4) * a^2 * h
-    # 对于正三棱柱，边长立方和 = 3*a^3 + 3*a^3 + 3*h^3 = 6*a^3 + 3*h^3
+    # 对于正三棱柱，边长平方和 = 3*a^2 + 3*a^2 + 3*h^2 = 6*a^2 + 3*h^2
     # 理想质量因子取决于h/a的比值：
-    #   - 当 h = a 时，侧面为正方形，ideal_factor = 144.0
-    #   - 当 h = 2a 时，ideal_factor = 288.0
-    #   - 当 h = 0.5a 时，ideal_factor = 72.0
-    #   - 当 h = 0.25a 时，ideal_factor = 36.0
-    # 为了适应各种高度的三棱柱（包括扁平的），使用更保守的值432.0（对应h=3a的情况）
-    # 这样可以确保质量值不超过1.0
-    ideal_factor = 432.0
-    quality = volume * ideal_factor / edge_cubes_sum
+    #   - 当 h = a 时，侧面为正方形，ideal_factor = 36.0 * sqrt(3.0)
+    ideal_factor = 36.0 * sqrt(3.0)
+    quality = ideal_factor * volume / (edge_lengths_squared_sum ** 1.5)
 
-    # 异常检测（移除质量值上限检查，因为某些特殊形状的三棱柱质量值可能超过1.0）
+    # 异常检测
     if isnan(quality) or isinf(quality) or quality < 0.0:
         raise ValueError(
             f"三棱柱质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}, {p6}"
@@ -190,8 +185,8 @@ def prism_skewness(p1, p2, p3, p4, p5, p6):
 
 
 def hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8):
-    """计算六面体网格质量（基于体积与棱长立方比）
-    六面体由8个顶点组成，可以分解为5个四面体计算体积
+    """计算六面体网格质量（基于体积与棱长平方比）
+    六面体由8个顶点组成，可以分解为6个四面体计算体积
     p1, p2, p3, p4: 下底面四边形顶点（按顺序）
     p5, p6, p7, p8: 上底面四边形顶点（与下底面对应）
     """
@@ -214,22 +209,23 @@ def hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8):
     # 计算体积
     volume = hexahedron_volume(p1, p2, p3, p4, p5, p6, p7, p8)
 
-    # 计算边长立方和
-    edge_cubes_sum = sum(e**3 for e in edges)
+    # 计算边长平方和
+    edge_lengths_squared_sum = sum(e**2 for e in edges)
 
-    # 质量指标：体积与边长立方比的标准化
-    if edge_cubes_sum == 0 or volume <= 0:
+    # 质量指标：体积与边长平方比的标准化
+    if edge_lengths_squared_sum == 0 or volume <= 0:
         return 0.0
 
     # 标准化因子（理想正六面体的质量为1）
     # 正六面体（立方体）：所有边长相等，所有面都是正方形
     # 设边长为a，则体积 V = a^3
-    # 对于立方体，边长立方和 = 12*a^3
-    # 因此理想质量 = a^3 / (12*a^3) = 1/12
-    ideal_factor = 12.0
-    quality = volume * ideal_factor / edge_cubes_sum
+    # 对于立方体，边长平方和 = 12*a^2
+    # (边长平方和)^1.5 = (12*a^2)^1.5 = 12^1.5 * a^3 = 12*sqrt(12) * a^3 = 24*sqrt(3) * a^3
+    # 要使理想立方体的质量为1，则 ideal_factor = 24*sqrt(3)
+    ideal_factor = 24.0 * sqrt(3.0)
+    quality = ideal_factor * volume / (edge_lengths_squared_sum ** 1.5)
 
-    # 异常检测（移除质量值上限检查，因为某些特殊形状的六面体质量值可能超过1.0）
+    # 异常检测
     if isnan(quality) or isinf(quality) or quality < 0.0:
         raise ValueError(
             f"六面体质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}, {p6}, {p7}, {p8}"
@@ -449,7 +445,7 @@ def quadrilateral_shape_quality(p1, p2, p3, p4):
 
 
 def tetrahedron_shape_quality(p1, p2, p3, p4):
-    """计算四面体网格质量（基于体积与棱长立方比）"""
+    """计算四面体网格质量（基于体积与棱长平方比）"""
     # 计算所有边长
     edges = [
         calculate_distance(p1, p2),
@@ -463,22 +459,24 @@ def tetrahedron_shape_quality(p1, p2, p3, p4):
     # 计算体积
     volume = tetrahedron_volume(p1, p2, p3, p4)
 
-    # 计算边长立方和
-    edge_cubes_sum = sum(e**3 for e in edges)
+    # 计算边长平方和
+    edge_lengths_squared_sum = sum(e**2 for e in edges)
 
-    # 质量指标：体积与边长立方比的标准化
-    if edge_cubes_sum == 0 or volume <= 0:
+    # 质量指标：体积与边长平方比的标准化
+    if edge_lengths_squared_sum == 0 or volume <= 0:
         return 0.0
 
     # 标准化因子（理想正四面体的质量为1）
-    # 正四面体的体积 V = a^3 / (6*sqrt(2))，其中a为边长
-    # 对于正四面体，edge_cubes_sum = 6*a^3
-    # 因此理想质量 = (a^3 / (6*sqrt(2))) / (6*a^3) = 1 / (36*sqrt(2))
-    ideal_factor = 36.0 * sqrt(2.0)
-    quality = volume * ideal_factor / edge_cubes_sum
+    # 正四面体：所有边长相等，设边长为a
+    # 体积 = a^3 * sqrt(2) / 12
+    # 边长平方和 = 6*a^2
+    # (边长平方和)^1.5 = (6*a^2)^1.5 = 6^1.5 * a^3 = 6*sqrt(6) * a^3
+    # 要使理想正四面体的质量为1，则 ideal_factor = 72*sqrt(3)
+    ideal_factor = 72.0 * sqrt(3.0)
+    quality = ideal_factor * volume / (edge_lengths_squared_sum ** 1.5)
 
     # 异常检测
-    if isnan(quality) or isinf(quality) or quality < 0.0 or quality > 1.0:
+    if isnan(quality) or isinf(quality) or quality < 0.0:
         raise ValueError(
             f"四面体质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}"
         )
@@ -544,9 +542,8 @@ def tetrahedron_skewness(p1, p2, p3, p4):
 
 
 def pyramid_shape_quality(p1, p2, p3, p4, p5):
-    """计算金字塔网格质量（基于体积与棱长立方比）
+    """计算金字塔网格质量（基于体积与棱长平方比）
     金字塔由一个四边形底面(p1,p2,p3,p4)和一个顶点(p5)组成
-    将金字塔分解为两个四面体计算质量
     """
     # 计算所有边长（金字塔有8条边）
     edges = [
@@ -563,23 +560,25 @@ def pyramid_shape_quality(p1, p2, p3, p4, p5):
     # 计算体积
     volume = pyramid_volume(p1, p2, p3, p4, p5)
 
-    # 计算边长立方和
-    edge_cubes_sum = sum(e**3 for e in edges)
+    # 计算边长平方和
+    edge_lengths_squared_sum = sum(e**2 for e in edges)
 
-    # 质量指标：体积与边长立方比的标准化
-    if edge_cubes_sum == 0 or volume <= 0:
+    # 质量指标：体积与边长平方比的标准化
+    if edge_lengths_squared_sum == 0 or volume <= 0:
         return 0.0
 
     # 标准化因子（理想正金字塔的质量为1）
     # 正金字塔：底面为正方形，顶点在底面中心正上方
     # 设底面边长为a，高为h，则体积 V = a^2 * h / 3
-    # 对于正金字塔，边长立方和 = 4*a^3 + 4*(a^2 + h^2)^(3/2)
-    # 当 h = a/sqrt(2) 时，四个侧面为等边三角形，此时质量最优
-    # 理想质量因子约为 72.0
-    ideal_factor = 72.0
-    quality = volume * ideal_factor / edge_cubes_sum
+    # 对于理想正四角锥（底面为正方形，侧面为等边三角形），h = a/sqrt(2)
+    # 体积 = a^3 / (3*sqrt(2))
+    # 边长平方和 = 4*a^2 + 4*a^2 = 8*a^2 (当侧面为等边三角形时)
+    # (边长平方和)^1.5 = (8*a^2)^1.5 = 8*sqrt(8)*a^3 = 16*sqrt(2)*a^3
+    # 理想质量因子 = 16*sqrt(2) * 3*sqrt(2) / (a^3) * (a^3) / (4*sqrt(3)) = 96
+    ideal_factor = 96.0
+    quality = ideal_factor * volume / (edge_lengths_squared_sum ** 1.5)
 
-    # 异常检测（移除质量值上限检查，因为某些特殊形状的金字塔质量值可能超过1.0）
+    # 异常检测
     if isnan(quality) or isinf(quality) or quality < 0.0:
         raise ValueError(
             f"金字塔质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}, {p4}, {p5}"

@@ -291,18 +291,20 @@ def prism_volume(p1, p2, p3, p4, p5, p6):
 
 def hexahedron_volume(p1, p2, p3, p4, p5, p6, p7, p8):
     """计算六面体体积（支持3D点）
-    六面体由8个顶点组成，可以分解为5个四面体计算体积
+    六面体由8个顶点组成，可以分解为6个四面体计算体积
     p1, p2, p3, p4: 下底面四边形顶点（按顺序）
     p5, p6, p7, p8: 上底面四边形顶点（与下底面对应）
     """
-    # 将六面体分解为5个四面体：
-    # T1(p1,p2,p3,p5), T2(p2,p3,p5,p6), T3(p3,p5,p6,p7), T4(p3,p4,p5,p7), T5(p4,p5,p7,p8)
-    vol1 = tetrahedron_volume(p1, p2, p3, p5)
-    vol2 = tetrahedron_volume(p2, p3, p5, p6)
-    vol3 = tetrahedron_volume(p3, p5, p6, p7)
-    vol4 = tetrahedron_volume(p3, p4, p5, p7)
-    vol5 = tetrahedron_volume(p4, p5, p7, p8)
-    return vol1 + vol2 + vol3 + vol4 + vol5
+    # 将六面体分解为6个四面体（沿对角线 p1-p7）：
+    # T1(p1,p2,p3,p7), T2(p1,p3,p4,p7), T3(p1,p4,p8,p7),
+    # T4(p1,p8,p5,p7), T5(p1,p5,p6,p7), T6(p1,p6,p2,p7)
+    vol1 = tetrahedron_volume(p1, p2, p3, p7)
+    vol2 = tetrahedron_volume(p1, p3, p4, p7)
+    vol3 = tetrahedron_volume(p1, p4, p8, p7)
+    vol4 = tetrahedron_volume(p1, p8, p5, p7)
+    vol5 = tetrahedron_volume(p1, p5, p6, p7)
+    vol6 = tetrahedron_volume(p1, p6, p2, p7)
+    return vol1 + vol2 + vol3 + vol4 + vol5 + vol6
 
 
 def is_left2d(p1, p2, p3):
