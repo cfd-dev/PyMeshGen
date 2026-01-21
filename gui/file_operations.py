@@ -1262,6 +1262,9 @@ class FileOperations:
             # 添加单元数据
             if isinstance(mesh_data, dict):
                 cells = mesh_data.get('cells', [])
+            elif hasattr(mesh_data, 'cell_container'):
+                # 从cell_container提取单元节点ID
+                cells = [cell.node_ids for cell in mesh_data.cell_container]
             elif hasattr(mesh_data, 'cells'):
                 cells = mesh_data.cells
             else:

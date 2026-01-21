@@ -150,15 +150,13 @@ class MeshOperations:
                 if vtk_poly_data:
                     file_ops.export_mesh(vtk_poly_data, file_path)
                 else:
-                    if hasattr(self.gui.current_mesh, 'node_coords') and hasattr(self.gui.current_mesh, 'cell_container'):
-                        if hasattr(self.gui.current_mesh, 'save_to_vtkfile'):
-                            self.gui.current_mesh.save_to_vtkfile(file_path)
-                        else:
-                            QMessageBox.warning(self.gui, "警告", "当前网格格式不支持直接保存，请使用VTK格式")
-                            return
-                    else:
-                        QMessageBox.warning(self.gui, "警告", "无法获取有效的VTK数据进行导出")
-                        return
+                    # 确定要导出的网格对象
+                    mesh_to_export = self.gui.current_mesh
+                    if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
+                        mesh_to_export = self.gui.current_mesh.unstr_grid
+                    
+                    # 直接调用export_mesh，内部会自动创建VTK对象
+                    file_ops.export_mesh(mesh_to_export, file_path)
 
                 self.gui.log_info(f"已导出网格文件: {file_path}")
                 self.gui.update_status("已导出网格文件")
