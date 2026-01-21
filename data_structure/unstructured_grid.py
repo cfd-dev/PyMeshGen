@@ -111,6 +111,70 @@ class Unstructured_Grid:
         file_path = f"./out/debug_mesh_{status}.vtk"
         self.save_to_vtkfile(file_path)
 
+    def refresh_cell_geometry(self):
+        """同步单元顶点坐标到最新的node_coords，并重置缓存的几何指标"""
+        if not hasattr(self, "cell_container") or not hasattr(self, "node_coords"):
+            return
+        num_nodes = len(self.node_coords)
+        for cell in self.cell_container:
+            if cell is None or not hasattr(cell, "node_ids"):
+                continue
+            node_ids = cell.node_ids
+            if not node_ids:
+                continue
+            if max(node_ids) >= num_nodes:
+                continue
+
+            coords = [self.node_coords[idx] for idx in node_ids]
+            if hasattr(cell, "p1"):
+                cell.p1 = list(coords[0])
+            if hasattr(cell, "p2") and len(coords) > 1:
+                cell.p2 = list(coords[1])
+            if hasattr(cell, "p3") and len(coords) > 2:
+                cell.p3 = list(coords[2])
+            if hasattr(cell, "p4") and len(coords) > 3:
+                cell.p4 = list(coords[3])
+            if hasattr(cell, "p5") and len(coords) > 4:
+                cell.p5 = list(coords[4])
+            if hasattr(cell, "p6") and len(coords) > 5:
+                cell.p6 = list(coords[5])
+            if hasattr(cell, "p7") and len(coords) > 6:
+                cell.p7 = list(coords[6])
+            if hasattr(cell, "p8") and len(coords) > 7:
+                cell.p8 = list(coords[7])
+
+            x_vals = [coord[0] for coord in coords if len(coord) > 0]
+            y_vals = [coord[1] for coord in coords if len(coord) > 1]
+            z_vals = [coord[2] for coord in coords if len(coord) > 2]
+            if x_vals and y_vals:
+                if z_vals:
+                    cell.bbox = [
+                        min(x_vals),
+                        min(y_vals),
+                        min(z_vals),
+                        max(x_vals),
+                        max(y_vals),
+                        max(z_vals),
+                    ]
+                else:
+                    cell.bbox = [min(x_vals), min(y_vals), max(x_vals), max(y_vals)]
+
+            if hasattr(cell, "area"):
+                cell.area = None
+            if hasattr(cell, "volume"):
+                cell.volume = None
+            if hasattr(cell, "quality"):
+                cell.quality = None
+            if hasattr(cell, "skewness"):
+                cell.skewness = None
+
+    def refresh_cell_metrics(self):
+        """刷新所有单元的几何与质量指标"""
+        self.refresh_cell_geometry()
+        for cell in self.cell_container:
+            if hasattr(cell, "init_metrics"):
+                cell.init_metrics()
+
     def summary(self, gui_instance=None):
         """输出网格信息"""
         self.num_cells = len(self.cell_container)
@@ -132,8 +196,7 @@ class Unstructured_Grid:
             gui_instance.log_info(mesh_summary.rstrip())  # Output to GUI
 
         # 计算所有单元的质量
-        for c in self.cell_container:
-            c.init_metrics()
+        self.refresh_cell_metrics()
 
         quality_values = [
             c.quality for c in self.cell_container if c.quality is not None
@@ -174,6 +237,7 @@ class Unstructured_Grid:
 
     def quality_histogram(self, ax=None):
         """绘制质量直方图"""
+        self.refresh_cell_geometry()
         # 计算所有单元的质量值（如果尚未计算）
         quality_values = []
         for c in self.cell_container:
@@ -230,6 +294,7 @@ class Unstructured_Grid:
 
     def skewness_histogram(self, ax=None):
         """绘制偏斜度直方图"""
+        self.refresh_cell_geometry()
         # 计算所有单元的偏斜度值（如果尚未计算）
         skewness_values = []
         for c in self.cell_container:

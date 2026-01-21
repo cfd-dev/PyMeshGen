@@ -194,6 +194,8 @@ class MeshOperations:
         quality_values = []
         skewness_values = []
         if hasattr(mesh_obj, 'cell_container'):
+            if hasattr(mesh_obj, 'refresh_cell_geometry'):
+                mesh_obj.refresh_cell_geometry()
             for cell in mesh_obj.cell_container:
                 if hasattr(cell, 'init_metrics'):
                     cell.init_metrics()
