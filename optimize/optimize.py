@@ -461,6 +461,14 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
             )
 
         a, b, c, d = sorted_quad_nodes
+        if not geom_tool.is_convex(
+            sorted_quad_nodes[0],
+            sorted_quad_nodes[1],
+            sorted_quad_nodes[2],
+            sorted_quad_nodes[3],
+            node_coords_2d,
+        ):
+            continue
 
         # 获取四个顶点的坐标
         pt_a = np.array(node_coords_2d[a])
@@ -651,9 +659,9 @@ def edge_swap(unstr_grid):
 
         c, d = other_points
 
-        # 凸性检查 TODO 为何无需检查，忘记了
-        # if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
-        #     continue
+        # 凸性检查
+        if not geom_tool.is_convex(a, c, b, d, node_coords_2d):
+            continue
 
         # 计算交换前的最小角
         # 修复：直接传递node_ids而不是Triangle对象

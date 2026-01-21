@@ -836,7 +836,7 @@ class MeshOperations:
             lr_step_size = int(lr_step_spin.value())
             lr_gamma = float(lr_gamma_spin.value())
 
-            from optimize.optimize import edge_swap, laplacian_smooth, nn_smoothing_adam
+            from optimize.optimize import edge_swap, laplacian_smooth, nn_smoothing_adam, edge_swap_delaunay
 
             self.gui.log_info("开始进行网格优化...")
             self.gui.update_status("正在进行网格优化...")
@@ -865,11 +865,14 @@ class MeshOperations:
                 )
             else:
                 method_name = "边交换 + Laplacian"
-                self.gui.log_info("正在进行边交换优化...")
-                optimized_mesh = edge_swap(mesh_obj)
+                
+                for _ in range(laplacian_iters):
+                    self.gui.log_info(f"正在进行第{_}轮边交换优化...")
+                    optimized_mesh = edge_swap(mesh_obj)
 
-                self.gui.log_info("正在进行laplacian光滑优化...")
-                optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=laplacian_iters)
+                    self.gui.log_info(f"正在进行第{_}轮laplacian光滑优化...")
+                    optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=1)
+
 
             if hasattr(self.gui.current_mesh, 'unstr_grid'):
                 self.gui.current_mesh.unstr_grid = optimized_mesh
