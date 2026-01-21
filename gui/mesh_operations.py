@@ -603,6 +603,7 @@ class MeshOperations:
 
             if method_key == "angle_based":
                 method_name = "基于角度的平滑"
+                # FIXME angle based smooting达不到预期效果
                 # smooth_func = lambda m: smooth_mesh_angle_based(m, iterations=iterations)
                 smooth_func = lambda m: smooth_mesh_smart_angle_based(m, iterations=iterations)
             elif method_key == "getme":
