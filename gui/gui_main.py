@@ -1126,7 +1126,8 @@ class PyMeshGenGUI(QMainWindow):
                 self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
 
                 if hasattr(self, 'cas_parts_info'):
-                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
+                    # self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
+                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}")
                 else:
                     self.log_info(f"导入几何前cas_parts_info不存在")
 
