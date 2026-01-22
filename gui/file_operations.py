@@ -1223,23 +1223,34 @@ class FileOperations:
     def _export_vtk(self, mesh_data, file_path):
         """导出VTK文件"""
         try:
+            if hasattr(mesh_data, 'save_to_vtkfile') and callable(getattr(mesh_data, 'save_to_vtkfile')):
+                mesh_data.save_to_vtkfile(file_path)
+                return True
+
             # 检查mesh_data是否包含vtk_poly_data
             if isinstance(mesh_data, dict) and 'vtk_poly_data' in mesh_data:
-                vtk_poly_data = mesh_data['vtk_poly_data']
+                vtk_data = mesh_data['vtk_poly_data']
             elif hasattr(mesh_data, 'GetPoints') and hasattr(mesh_data, 'GetCells'):
                 # mesh_data本身就是一个VTK对象
-                vtk_poly_data = mesh_data
+                vtk_data = mesh_data
             else:
                 # 从字典数据创建VTK对象
-                vtk_poly_data = self._create_vtk_from_dict(mesh_data)
+                vtk_data = self._create_vtk_from_dict(mesh_data)
             
-            if vtk_poly_data:
-                # 创建VTK写入器
-                writer = vtk.vtkUnstructuredGridWriter()
+            if vtk_data:
+                output_dir = os.path.dirname(file_path)
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+
+                if isinstance(vtk_data, vtk.vtkUnstructuredGrid):
+                    writer = vtk.vtkUnstructuredGridWriter()
+                elif isinstance(vtk_data, vtk.vtkPolyData):
+                    writer = vtk.vtkPolyDataWriter()
+                else:
+                    writer = vtk.vtkDataSetWriter()
                 writer.SetFileName(file_path)
-                writer.SetInputData(vtk_poly_data)
-                writer.Write()
-                return True
+                writer.SetInputData(vtk_data)
+                return bool(writer.Write())
             else:
                 print("无法创建VTK数据对象")
                 return False
@@ -1339,7 +1350,11 @@ class FileOperations:
                 cells = mesh_data.get('cells', [])
             elif hasattr(mesh_data, 'cell_container'):
                 # 从cell_container提取单元节点ID
-                cells = [cell.node_ids for cell in mesh_data.cell_container]
+                cells = [
+                    cell.node_ids
+                    for cell in mesh_data.cell_container
+                    if cell is not None and hasattr(cell, 'node_ids')
+                ]
             elif hasattr(mesh_data, 'cells'):
                 cells = mesh_data.cells
             else:
