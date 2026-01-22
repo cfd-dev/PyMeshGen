@@ -152,9 +152,7 @@ class MeshOperations:
                 else:
                     # 确定要导出的网格对象
                     mesh_to_export = self.gui.current_mesh
-                    if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-                        mesh_to_export = self.gui.current_mesh.unstr_grid
-                    
+
                     # 直接调用export_mesh，内部会自动创建VTK对象
                     file_ops.export_mesh(mesh_to_export, file_path)
 
@@ -174,11 +172,8 @@ class MeshOperations:
         return self.gui.current_mesh
 
     def _get_mesh_obj(self):
-        """获取当前网格对象（优先使用unstr_grid）"""
-        mesh_obj = self.gui.current_mesh
-        if hasattr(self.gui.current_mesh, 'unstr_grid') and self.gui.current_mesh.unstr_grid:
-            mesh_obj = self.gui.current_mesh.unstr_grid
-        return mesh_obj
+        """获取当前网格对象"""
+        return self.gui.current_mesh
 
     def _require_cell_container(self, mesh_obj, warning_message, log_message, status_message="网格格式不支持"):
         """确保网格对象包含cell_container，否则提示并返回False"""
@@ -634,12 +629,7 @@ class MeshOperations:
 
             smoothed_mesh = smooth_func(mesh_obj)
 
-            if hasattr(self.gui.current_mesh, 'unstr_grid'):
-                self.gui.current_mesh.unstr_grid = smoothed_mesh
-                if hasattr(smoothed_mesh, 'node_coords'):
-                    self.gui.current_mesh.node_coords = smoothed_mesh.node_coords
-            else:
-                self.gui.current_mesh = smoothed_mesh
+            self.gui.current_mesh = smoothed_mesh
 
             end_time = time.time()
 
@@ -881,16 +871,7 @@ class MeshOperations:
                     optimized_mesh = laplacian_smooth(optimized_mesh, num_iter=1)
 
 
-            if hasattr(self.gui.current_mesh, 'unstr_grid'):
-                self.gui.current_mesh.unstr_grid = optimized_mesh
-                if hasattr(optimized_mesh, 'node_coords'):
-                    self.gui.current_mesh.node_coords = optimized_mesh.node_coords
-                if hasattr(optimized_mesh, 'cell_container'):
-                    self.gui.current_mesh.cells = [list(cell.node_ids) for cell in optimized_mesh.cell_container]
-                    if hasattr(self.gui.current_mesh, 'update_counts'):
-                        self.gui.current_mesh.update_counts()
-            else:
-                self.gui.current_mesh = optimized_mesh
+            self.gui.current_mesh = optimized_mesh
 
             end_time = time.time()
 
@@ -1106,14 +1087,13 @@ class MeshOperations:
                             node.bc_type = 'boundary'
                             new_boundary_nodes.append(node)
                         
-                        self.gui.current_mesh.cells = new_cell_container
+                        self.gui.current_mesh.cell_container = new_cell_container
                         self.gui.current_mesh.num_cells = len(new_cell_container)
                         self.gui.current_mesh.node_coords = new_node_coords
                         self.gui.current_mesh.num_points = len(new_node_coords)
                         self.gui.current_mesh.boundary_nodes = new_boundary_nodes
                         self.gui.current_mesh.boundary_nodes_list = [node.idx for node in new_boundary_nodes]
                         self.gui.current_mesh.num_boundary_nodes = len(new_boundary_nodes)
-                        self.gui.current_mesh.unstr_grid = None
                         
                         mapped_parts_info = self.gui._map_parts_info_to_new_mesh(parts_info, old_to_new_node_map)
                         new_parts_info = {}

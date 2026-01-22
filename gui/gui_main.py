@@ -799,16 +799,9 @@ class PyMeshGenGUI(QMainWindow):
         if update_mesh and hasattr(self, 'current_mesh') and self.current_mesh:
             if isinstance(self.current_mesh, dict):
                 self.current_mesh['dimension'] = dimension
-                if 'unstr_grid' in self.current_mesh:
-                    unstr_grid = self.current_mesh.get('unstr_grid')
-                    if hasattr(unstr_grid, 'dimension'):
-                        unstr_grid.dimension = dimension
             else:
                 if hasattr(self.current_mesh, 'dimension'):
                     self.current_mesh.dimension = dimension
-                if hasattr(self.current_mesh, 'unstr_grid') and self.current_mesh.unstr_grid:
-                    if hasattr(self.current_mesh.unstr_grid, 'dimension'):
-                        self.current_mesh.unstr_grid.dimension = dimension
         if hasattr(self, 'status_bar'):
             self.status_bar.update_mesh_dimension(dimension)
 

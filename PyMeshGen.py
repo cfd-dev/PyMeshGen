@@ -36,7 +36,7 @@ def PyMeshGen(parameters=None, mesh_data=None):
     
     Args:
         parameters: Parameters对象，包含网格生成的配置参数
-        mesh_data: 可选，直接传入的网格数据对象，可以是MeshData对象、字典或其他类型
+    mesh_data: 可选，直接传入的网格数据对象，可以是Unstructured_Grid对象、字典或其他类型
     
     Returns:
         生成的网格数据

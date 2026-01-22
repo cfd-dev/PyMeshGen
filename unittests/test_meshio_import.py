@@ -19,7 +19,7 @@ if os.path.exists(meshio_path):
     sys.path.insert(0, meshio_path)
 
 from gui.file_operations import FileOperations
-from data_structure.mesh_data import MeshData
+from data_structure.unstructured_grid import Unstructured_Grid
 
 
 class TestMeshIOImport(unittest.TestCase):
@@ -116,9 +116,9 @@ class TestMeshIOImport(unittest.TestCase):
             with self.subTest(file=test_file):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
-                # 跳过CAS格式（meshio不支持）
-                if file_ext == '.cas':
-                    self.skipTest(f"CAS格式不被meshio支持: {test_file}")
+                # 跳过meshio不支持的格式
+                if file_ext in {'.cas', '.vol'}:
+                    self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
                     # 使用meshio方法导入
@@ -126,7 +126,7 @@ class TestMeshIOImport(unittest.TestCase):
 
                     # 验证导入成功
                     self.assertIsNotNone(mesh_data, f"导入文件失败: {test_file}")
-                    self.assertIsInstance(mesh_data, MeshData, f"返回类型错误: {type(mesh_data)}")
+                    self.assertIsInstance(mesh_data, Unstructured_Grid, f"返回类型错误: {type(mesh_data)}")
 
                     # 验证基本属性
                     self.assertIsNotNone(mesh_data.file_path, "file_path不能为None")
@@ -137,7 +137,7 @@ class TestMeshIOImport(unittest.TestCase):
                     # 验证VTK数据或原始数据
                     if mesh_data.vtk_poly_data is not None:
                         self.assertEqual(mesh_data.vtk_poly_data.GetNumberOfPoints(), mesh_data.num_points,
-                                       f"VTK节点数与MeshData节点数不一致: {mesh_data.vtk_poly_data.GetNumberOfPoints()} vs {mesh_data.num_points}")
+                                       f"VTK节点数与Unstructured_Grid节点数不一致: {mesh_data.vtk_poly_data.GetNumberOfPoints()} vs {mesh_data.num_points}")
                     else:
                         # 如果 vtk_poly_data 为 None，验证原始数据
                         self.assertIsNotNone(mesh_data.node_coords, "vtk_poly_data为None时，node_coords不能为None")
@@ -162,13 +162,13 @@ class TestMeshIOImport(unittest.TestCase):
                         self.fail(f"导入失败（未预期的错误）: {e}")
 
     def test_mesh_data_properties(self):
-        """测试MeshData对象的属性"""
+        """测试Unstructured_Grid对象的属性"""
         for test_file in self.test_files:
             with self.subTest(file=test_file):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
-                if file_ext == '.cas':
-                    self.skipTest(f"CAS格式不被meshio支持: {test_file}")
+                if file_ext in {'.cas', '.vol'}:
+                    self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
                     mesh_data = self.file_ops.import_mesh(test_file)
@@ -215,8 +215,8 @@ class TestMeshIOImport(unittest.TestCase):
             with self.subTest(file=test_file):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
-                if file_ext == '.cas':
-                    self.skipTest(f"CAS格式不被meshio支持: {test_file}")
+                if file_ext in {'.cas', '.vol'}:
+                    self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
                     mesh_data = self.file_ops.import_mesh(test_file)

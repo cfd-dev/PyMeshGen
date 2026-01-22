@@ -12,7 +12,7 @@ def convert_to_internal_mesh_format(mesh_data):
     将不同类型的网格数据转换为底层算法所需的内部格式
 
     Args:
-        mesh_data: 网格数据对象，可以是MeshData对象、字典或其他类型
+        mesh_data: 网格数据对象，可以是Unstructured_Grid对象、字典或其他类型
 
     Returns:
         转换后的内部网格格式，格式如下：
@@ -37,7 +37,7 @@ def convert_to_internal_mesh_format(mesh_data):
     if mesh_data is None:
         return internal_mesh
 
-    # MeshData对象类型
+    # Unstructured_Grid-like object
     elif hasattr(mesh_data, 'node_coords') and hasattr(mesh_data, 'cells'):
         # 先获取节点坐标
         node_coords = mesh_data.node_coords
@@ -122,29 +122,27 @@ def convert_to_internal_mesh_format(mesh_data):
             faces = []
             for i, cell in enumerate(mesh_data.cells):
                 if len(cell) == 3:  # 三角形
-                    # 创建三角形的三条边作为边界faces
                     for j in range(3):
                         node1_idx = cell[j]
                         node2_idx = cell[(j + 1) % 3]
                         face = {
                                     "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
-                                    "left_cell": i,  # 当前单元
-                                    "right_cell": -1,  # 边界face，右侧无单元
-                                    "bc_type": "wall",  # 默认边界类型
-                                    "part_name": "default"  # 默认部件名称
+                                    "left_cell": i,
+                                    "right_cell": -1,
+                                    "bc_type": "wall",
+                                    "part_name": "default"
                                 }
                         faces.append(face)
                 elif len(cell) == 4:  # 四边形
-                    # 创建四边形的四条边作为边界faces
                     for j in range(4):
                         node1_idx = cell[j]
                         node2_idx = cell[(j + 1) % 4]
                         face = {
                                     "nodes": [node1_idx + 1, node2_idx + 1],  # 先将索引+1，临时处理
-                                    "left_cell": i,  # 当前单元
-                                    "right_cell": -1,  # 边界face，右侧无单元
-                                    "bc_type": "wall",  # 默认边界类型
-                                    "part_name": "default"  # 默认部件名称
+                                    "left_cell": i,
+                                    "right_cell": -1,
+                                    "bc_type": "wall",
+                                    "part_name": "default"
                                 }
                         faces.append(face)
             internal_mesh['faces'] = faces
@@ -297,18 +295,22 @@ def convert_to_internal_mesh_format(mesh_data):
 
 def convert_to_mesh_data(mesh_dict, file_path=None, mesh_type=None):
     """
-    将字典格式的网格数据转换为MeshData对象
-    
-    Args:
-        mesh_dict: 字典格式的网格数据
-        file_path: 网格文件路径
-        mesh_type: 网格类型
-        
-    Returns:
-        MeshData对象
+    将字典格式的网格数据转换为Unstructured_Grid对象
     """
-    from data_structure.mesh_data import MeshData
-    
-    mesh_data = MeshData(file_path=file_path, mesh_type=mesh_type)
-    mesh_data.from_dict(mesh_dict)
-    return mesh_data
+    from data_structure.unstructured_grid import Unstructured_Grid
+    from utils.geom_toolkit import detect_mesh_dimension_by_metadata
+
+    grid = Unstructured_Grid.from_cells(
+        node_coords=mesh_dict.get('node_coords', []),
+        cells=mesh_dict.get('cells', []),
+        boundary_nodes_idx=mesh_dict.get('boundary_nodes_idx', []),
+        grid_dimension=detect_mesh_dimension_by_metadata(mesh_dict, default_dim=2),
+    )
+    grid.file_path = file_path or mesh_dict.get('file_path')
+    grid.mesh_type = mesh_type or mesh_dict.get('type')
+    grid.vtk_poly_data = mesh_dict.get('vtk_poly_data')
+    grid.parts_info = mesh_dict.get('parts_info', {})
+    grid.boundary_info = mesh_dict.get('boundary_info', {})
+    grid.quality_data = mesh_dict.get('quality_data', {})
+    grid.update_counts()
+    return grid

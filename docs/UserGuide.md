@@ -169,7 +169,7 @@ PyMeshGen is built around a modular architecture, allowing you to easily extend 
   - **`basic_elements.py`**: define class for node, line segment, triangle, quadrilateral elements, connector, part and unstructured grid.
   - **`front2d.py`**: basic front data used in advancing front method and advance layer method.
   - **`mesh_reconstruction.py`**: mesh topology reconstruction functions.
-  - **`mesh_data.py`**: universal mesh data structure for handling different mesh formats (VTK, STL, CAS, etc.).
+  - **`unstructured_grid.py`**: unified mesh data structure for handling different mesh formats (VTK, STL, CAS, etc.).
   - **`parameters.py`**: define class for global parameters management.
   - **`rtree_space.py`**: define class for rtree space used to accelerate searching.
 - **docs**: the user guide and other documents of the project.

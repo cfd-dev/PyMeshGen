@@ -316,19 +316,6 @@ class MeshDisplayArea:
                         for cell in cells:
                             add_cell(cell)
 
-            elif hasattr(self.mesh_data, 'unstr_grid') and self.mesh_data.unstr_grid:
-                return self.create_vtk_mesh_from_unstr_grid(self.mesh_data.unstr_grid)
-            elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
-                # 对于CAS类型的MeshData对象，直接使用node_coords和cells属性
-                node_coords = self.mesh_data.node_coords
-                cells = self.mesh_data.cells
-
-                for coord in node_coords:
-                    add_point(coord)
-
-                for cell in cells:
-                    add_cell(cell)
-
             elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cell_container'):
                 # 对于Unstructured_Grid对象，直接使用node_coords和cell_container属性
                 node_coords = np.array(self.mesh_data.node_coords, dtype=np.float64)
@@ -342,6 +329,16 @@ class MeshDisplayArea:
                 for cell in cell_container:
                     if cell is not None:
                         add_cell(None, cell_obj=cell)
+            elif hasattr(self.mesh_data, 'node_coords') and hasattr(self.mesh_data, 'cells'):
+                # 兼容节点/单元索引列表
+                node_coords = self.mesh_data.node_coords
+                cells = self.mesh_data.cells
+
+                for coord in node_coords:
+                    add_point(coord)
+
+                for cell in cells:
+                    add_cell(cell)
 
             if points.GetNumberOfPoints() == 0:
                 print("没有有效的点数据，无法创建VTK网格")
@@ -637,11 +634,7 @@ class MeshDisplayArea:
             elif hasattr(self.mesh_data, 'node_coords') and isinstance(self.mesh_data.node_coords, list):
                 if 0 <= node_id_0 < len(self.mesh_data.node_coords):
                     coord = self.mesh_data.node_coords[node_id_0]
-            elif hasattr(self.mesh_data, 'unstr_grid'):
-                unstr_grid = self.mesh_data.unstr_grid
-                if hasattr(unstr_grid, 'node_coords') and isinstance(unstr_grid.node_coords, list):
-                    if 0 <= node_id_0 < len(unstr_grid.node_coords):
-                        coord = unstr_grid.node_coords[node_id_0]
+            # Unstructured_Grid instances are handled by node_coords branch above
 
         return coord
     

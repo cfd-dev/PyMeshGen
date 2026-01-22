@@ -189,8 +189,15 @@ class MeshImportThread(QThread):
             if not self._is_running:
                 return
 
-            from data_structure.mesh_data import MeshData
-            mesh_data = MeshData(file_path=self.file_path, mesh_type='cas')
+            from data_structure.unstructured_grid import Unstructured_Grid
+            mesh_data = Unstructured_Grid.from_cells(
+                node_coords=[],
+                cells=[],
+                boundary_nodes_idx=[],
+                grid_dimension=2,
+            )
+            mesh_data.file_path = self.file_path
+            mesh_data.mesh_type = 'cas'
 
             if hasattr(unstr_grid, 'node_coords'):
                 mesh_data.node_coords = [list(coord) for coord in unstr_grid.node_coords]
@@ -240,7 +247,6 @@ class MeshImportThread(QThread):
 
                 mesh_data.parts_info = parts_info
 
-            mesh_data.unstr_grid = unstr_grid
             mesh_data.update_counts()
 
             if not self._is_running:

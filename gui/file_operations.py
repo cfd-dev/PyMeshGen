@@ -21,8 +21,8 @@ meshio_path = os.path.join(project_root, "3rd_party", "meshio", "src")
 if meshio_path not in sys.path:
     sys.path.insert(0, meshio_path)
 
-# 导入通用网格数据类
-from data_structure.mesh_data import MeshData
+# 导入统一网格数据类
+from data_structure.unstructured_grid import Unstructured_Grid
 
 # 导入通用CGNS读取器
 try:
@@ -78,6 +78,31 @@ class FileOperations:
         else:
             print(message)
 
+    def _build_unstructured_grid(
+        self,
+        node_coords,
+        cells,
+        dimension,
+        file_path=None,
+        mesh_type=None,
+        vtk_poly_data=None,
+        boundary_nodes_idx=None,
+        cell_dimension=None,
+    ):
+        grid = Unstructured_Grid.from_cells(
+            node_coords=node_coords,
+            cells=cells,
+            boundary_nodes_idx=boundary_nodes_idx or [],
+            grid_dimension=dimension,
+            cell_dimension=cell_dimension,
+        )
+        grid.file_path = file_path
+        grid.mesh_type = mesh_type
+        if vtk_poly_data is not None:
+            grid.vtk_poly_data = vtk_poly_data
+        grid.update_counts()
+        return grid
+
     def import_mesh_original(self, file_path):
         """导入网格文件（原始方法备份）"""
         try:
@@ -126,32 +151,37 @@ class FileOperations:
             # 使用 meshio 读取网格文件
             mesh = meshio.read(file_path)
             
-            # 创建 MeshData 对象
-            mesh_data = MeshData(file_path=file_path, mesh_type=file_ext[1:])
-            
-            # 提取节点坐标
-            mesh_data.node_coords = mesh.points.tolist() if hasattr(mesh.points, 'tolist') else list(mesh.points)
-            
+            node_coords = mesh.points.tolist() if hasattr(mesh.points, 'tolist') else list(mesh.points)
+
             # 提取单元数据
-            mesh_data.cells = []
+            cells = []
             for cell_block in mesh.cells:
                 cell_type = cell_block.type
                 cell_data = cell_block.data
                 for cell in cell_data:
-                    mesh_data.cells.append(cell.tolist() if hasattr(cell, 'tolist') else list(cell))
+                    cells.append(cell.tolist() if hasattr(cell, 'tolist') else list(cell))
 
             # 设置网格维度（优先使用单元拓扑维度）
             cell_dims = [getattr(cell_block, 'dim', None) for cell_block in mesh.cells]
             cell_dims = [dim for dim in cell_dims if dim in (2, 3)]
             if cell_dims:
-                mesh_data.dimension = max(cell_dims)
+                mesh_dimension = max(cell_dims)
             else:
-                mesh_data.dimension = 2
-            
+                mesh_dimension = 2
+
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=cells,
+                dimension=mesh_dimension,
+                file_path=file_path,
+                mesh_type=file_ext[1:],
+                cell_dimension=mesh_dimension,
+            )
+
             # 提取点数据（如果有）
             if mesh.point_data:
                 mesh_data.point_data = dict(mesh.point_data)
-            
+
             # 提取单元数据（如果有）
             if mesh.cell_data:
                 mesh_data.cell_data_dict = dict(mesh.cell_data)
@@ -164,7 +194,10 @@ class FileOperations:
                 # 创建 VTK 点
                 vtk_points = vtk.vtkPoints()
                 for point in mesh_data.node_coords:
-                    vtk_points.InsertNextPoint(point)
+                    if len(point) >= 3:
+                        vtk_points.InsertNextPoint(point[0], point[1], point[2])
+                    elif len(point) == 2:
+                        vtk_points.InsertNextPoint(point[0], point[1], 0.0)
                 
                 # 创建 VTK 单元
                 vtk_cells = vtk.vtkCellArray()
@@ -183,10 +216,7 @@ class FileOperations:
                 mesh_data.vtk_poly_data = poly_data
             except Exception as e:
                 print(f"创建 VTK PolyData 失败: {str(e)}")
-            
-            # 更新计数
-            mesh_data.update_counts()
-            
+
             return mesh_data
                 
         except Exception as e:
@@ -278,11 +308,15 @@ class FileOperations:
                         cell_data.append(cell_ids)
                     offset += num_ids + 1
             
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='vtk')
-            mesh_data.node_coords = node_coords
-            mesh_data.cells = cell_data
-            mesh_data.vtk_poly_data = poly_data
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=cell_data,
+                dimension=2,
+                file_path=file_path,
+                mesh_type='vtk',
+                vtk_poly_data=poly_data,
+                cell_dimension=2,
+            )
             if unstructured_grid:
                 mesh_dim = self._infer_dimension_from_vtk_cells(unstructured_grid)
             else:
@@ -340,13 +374,15 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='stl')
-            mesh_data.node_coords = node_coords
-            mesh_data.cells = cell_data
-            mesh_data.vtk_poly_data = poly_data
-            mesh_data.dimension = 2
-            mesh_data.update_counts()
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=cell_data,
+                dimension=2,
+                file_path=file_path,
+                mesh_type='stl',
+                vtk_poly_data=poly_data,
+                cell_dimension=2,
+            )
             
             return mesh_data
             
@@ -395,13 +431,15 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='obj')
-            mesh_data.node_coords = node_coords
-            mesh_data.cells = cell_data
-            mesh_data.vtk_poly_data = poly_data
-            mesh_data.dimension = 2
-            mesh_data.update_counts()
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=cell_data,
+                dimension=2,
+                file_path=file_path,
+                mesh_type='obj',
+                vtk_poly_data=poly_data,
+                cell_dimension=2,
+            )
             
             return mesh_data
             
@@ -422,11 +460,7 @@ class FileOperations:
                 self._log(f"读取 CGNS 文件失败", level="error")
                 return None
             
-            # 创建 MeshData 对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='cgns')
-            
-            # 提取节点坐标
-            mesh_data.node_coords = reader.points.tolist() if hasattr(reader.points, 'tolist') else list(reader.points)
+            node_coords = reader.points.tolist() if hasattr(reader.points, 'tolist') else list(reader.points)
 
             # 提取单元数据（区分表面与体单元）
             surface_cells = []
@@ -462,7 +496,7 @@ class FileOperations:
             for entry in section_entries:
                 if entry['dimension'] in (2, 3):
                     body_dim = max(body_dim, entry['dimension'])
-            mesh_data.dimension = body_dim if body_dim in (2, 3) else 2
+            mesh_dimension = body_dim if body_dim in (2, 3) else 2
 
             boundary_names = set()
             if reader.boundary_info:
@@ -538,7 +572,14 @@ class FileOperations:
                     'element_range': element_range
                 })
 
-            mesh_data.cells = surface_cells
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=surface_cells,
+                dimension=mesh_dimension,
+                file_path=file_path,
+                mesh_type='cgns',
+                cell_dimension=2 if mesh_dimension == 2 else 3,
+            )
             mesh_data.volume_cells = volume_cells
             mesh_data.cell_groups = cell_groups
             if line_cells:
@@ -619,7 +660,10 @@ class FileOperations:
                 # 创建 VTK 点
                 vtk_points = vtk.vtkPoints()
                 for point in mesh_data.node_coords:
-                    vtk_points.InsertNextPoint(point)
+                    if len(point) >= 3:
+                        vtk_points.InsertNextPoint(point[0], point[1], point[2])
+                    elif len(point) == 2:
+                        vtk_points.InsertNextPoint(point[0], point[1], 0.0)
                 
                 # 创建 VTK 单元
                 vtk_cells = vtk.vtkCellArray()
@@ -638,8 +682,6 @@ class FileOperations:
                 mesh_data.vtk_poly_data = poly_data
             except Exception as e:
                 self._log(f"创建 VTK PolyData 失败: {str(e)}", level="warning")
-            
-            # 更新计数
             mesh_data.update_counts()
 
             self._log(self._format_cgns_summary(section_entries, body_dim))
@@ -837,8 +879,13 @@ class FileOperations:
     def _import_cas(self, file_path):
         """导入CAS文件 - 用于CFD网格"""
         try:
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='cas')
+            mesh_data = self._build_unstructured_grid(
+                node_coords=[],
+                cells=[],
+                dimension=2,
+                file_path=file_path,
+                mesh_type='cas',
+            )
 
             # 首先尝试使用专门的CAS解析函数
             try:
@@ -864,8 +911,8 @@ class FileOperations:
                         for cell in unstr_grid.cell_container:
                             if cell is not None:  # 确保cell不为None
                                 if hasattr(cell, 'node_ids'):
-                                    cell_ids = [nid if isinstance(nid, int) and nid > 0 else nid
-                                               for nid in cell.node_ids]
+                                    cell_ids = [nid if isinstance(nid, int) and nid >= 0 else nid
+                                                for nid in cell.node_ids]
                                     cells.append(cell_ids)
                                 elif hasattr(cell, 'nodes'):
                                     # 如果cell有nodes属性
@@ -876,10 +923,8 @@ class FileOperations:
                                     if cell_ids:
                                         cells.append(cell_ids)
 
-                    # 更新MeshData对象
                     mesh_data.node_coords = node_coords
                     mesh_data.cells = cells
-                    mesh_data.unstr_grid = unstr_grid  # 保留原始对象
                     if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
                         mesh_data.dimension = int(unstr_grid.dimension)
                     else:
@@ -917,7 +962,6 @@ class FileOperations:
 
                 if vtk_mesh_data:
                     if isinstance(vtk_mesh_data, dict):
-                        # 从字典更新MeshData对象
                         mesh_data.node_coords = vtk_mesh_data.get('node_coords', [])
                         mesh_data.cells = vtk_mesh_data.get('cells', [])
                         from utils.geom_toolkit import detect_mesh_dimension_by_metadata
@@ -940,9 +984,9 @@ class FileOperations:
                         mesh_data.parts_info = parts_info
                         mesh_data.boundary_info = vtk_mesh_data.get('boundary_info', {})
                     else:
-                        # 如果返回的是Unstructured_Grid对象
-                        mesh_data.unstr_grid = vtk_mesh_data
-                        mesh_data.node_coords = getattr(vtk_mesh_data, 'node_coords', [])
+                        mesh_data = vtk_mesh_data
+                        if not hasattr(mesh_data, 'node_coords'):
+                            mesh_data.node_coords = []
                         if hasattr(vtk_mesh_data, 'dimension') and vtk_mesh_data.dimension in (2, 3):
                             mesh_data.dimension = int(vtk_mesh_data.dimension)
                         else:
@@ -993,15 +1037,19 @@ class FileOperations:
         except Exception as e:
             print(f"导入CAS文件失败: {str(e)}")
             # 返回一个基本结构而不是None，以避免调用代码出现'NoneType'错误
-            mesh_data = MeshData(file_path=file_path, mesh_type='cas')
-            mesh_data.update_counts()
+            mesh_data = self._build_unstructured_grid(
+                node_coords=[],
+                cells=[],
+                dimension=2,
+                file_path=file_path,
+                mesh_type='cas',
+            )
             return mesh_data
 
     def _import_msh(self, file_path):
         """导入Gmsh MSH文件"""
         try:
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='msh')
+            mesh_data = None
             
             # MSH文件格式解析（简化版）
             # 通常需要使用Gmsh Python API，这里提供基本解析
@@ -1056,11 +1104,14 @@ class FileOperations:
                         except (ValueError, IndexError):
                             continue
             
-            # 更新MeshData对象
-            mesh_data.node_coords = nodes
-            mesh_data.cells = elements
-            mesh_data.dimension = 2
-            mesh_data.update_counts()
+            mesh_data = self._build_unstructured_grid(
+                node_coords=nodes,
+                cells=elements,
+                dimension=2,
+                file_path=file_path,
+                mesh_type='msh',
+                cell_dimension=2,
+            )
             
             return mesh_data
             
@@ -1071,8 +1122,7 @@ class FileOperations:
     def _import_ply(self, file_path):
         """导入PLY文件"""
         try:
-            # 创建MeshData对象
-            mesh_data = MeshData(file_path=file_path, mesh_type='ply')
+            # PLY读取后构建统一网格对象
             
             # 创建PLY读取器
             reader = vtk.vtkPLYReader()
@@ -1112,12 +1162,15 @@ class FileOperations:
             else:
                 cell_data = []
             
-            # 更新MeshData对象
-            mesh_data.node_coords = node_coords
-            mesh_data.cells = cell_data
-            mesh_data.vtk_poly_data = poly_data
-            mesh_data.dimension = 2
-            mesh_data.update_counts()
+            mesh_data = self._build_unstructured_grid(
+                node_coords=node_coords,
+                cells=cell_data,
+                dimension=2,
+                file_path=file_path,
+                mesh_type='ply',
+                vtk_poly_data=poly_data,
+                cell_dimension=2,
+            )
             
             return mesh_data
             

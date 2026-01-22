@@ -109,11 +109,14 @@ class TestCoreFunctionality(unittest.TestCase):
         """测试部件参数工作流程功能"""
         try:
             from data_structure.parameters import Parameters
-            from data_structure.mesh_data import MeshData
+            from data_structure.unstructured_grid import Unstructured_Grid
 
-            mesh_data = MeshData()
-            mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-            mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
+            mesh_data = Unstructured_Grid.from_cells(
+                node_coords=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                cells=[[0, 1, 2], [0, 2, 3]],
+                boundary_nodes_idx=[],
+                grid_dimension=2,
+            )
             mesh_data.parts_info = {"test_part": {"bc_type": "wall", "faces": []}}
 
             params = Parameters("FROM_MAIN_JSON")
@@ -127,15 +130,17 @@ class TestCoreFunctionality(unittest.TestCase):
     def test_complete_mesh_flow(self):
         """测试完整网格生成流程模拟"""
         try:
-            from data_structure.mesh_data import MeshData
             from data_structure.parameters import Parameters
             from data_structure.unstructured_grid import Unstructured_Grid
             from data_structure.basic_elements import Triangle, Quadrilateral
             from utils.data_converter import convert_to_internal_mesh_format
 
-            mesh_data = MeshData()
-            mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-            mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
+            mesh_data = Unstructured_Grid.from_cells(
+                node_coords=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                cells=[[0, 1, 2], [0, 2, 3]],
+                boundary_nodes_idx=[],
+                grid_dimension=2,
+            )
             mesh_data.parts_info = {"test_part": {"bc_type": "wall", "faces": []}}
 
             internal_format = convert_to_internal_mesh_format(mesh_data)
@@ -174,11 +179,14 @@ class TestDebugFixes(unittest.TestCase):
     def test_data_converter_fix(self):
         """测试数据转换器功能"""
         try:
-            from data_structure.mesh_data import MeshData
+            from data_structure.unstructured_grid import Unstructured_Grid
 
-            mesh_data = MeshData()
-            mesh_data.node_coords = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
-            mesh_data.cells = [[0, 1, 2], [0, 2, 3]]
+            mesh_data = Unstructured_Grid.from_cells(
+                node_coords=[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                cells=[[0, 1, 2], [0, 2, 3]],
+                boundary_nodes_idx=[],
+                grid_dimension=2,
+            )
             mesh_data.parts_info = {"wall": {"bc_type": "wall", "faces": []}}
 
             self.assertIsNotNone(mesh_data)

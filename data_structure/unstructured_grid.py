@@ -14,34 +14,196 @@ from data_structure.vtk_types import VTKCellType
 from utils.message import warning, info
 
 
-class Unstructured_Grid:
-    def __init__(self, cell_container, node_coords, boundary_nodes, grid_dimension=2):
-        self.dimension = grid_dimension
-        self.cell_container = cell_container
-        self.node_coords = node_coords
-        self.boundary_nodes = boundary_nodes
-        self.boundary_nodes_list = [node_elem.idx for node_elem in boundary_nodes]
+class GenericCell:
+    """通用单元容器，仅保存节点索引"""
 
-        self.num_cells = len(cell_container)
-        self.num_nodes = len(node_coords)
-        self.num_boundary_nodes = len(boundary_nodes)
+    def __init__(self, node_ids, part_name=None, idx=None):
+        self.node_ids = list(node_ids)
+        self.part_name = part_name
+        self.idx = idx
+        self.hash = hash(tuple(self.node_ids))
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, other):
+        if isinstance(other, GenericCell):
+            return self.hash == other.hash
+        return False
+
+
+class Unstructured_Grid:
+    def __init__(
+        self,
+        cell_container=None,
+        node_coords=None,
+        boundary_nodes=None,
+        grid_dimension=2,
+        file_path=None,
+        mesh_type=None,
+    ):
+        self.dimension = grid_dimension
+        self.cell_container = cell_container if cell_container is not None else []
+        self.node_coords = node_coords if node_coords is not None else []
+        self.boundary_nodes = boundary_nodes if boundary_nodes is not None else []
+        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
+
+        self.num_cells = len(self.cell_container)
+        self.num_nodes = len(self.node_coords)
+        self.num_boundary_nodes = len(self.boundary_nodes)
         self.num_edges = 0
         self.num_faces = 0
         self.edges = []
         self.node2node = None
         self.node2cell = None
-        
+
+        self.file_path = file_path
+        self.mesh_type = mesh_type
+        self.vtk_poly_data = None
+        self.parts_info = {}
+        self.boundary_info = {}
+        self.quality_data = {}
+
+        self.point_data = {}
+        self.cell_data_dict = {}
+        self.metadata = {}
+        self.cell_groups = []
+        self.volume_cells = []
+        self.line_cells = []
+
+        self.bbox = None
+        self._update_bbox()
+
+    @property
+    def num_points(self):
+        return self.num_nodes
+
+    @num_points.setter
+    def num_points(self, value):
+        self.num_nodes = value
+
+    @property
+    def cells(self):
+        if not self.cell_container:
+            return []
+        cells = []
+        for cell in self.cell_container:
+            if cell is None:
+                continue
+            if hasattr(cell, "node_ids"):
+                cells.append(list(cell.node_ids))
+            elif isinstance(cell, (list, tuple)):
+                cells.append(list(cell))
+        return cells
+
+    @cells.setter
+    def cells(self, value):
+        if not value:
+            self.cell_container = []
+            self.num_cells = 0
+            return
+        first = value[0]
+        if hasattr(first, "node_ids"):
+            self.cell_container = list(value)
+        else:
+            self.cell_container = self._build_cell_objects(self.node_coords, value, self.dimension)
+        self.num_cells = len(self.cell_container)
+
+    def _update_bbox(self):
+        if self.node_coords is None or len(self.node_coords) == 0:
+            if self.dimension >= 3:
+                self.bbox = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            else:
+                self.bbox = [0.0, 0.0, 0.0, 0.0]
+            return
+
         self.bbox = [
-            min(coord[0] for coord in node_coords),
-            min(coord[1] for coord in node_coords),
-            max(coord[0] for coord in node_coords),
-            max(coord[1] for coord in node_coords),
+            min(coord[0] for coord in self.node_coords),
+            min(coord[1] for coord in self.node_coords),
+            max(coord[0] for coord in self.node_coords),
+            max(coord[1] for coord in self.node_coords),
         ]
         if self.dimension >= 3:
             self.bbox.extend([
-                min(coord[2] for coord in node_coords),
-                max(coord[2] for coord in node_coords),
+                min(coord[2] for coord in self.node_coords),
+                max(coord[2] for coord in self.node_coords),
             ])
+
+    def update_counts(self):
+        """更新节点和单元数量"""
+        self.num_nodes = len(self.node_coords) if self.node_coords is not None else 0
+        self.num_cells = len(self.cell_container) if self.cell_container is not None else 0
+        self.num_boundary_nodes = len(self.boundary_nodes) if self.boundary_nodes is not None else 0
+        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
+        self._update_bbox()
+
+    @staticmethod
+    def _build_cell_objects(node_coords, cells, grid_dimension=2):
+        if not cells:
+            return []
+        from data_structure.basic_elements import (
+            Triangle,
+            Quadrilateral,
+            Tetrahedron,
+            Pyramid,
+            Prism,
+            Hexahedron,
+        )
+
+        cell_container = []
+        for idx, cell_nodes in enumerate(cells):
+            if cell_nodes is None:
+                continue
+            node_ids = list(cell_nodes)
+            if not node_ids:
+                continue
+            if any((not isinstance(n, int)) or n < 0 or n >= len(node_coords) for n in node_ids):
+                continue
+
+            coords = [node_coords[nid] for nid in node_ids]
+            cell = None
+            if len(node_ids) == 3:
+                cell = Triangle(coords[0], coords[1], coords[2], "interior-triangle", idx, node_ids=node_ids)
+            elif len(node_ids) == 4:
+                if grid_dimension == 3:
+                    cell = Tetrahedron(coords[0], coords[1], coords[2], coords[3], "interior-tetrahedron", idx, node_ids=node_ids)
+                else:
+                    cell = Quadrilateral(coords[0], coords[1], coords[2], coords[3], "interior-quadrilateral", idx, node_ids=node_ids)
+            elif len(node_ids) == 2:
+                cell = GenericCell(node_ids, idx=idx)
+            elif len(node_ids) == 5 and grid_dimension == 3:
+                cell = Pyramid(coords[0], coords[1], coords[2], coords[3], coords[4], "interior-pyramid", idx, node_ids=node_ids)
+            elif len(node_ids) == 6 and grid_dimension == 3:
+                cell = Prism(coords[0], coords[1], coords[2], coords[3], coords[4], coords[5], "interior-prism", idx, node_ids=node_ids)
+            elif len(node_ids) == 8 and grid_dimension == 3:
+                cell = Hexahedron(coords[0], coords[1], coords[2], coords[3], coords[4], coords[5], coords[6], coords[7], "interior-hexahedron", idx, node_ids=node_ids)
+            else:
+                cell = GenericCell(node_ids, idx=idx)
+            cell_container.append(cell)
+        return cell_container
+
+    @classmethod
+    def from_cells(
+        cls,
+        node_coords,
+        cells,
+        boundary_nodes_idx=None,
+        grid_dimension=2,
+        cell_dimension=None,
+    ):
+        from data_structure.basic_elements import NodeElement
+
+        node_coords = [list(coord) for coord in node_coords] if node_coords else []
+        boundary_nodes_idx = boundary_nodes_idx or []
+        boundary_nodes = []
+        for idx in boundary_nodes_idx:
+            if 0 <= idx < len(node_coords):
+                boundary_nodes.append(NodeElement(node_coords[idx], idx, bc_type="boundary"))
+
+        build_dimension = grid_dimension if cell_dimension is None else cell_dimension
+        cell_container = cls._build_cell_objects(node_coords, cells, build_dimension)
+        grid = cls(cell_container, node_coords, boundary_nodes, grid_dimension)
+        return grid
 
     def calculate_edges(self):
         """计算网格的边"""
@@ -50,6 +212,8 @@ class Unstructured_Grid:
 
         edge_set = set()
         for cell in self.cell_container:
+            if cell is None or not hasattr(cell, "node_ids"):
+                continue
             for i in range(len(cell.node_ids)):
                 edge = tuple(
                     sorted(

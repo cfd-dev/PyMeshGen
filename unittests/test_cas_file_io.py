@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from fileIO.read_cas import parse_cas_to_unstr_grid, parse_fluent_msh, reconstruct_mesh_from_cas
 from data_structure.unstructured_grid import Unstructured_Grid
 from gui.file_operations import FileOperations
-from data_structure.mesh_data import MeshData
 
 
 class TestCASFileIO(unittest.TestCase):
@@ -103,8 +102,8 @@ class TestCASParts(unittest.TestCase):
 
         mesh_data = self.file_ops.import_mesh(self.test_file)
 
-        self.assertIsInstance(mesh_data, MeshData, "应该返回MeshData对象")
-        self.assertTrue(hasattr(mesh_data, 'parts_info'), "MeshData对象应包含parts_info属性")
+        self.assertIsInstance(mesh_data, Unstructured_Grid, "应该返回Unstructured_Grid对象")
+        self.assertTrue(hasattr(mesh_data, 'parts_info'), "Unstructured_Grid对象应包含parts_info属性")
 
         parts_info = mesh_data.parts_info
         self.assertIsInstance(parts_info, dict, "部件信息应该是字典类型")
@@ -123,8 +122,8 @@ class TestCASParts(unittest.TestCase):
 
         mesh_data = self.file_ops.import_mesh(self.test_file)
 
-        self.assertIsInstance(mesh_data, MeshData, "应该返回MeshData对象")
-        self.assertTrue(hasattr(mesh_data, 'parts_info'), "MeshData对象应包含parts_info属性")
+        self.assertIsInstance(mesh_data, Unstructured_Grid, "应该返回Unstructured_Grid对象")
+        self.assertTrue(hasattr(mesh_data, 'parts_info'), "Unstructured_Grid对象应包含parts_info属性")
 
         parts_info = mesh_data.parts_info
         self.assertIsInstance(parts_info, dict, "部件信息应该是字典类型")
