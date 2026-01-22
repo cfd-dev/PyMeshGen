@@ -1047,7 +1047,7 @@ class MeshOperations:
                     if part_name not in PARTS_INFO_RESERVED_KEYS:
                         part_data = parts_info[part_name]
                         bc_type = part_data.get('bc_type', 'unspecified')
-                        if bc_type != 'interior':
+                        if bc_type not in ('interior', 'volume'):
                             boundary_part_names.add(part_name)
                 
                 if boundary_part_names:
@@ -1117,6 +1117,12 @@ class MeshOperations:
                         self.gui.current_mesh.cell_container = new_cell_container
                         self.gui.current_mesh.node_coords = new_node_coords
                         self.gui.current_mesh.boundary_nodes = new_boundary_nodes
+                        if hasattr(self.gui.current_mesh, 'volume_cells'):
+                            self.gui.current_mesh.volume_cells = []
+                        if hasattr(self.gui.current_mesh, 'cell_groups'):
+                            self.gui.current_mesh.cell_groups = []
+                        if hasattr(self.gui.current_mesh, 'line_cells'):
+                            self.gui.current_mesh.line_cells = []
                         self.gui.current_mesh.update_counts()
                         
                         mapped_parts_info = self.gui._map_parts_info_to_new_mesh(parts_info, old_to_new_node_map)

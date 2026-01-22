@@ -907,13 +907,21 @@ class FileOperations:
 
                     # 提取单元数据
                     cells = []
+                    volume_cells = []
                     if hasattr(unstr_grid, 'cell_container'):
                         for cell in unstr_grid.cell_container:
                             if cell is not None:  # 确保cell不为None
                                 if hasattr(cell, 'node_ids'):
                                     cell_ids = [nid if isinstance(nid, int) and nid >= 0 else nid
                                                 for nid in cell.node_ids]
-                                    cells.append(cell_ids)
+                                    if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension == 3:
+                                        cell_name = cell.__class__.__name__
+                                        if cell_name in ('Triangle', 'Quadrilateral'):
+                                            cells.append(cell_ids)
+                                        elif cell_name in ('Tetrahedron', 'Pyramid', 'Prism', 'Hexahedron'):
+                                            volume_cells.append(cell_ids)
+                                    else:
+                                        cells.append(cell_ids)
                                 elif hasattr(cell, 'nodes'):
                                     # 如果cell有nodes属性
                                     cell_ids = []
@@ -924,7 +932,11 @@ class FileOperations:
                                         cells.append(cell_ids)
 
                     mesh_data.node_coords = node_coords
-                    mesh_data.set_cells(cells)
+                    if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension == 3:
+                        mesh_data.set_cells(cells, grid_dimension=2)
+                        mesh_data.volume_cells = volume_cells
+                    else:
+                        mesh_data.set_cells(cells)
                     if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
                         mesh_data.dimension = int(unstr_grid.dimension)
                     else:
@@ -947,6 +959,16 @@ class FileOperations:
                         mesh_data.parts_info = {}
 
                     mesh_data.boundary_info = boundary_info  # 边界信息
+                    if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension == 3:
+                        if not cells and boundary_info:
+                            surface_cells = []
+                            for part_data in boundary_info.values():
+                                for face in part_data.get('faces', []):
+                                    nodes = face.get('nodes', [])
+                                    if nodes:
+                                        surface_cells.append(list(nodes))
+                            if surface_cells:
+                                mesh_data.set_cells(surface_cells, grid_dimension=2)
                     mesh_data.update_counts()
 
                     return mesh_data

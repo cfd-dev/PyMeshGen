@@ -838,6 +838,49 @@ class PyMeshGenGUI(QMainWindow):
             if hasattr(self, 'model_tree_widget'):
                 self.update_status("正在加载模型树...")
                 from PyQt5.QtCore import QTimer
+
+                def _split_mesh_counts(mesh_obj):
+                    surface_count = 0
+                    volume_count = 0
+                    line_count = 0
+                    if hasattr(mesh_obj, 'cell_container'):
+                        for cell in mesh_obj.cell_container:
+                            if cell is None:
+                                continue
+                            cell_name = cell.__class__.__name__
+                            if cell_name in ('Triangle', 'Quadrilateral'):
+                                surface_count += 1
+                            elif cell_name in ('Tetrahedron', 'Pyramid', 'Prism', 'Hexahedron'):
+                                volume_count += 1
+                            elif isinstance(cell, (list, tuple)):
+                                node_count = len(cell)
+                                if node_count in (3, 4) and getattr(mesh_obj, 'dimension', 2) == 2:
+                                    surface_count += 1
+                                elif node_count in (4, 5, 6, 8) and getattr(mesh_obj, 'dimension', 3) == 3:
+                                    volume_count += 1
+                                elif node_count == 2:
+                                    line_count += 1
+                    elif hasattr(mesh_obj, 'cells'):
+                        surface_count = len(mesh_obj.cells)
+
+                    if hasattr(mesh_obj, 'volume_cells') and mesh_obj.volume_cells:
+                        volume_count = len(mesh_obj.volume_cells)
+                        if surface_count == 0 and hasattr(mesh_obj, 'cells'):
+                            surface_count = len(mesh_obj.cells)
+                    if hasattr(mesh_obj, 'boundary_info') and mesh_obj.boundary_info:
+                        boundary_lines = 0
+                        for part_data in mesh_obj.boundary_info.values():
+                            for face in part_data.get('faces', []):
+                                nodes = face.get('nodes', [])
+                                if len(nodes) == 2:
+                                    boundary_lines += 1
+                        if boundary_lines:
+                            line_count = boundary_lines
+                    if hasattr(mesh_obj, 'line_cells') and mesh_obj.line_cells:
+                        if line_count == 0:
+                            line_count = len(mesh_obj.line_cells)
+
+                    return surface_count, volume_count, line_count
                 
                 # 创建分步处理函数 - 减少延迟时间
                 def step1_load_mesh():
@@ -865,12 +908,17 @@ class PyMeshGenGUI(QMainWindow):
                 
                 def step4_complete():
                     self.log_info(f"已导入网格: {mesh_data.file_path}")
-                    surface_count = len(mesh_data.cells)
-                    volume_count = len(mesh_data.volume_cells) if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells else 0
+                    surface_count, volume_count, line_count = _split_mesh_counts(mesh_data)
                     if volume_count:
-                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                        if line_count:
+                            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 线单元数: {line_count}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                        else:
+                            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
                     else:
-                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
+                        if line_count:
+                            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 线单元数: {line_count}, 面单元数: {surface_count}")
+                        else:
+                            self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
                     self.update_status("已导入网格")
                     self.status_bar.hide_progress()
 
@@ -882,12 +930,17 @@ class PyMeshGenGUI(QMainWindow):
                 self.part_manager.refresh_display_all_parts()
                 
                 self.log_info(f"已导入网格: {mesh_data.file_path}")
-                surface_count = len(mesh_data.cells)
-                volume_count = len(mesh_data.volume_cells) if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells else 0
+                surface_count, volume_count, line_count = _split_mesh_counts(mesh_data)
                 if volume_count:
-                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                    if line_count:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 线单元数: {line_count}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                    else:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
                 else:
-                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
+                    if line_count:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 线单元数: {line_count}, 面单元数: {surface_count}")
+                    else:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
                 self.update_status("已导入网格")
                 self.status_bar.hide_progress()
 

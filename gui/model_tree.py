@@ -539,9 +539,52 @@ class ModelTreeWidget:
 
         if hasattr(mesh_data, 'cell_container'):
             cells = mesh_data.cell_container
-            face_count = len(cells)
+            face_count = 0
+            line_count = 0
+            volume_count = 0
+            for cell in cells:
+                if cell is None:
+                    continue
+                cell_name = cell.__class__.__name__
+                if cell_name in ('Triangle', 'Quadrilateral'):
+                    face_count += 1
+                elif cell_name in ('Tetrahedron', 'Pyramid', 'Prism', 'Hexahedron'):
+                    volume_count += 1
+                elif hasattr(cell, 'node_ids'):
+                    node_count = len(cell.node_ids)
+                    if node_count == 2:
+                        line_count += 1
+                    elif node_count in (3, 4) and getattr(mesh_data, 'dimension', 2) == 2:
+                        face_count += 1
+                    elif node_count in (4, 5, 6, 8) and getattr(mesh_data, 'dimension', 3) == 3:
+                        volume_count += 1
+                elif isinstance(cell, (list, tuple)):
+                    node_count = len(cell)
+                    if node_count == 2:
+                        line_count += 1
+                    elif node_count in (3, 4) and getattr(mesh_data, 'dimension', 2) == 2:
+                        face_count += 1
+                    elif node_count in (4, 5, 6, 8) and getattr(mesh_data, 'dimension', 3) == 3:
+                        volume_count += 1
             if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells:
                 body_count = len(mesh_data.volume_cells)
+            elif volume_count:
+                body_count = volume_count
+
+            if hasattr(mesh_data, 'boundary_info') and mesh_data.boundary_info:
+                boundary_lines = 0
+                for part_data in mesh_data.boundary_info.values():
+                    for face in part_data.get('faces', []):
+                        nodes = face.get('nodes', [])
+                        if len(nodes) == 2:
+                            boundary_lines += 1
+                if boundary_lines:
+                    line_count = boundary_lines
+            if hasattr(mesh_data, 'line_cells') and mesh_data.line_cells and line_count == 0:
+                line_count = len(mesh_data.line_cells)
+            edge_count = line_count
+
+            if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells:
                 if body_count <= self.LAZY_LOAD_THRESHOLD:
                     for i, cell in enumerate(mesh_data.volume_cells):
                         body_item = QTreeWidgetItem(bodies_item)
@@ -596,7 +639,40 @@ class ModelTreeWidget:
                     summary_item.setData(0, Qt.UserRole, ("mesh", "face_summary", self.MAX_TREE_ITEMS, face_count))
         elif hasattr(mesh_data, 'cells'):
             cells = mesh_data.cells
-            face_count = len(cells)
+            face_count = 0
+            line_count = 0
+            volume_count = 0
+            for cell in cells:
+                if cell is None:
+                    continue
+                if hasattr(cell, 'node_ids'):
+                    node_count = len(cell.node_ids)
+                elif isinstance(cell, (list, tuple)):
+                    node_count = len(cell)
+                else:
+                    continue
+                if node_count == 2:
+                    line_count += 1
+                elif node_count in (3, 4) and getattr(mesh_data, 'dimension', 2) == 2:
+                    face_count += 1
+                elif node_count in (4, 5, 6, 8) and getattr(mesh_data, 'dimension', 3) == 3:
+                    volume_count += 1
+            if face_count == 0 and volume_count == 0 and line_count == 0 and cells:
+                face_count = len(cells)
+            if volume_count:
+                body_count = volume_count
+            if hasattr(mesh_data, 'boundary_info') and mesh_data.boundary_info:
+                boundary_lines = 0
+                for part_data in mesh_data.boundary_info.values():
+                    for face in part_data.get('faces', []):
+                        nodes = face.get('nodes', [])
+                        if len(nodes) == 2:
+                            boundary_lines += 1
+                if boundary_lines:
+                    line_count = boundary_lines
+            if hasattr(mesh_data, 'line_cells') and mesh_data.line_cells and line_count == 0:
+                line_count = len(mesh_data.line_cells)
+            edge_count = line_count
 
             if face_count <= self.LAZY_LOAD_THRESHOLD:
                 for i, cell in enumerate(cells):

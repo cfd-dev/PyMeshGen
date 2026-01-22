@@ -218,6 +218,19 @@ class MeshImportThread(QThread):
                         progress = 60 + int(20 * i / total_cells)
                         self.progress_updated.emit(f"处理网格单元... ({i}/{total_cells})", progress)
                 mesh_data.set_cells(cells)
+                if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension == 3:
+                    surface_cells = []
+                    volume_cells = []
+                    for cell in unstr_grid.cell_container:
+                        if cell is None or not hasattr(cell, 'node_ids'):
+                            continue
+                        cell_name = cell.__class__.__name__
+                        if cell_name in ('Triangle', 'Quadrilateral'):
+                            surface_cells.append(cell.node_ids)
+                        elif cell_name in ('Tetrahedron', 'Pyramid', 'Prism', 'Hexahedron'):
+                            volume_cells.append(cell.node_ids)
+                    mesh_data.set_cells(surface_cells, grid_dimension=2)
+                    mesh_data.volume_cells = volume_cells
 
             if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
                 mesh_data.dimension = int(unstr_grid.dimension)
@@ -247,6 +260,17 @@ class MeshImportThread(QThread):
                         self.progress_updated.emit(f"提取部件信息... ({i+1}/{total_parts})", progress)
 
                 mesh_data.parts_info = parts_info
+
+            if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension == 3:
+                if not mesh_data.cell_container and mesh_data.boundary_info:
+                    surface_cells = []
+                    for part_data in mesh_data.boundary_info.values():
+                        for face in part_data.get('faces', []):
+                            nodes = face.get('nodes', [])
+                            if nodes:
+                                surface_cells.append(list(nodes))
+                    if surface_cells:
+                        mesh_data.set_cells(surface_cells, grid_dimension=2)
 
             mesh_data.update_counts()
 
