@@ -865,7 +865,12 @@ class PyMeshGenGUI(QMainWindow):
                 
                 def step4_complete():
                     self.log_info(f"已导入网格: {mesh_data.file_path}")
-                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
+                    surface_count = len(mesh_data.cells)
+                    volume_count = len(mesh_data.volume_cells) if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells else 0
+                    if volume_count:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                    else:
+                        self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
                     self.update_status("已导入网格")
                     self.status_bar.hide_progress()
 
@@ -877,7 +882,12 @@ class PyMeshGenGUI(QMainWindow):
                 self.part_manager.refresh_display_all_parts()
                 
                 self.log_info(f"已导入网格: {mesh_data.file_path}")
-                self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {len(mesh_data.cells)}")
+                surface_count = len(mesh_data.cells)
+                volume_count = len(mesh_data.volume_cells) if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells else 0
+                if volume_count:
+                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 面单元数: {surface_count}, 体单元数: {volume_count}")
+                else:
+                    self.log_info(f"节点数: {len(mesh_data.node_coords)}, 单元数: {surface_count}")
                 self.update_status("已导入网格")
                 self.status_bar.hide_progress()
 
