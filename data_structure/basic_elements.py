@@ -572,10 +572,13 @@ class Tetrahedron:
     def init_metrics(self, force_update=False):
         if self.volume is None or force_update:
             self.volume = tetrahedron_volume(self.p1, self.p2, self.p3, self.p4)
-            if self.volume == 0.0:
-                raise ValueError(
+            if abs(self.volume) <= 1e-12:
+                warning(
                     f"四面体体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}"
                 )
+                self.quality = 0.0
+                self.skewness = 0.0
+                return
         
         if self.quality is None or force_update:
             tetrahedron_shape_quality = _get_tetrahedron_shape_quality()
@@ -589,6 +592,18 @@ class Tetrahedron:
         if self.volume is None:
             self.volume = tetrahedron_volume(self.p1, self.p2, self.p3, self.p4)
         return self.volume
+
+    def get_quality(self):
+        if self.quality is None:
+            tetrahedron_shape_quality = _get_tetrahedron_shape_quality()
+            self.quality = tetrahedron_shape_quality(self.p1, self.p2, self.p3, self.p4)
+        return self.quality
+
+    def get_skewness(self):
+        if self.skewness is None:
+            tetrahedron_skewness = _get_tetrahedron_skewness()
+            self.skewness = tetrahedron_skewness(self.p1, self.p2, self.p3, self.p4)
+        return self.skewness
 
     def get_element_size(self):
         if self.volume is None:
@@ -659,10 +674,13 @@ class Pyramid:
     def init_metrics(self, force_update=False):
         if self.volume is None or force_update:
             self.volume = pyramid_volume(self.p1, self.p2, self.p3, self.p4, self.p5)
-            if self.volume == 0.0:
-                raise ValueError(
+            if abs(self.volume) <= 1e-12:
+                warning(
                     f"金字塔体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}, {self.p5}"
                 )
+                self.quality = 0.0
+                self.skewness = 0.0
+                return
         
         if self.quality is None or force_update:
             pyramid_shape_quality = _get_pyramid_shape_quality()
@@ -762,10 +780,13 @@ class Prism:
     def init_metrics(self, force_update=False):
         if self.volume is None or force_update:
             self.volume = prism_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6)
-            if self.volume == 0.0:
-                raise ValueError(
+            if abs(self.volume) <= 1e-12:
+                warning(
                     f"三棱柱体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}, {self.p5}, {self.p6}"
                 )
+                self.quality = 0.0
+                self.skewness = 0.0
+                return
         
         if self.quality is None or force_update:
             prism_shape_quality = _get_prism_shape_quality()
@@ -873,10 +894,13 @@ class Hexahedron:
     def init_metrics(self, force_update=False):
         if self.volume is None or force_update:
             self.volume = hexahedron_volume(self.p1, self.p2, self.p3, self.p4, self.p5, self.p6, self.p7, self.p8)
-            if self.volume == 0.0:
-                raise ValueError(
+            if abs(self.volume) <= 1e-12:
+                warning(
                     f"六面体体积异常：{self.volume}，顶点：{self.p1}, {self.p2}, {self.p3}, {self.p4}, {self.p5}, {self.p6}, {self.p7}, {self.p8}"
                 )
+                self.quality = 0.0
+                self.skewness = 0.0
+                return
         
         if self.quality is None or force_update:
             hexahedron_shape_quality = _get_hexahedron_shape_quality()
