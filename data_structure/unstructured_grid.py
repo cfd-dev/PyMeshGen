@@ -2,8 +2,12 @@
 # -*- coding: utf-8 -*-
 
 """
-非结构化网格类
-用于管理非结构化网格的数据和操作
+非结构化网格类。
+
+数据模型约定：
+- cell_container 是唯一的单元真源（单元对象或 GenericCell）。
+- cells 属性仅提供只读的节点索引视图；写入请使用 set_cells。
+- bbox 为惰性计算：当 node_coords 变化时标记失效，读取时再重算。
 """
 
 import numpy as np
@@ -15,7 +19,10 @@ from utils.message import warning, info
 
 
 class GenericCell:
-    """通用单元容器，仅保存节点索引"""
+    """通用单元容器，仅保存节点索引。
+
+    用于无法映射到具体单元类型时的占位，保持拓扑信息可用。
+    """
 
     def __init__(self, node_ids, part_name=None, idx=None):
         self.node_ids = list(node_ids)
@@ -33,6 +40,14 @@ class GenericCell:
 
 
 class Unstructured_Grid:
+    """非结构化网格数据结构。
+
+    主要字段说明：
+    - node_coords: 节点坐标列表（二维/三维）。
+    - cell_container: 单元对象容器（唯一真源）。
+    - boundary_nodes: 边界节点对象列表（NodeElement）。
+    - bbox: 网格包围盒，惰性计算。
+    """
     def __init__(
         self,
         cell_container=None,
@@ -43,6 +58,7 @@ class Unstructured_Grid:
         mesh_type=None,
     ):
         self.dimension = grid_dimension
+        # 单元容器：唯一真源，避免与 cells 视图重复存储
         self.cell_container = cell_container if cell_container is not None else []
         self._bbox = None
         self._bbox_dirty = True
@@ -75,10 +91,12 @@ class Unstructured_Grid:
 
     @property
     def node_coords(self):
+        """节点坐标列表；设置时会使 bbox 失效。"""
         return self._node_coords
 
     @node_coords.setter
     def node_coords(self, value):
+        """设置节点坐标，并标记 bbox 失效。"""
         self._node_coords = value if value is not None else []
         if hasattr(self, "_bbox_dirty"):
             self._bbox_dirty = True
@@ -97,12 +115,14 @@ class Unstructured_Grid:
 
     @property
     def boundary_nodes_list(self):
+        """边界节点索引列表（只读视图）。"""
         if not self.boundary_nodes:
             return []
         return [node_elem.idx for node_elem in self.boundary_nodes]
 
     @property
     def bbox(self):
+        """包围盒，读取时按需计算。"""
         if self._bbox_dirty:
             self._update_bbox()
         return self._bbox
@@ -118,6 +138,7 @@ class Unstructured_Grid:
 
     @property
     def cells(self):
+        """单元节点索引只读视图（由 cell_container 派生）。"""
         if not self.cell_container:
             return []
         cells = []
@@ -131,6 +152,12 @@ class Unstructured_Grid:
         return cells
 
     def set_cells(self, value, grid_dimension=None):
+        """设置单元数据。
+
+        支持两类输入：
+        - 单元对象序列（包含 node_ids）
+        - 节点索引序列（list/tuple）
+        """
         if not value:
             self.cell_container = []
             return
@@ -142,6 +169,7 @@ class Unstructured_Grid:
             self.cell_container = self._build_cell_objects(self.node_coords, value, build_dimension)
 
     def _update_bbox(self):
+        """按当前 node_coords 计算包围盒。"""
         if self.node_coords is None or len(self.node_coords) == 0:
             if self.dimension >= 3:
                 self._bbox = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -164,11 +192,12 @@ class Unstructured_Grid:
         self._bbox_dirty = False
 
     def update_counts(self):
-        """标记包围盒需要更新"""
+        """标记包围盒需要更新（保持历史接口兼容）。"""
         self._bbox_dirty = True
 
     @staticmethod
     def _build_cell_objects(node_coords, cells, grid_dimension=2):
+        """将节点索引列表转换为具体单元对象集合。"""
         if not cells:
             return []
         from data_structure.basic_elements import (
@@ -221,6 +250,7 @@ class Unstructured_Grid:
         grid_dimension=2,
         cell_dimension=None,
     ):
+        """从节点与单元索引创建 Unstructured_Grid。"""
         from data_structure.basic_elements import NodeElement
 
         node_coords = [list(coord) for coord in node_coords] if node_coords else []
@@ -236,7 +266,7 @@ class Unstructured_Grid:
         return grid
 
     def calculate_edges(self):
-        """计算网格的边"""
+        """计算网格的边（无向、去重）。"""
         if self.edges:
             return
 
@@ -260,7 +290,10 @@ class Unstructured_Grid:
         self.num_edges = len(self.edges)
 
     def merge(self, other_grid):
-        """以各向异性网格为基础，合并两个Unstructured_Grid对象"""
+        """以各向异性网格为基础，合并两个Unstructured_Grid对象。
+
+        合并后保留 self 的部件信息；若 other_grid 有新增部件则补充。
+        """
         # 合并单元容器
         self.cell_container.extend(other_grid.cell_container)
 
@@ -298,7 +331,10 @@ class Unstructured_Grid:
         self.save_to_vtkfile(file_path)
 
     def refresh_cell_geometry(self):
-        """同步单元顶点坐标到最新的node_coords，并重置缓存的几何指标"""
+        """同步单元顶点坐标到最新的 node_coords，并重置缓存的几何指标。
+
+        仅更新包含 node_ids 的单元对象，避免破坏占位单元。
+        """
         if not hasattr(self, "cell_container") or not hasattr(self, "node_coords"):
             return
         num_nodes = len(self.node_coords)
@@ -355,14 +391,14 @@ class Unstructured_Grid:
                 cell.skewness = None
 
     def refresh_cell_metrics(self):
-        """刷新所有单元的几何与质量指标"""
+        """刷新所有单元的几何与质量指标。"""
         self.refresh_cell_geometry()
         for cell in self.cell_container:
             if hasattr(cell, "init_metrics"):
                 cell.init_metrics()
 
     def summary(self, gui_instance=None):
-        """输出网格信息"""
+        """输出网格信息，并计算质量统计信息。"""
         self.calculate_edges()
         self.num_edges = len(self.edges)
 
@@ -419,7 +455,7 @@ class Unstructured_Grid:
                 gui_instance.log_info(no_data_msg.rstrip())  # Output to GUI
 
     def quality_histogram(self, ax=None):
-        """绘制质量直方图"""
+        """绘制质量直方图。"""
         self.refresh_cell_geometry()
         # 计算所有单元的质量值（如果尚未计算）
         quality_values = []
@@ -476,7 +512,7 @@ class Unstructured_Grid:
             ax.set_title("Quality Histogram")
 
     def skewness_histogram(self, ax=None):
-        """绘制偏斜度直方图"""
+        """绘制偏斜度直方图。"""
         self.refresh_cell_geometry()
         # 计算所有单元的偏斜度值（如果尚未计算）
         skewness_values = []
@@ -533,7 +569,7 @@ class Unstructured_Grid:
             ax.set_title("Skewness Histogram")
 
     def visualize_unstr_grid_2d(self, visual_obj=None):
-        """可视化二维网格"""
+        """可视化二维网格（主要用于 GUI 或调试）。"""
         if visual_obj.ax is None:
             return
 
@@ -570,12 +606,12 @@ class Unstructured_Grid:
 
     @classmethod
     def load_from_vtkfile(cls, file_path):
-        """从VTK文件加载网格"""
+        """从 VTK 文件加载网格。"""
         from fileIO.vtk_io import parse_vtk_msh  # This will work with main script adding paths
         return parse_vtk_msh(file_path)
 
     def save_to_vtkfile(self, file_path):
-        """将网格保存到VTK文件"""
+        """将网格保存到 VTK 文件（仅支持三角形与四边形）。"""
         cell_idx_container = []
         cell_type_container = []
         cell_part_names = []
@@ -625,7 +661,7 @@ class Unstructured_Grid:
             warning("没有有效的单元可以保存到VTK文件")
 
     def init_node2node(self):
-        """初始化节点关联的节点列表"""
+        """初始化节点关联的节点列表（基于边）。"""
         self.calculate_edges()
 
         self.node2node = {}
@@ -643,7 +679,7 @@ class Unstructured_Grid:
             self.node2node[node_idx] = list(set(self.node2node[node_idx]))
 
     def init_node2node_by_cell(self):
-        """初始化节点关联的节点列表"""
+        """初始化节点关联的节点列表（基于单元拓扑）。"""
         self.calculate_edges()
 
         self.node2node = {}
@@ -661,7 +697,7 @@ class Unstructured_Grid:
             self.node2node[node_idx] = list(set(self.node2node[node_idx]))
 
     def cyclic_node2node(self):
-        """根据edge的连接关系将node2node构建为首尾相连成环的方式"""
+        """根据边关系将 node2node 构建为首尾相连的环形顺序。"""
         if not self.node2node:
             # self.init_node2node()
             self.init_node2node_by_cell()
@@ -701,7 +737,10 @@ class Unstructured_Grid:
             self.node2node[node_idx] = sorted_neighbors
 
     def build_topological_ring(self, node_id):
-        """基于单元拓扑构建节点的一环有序邻居"""
+        """基于单元拓扑构建节点的一环有序邻居。
+
+        若拓扑不一致则返回 None。
+        """
         next_map = {}
         prev_map = {}
         neighbors = set()
@@ -753,7 +792,7 @@ class Unstructured_Grid:
         return ordered
 
     def init_node2cell(self):
-        """初始化节点关联的单元列表"""
+        """初始化节点关联的单元列表。"""
         self.node2cell = {}
         for cell in self.cell_container:
             for node_idx in cell.node_ids:

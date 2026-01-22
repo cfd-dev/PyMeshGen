@@ -540,6 +540,31 @@ class ModelTreeWidget:
         if hasattr(mesh_data, 'cell_container'):
             cells = mesh_data.cell_container
             face_count = len(cells)
+            if hasattr(mesh_data, 'volume_cells') and mesh_data.volume_cells:
+                body_count = len(mesh_data.volume_cells)
+                if body_count <= self.LAZY_LOAD_THRESHOLD:
+                    for i, cell in enumerate(mesh_data.volume_cells):
+                        body_item = QTreeWidgetItem(bodies_item)
+                        body_item.setText(0, f"体_{i}")
+                        body_item.setText(1, "")
+                        body_item.setCheckState(0, Qt.Checked)
+                        body_item.setData(0, Qt.UserRole, ("mesh", "body", i, cell))
+                        body_item.setToolTip(0, f"节点数: {len(cell)}")
+                else:
+                    for i in range(0, min(body_count, self.MAX_TREE_ITEMS)):
+                        cell = mesh_data.volume_cells[i]
+                        body_item = QTreeWidgetItem(bodies_item)
+                        body_item.setText(0, f"体_{i}")
+                        body_item.setText(1, "")
+                        body_item.setCheckState(0, Qt.Checked)
+                        body_item.setData(0, Qt.UserRole, ("mesh", "body", i, cell))
+                        body_item.setToolTip(0, f"节点数: {len(cell)}")
+                    if body_count > self.MAX_TREE_ITEMS:
+                        summary_item = QTreeWidgetItem(bodies_item)
+                        summary_item.setText(0, f"... (还有 {body_count - self.MAX_TREE_ITEMS} 个单元)")
+                        summary_item.setText(1, "")
+                        summary_item.setCheckState(0, Qt.Checked)
+                        summary_item.setData(0, Qt.UserRole, ("mesh", "body_summary", self.MAX_TREE_ITEMS, body_count))
 
             if face_count <= self.LAZY_LOAD_THRESHOLD:
                 for i, cell in enumerate(cells):
