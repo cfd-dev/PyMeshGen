@@ -117,7 +117,7 @@ class TestMeshIOImport(unittest.TestCase):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
                 # 跳过meshio不支持的格式
-                if file_ext in {'.cas', '.vol'}:
+                if file_ext in {'.vol'}:
                     self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
@@ -167,7 +167,7 @@ class TestMeshIOImport(unittest.TestCase):
             with self.subTest(file=test_file):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
-                if file_ext in {'.cas', '.vol'}:
+                if file_ext in {'.vol'}:
                     self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
@@ -215,7 +215,7 @@ class TestMeshIOImport(unittest.TestCase):
             with self.subTest(file=test_file):
                 file_ext = os.path.splitext(test_file)[1].lower()
 
-                if file_ext in {'.cas', '.vol'}:
+                if file_ext in {'.vol'}:
                     self.skipTest(f"格式不被meshio支持: {test_file}")
 
                 try:
