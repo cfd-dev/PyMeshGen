@@ -23,6 +23,14 @@ pillow>=10.0.0
 # 安装命令: pip install pythonocc-core
 pythonocc-core
 
+# 神经网络和机器学习依赖
+torch>=2.0.0  # PyTorch深度学习框架，所有神经网络模块的基础
+torch-geometric>=2.3.0  # 图神经网络库，用于GNN_ALM模块
+gym>=0.21.0  # OpenAI Gym强化学习环境，用于DRL_Smoothing模块
+stable-baselines3>=2.0.0  # 强化学习算法库，用于DRL_Smoothing模块
+
+trimesh>=4.0.0  # 三角网格处理库，用于NN_Smoothing模块
+
 # 开发和测试工具
 # pytest>=7.0.0  # 可选，用于运行pytest测试
 # pefile>=2023.0.0  # 可选，用于分析DLL依赖
