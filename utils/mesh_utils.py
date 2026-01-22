@@ -121,7 +121,7 @@ def merge_triangles_to_quads(unstr_grid):
     new_grid.cell_container = [c for c in new_grid.cell_container if c is not None]
     
     # 更新网格统计信息
-    new_grid.num_cells = len(new_grid.cell_container)
+    new_grid.update_counts()
 
     info(f"成功合并{num_merged}对三角形为四边形")
     timer.show_to_console("四边形合并完成.")

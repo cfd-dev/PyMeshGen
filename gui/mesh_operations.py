@@ -1088,12 +1088,10 @@ class MeshOperations:
                             new_boundary_nodes.append(node)
                         
                         self.gui.current_mesh.cell_container = new_cell_container
-                        self.gui.current_mesh.num_cells = len(new_cell_container)
                         self.gui.current_mesh.node_coords = new_node_coords
-                        self.gui.current_mesh.num_points = len(new_node_coords)
                         self.gui.current_mesh.boundary_nodes = new_boundary_nodes
                         self.gui.current_mesh.boundary_nodes_list = [node.idx for node in new_boundary_nodes]
-                        self.gui.current_mesh.num_boundary_nodes = len(new_boundary_nodes)
+                        self.gui.current_mesh.update_counts()
                         
                         mapped_parts_info = self.gui._map_parts_info_to_new_mesh(parts_info, old_to_new_node_map)
                         new_parts_info = {}

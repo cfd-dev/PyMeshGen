@@ -48,9 +48,6 @@ class Unstructured_Grid:
         self.boundary_nodes = boundary_nodes if boundary_nodes is not None else []
         self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
 
-        self.num_cells = len(self.cell_container)
-        self.num_nodes = len(self.node_coords)
-        self.num_boundary_nodes = len(self.boundary_nodes)
         self.num_edges = 0
         self.num_faces = 0
         self.edges = []
@@ -75,12 +72,20 @@ class Unstructured_Grid:
         self._update_bbox()
 
     @property
+    def num_nodes(self):
+        return len(self.node_coords) if self.node_coords is not None else 0
+
+    @property
+    def num_cells(self):
+        return len(self.cell_container) if self.cell_container is not None else 0
+
+    @property
+    def num_boundary_nodes(self):
+        return len(self.boundary_nodes) if self.boundary_nodes is not None else 0
+
+    @property
     def num_points(self):
         return self.num_nodes
-
-    @num_points.setter
-    def num_points(self, value):
-        self.num_nodes = value
 
     @property
     def cells(self):
@@ -100,14 +105,12 @@ class Unstructured_Grid:
     def cells(self, value):
         if not value:
             self.cell_container = []
-            self.num_cells = 0
             return
         first = value[0]
         if hasattr(first, "node_ids"):
             self.cell_container = list(value)
         else:
             self.cell_container = self._build_cell_objects(self.node_coords, value, self.dimension)
-        self.num_cells = len(self.cell_container)
 
     def _update_bbox(self):
         if self.node_coords is None or len(self.node_coords) == 0:
@@ -130,11 +133,8 @@ class Unstructured_Grid:
             ])
 
     def update_counts(self):
-        """更新节点和单元数量"""
-        self.num_nodes = len(self.node_coords) if self.node_coords is not None else 0
-        self.num_cells = len(self.cell_container) if self.cell_container is not None else 0
-        self.num_boundary_nodes = len(self.boundary_nodes) if self.boundary_nodes is not None else 0
-        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
+        """更新边界节点列表和包围盒"""
+        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes] if self.boundary_nodes else []
         self._update_bbox()
 
     @staticmethod
@@ -234,14 +234,8 @@ class Unstructured_Grid:
         # 合并单元容器
         self.cell_container.extend(other_grid.cell_container)
 
-        # 更新单元数量
-        self.num_cells = len(self.cell_container)
-
         # 节点坐标已经合并过，但是laplacian优化后，节点坐标有更新，此处应采用优化后的节点坐标
         self.node_coords = other_grid.node_coords
-
-        # 更新节点数量
-        self.num_nodes = len(self.node_coords)
 
         # 更新边界点
         self.boundary_nodes.extend(other_grid.boundary_nodes)
@@ -257,7 +251,6 @@ class Unstructured_Grid:
 
         self.boundary_nodes = list(merged_boundary_nodes)
         self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
-        self.num_boundary_nodes = len(self.boundary_nodes)
 
         # 保留原始的parts_info信息（如果存在）
         if hasattr(other_grid, 'parts_info') and other_grid.parts_info:
@@ -268,10 +261,10 @@ class Unstructured_Grid:
                 for part_name, part_data in other_grid.parts_info.items():
                     if part_name not in self.parts_info:
                         self.parts_info[part_name] = part_data
+        self.update_counts()
 
     def save_debug_file(self, status):
         """保存调试文件"""
-        self.num_cells = len(self.cell_container)
         file_path = f"./out/debug_mesh_{status}.vtk"
         self.save_to_vtkfile(file_path)
 
@@ -341,9 +334,6 @@ class Unstructured_Grid:
 
     def summary(self, gui_instance=None):
         """输出网格信息"""
-        self.num_cells = len(self.cell_container)
-        self.num_nodes = len(self.node_coords)
-        self.num_boundary_nodes = len(self.boundary_nodes)
         self.calculate_edges()
         self.num_edges = len(self.edges)
 
