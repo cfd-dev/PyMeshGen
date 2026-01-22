@@ -44,6 +44,9 @@ class Unstructured_Grid:
     ):
         self.dimension = grid_dimension
         self.cell_container = cell_container if cell_container is not None else []
+        self._bbox = None
+        self._bbox_dirty = True
+        self._node_coords = []
         self.node_coords = node_coords if node_coords is not None else []
         self.boundary_nodes = boundary_nodes if boundary_nodes is not None else []
 
@@ -67,8 +70,18 @@ class Unstructured_Grid:
         self.volume_cells = []
         self.line_cells = []
 
-        self.bbox = None
-        self._update_bbox()
+        self._bbox = None
+        self._bbox_dirty = True
+
+    @property
+    def node_coords(self):
+        return self._node_coords
+
+    @node_coords.setter
+    def node_coords(self, value):
+        self._node_coords = value if value is not None else []
+        if hasattr(self, "_bbox_dirty"):
+            self._bbox_dirty = True
 
     @property
     def num_nodes(self):
@@ -89,6 +102,17 @@ class Unstructured_Grid:
         return [node_elem.idx for node_elem in self.boundary_nodes]
 
     @property
+    def bbox(self):
+        if self._bbox_dirty:
+            self._update_bbox()
+        return self._bbox
+
+    @bbox.setter
+    def bbox(self, value):
+        self._bbox = value
+        self._bbox_dirty = False
+
+    @property
     def num_points(self):
         return self.num_nodes
 
@@ -106,8 +130,7 @@ class Unstructured_Grid:
                 cells.append(list(cell))
         return cells
 
-    @cells.setter
-    def cells(self, value):
+    def set_cells(self, value, grid_dimension=None):
         if not value:
             self.cell_container = []
             return
@@ -115,31 +138,34 @@ class Unstructured_Grid:
         if hasattr(first, "node_ids"):
             self.cell_container = list(value)
         else:
-            self.cell_container = self._build_cell_objects(self.node_coords, value, self.dimension)
+            build_dimension = self.dimension if grid_dimension is None else grid_dimension
+            self.cell_container = self._build_cell_objects(self.node_coords, value, build_dimension)
 
     def _update_bbox(self):
         if self.node_coords is None or len(self.node_coords) == 0:
             if self.dimension >= 3:
-                self.bbox = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                self._bbox = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             else:
-                self.bbox = [0.0, 0.0, 0.0, 0.0]
+                self._bbox = [0.0, 0.0, 0.0, 0.0]
+            self._bbox_dirty = False
             return
 
-        self.bbox = [
+        self._bbox = [
             min(coord[0] for coord in self.node_coords),
             min(coord[1] for coord in self.node_coords),
             max(coord[0] for coord in self.node_coords),
             max(coord[1] for coord in self.node_coords),
         ]
         if self.dimension >= 3:
-            self.bbox.extend([
+            self._bbox.extend([
                 min(coord[2] for coord in self.node_coords),
                 max(coord[2] for coord in self.node_coords),
             ])
+        self._bbox_dirty = False
 
     def update_counts(self):
-        """更新包围盒"""
-        self._update_bbox()
+        """标记包围盒需要更新"""
+        self._bbox_dirty = True
 
     @staticmethod
     def _build_cell_objects(node_coords, cells, grid_dimension=2):

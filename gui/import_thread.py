@@ -205,18 +205,19 @@ class MeshImportThread(QThread):
                 mesh_data.node_coords = [list(node.coords) for node in unstr_grid.nodes]
 
             if hasattr(unstr_grid, 'cell_container'):
-                mesh_data.cells = []
+                cells = []
                 total_cells = len(unstr_grid.cell_container)
                 for i, cell in enumerate(unstr_grid.cell_container):
                     if not self._is_running:
                         return
                     if cell is not None and hasattr(cell, 'node_ids'):
-                        mesh_data.cells.append(cell.node_ids)
+                        cells.append(cell.node_ids)
 
                     # Update progress periodically during cell processing
                     if i % max(1, total_cells // 10) == 0:  # Update every 10% of cells
                         progress = 60 + int(20 * i / total_cells)
                         self.progress_updated.emit(f"处理网格单元... ({i}/{total_cells})", progress)
+                mesh_data.set_cells(cells)
 
             if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
                 mesh_data.dimension = int(unstr_grid.dimension)

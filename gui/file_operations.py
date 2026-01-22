@@ -924,7 +924,7 @@ class FileOperations:
                                         cells.append(cell_ids)
 
                     mesh_data.node_coords = node_coords
-                    mesh_data.cells = cells
+                    mesh_data.set_cells(cells)
                     if hasattr(unstr_grid, 'dimension') and unstr_grid.dimension in (2, 3):
                         mesh_data.dimension = int(unstr_grid.dimension)
                     else:
@@ -963,7 +963,7 @@ class FileOperations:
                 if vtk_mesh_data:
                     if isinstance(vtk_mesh_data, dict):
                         mesh_data.node_coords = vtk_mesh_data.get('node_coords', [])
-                        mesh_data.cells = vtk_mesh_data.get('cells', [])
+                        mesh_data.set_cells(vtk_mesh_data.get('cells', []))
                         from utils.geom_toolkit import detect_mesh_dimension_by_metadata
                         mesh_data.dimension = detect_mesh_dimension_by_metadata(vtk_mesh_data, default_dim=mesh_data.dimension)
 
