@@ -1211,6 +1211,8 @@ class FileOperations:
                 return self._export_stl(mesh_data, file_path)
             elif file_ext == '.obj':
                 return self._export_obj(mesh_data, file_path)
+            elif file_ext == '.msh':
+                return self._export_msh(mesh_data, file_path)
             elif file_ext == '.ply':
                 return self._export_ply(mesh_data, file_path)
             else:
@@ -1322,6 +1324,144 @@ class FileOperations:
             print(f"导出PLY文件失败: {str(e)}")
             return False
 
+    def _export_msh(self, mesh_data, file_path):
+        """导出MSH文件"""
+        try:
+            try:
+                import meshio
+            except ImportError:
+                print("未找到meshio，无法导出MSH文件")
+                return False
+
+            if isinstance(mesh_data, dict):
+                node_coords = mesh_data.get('node_coords', [])
+            elif hasattr(mesh_data, 'node_coords'):
+                node_coords = mesh_data.node_coords
+            else:
+                node_coords = []
+
+            if not node_coords:
+                print("无节点数据，无法导出MSH文件")
+                return False
+
+            points = np.array(node_coords, dtype=float)
+            if points.ndim != 2 or points.shape[1] < 2:
+                print("节点坐标格式错误，无法导出MSH文件")
+                return False
+
+            if points.shape[1] == 2:
+                points = np.column_stack([points, np.zeros(points.shape[0])])
+            elif points.shape[1] > 3:
+                points = points[:, :3]
+
+            cells_by_type = {
+                "line": [],
+                "triangle": [],
+                "quad": [],
+                "tetra": [],
+                "pyramid": [],
+                "wedge": [],
+                "hexahedron": [],
+            }
+
+            def _node_ids_from_cell(cell):
+                if cell is None:
+                    return None
+                if hasattr(cell, 'node_ids'):
+                    return list(cell.node_ids)
+                if isinstance(cell, np.ndarray):
+                    return cell.tolist()
+                if isinstance(cell, (list, tuple)):
+                    return list(cell)
+                return None
+
+            def _append_cell(cell_nodes, cell_type):
+                if cell_nodes:
+                    cells_by_type[cell_type].append(cell_nodes)
+
+            def _classify_cell(cell, treat_as_volume=False):
+                node_ids = _node_ids_from_cell(cell)
+                if not node_ids:
+                    return
+                cell_name = cell.__class__.__name__ if hasattr(cell, '__class__') else ''
+                if cell_name == 'Triangle':
+                    _append_cell(node_ids, "triangle")
+                elif cell_name == 'Quadrilateral':
+                    _append_cell(node_ids, "quad")
+                elif cell_name == 'Tetrahedron':
+                    _append_cell(node_ids, "tetra")
+                elif cell_name == 'Pyramid':
+                    _append_cell(node_ids, "pyramid")
+                elif cell_name == 'Prism':
+                    _append_cell(node_ids, "wedge")
+                elif cell_name == 'Hexahedron':
+                    _append_cell(node_ids, "hexahedron")
+                else:
+                    node_count = len(node_ids)
+                    if node_count == 2:
+                        _append_cell(node_ids, "line")
+                    elif node_count == 3:
+                        _append_cell(node_ids, "triangle")
+                    elif node_count == 4:
+                        _append_cell(node_ids, "tetra" if treat_as_volume else "quad")
+                    elif node_count == 5:
+                        _append_cell(node_ids, "pyramid")
+                    elif node_count == 6:
+                        _append_cell(node_ids, "wedge")
+                    elif node_count == 8:
+                        _append_cell(node_ids, "hexahedron")
+
+            if isinstance(mesh_data, dict):
+                cells = mesh_data.get('cells', []) or []
+            elif hasattr(mesh_data, 'cell_container'):
+                cells = mesh_data.cell_container
+            elif hasattr(mesh_data, 'cells'):
+                cells = mesh_data.cells
+            else:
+                cells = []
+
+            for cell in cells:
+                _classify_cell(cell, treat_as_volume=False)
+
+            if isinstance(mesh_data, dict):
+                line_cells = mesh_data.get('line_cells')
+            else:
+                line_cells = getattr(mesh_data, 'line_cells', None)
+            if line_cells:
+                for cell in line_cells:
+                    node_ids = _node_ids_from_cell(cell)
+                    if node_ids and len(node_ids) == 2:
+                        _append_cell(node_ids, "line")
+
+            if isinstance(mesh_data, dict):
+                volume_cells = mesh_data.get('volume_cells')
+            else:
+                volume_cells = getattr(mesh_data, 'volume_cells', None)
+            if volume_cells and volume_cells is not cells:
+                for cell in volume_cells:
+                    _classify_cell(cell, treat_as_volume=True)
+
+            meshio_cells = []
+            for cell_type, cell_list in cells_by_type.items():
+                if cell_list:
+                    meshio_cells.append((cell_type, np.array(cell_list, dtype=int)))
+
+            if not meshio_cells:
+                print("无单元数据，无法导出MSH文件")
+                return False
+
+            output_dir = os.path.dirname(file_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+
+            mesh = meshio.Mesh(points=points, cells=meshio_cells)
+            meshio.write(file_path, mesh, file_format="gmsh")
+            return True
+
+        except Exception as e:
+            print(f"导出MSH文件失败: {str(e)}")
+            return False
+
     def _create_vtk_from_dict(self, mesh_data):
         """从字典数据创建VTK对象"""
         try:
@@ -1406,5 +1546,6 @@ class FileOperations:
             "VTK文件 (*.vtk)",
             "STL文件 (*.stl)",
             "OBJ文件 (*.obj)",
+            "Gmsh文件 (*.msh)",
             "PLY文件 (*.ply)"
         ]
