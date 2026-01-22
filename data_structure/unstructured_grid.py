@@ -46,7 +46,6 @@ class Unstructured_Grid:
         self.cell_container = cell_container if cell_container is not None else []
         self.node_coords = node_coords if node_coords is not None else []
         self.boundary_nodes = boundary_nodes if boundary_nodes is not None else []
-        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
 
         self.num_edges = 0
         self.num_faces = 0
@@ -82,6 +81,12 @@ class Unstructured_Grid:
     @property
     def num_boundary_nodes(self):
         return len(self.boundary_nodes) if self.boundary_nodes is not None else 0
+
+    @property
+    def boundary_nodes_list(self):
+        if not self.boundary_nodes:
+            return []
+        return [node_elem.idx for node_elem in self.boundary_nodes]
 
     @property
     def num_points(self):
@@ -133,8 +138,7 @@ class Unstructured_Grid:
             ])
 
     def update_counts(self):
-        """更新边界节点列表和包围盒"""
-        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes] if self.boundary_nodes else []
+        """更新包围盒"""
         self._update_bbox()
 
     @staticmethod
@@ -250,7 +254,6 @@ class Unstructured_Grid:
                 node_hash_list.add(node_elem.hash)
 
         self.boundary_nodes = list(merged_boundary_nodes)
-        self.boundary_nodes_list = [node_elem.idx for node_elem in self.boundary_nodes]
 
         # 保留原始的parts_info信息（如果存在）
         if hasattr(other_grid, 'parts_info') and other_grid.parts_info:
