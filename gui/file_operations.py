@@ -578,7 +578,7 @@ class FileOperations:
                 dimension=mesh_dimension,
                 file_path=file_path,
                 mesh_type='cgns',
-                cell_dimension=2 if mesh_dimension == 2 else 3,
+                cell_dimension=2 if surface_cells else mesh_dimension,
             )
             mesh_data.volume_cells = volume_cells
             mesh_data.cell_groups = cell_groups

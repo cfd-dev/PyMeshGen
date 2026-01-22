@@ -905,7 +905,12 @@ class MeshOperations:
             if not self._require_cell_container(mesh_obj, "当前网格格式不支持统计功能", "当前网格格式不支持统计功能"):
                 return
 
-            num_cells = len(mesh_obj.cell_container)
+            volume_cells = []
+            if hasattr(mesh_obj, 'volume_cells') and mesh_obj.volume_cells:
+                if mesh_obj.volume_cells is not mesh_obj.cell_container:
+                    volume_cells = mesh_obj.volume_cells
+
+            num_cells = len(mesh_obj.cell_container) + len(volume_cells)
             num_nodes = len(mesh_obj.node_coords)
             num_boundary_nodes = len(mesh_obj.boundary_nodes)
 
@@ -930,19 +935,39 @@ class MeshOperations:
                     quality_values.append(cell.quality)
                 if cell.skewness is not None:
                     skewness_values.append(cell.skewness)
-
-                if hasattr(cell, 'p8'):
-                    hexahedron_count += 1
-                elif hasattr(cell, 'p6'):
-                    prism_count += 1
-                elif hasattr(cell, 'p5'):
-                    pyramid_count += 1
-                elif hasattr(cell, 'p4') and not hasattr(cell, 'p5'):
-                    tetrahedron_count += 1
-                elif hasattr(cell, 'p3') and not hasattr(cell, 'p4'):
+                cell_name = cell.__class__.__name__
+                if cell_name == 'Triangle':
                     triangle_count += 1
-                elif hasattr(cell, 'p4') and hasattr(cell, 'p3'):
+                elif cell_name == 'Quadrilateral':
                     quadrilateral_count += 1
+                elif cell_name == 'Tetrahedron':
+                    tetrahedron_count += 1
+                elif cell_name == 'Pyramid':
+                    pyramid_count += 1
+                elif cell_name == 'Prism':
+                    prism_count += 1
+                elif cell_name == 'Hexahedron':
+                    hexahedron_count += 1
+                elif isinstance(cell, (list, tuple)):
+                    node_count = len(cell)
+                    if node_count == 3:
+                        triangle_count += 1
+                    elif node_count == 4:
+                        quadrilateral_count += 1
+
+            for cell in volume_cells:
+                if hasattr(cell, 'node_ids'):
+                    node_count = len(cell.node_ids)
+                else:
+                    node_count = len(cell)
+                if node_count == 4:
+                    tetrahedron_count += 1
+                elif node_count == 5:
+                    pyramid_count += 1
+                elif node_count == 6:
+                    prism_count += 1
+                elif node_count == 8:
+                    hexahedron_count += 1
 
             stats_info = f"网格统计信息:\n"
             stats_info += f"  维度: {dimension}\n"
@@ -956,6 +981,8 @@ class MeshOperations:
             stats_info += f"  金字塔单元数: {pyramid_count}\n"
             stats_info += f"  三棱柱单元数: {prism_count}\n"
             stats_info += f"  六面体单元数: {hexahedron_count}\n"
+            if volume_cells:
+                stats_info += f"  体单元数: {len(volume_cells)}\n"
 
             if quality_values:
                 stats_info += f"\n质量统计:\n"
