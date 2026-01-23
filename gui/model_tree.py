@@ -1184,12 +1184,27 @@ class ModelTreeWidget:
     def _create_part_dialog(self):
         """显示创建部件对话框"""
         from .create_part_dialog import CreatePartDialog
-        
+        existing_dialog = getattr(self, "_create_part_dialog_ref", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+
         dialog = CreatePartDialog(self.parent, self.geometry_data, self.mesh_data)
-        
-        if dialog.exec_() == QDialog.Accepted:
-            part_info = dialog.get_part_info()
-            self._add_part_to_tree(part_info)
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.NonModal)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.accepted.connect(lambda: self._on_part_dialog_accepted(dialog))
+        dialog.finished.connect(self._on_part_dialog_finished)
+        self._create_part_dialog_ref = dialog
+        dialog.show()
+
+    def _on_part_dialog_accepted(self, dialog):
+        part_info = dialog.get_part_info()
+        self._add_part_to_tree(part_info)
+
+    def _on_part_dialog_finished(self, result):
+        self._create_part_dialog_ref = None
     
     def _add_part_to_tree(self, part_info):
         """

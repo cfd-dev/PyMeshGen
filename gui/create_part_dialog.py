@@ -36,6 +36,8 @@ class CreatePartDialog(QDialog):
         
         self.geometry_data = geometry_data
         self.mesh_data = mesh_data
+        self.gui = parent
+        self._picking_helper = None
         
         self.part_name = ""
         self.selected_geometry_elements = {
@@ -67,6 +69,10 @@ class CreatePartDialog(QDialog):
         self.part_name_edit.setPlaceholderText("请输入部件名称")
         self.part_name_edit.setStyleSheet("background-color: white;")
         name_layout.addRow("部件名称:", self.part_name_edit)
+
+        self.enable_pick_checkbox = QCheckBox("启用拾取")
+        self.enable_pick_checkbox.setChecked(False)
+        name_layout.addRow("拾取:", self.enable_pick_checkbox)
         
         main_layout.addWidget(name_group)
         
@@ -124,6 +130,7 @@ class CreatePartDialog(QDialog):
         """连接信号和槽"""
         self.ok_button.clicked.connect(self.accept)
         self.cancel_button.clicked.connect(self.reject)
+        self.enable_pick_checkbox.stateChanged.connect(self._on_pick_state_changed)
     
     def _load_elements(self):
         """加载几何和网格元素到树中"""
@@ -375,7 +382,13 @@ class CreatePartDialog(QDialog):
             return
         
         self.part_name = part_name
+        self._disable_picking()
         super().accept()
+
+    def reject(self):
+        """取消对话框"""
+        self._disable_picking()
+        super().reject()
     
     def get_part_info(self):
         """获取部件信息"""
@@ -384,3 +397,70 @@ class CreatePartDialog(QDialog):
             "geometry_elements": self.selected_geometry_elements,
             "mesh_elements": self.selected_mesh_elements
         }
+
+    def _on_pick_state_changed(self, state):
+        if state == Qt.Checked:
+            self._enable_picking()
+        else:
+            self._disable_picking()
+
+    def _enable_picking(self):
+        if self._picking_helper is not None:
+            self._picking_helper.enable()
+            return
+        if not self.gui or not hasattr(self.gui, "mesh_display"):
+            return
+        from .geometry_picking import GeometryPickingHelper
+        self._picking_helper = GeometryPickingHelper(
+            self.gui.mesh_display,
+            gui=self.gui,
+            on_pick=self._on_geometry_pick,
+        )
+        self._picking_helper.enable()
+
+    def _disable_picking(self):
+        if self._picking_helper is None:
+            return
+        self._picking_helper.cleanup()
+        self._picking_helper = None
+
+    def _on_geometry_pick(self, element_type, element_obj, element_index):
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+        }
+        key = key_map.get(element_type)
+        if key is None:
+            return
+        tree_item = self._find_geometry_item(key, element_index)
+        if tree_item is None:
+            return
+        self.geometry_tree.blockSignals(True)
+        tree_item.setCheckState(0, Qt.Checked)
+        self.geometry_tree.blockSignals(False)
+        if element_index not in self.selected_geometry_elements[key]:
+            self.selected_geometry_elements[key].append(element_index)
+
+    def _find_geometry_item(self, element_key, element_index):
+        root_map = {
+            "vertices": "geometry_vertices",
+            "edges": "geometry_edges",
+            "faces": "geometry_faces",
+            "bodies": "geometry_bodies",
+        }
+        root_key = root_map.get(element_key)
+        if root_key is None:
+            return None
+        for i in range(self.geometry_tree.topLevelItemCount()):
+            root_item = self.geometry_tree.topLevelItem(i)
+            if root_item.data(0, Qt.UserRole) != root_key:
+                continue
+            for j in range(root_item.childCount()):
+                child = root_item.child(j)
+                data = child.data(0, Qt.UserRole)
+                if isinstance(data, tuple) and len(data) >= 2:
+                    if data[1] == element_index:
+                        return child
+        return None
