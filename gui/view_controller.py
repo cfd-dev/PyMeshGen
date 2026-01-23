@@ -172,7 +172,7 @@ class ViewController:
             self.gui.update_status("拾取模式: 开启")
         else:
             if self._picking_helper is not None:
-                self._picking_helper.cleanup()
+                self._picking_helper.cleanup(restore_display_mode=False)
                 self._picking_helper = None
             self._picking_enabled = False
             self.gui.log_info("拾取模式已关闭")

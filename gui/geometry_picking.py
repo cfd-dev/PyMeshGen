@@ -54,7 +54,7 @@ class GeometryPickingHelper:
         self._observer_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_right_button_press)
         self._enabled = True
 
-    def disable(self):
+    def disable(self, restore_display_mode=True):
         """禁用拾取"""
         if not self._enabled:
             return
@@ -69,13 +69,16 @@ class GeometryPickingHelper:
         self._observer_right_id = None
         self._clear_highlights()
         self._enabled = False
-        self._restore_display_mode()
+        if restore_display_mode:
+            self._restore_display_mode()
+        else:
+            self._saved_display_mode = None
         if getattr(self.mesh_display, "frame", None) is not None:
             self.mesh_display.frame.removeEventFilter(self._area_filter)
 
-    def cleanup(self):
+    def cleanup(self, restore_display_mode=True):
         """清理资源"""
-        self.disable()
+        self.disable(restore_display_mode=restore_display_mode)
 
     def _get_interactor(self):
         if getattr(self.mesh_display, "frame", None) is None:
