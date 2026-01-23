@@ -7,6 +7,8 @@
 from typing import Callable, Dict, Optional
 
 import vtk
+from PyQt5.QtCore import QObject, QEvent, Qt, QRect, QSize
+from PyQt5.QtWidgets import QRubberBand
 
 
 class GeometryPickingHelper:
@@ -28,6 +30,9 @@ class GeometryPickingHelper:
         self._observer_right_id = None
         self._saved_display_mode = None
         self._highlighted_actors: Dict[vtk.vtkActor, Dict[str, object]] = {}
+        self._area_selecting = False
+        self._area_picker = vtk.vtkRenderedAreaPicker()
+        self._area_filter = _AreaSelectionFilter(self)
 
         self._picker = vtk.vtkCellPicker()
         self._picker.SetTolerance(0.0005)
@@ -40,6 +45,7 @@ class GeometryPickingHelper:
             return
 
         self._ensure_geometry_display_mode()
+        self.mesh_display.frame.installEventFilter(self._area_filter)
         interactor = self._get_interactor()
         if interactor is None:
             return
@@ -64,6 +70,8 @@ class GeometryPickingHelper:
         self._clear_highlights()
         self._enabled = False
         self._restore_display_mode()
+        if getattr(self.mesh_display, "frame", None) is not None:
+            self.mesh_display.frame.removeEventFilter(self._area_filter)
 
     def cleanup(self):
         """清理资源"""
@@ -105,6 +113,8 @@ class GeometryPickingHelper:
 
     def _on_left_button_press(self, obj, event):
         if not self._enabled:
+            return
+        if self._area_selecting:
             return
         interactor = self._get_interactor()
         if interactor is None:
@@ -148,6 +158,8 @@ class GeometryPickingHelper:
 
     def _on_right_button_press(self, obj, event):
         if not self._enabled:
+            return
+        if self._area_selecting:
             return
         interactor = self._get_interactor()
         if interactor is None:
@@ -210,6 +222,72 @@ class GeometryPickingHelper:
 
         return actor_map
 
+    def _select_by_rect(self, rect: QRect, mode: str):
+        renderer = getattr(self.mesh_display, "renderer", None)
+        interactor = self._get_interactor()
+        if renderer is None or interactor is None:
+            return
+        size = interactor.GetSize()
+        if not size or size[1] <= 0:
+            return
+        x0 = rect.left()
+        x1 = rect.right()
+        y0 = size[1] - rect.top()
+        y1 = size[1] - rect.bottom()
+        if self._area_picker.AreaPick(x0, y0, x1, y1, renderer):
+            frustum = self._area_picker.GetFrustum()
+            if frustum is not None:
+                self._select_by_frustum(frustum, mode=mode)
+
+    def _select_by_frustum(self, frustum, mode="intersect"):
+        actor_map = self._build_actor_map()
+        if not actor_map:
+            return
+        for actor, element_info in actor_map.items():
+            mapper = actor.GetMapper()
+            if mapper is None:
+                continue
+            polydata = mapper.GetInput()
+            if polydata is None:
+                continue
+            if mode == "contain":
+                selected = self._polydata_fully_inside(polydata, frustum)
+            else:
+                selected = self._polydata_intersects(polydata, frustum)
+            if not selected:
+                continue
+            self._highlight_actor(actor, element_info["element_type"])
+            if self._on_pick:
+                self._on_pick(
+                    element_info["element_type"],
+                    element_info["element_obj"],
+                    element_info["element_index"],
+                )
+            if self.gui and hasattr(self.gui, "part_manager"):
+                self.gui.part_manager.on_geometry_element_selected(
+                    element_info["element_type"],
+                    element_info["element_obj"],
+                    element_info["element_index"],
+                )
+
+    def _polydata_intersects(self, polydata, frustum):
+        extractor = vtk.vtkExtractSelectedFrustum()
+        extractor.SetFrustum(frustum)
+        extractor.SetInputData(polydata)
+        extractor.Update()
+        output = extractor.GetOutput()
+        return output is not None and output.GetNumberOfCells() > 0
+
+    def _polydata_fully_inside(self, polydata, frustum):
+        points = polydata.GetPoints()
+        if points is None or points.GetNumberOfPoints() == 0:
+            return False
+        for i in range(points.GetNumberOfPoints()):
+            p = points.GetPoint(i)
+            if frustum.EvaluateFunction(p) > 1e-6:
+                return False
+        return True
+
     def _highlight_actor(self, actor, element_type):
         if actor in self._highlighted_actors:
             return
@@ -255,3 +333,51 @@ class GeometryPickingHelper:
         if self.gui and hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "_get_all_geometry_elements_from_tree"):
             return self.gui.part_manager._get_all_geometry_elements_from_tree()
         return {"vertices": [], "edges": [], "faces": [], "bodies": []}
+
+
+class _AreaSelectionFilter(QObject):
+    def __init__(self, helper: GeometryPickingHelper):
+        super().__init__()
+        self.helper = helper
+        self._origin = None
+        self._mode = None
+        self._rubber_band = QRubberBand(QRubberBand.Rectangle, helper.mesh_display.frame)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and event.modifiers() & Qt.AltModifier:
+            if event.button() == Qt.LeftButton:
+                self._mode = "intersect"
+            elif event.button() == Qt.RightButton:
+                self._mode = "contain"
+            else:
+                return False
+            self._origin = event.pos()
+            self.helper._area_selecting = True
+            self._rubber_band.setGeometry(QRect(self._origin, QSize()))
+            self._rubber_band.show()
+            return True
+
+        if event.type() == QEvent.MouseMove and self._origin is not None:
+            rect = QRect(self._origin, event.pos()).normalized()
+            self._rubber_band.setGeometry(rect)
+            return True
+
+        if event.type() == QEvent.MouseButtonRelease and self._origin is not None:
+            rect = QRect(self._origin, event.pos()).normalized()
+            self._rubber_band.hide()
+            self._origin = None
+            self.helper._area_selecting = False
+            if rect.width() > 2 and rect.height() > 2 and self._mode:
+                self.helper._select_by_rect(rect, self._mode)
+                if hasattr(self.helper.mesh_display, "render_window"):
+                    self.helper.mesh_display.render_window.Render()
+            self._mode = None
+            return True
+
+        if event.type() == QEvent.FocusOut:
+            self._origin = None
+            self._mode = None
+            self._rubber_band.hide()
+            self.helper._area_selecting = False
+
+        return False
