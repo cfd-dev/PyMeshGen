@@ -27,6 +27,7 @@ class GeometryPickingHelper:
         self._observer_id = None
         self._observer_right_id = None
         self._saved_display_mode = None
+        self._highlighted_actors: Dict[vtk.vtkActor, Dict[str, object]] = {}
 
         self._picker = vtk.vtkCellPicker()
         self._picker.SetTolerance(0.0005)
@@ -60,6 +61,7 @@ class GeometryPickingHelper:
                 interactor.RemoveObserver(self._observer_right_id)
         self._observer_id = None
         self._observer_right_id = None
+        self._clear_highlights()
         self._enabled = False
         self._restore_display_mode()
 
@@ -125,6 +127,7 @@ class GeometryPickingHelper:
 
         if actor is not None and actor in actor_map:
             element_info = actor_map[actor]
+            self._highlight_actor(actor, element_info["element_type"])
             if self._on_pick:
                 self._on_pick(
                     element_info["element_type"],
@@ -167,6 +170,7 @@ class GeometryPickingHelper:
 
         if actor is not None and actor in actor_map:
             element_info = actor_map[actor]
+            self._unhighlight_actor(actor)
             if self._on_unpick:
                 self._on_unpick(
                     element_info["element_type"],
@@ -205,6 +209,47 @@ class GeometryPickingHelper:
                 }
 
         return actor_map
+
+    def _highlight_actor(self, actor, element_type):
+        if actor in self._highlighted_actors:
+            return
+        prop = actor.GetProperty()
+        self._highlighted_actors[actor] = {
+            "color": prop.GetColor(),
+            "opacity": prop.GetOpacity(),
+            "line_width": prop.GetLineWidth(),
+            "point_size": prop.GetPointSize(),
+            "edge_visibility": prop.GetEdgeVisibility(),
+            "edge_color": prop.GetEdgeColor(),
+        }
+        prop.SetColor(1.0, 1.0, 0.0)
+        if element_type in ("edge", "edges"):
+            prop.SetLineWidth(max(prop.GetLineWidth(), 3.0))
+        elif element_type in ("vertex", "vertices"):
+            prop.SetPointSize(max(prop.GetPointSize(), 10.0))
+        else:
+            prop.SetOpacity(max(prop.GetOpacity(), 0.9))
+            prop.EdgeVisibilityOn()
+            prop.SetEdgeColor(0.0, 0.0, 0.0)
+
+    def _unhighlight_actor(self, actor):
+        if actor not in self._highlighted_actors:
+            return
+        props = self._highlighted_actors.pop(actor)
+        prop = actor.GetProperty()
+        prop.SetColor(*props["color"])
+        prop.SetOpacity(props["opacity"])
+        prop.SetLineWidth(props["line_width"])
+        prop.SetPointSize(props["point_size"])
+        if props["edge_visibility"]:
+            prop.EdgeVisibilityOn()
+        else:
+            prop.EdgeVisibilityOff()
+        prop.SetEdgeColor(*props["edge_color"])
+
+    def _clear_highlights(self):
+        for actor in list(self._highlighted_actors.keys()):
+            self._unhighlight_actor(actor)
 
     def _get_all_geometry_elements(self) -> Dict[str, list]:
         if self.gui and hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "_get_all_geometry_elements_from_tree"):
