@@ -1,5 +1,17 @@
 import os
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QInputDialog
+from PyQt5.QtWidgets import (
+    QFileDialog,
+    QMessageBox,
+    QInputDialog,
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
+    QLabel,
+    QRadioButton,
+    QComboBox,
+    QPushButton,
+)
 
 
 class GeometryOperations:
@@ -21,38 +33,14 @@ class GeometryOperations:
 
         if file_path:
             try:
-                source_options = ["从数模文件中获取单位", "将单位转换为"]
-                source_choice, ok = QInputDialog.getItem(
-                    self.gui,
-                    "长度单位来源",
-                    "请选择长度单位来源:",
-                    source_options,
-                    0,
-                    False,
-                )
-                if not ok:
-                    self.gui.log_info("导入几何已取消（未选择单位来源）")
+                unit_dialog = _GeometryUnitDialog(self.gui)
+                if unit_dialog.exec_() != QDialog.Accepted:
+                    self.gui.log_info("导入几何已取消（未设置单位）")
                     self.gui.update_status("导入几何已取消")
                     return
-
-                unit = "auto"
-                if source_choice == "将单位转换为":
-                    unit_options = ["mm", "cm", "m", "inch", "ft", "um"]
-                    unit, ok = QInputDialog.getItem(
-                        self.gui,
-                        "长度单位",
-                        "请选择几何文件长度单位（内部将转换为 mm）:",
-                        unit_options,
-                        0,
-                        False,
-                    )
-                    if not ok:
-                        self.gui.log_info("导入几何已取消（未选择单位）")
-                        self.gui.update_status("导入几何已取消")
-                        return
+                unit = unit_dialog.get_unit()
 
                 self.gui.geometry_import_thread = GeometryImportThread(file_path, unit=unit)
-                self.gui.geometry_import_thread.unit_source = source_choice
 
                 self.gui.geometry_import_thread.progress_updated.connect(self.gui.on_geometry_import_progress)
                 self.gui.geometry_import_thread.import_finished.connect(self.gui.on_geometry_import_finished)
@@ -70,6 +58,56 @@ class GeometryOperations:
             except Exception as e:
                 QMessageBox.critical(self.gui, "错误", f"导入几何失败: {str(e)}")
                 self.gui.log_error(f"导入几何失败: {str(e)}")
+
+
+class _GeometryUnitDialog(QDialog):
+    """几何单位设置对话框"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("几何单位设置")
+        self.setMinimumWidth(360)
+        self._unit_options = ["mm", "cm", "m", "inch", "ft", "um", "km", "mi"]
+        self._init_ui()
+
+    def _init_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        source_group = QGroupBox("单位来源")
+        source_layout = QVBoxLayout(source_group)
+        self.auto_radio = QRadioButton("从数模文件中获取单位")
+        self.convert_radio = QRadioButton("将单位转换为")
+        self.auto_radio.setChecked(True)
+        source_layout.addWidget(self.auto_radio)
+        source_layout.addWidget(self.convert_radio)
+        main_layout.addWidget(source_group)
+
+        convert_group = QGroupBox("转换单位")
+        convert_layout = QHBoxLayout(convert_group)
+        convert_layout.addWidget(QLabel("目标单位:"))
+        self.unit_combo = QComboBox()
+        self.unit_combo.addItems(self._unit_options)
+        self.unit_combo.setEnabled(False)
+        convert_layout.addWidget(self.unit_combo)
+        convert_layout.addStretch()
+        main_layout.addWidget(convert_group)
+
+        self.convert_radio.toggled.connect(self.unit_combo.setEnabled)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QPushButton("确定")
+        cancel_button = QPushButton("取消")
+        ok_button.clicked.connect(self.accept)
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        main_layout.addLayout(button_layout)
+
+    def get_unit(self):
+        if self.convert_radio.isChecked():
+            return self.unit_combo.currentText()
+        return "auto"
 
     def export_geometry(self):
         """导出几何文件"""
