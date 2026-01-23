@@ -210,6 +210,106 @@ class _GeometryUnitDialog(QDialog):
 
         self._merge_geometry(shape, mode_label="circle")
 
+    def create_geometry_polyline(self, points):
+        """创建多段线/折线"""
+        try:
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+            from OCC.Core.gp import gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if len(points) < 2:
+            QMessageBox.warning(self.gui, "警告", "多段线至少需要两个点")
+            return
+        wire_maker = BRepBuilderAPI_MakeWire()
+        for idx in range(len(points) - 1):
+            p1 = gp_Pnt(*points[idx])
+            p2 = gp_Pnt(*points[idx + 1])
+            wire_maker.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge())
+        if not wire_maker.IsDone():
+            QMessageBox.warning(self.gui, "警告", "多段线创建失败")
+            return
+        self._merge_geometry(wire_maker.Wire(), mode_label="polyline")
+
+    def create_geometry_polygon(self, points):
+        """创建多边形（闭合线框）"""
+        try:
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+            from OCC.Core.gp import gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if len(points) < 3:
+            QMessageBox.warning(self.gui, "警告", "多边形至少需要三个点")
+            return
+        wire_maker = BRepBuilderAPI_MakeWire()
+        for idx in range(len(points) - 1):
+            p1 = gp_Pnt(*points[idx])
+            p2 = gp_Pnt(*points[idx + 1])
+            wire_maker.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge())
+        if points[0] != points[-1]:
+            wire_maker.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(*points[-1]), gp_Pnt(*points[0])).Edge())
+        if not wire_maker.IsDone():
+            QMessageBox.warning(self.gui, "警告", "多边形创建失败")
+            return
+        self._merge_geometry(wire_maker.Wire(), mode_label="polygon")
+
+    def create_geometry_rectangle(self, p1, p2):
+        """创建矩形（基于两对角点，假定XY平面）"""
+        try:
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+            from OCC.Core.gp import gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if len(p1) < 3 or len(p2) < 3:
+            QMessageBox.warning(self.gui, "警告", "矩形需要两个点")
+            return
+        if abs(p1[2] - p2[2]) > 1e-6:
+            QMessageBox.warning(self.gui, "警告", "矩形点Z坐标不一致，已使用第一个点的Z")
+        z = p1[2]
+        x1, y1 = p1[0], p1[1]
+        x2, y2 = p2[0], p2[1]
+        corners = [
+            (x1, y1, z),
+            (x2, y1, z),
+            (x2, y2, z),
+            (x1, y2, z),
+        ]
+        wire_maker = BRepBuilderAPI_MakeWire()
+        for idx in range(len(corners)):
+            p_start = gp_Pnt(*corners[idx])
+            p_end = gp_Pnt(*corners[(idx + 1) % len(corners)])
+            wire_maker.Add(BRepBuilderAPI_MakeEdge(p_start, p_end).Edge())
+        if not wire_maker.IsDone():
+            QMessageBox.warning(self.gui, "警告", "矩形创建失败")
+            return
+        self._merge_geometry(wire_maker.Wire(), mode_label="rectangle")
+
+    def create_geometry_ellipse(self, center, major_radius, minor_radius, start_angle=0.0, end_angle=360.0):
+        """创建椭圆/椭圆弧（XY平面）"""
+        try:
+            from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Elips
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+            from OCC.Core.GC import GC_MakeEllipse, GC_MakeArcOfEllipse
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if major_radius <= 0 or minor_radius <= 0:
+            QMessageBox.warning(self.gui, "警告", "椭圆半径必须为正数")
+            return
+        center_pnt = gp_Pnt(*center)
+        axis = gp_Ax2(center_pnt, gp_Dir(0, 0, 1))
+        ellipse = gp_Elips(axis, major_radius, minor_radius)
+        if abs(end_angle - start_angle) >= 360.0:
+            shape = BRepBuilderAPI_MakeEdge(GC_MakeEllipse(ellipse).Value()).Edge()
+        else:
+            start_rad = start_angle * 3.141592653589793 / 180.0
+            end_rad = end_angle * 3.141592653589793 / 180.0
+            arc = GC_MakeArcOfEllipse(ellipse, start_rad, end_rad, True).Value()
+            shape = BRepBuilderAPI_MakeEdge(arc).Edge()
+        self._merge_geometry(shape, mode_label="ellipse")
+
     def _merge_geometry(self, new_shape, mode_label=""):
         if new_shape is None:
             return

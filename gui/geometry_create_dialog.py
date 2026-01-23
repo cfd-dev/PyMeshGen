@@ -46,19 +46,35 @@ class GeometryCreateDialog(QDialog):
         self.line_mode_button = QPushButton("直线")
         self.circle_mode_button = QPushButton("圆/圆弧")
         self.curve_mode_button = QPushButton("曲线")
+        self.polyline_mode_button = QPushButton("多段线/折线")
+        self.rectangle_mode_button = QPushButton("矩形")
+        self.polygon_mode_button = QPushButton("多边形")
+        self.ellipse_mode_button = QPushButton("椭圆/椭圆弧")
         self.point_mode_button.setCheckable(True)
         self.line_mode_button.setCheckable(True)
         self.circle_mode_button.setCheckable(True)
         self.curve_mode_button.setCheckable(True)
+        self.polyline_mode_button.setCheckable(True)
+        self.rectangle_mode_button.setCheckable(True)
+        self.polygon_mode_button.setCheckable(True)
+        self.ellipse_mode_button.setCheckable(True)
         self.point_mode_button.setChecked(True)
         self.point_mode_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
         self.line_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         self.circle_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         self.curve_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.polyline_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.rectangle_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.polygon_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.ellipse_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         mode_layout.addWidget(self.point_mode_button)
         mode_layout.addWidget(self.line_mode_button)
         mode_layout.addWidget(self.circle_mode_button)
         mode_layout.addWidget(self.curve_mode_button)
+        mode_layout.addWidget(self.polyline_mode_button)
+        mode_layout.addWidget(self.rectangle_mode_button)
+        mode_layout.addWidget(self.polygon_mode_button)
+        mode_layout.addWidget(self.ellipse_mode_button)
         mode_layout.addStretch()
         layout.addWidget(mode_group)
 
@@ -116,6 +132,58 @@ class GeometryCreateDialog(QDialog):
         curve_layout.addWidget(self.curve_table)
         coord_layout.addWidget(self.curve_form)
 
+        self.polyline_form = QWidget()
+        polyline_layout = QVBoxLayout(self.polyline_form)
+        polyline_layout.addWidget(QLabel("多段线点集 (至少2点):"))
+        self.polyline_table = QTableWidget(0, 3)
+        self.polyline_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
+        self.polyline_table.horizontalHeader().setStretchLastSection(True)
+        polyline_layout.addWidget(self.polyline_table)
+        coord_layout.addWidget(self.polyline_form)
+
+        self.rectangle_form = QWidget()
+        rectangle_layout = QFormLayout(self.rectangle_form)
+        self.rx1 = self._create_spin()
+        self.ry1 = self._create_spin()
+        self.rz1 = self._create_spin()
+        self.rx2 = self._create_spin()
+        self.ry2 = self._create_spin()
+        self.rz2 = self._create_spin()
+        rectangle_layout.addRow("P1 X:", self.rx1)
+        rectangle_layout.addRow("P1 Y:", self.ry1)
+        rectangle_layout.addRow("P1 Z:", self.rz1)
+        rectangle_layout.addRow("P2 X:", self.rx2)
+        rectangle_layout.addRow("P2 Y:", self.ry2)
+        rectangle_layout.addRow("P2 Z:", self.rz2)
+        coord_layout.addWidget(self.rectangle_form)
+
+        self.polygon_form = QWidget()
+        polygon_layout = QVBoxLayout(self.polygon_form)
+        polygon_layout.addWidget(QLabel("多边形点集 (至少3点):"))
+        self.polygon_table = QTableWidget(0, 3)
+        self.polygon_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
+        self.polygon_table.horizontalHeader().setStretchLastSection(True)
+        polygon_layout.addWidget(self.polygon_table)
+        coord_layout.addWidget(self.polygon_form)
+
+        self.ellipse_form = QWidget()
+        ellipse_layout = QFormLayout(self.ellipse_form)
+        self.ex = self._create_spin()
+        self.ey = self._create_spin()
+        self.ez = self._create_spin()
+        self.major_radius = self._create_spin(min_value=1e-6)
+        self.minor_radius = self._create_spin(min_value=1e-6)
+        self.ellipse_start_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
+        self.ellipse_end_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
+        ellipse_layout.addRow("圆心 X:", self.ex)
+        ellipse_layout.addRow("圆心 Y:", self.ey)
+        ellipse_layout.addRow("圆心 Z:", self.ez)
+        ellipse_layout.addRow("长半轴:", self.major_radius)
+        ellipse_layout.addRow("短半轴:", self.minor_radius)
+        ellipse_layout.addRow("起始角度(°):", self.ellipse_start_angle)
+        ellipse_layout.addRow("终止角度(°):", self.ellipse_end_angle)
+        coord_layout.addWidget(self.ellipse_form)
+
         layout.addWidget(coord_group)
 
         pick_group = QGroupBox("拾取")
@@ -146,6 +214,10 @@ class GeometryCreateDialog(QDialog):
         self.line_mode_button.clicked.connect(lambda: self._set_mode("直线"))
         self.circle_mode_button.clicked.connect(lambda: self._set_mode("圆/圆弧"))
         self.curve_mode_button.clicked.connect(lambda: self._set_mode("曲线"))
+        self.polyline_mode_button.clicked.connect(lambda: self._set_mode("多段线/折线"))
+        self.rectangle_mode_button.clicked.connect(lambda: self._set_mode("矩形"))
+        self.polygon_mode_button.clicked.connect(lambda: self._set_mode("多边形"))
+        self.ellipse_mode_button.clicked.connect(lambda: self._set_mode("椭圆/椭圆弧"))
         self.pick_button.clicked.connect(self._toggle_pick)
         self.pick_clear_button.clicked.connect(self._clear_picked)
         self.create_button.clicked.connect(self._create_geometry)
@@ -165,6 +237,10 @@ class GeometryCreateDialog(QDialog):
         self.line_form.setVisible(mode == "直线")
         self.circle_form.setVisible(mode == "圆/圆弧")
         self.curve_form.setVisible(mode == "曲线")
+        self.polyline_form.setVisible(mode == "多段线/折线")
+        self.rectangle_form.setVisible(mode == "矩形")
+        self.polygon_form.setVisible(mode == "多边形")
+        self.ellipse_form.setVisible(mode == "椭圆/椭圆弧")
 
     def _set_mode(self, mode):
         button_map = {
@@ -172,6 +248,10 @@ class GeometryCreateDialog(QDialog):
             "直线": self.line_mode_button,
             "圆/圆弧": self.circle_mode_button,
             "曲线": self.curve_mode_button,
+            "多段线/折线": self.polyline_mode_button,
+            "矩形": self.rectangle_mode_button,
+            "多边形": self.polygon_mode_button,
+            "椭圆/椭圆弧": self.ellipse_mode_button,
         }
         for key, button in button_map.items():
             button.setChecked(key == mode)
@@ -195,6 +275,26 @@ class GeometryCreateDialog(QDialog):
             if mode == "曲线"
             else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
         )
+        self.polyline_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "多段线/折线"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.rectangle_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "矩形"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.polygon_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "多边形"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.ellipse_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "椭圆/椭圆弧"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
         self._apply_mode_visibility()
 
     def _current_mode(self):
@@ -204,6 +304,14 @@ class GeometryCreateDialog(QDialog):
             return "圆/圆弧"
         if self.curve_mode_button.isChecked():
             return "曲线"
+        if self.polyline_mode_button.isChecked():
+            return "多段线/折线"
+        if self.rectangle_mode_button.isChecked():
+            return "矩形"
+        if self.polygon_mode_button.isChecked():
+            return "多边形"
+        if self.ellipse_mode_button.isChecked():
+            return "椭圆/椭圆弧"
         return "点"
 
     def _toggle_pick(self):
@@ -269,6 +377,48 @@ class GeometryCreateDialog(QDialog):
             self.curve_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
             self.curve_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
             self.curve_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
+        elif mode == "多段线/折线":
+            row = self.polyline_table.rowCount()
+            self.polyline_table.insertRow(row)
+            self.polyline_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
+            self.polyline_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
+            self.polyline_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
+        elif mode == "矩形":
+            if len(self._picked_points) == 1:
+                self.rx1.setValue(point[0])
+                self.ry1.setValue(point[1])
+                self.rz1.setValue(point[2])
+            elif len(self._picked_points) >= 2:
+                self.rx2.setValue(point[0])
+                self.ry2.setValue(point[1])
+                self.rz2.setValue(point[2])
+                if self.gui and hasattr(self.gui, 'view_controller'):
+                    self.gui.view_controller.stop_point_pick()
+                    self.pick_button.setText("进入拾取")
+        elif mode == "椭圆/椭圆弧":
+            if len(self._picked_points) == 1:
+                self.ex.setValue(point[0])
+                self.ey.setValue(point[1])
+                self.ez.setValue(point[2])
+            elif len(self._picked_points) == 2:
+                dx = point[0] - self.ex.value()
+                dy = point[1] - self.ey.value()
+                dz = point[2] - self.ez.value()
+                self.major_radius.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
+            elif len(self._picked_points) >= 3:
+                dx = point[0] - self.ex.value()
+                dy = point[1] - self.ey.value()
+                dz = point[2] - self.ez.value()
+                self.minor_radius.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
+                if self.gui and hasattr(self.gui, 'view_controller'):
+                    self.gui.view_controller.stop_point_pick()
+                    self.pick_button.setText("进入拾取")
+        elif mode == "多边形":
+            row = self.polygon_table.rowCount()
+            self.polygon_table.insertRow(row)
+            self.polygon_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
+            self.polygon_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
+            self.polygon_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
 
     def _create_geometry(self):
         if not self.gui or not hasattr(self.gui, 'geometry_operations'):
@@ -299,6 +449,31 @@ class GeometryCreateDialog(QDialog):
                 QMessageBox.warning(self, "警告", "曲线至少需要两个点")
                 return
             self.gui.geometry_operations.create_geometry_from_points(points, mode="curve")
+        elif mode == "多段线/折线":
+            points = self._get_table_points(self.polyline_table)
+            if len(points) < 2:
+                QMessageBox.warning(self, "警告", "多段线至少需要两个点")
+                return
+            self.gui.geometry_operations.create_geometry_polyline(points)
+        elif mode == "矩形":
+            p1 = (self.rx1.value(), self.ry1.value(), self.rz1.value())
+            p2 = (self.rx2.value(), self.ry2.value(), self.rz2.value())
+            self.gui.geometry_operations.create_geometry_rectangle(p1, p2)
+        elif mode == "多边形":
+            points = self._get_table_points(self.polygon_table)
+            if len(points) < 3:
+                QMessageBox.warning(self, "警告", "多边形至少需要三个点")
+                return
+            self.gui.geometry_operations.create_geometry_polygon(points)
+        elif mode == "椭圆/椭圆弧":
+            center = (self.ex.value(), self.ey.value(), self.ez.value())
+            self.gui.geometry_operations.create_geometry_ellipse(
+                center,
+                self.major_radius.value(),
+                self.minor_radius.value(),
+                start_angle=self.ellipse_start_angle.value(),
+                end_angle=self.ellipse_end_angle.value(),
+            )
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
             self.pick_button.setText("进入拾取")
@@ -310,6 +485,18 @@ class GeometryCreateDialog(QDialog):
                 x = float(self.curve_table.item(row, 0).text())
                 y = float(self.curve_table.item(row, 1).text())
                 z = float(self.curve_table.item(row, 2).text())
+                points.append((x, y, z))
+            except Exception:
+                continue
+        return points
+
+    def _get_table_points(self, table):
+        points = []
+        for row in range(table.rowCount()):
+            try:
+                x = float(table.item(row, 0).text())
+                y = float(table.item(row, 1).text())
+                z = float(table.item(row, 2).text())
                 points.append((x, y, z))
             except Exception:
                 continue
