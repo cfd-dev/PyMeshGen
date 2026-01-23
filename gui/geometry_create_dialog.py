@@ -8,7 +8,7 @@
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
-    QPushButton, QWidget, QComboBox, QDoubleSpinBox, QTableWidget,
+    QPushButton, QWidget, QDoubleSpinBox, QTableWidget,
     QTableWidgetItem, QMessageBox
 )
 from PyQt5.QtCore import Qt
@@ -42,10 +42,23 @@ class GeometryCreateDialog(QDialog):
         mode_group = QGroupBox("创建类型")
         mode_layout = QHBoxLayout(mode_group)
         mode_layout.addWidget(QLabel("类型:"))
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["点", "直线", "圆/圆弧", "曲线"])
-        self.mode_combo.setStyleSheet("background-color: white;")
-        mode_layout.addWidget(self.mode_combo)
+        self.point_mode_button = QPushButton("点")
+        self.line_mode_button = QPushButton("直线")
+        self.circle_mode_button = QPushButton("圆/圆弧")
+        self.curve_mode_button = QPushButton("曲线")
+        self.point_mode_button.setCheckable(True)
+        self.line_mode_button.setCheckable(True)
+        self.circle_mode_button.setCheckable(True)
+        self.curve_mode_button.setCheckable(True)
+        self.point_mode_button.setChecked(True)
+        self.point_mode_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
+        self.line_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.circle_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.curve_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        mode_layout.addWidget(self.point_mode_button)
+        mode_layout.addWidget(self.line_mode_button)
+        mode_layout.addWidget(self.circle_mode_button)
+        mode_layout.addWidget(self.curve_mode_button)
         mode_layout.addStretch()
         layout.addWidget(mode_group)
 
@@ -129,7 +142,10 @@ class GeometryCreateDialog(QDialog):
         self._apply_mode_visibility()
 
     def _connect_signals(self):
-        self.mode_combo.currentIndexChanged.connect(self._apply_mode_visibility)
+        self.point_mode_button.clicked.connect(lambda: self._set_mode("点"))
+        self.line_mode_button.clicked.connect(lambda: self._set_mode("直线"))
+        self.circle_mode_button.clicked.connect(lambda: self._set_mode("圆/圆弧"))
+        self.curve_mode_button.clicked.connect(lambda: self._set_mode("曲线"))
         self.pick_button.clicked.connect(self._toggle_pick)
         self.pick_clear_button.clicked.connect(self._clear_picked)
         self.create_button.clicked.connect(self._create_geometry)
@@ -144,11 +160,51 @@ class GeometryCreateDialog(QDialog):
         return spin
 
     def _apply_mode_visibility(self):
-        mode = self.mode_combo.currentText()
+        mode = self._current_mode()
         self.point_form.setVisible(mode == "点")
         self.line_form.setVisible(mode == "直线")
         self.circle_form.setVisible(mode == "圆/圆弧")
         self.curve_form.setVisible(mode == "曲线")
+
+    def _set_mode(self, mode):
+        button_map = {
+            "点": self.point_mode_button,
+            "直线": self.line_mode_button,
+            "圆/圆弧": self.circle_mode_button,
+            "曲线": self.curve_mode_button,
+        }
+        for key, button in button_map.items():
+            button.setChecked(key == mode)
+        self.point_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "点"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.line_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "直线"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.circle_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "圆/圆弧"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.curve_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "曲线"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self._apply_mode_visibility()
+
+    def _current_mode(self):
+        if self.line_mode_button.isChecked():
+            return "直线"
+        if self.circle_mode_button.isChecked():
+            return "圆/圆弧"
+        if self.curve_mode_button.isChecked():
+            return "曲线"
+        return "点"
 
     def _toggle_pick(self):
         if not self.gui or not hasattr(self.gui, 'view_controller'):
@@ -174,7 +230,7 @@ class GeometryCreateDialog(QDialog):
 
     def _on_point_picked(self, point):
         self._picked_points.append(point)
-        mode = self.mode_combo.currentText()
+        mode = self._current_mode()
         if mode == "点":
             self.px.setValue(point[0])
             self.py.setValue(point[1])
@@ -218,7 +274,7 @@ class GeometryCreateDialog(QDialog):
         if not self.gui or not hasattr(self.gui, 'geometry_operations'):
             QMessageBox.warning(self, "警告", "几何操作器未初始化")
             return
-        mode = self.mode_combo.currentText()
+        mode = self._current_mode()
         if mode == "点":
             points = [(self.px.value(), self.py.value(), self.pz.value())]
             self.gui.geometry_operations.create_geometry_from_points(points, mode="point")
