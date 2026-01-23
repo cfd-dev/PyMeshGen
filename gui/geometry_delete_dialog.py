@@ -34,10 +34,10 @@ class GeometryDeleteDialog(QDialog):
         self.geometry_data = getattr(self.gui, "current_geometry", None)
         self._picking_helper = None
         self.selected_geometry_elements = {
-            "vertices": [],
-            "edges": [],
-            "faces": [],
-            "bodies": []
+            "vertices": set(),
+            "edges": set(),
+            "faces": set(),
+            "bodies": set()
         }
 
         self._create_widgets()
@@ -177,8 +177,9 @@ class GeometryDeleteDialog(QDialog):
             for i in range(item.childCount()):
                 child = item.child(i)
                 child.setCheckState(0, item.checkState(0))
+                self._update_selected_from_item(child, item.checkState(0) == Qt.Checked)
         elif isinstance(data, tuple) and len(data) >= 3:
-            element_type, index = data[0], data[1]
+            element_type, element_obj = data[0], data[2]
             key_map = {
                 "vertex": "vertices",
                 "edge": "edges",
@@ -188,11 +189,9 @@ class GeometryDeleteDialog(QDialog):
             key = key_map.get(element_type)
             if key:
                 if item.checkState(0) == Qt.Checked:
-                    if index not in self.selected_geometry_elements[key]:
-                        self.selected_geometry_elements[key].append(index)
+                    self.selected_geometry_elements[key].add(element_obj)
                 else:
-                    if index in self.selected_geometry_elements[key]:
-                        self.selected_geometry_elements[key].remove(index)
+                    self.selected_geometry_elements[key].discard(element_obj)
 
         self.geometry_tree.blockSignals(False)
 
@@ -233,14 +232,13 @@ class GeometryDeleteDialog(QDialog):
         key = key_map.get(element_type)
         if key is None:
             return
-        tree_item = self._find_geometry_item(key, element_index)
+        tree_item = self._find_geometry_item(key, element_obj=element_obj, element_index=element_index)
         if tree_item is None:
             return
         self.geometry_tree.blockSignals(True)
         tree_item.setCheckState(0, Qt.Checked)
         self.geometry_tree.blockSignals(False)
-        if element_index not in self.selected_geometry_elements[key]:
-            self.selected_geometry_elements[key].append(element_index)
+        self._update_selected_from_item(tree_item, True)
 
     def _on_geometry_unpick(self, element_type, element_obj, element_index):
         key_map = {
@@ -252,16 +250,15 @@ class GeometryDeleteDialog(QDialog):
         key = key_map.get(element_type)
         if key is None:
             return
-        tree_item = self._find_geometry_item(key, element_index)
+        tree_item = self._find_geometry_item(key, element_obj=element_obj, element_index=element_index)
         if tree_item is None:
             return
         self.geometry_tree.blockSignals(True)
         tree_item.setCheckState(0, Qt.Unchecked)
         self.geometry_tree.blockSignals(False)
-        if element_index in self.selected_geometry_elements[key]:
-            self.selected_geometry_elements[key].remove(element_index)
+        self._update_selected_from_item(tree_item, False)
 
-    def _find_geometry_item(self, element_key, element_index):
+    def _find_geometry_item(self, element_key, element_index=None, element_obj=None):
         root_map = {
             "vertices": "geometry_vertices",
             "edges": "geometry_edges",
@@ -279,12 +276,47 @@ class GeometryDeleteDialog(QDialog):
                 child = root_item.child(j)
                 data = child.data(0, Qt.UserRole)
                 if isinstance(data, tuple) and len(data) >= 2:
-                    if data[1] == element_index:
+                    if element_obj is not None and len(data) >= 3:
+                        candidate = data[2]
+                        if hasattr(candidate, "IsEqual"):
+                            try:
+                                if candidate.IsEqual(element_obj):
+                                    return child
+                            except Exception:
+                                pass
+                        if hasattr(candidate, "IsSame"):
+                            try:
+                                if candidate.IsSame(element_obj):
+                                    return child
+                            except Exception:
+                                pass
+                        if candidate == element_obj:
+                            return child
+                    if element_index is not None and data[1] == element_index:
                         return child
         return None
 
     def _has_selection(self):
         return any(self.selected_geometry_elements.get(key) for key in self.selected_geometry_elements)
+
+    def _update_selected_from_item(self, item, checked):
+        data = item.data(0, Qt.UserRole)
+        if not (isinstance(data, tuple) and len(data) >= 3):
+            return
+        element_type, element_obj = data[0], data[2]
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies"
+        }
+        key = key_map.get(element_type)
+        if not key:
+            return
+        if checked:
+            self.selected_geometry_elements[key].add(element_obj)
+        else:
+            self.selected_geometry_elements[key].discard(element_obj)
 
     def accept(self):
         if not self._has_selection():
@@ -293,7 +325,8 @@ class GeometryDeleteDialog(QDialog):
         if not self.gui or not hasattr(self.gui, "delete_geometry_elements"):
             QMessageBox.warning(self, "警告", "未找到删除几何功能入口")
             return
-        success = self.gui.delete_geometry_elements(self.selected_geometry_elements)
+        element_map = {key: list(values) for key, values in self.selected_geometry_elements.items()}
+        success = self.gui.delete_geometry_elements(element_map)
         if success:
             self._disable_picking()
             super().accept()

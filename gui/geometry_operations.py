@@ -335,16 +335,22 @@ class GeometryOperations:
 
         remove_map = {}
         for key, occ_type in element_types:
-            indices = set(element_map.get(key, []) or [])
-            if not indices:
+            selected = element_map.get(key, []) or []
+            if not selected:
                 continue
             explorer = TopExp_Explorer(self.gui.current_geometry, occ_type)
-            idx = 0
             while explorer.More():
                 shape = explorer.Current()
-                if idx in indices:
-                    remove_map[shape] = True
-                idx += 1
+                for candidate in selected:
+                    try:
+                        if hasattr(shape, "IsEqual") and shape.IsEqual(candidate):
+                            remove_map[shape] = True
+                            break
+                        if hasattr(shape, "IsSame") and shape.IsSame(candidate):
+                            remove_map[shape] = True
+                            break
+                    except Exception:
+                        continue
                 explorer.Next()
 
         if not remove_map:
