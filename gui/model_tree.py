@@ -1052,6 +1052,13 @@ class ModelTreeWidget:
             create_part_action = QAction("创建部件", self.tree)
             create_part_action.triggered.connect(lambda: self._create_part_dialog())
             menu.addAction(create_part_action)
+        elif isinstance(element_data, tuple) and len(element_data) >= 2:
+            category = element_data[0]
+            if category == "parts":
+                menu.addSeparator()
+                add_elements_action = QAction("添加元素到部件", self.tree)
+                add_elements_action.triggered.connect(lambda: self._open_add_elements_dialog(item))
+                menu.addAction(add_elements_action)
 
         if not menu.isEmpty():
             menu.exec_(self.tree.mapToGlobal(position))
@@ -1243,6 +1250,42 @@ class ModelTreeWidget:
         handler = self._get_parent_handler('on_part_created')
         if handler:
             handler(part_info)
+
+    def _open_add_elements_dialog(self, part_item):
+        """打开向部件添加元素的对话框"""
+        element_data = part_item.data(0, Qt.UserRole)
+        if not (isinstance(element_data, tuple) and len(element_data) >= 2):
+            return
+        part_data = element_data[1]
+        part_name = part_item.text(0)
+
+        geometry_elements = {}
+        mesh_elements = {}
+        if isinstance(part_data, dict):
+            geometry_elements = part_data.get("geometry_elements", {}) or {}
+            mesh_elements = part_data.get("mesh_elements", {}) or {}
+
+        from .create_part_dialog import AddElementsToPartDialog
+        dialog = AddElementsToPartDialog(
+            self.parent,
+            self.geometry_data,
+            self.mesh_data,
+            part_name=part_name,
+            geometry_elements=geometry_elements,
+            mesh_elements=mesh_elements,
+        )
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.NonModal)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.accepted.connect(lambda: self._on_add_elements_dialog_accepted(dialog, part_item))
+        dialog.show()
+
+    def _on_add_elements_dialog_accepted(self, dialog, part_item):
+        part_info = dialog.get_part_info()
+        handler = self._get_parent_handler("on_part_elements_added")
+        if handler:
+            handler(part_info)
+        part_item.setToolTip(0, f"几何元素: {sum(len(v) for v in part_info.get('geometry_elements', {}).values())}, 网格元素: {sum(len(v) for v in part_info.get('mesh_elements', {}).values())}")
 
     def get_visible_elements(self, category=None, element_type=None):
         """

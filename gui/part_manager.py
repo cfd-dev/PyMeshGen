@@ -385,6 +385,68 @@ class PartManager:
 
         self.refresh_display_all_parts()
 
+    def on_part_elements_added(self, part_info):
+        """向已有部件添加元素"""
+        if not isinstance(part_info, dict):
+            return
+        part_name = part_info.get('part_name')
+        if not part_name:
+            return
+        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+            self.gui.log_info("未找到部件信息，无法添加元素")
+            self.gui.update_status("未找到部件信息")
+            return
+        if part_name not in self.gui.cas_parts_info:
+            self.gui.log_info(f"未找到部件 {part_name}")
+            self.gui.update_status("未找到部件")
+            return
+
+        geometry_elements = part_info.get('geometry_elements', {}) or {}
+        mesh_elements = part_info.get('mesh_elements', {}) or {}
+        if not geometry_elements and not mesh_elements:
+            self.gui.log_info("未选择任何元素")
+            self.gui.update_status("未选择任何元素")
+            return
+
+        target_part = self.gui.cas_parts_info.get(part_name, {})
+        target_part.setdefault('geometry_elements', {'vertices': [], 'edges': [], 'faces': [], 'bodies': []})
+        target_part.setdefault('mesh_elements', {'vertices': [], 'edges': [], 'faces': [], 'bodies': []})
+
+        self._merge_elements(target_part['geometry_elements'], geometry_elements)
+        self._merge_elements(target_part['mesh_elements'], mesh_elements)
+
+        if 'DefaultPart' in self.gui.cas_parts_info:
+            default_part = self.gui.cas_parts_info['DefaultPart']
+            if 'mesh_elements' in default_part:
+                self._remove_elements(default_part['mesh_elements'], mesh_elements)
+            if 'geometry_elements' in default_part:
+                self._remove_elements(default_part['geometry_elements'], geometry_elements)
+
+        self.gui.cas_parts_info[part_name] = target_part
+
+        if hasattr(self.gui, 'model_tree_widget'):
+            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+
+        self.gui.log_info(f"已向部件 {part_name} 添加元素")
+        self.gui.update_status(f"部件已更新: {part_name}")
+        self.refresh_display_all_parts()
+
+    def _merge_elements(self, target, incoming):
+        for key, items in incoming.items():
+            if key not in target:
+                target[key] = []
+            for idx in items:
+                if idx not in target[key]:
+                    target[key].append(idx)
+
+    def _remove_elements(self, target, incoming):
+        for key, items in incoming.items():
+            if key not in target:
+                continue
+            for idx in items:
+                if idx in target[key]:
+                    target[key].remove(idx)
+
     def refresh_display_all_parts(self):
         """刷新显示所有可见部件 - 优化版本，批量处理减少渲染次数"""
         if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:

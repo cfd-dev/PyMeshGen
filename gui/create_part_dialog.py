@@ -484,3 +484,57 @@ class CreatePartDialog(QDialog):
                     if data[1] == element_index:
                         return child
         return None
+
+
+class AddElementsToPartDialog(CreatePartDialog):
+    """向已有部件添加元素的对话框"""
+
+    def __init__(self, parent=None, geometry_data=None, mesh_data=None, part_name="", geometry_elements=None, mesh_elements=None):
+        self._existing_geometry_elements = geometry_elements or {}
+        self._existing_mesh_elements = mesh_elements or {}
+        super().__init__(parent, geometry_data, mesh_data)
+        self.setWindowTitle("添加元素到部件")
+        if part_name:
+            self.part_name_edit.setText(part_name)
+        self.part_name_edit.setReadOnly(True)
+        self.part_name_edit.setEnabled(False)
+        self.part_name = self.part_name_edit.text().strip()
+        self._apply_existing_selection()
+
+    def _apply_existing_selection(self):
+        self.selected_geometry_elements = {
+            "vertices": list(self._existing_geometry_elements.get("vertices", [])),
+            "edges": list(self._existing_geometry_elements.get("edges", [])),
+            "faces": list(self._existing_geometry_elements.get("faces", [])),
+            "bodies": list(self._existing_geometry_elements.get("bodies", [])),
+        }
+        self.selected_mesh_elements = {
+            "vertices": list(self._existing_mesh_elements.get("vertices", [])),
+            "edges": list(self._existing_mesh_elements.get("edges", [])),
+            "faces": list(self._existing_mesh_elements.get("faces", [])),
+            "bodies": list(self._existing_mesh_elements.get("bodies", [])),
+        }
+        self._check_existing_items(self.geometry_tree, self.selected_geometry_elements)
+        self._check_existing_items(self.mesh_tree, self.selected_mesh_elements)
+
+    def _check_existing_items(self, tree, selected_map):
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+        }
+        tree.blockSignals(True)
+        root = tree.invisibleRootItem()
+        stack = [root]
+        while stack:
+            item = stack.pop()
+            data = item.data(0, Qt.UserRole)
+            if isinstance(data, tuple) and len(data) >= 3:
+                element_type, index = data[0], data[1]
+                key = key_map.get(element_type)
+                if key and index in selected_map.get(key, []):
+                    item.setCheckState(0, Qt.Checked)
+            for i in range(item.childCount()):
+                stack.append(item.child(i))
+        tree.blockSignals(False)
