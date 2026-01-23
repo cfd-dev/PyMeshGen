@@ -993,6 +993,9 @@ class PyMeshGenGUI(QMainWindow):
             shape = result['shape']
             stats = result['stats']
             file_path = result['file_path']
+            unit = result.get('unit', 'mm')
+            unit_source = result.get('unit_source', 'manual')
+            auto_detected = result.get('auto_detected', True)
             file_ext = os.path.splitext(file_path)[1].lower()
 
             self.current_geometry_stats = stats
@@ -1021,8 +1024,8 @@ class PyMeshGenGUI(QMainWindow):
                 if not hasattr(self, 'geometry_actors_cache'):
                     self.geometry_actors_cache = {}
 
-            # 对于STL文件，立即创建显示；对于非STL文件，仅存储几何数据，等待模型树加载后显示
-            if file_ext == ".stl":
+            # 对于STL文件，若单位为mm则直接VTK显示，否则使用OCC显示
+            if file_ext == ".stl" and unit == "mm":
                 self.update_status("正在创建几何显示...")
 
                 if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
@@ -1116,7 +1119,10 @@ class PyMeshGenGUI(QMainWindow):
                 self.geometry_display_source = "occ"
                 self.log_info(f"非STL文件，跳过初始显示，等待模型树加载...")
 
-            self.log_info(f"已导入几何: {file_path}")
+            if unit_source == "auto" and not auto_detected:
+                QMessageBox.warning(self, "提示", "未能从数模文件中读取单位，已按毫米(mm)处理")
+                self.log_warning("未能从数模文件中读取单位，已按毫米(mm)处理")
+            self.log_info(f"已导入几何: {file_path} (单位: {unit})")
             self.update_status("已导入几何")
             self.status_bar.hide_progress()
 

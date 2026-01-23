@@ -18,19 +18,100 @@ try:
     from OCC.Core.TopExp import TopExp_Explorer
     from OCC.Core.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_WIRE, TopAbs_EDGE, TopAbs_VERTEX
     from OCC.Core.BRep import BRep_Tool
-    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeVertex, BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid
+    from OCC.Core.BRepBuilderAPI import (
+        BRepBuilderAPI_MakeVertex,
+        BRepBuilderAPI_MakeEdge,
+        BRepBuilderAPI_MakeWire,
+        BRepBuilderAPI_MakeFace,
+        BRepBuilderAPI_MakeSolid,
+        BRepBuilderAPI_Transform,
+    )
     from OCC.Core.Geom import Geom_Curve, Geom_Surface
-    from OCC.Core.gp import gp_Pnt, gp_Vec
+    from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf
+    from OCC.Core.IFSelect import IFSelect_RetDone
 except ImportError:
     raise ImportError("无法导入OpenCASCADE库，请确保已安装pythonocc-core")
 
+_LENGTH_UNIT_TO_MM = {
+    "mm": 1.0,
+    "cm": 10.0,
+    "m": 1000.0,
+    "km": 1000000.0,
+    "inch": 25.4,
+    "ft": 304.8,
+    "mi": 1609344.0,
+    "um": 0.001,
+}
 
-def import_geometry_file(filename: str) -> TopoDS_Shape:
+_LENGTH_UNIT_ALIASES = {
+    "millimeter": "mm",
+    "millimeters": "mm",
+    "centimeter": "cm",
+    "centimeters": "cm",
+    "meter": "m",
+    "meters": "m",
+    "kilometer": "km",
+    "kilometers": "km",
+    "kilometre": "km",
+    "kilometres": "km",
+    "in": "inch",
+    "feet": "ft",
+    "foot": "ft",
+    "mile": "mi",
+    "miles": "mi",
+    "micron": "um",
+    "microns": "um",
+    "毫米": "mm",
+    "厘米": "cm",
+    "米": "m",
+    "公里": "km",
+    "英寸": "inch",
+    "英尺": "ft",
+    "英里": "mi",
+    "微米": "um",
+}
+
+
+def normalize_length_unit(unit: str) -> str:
+    """规范化长度单位名称"""
+    if unit is None:
+        return "mm"
+    unit_key = unit.strip().lower()
+    if not unit_key:
+        return "mm"
+    unit_key = _LENGTH_UNIT_ALIASES.get(unit_key, unit_key)
+    if unit_key not in _LENGTH_UNIT_TO_MM:
+        raise ValueError(f"不支持的长度单位: {unit}")
+    return unit_key
+
+
+def get_length_unit_scale(unit: str) -> Tuple[str, float]:
+    """获取长度单位到毫米的换算系数"""
+    unit_key = normalize_length_unit(unit)
+    return unit_key, _LENGTH_UNIT_TO_MM[unit_key]
+
+
+def scale_shape_from_mm(shape: TopoDS_Shape, unit: str) -> Tuple[TopoDS_Shape, float, str]:
+    """按指定单位缩放几何（假定当前坐标单位为mm）"""
+    unit_key, mm_per_unit = get_length_unit_scale(unit)
+    if mm_per_unit == 1.0:
+        return shape, 1.0, unit_key
+    scale_factor = 1.0 / mm_per_unit
+    transform = gp_Trsf()
+    transform.SetScale(gp_Pnt(0.0, 0.0, 0.0), scale_factor)
+    transformer = BRepBuilderAPI_Transform(shape, transform, True)
+    if not transformer.IsDone():
+        raise ValueError("几何缩放失败")
+    return transformer.Shape(), scale_factor, unit_key
+
+
+def import_geometry_file(filename: str, unit: str = "mm", return_unit_info: bool = False):
     """
     导入几何文件，自动识别文件格式
     
     Args:
         filename: 几何文件路径
+        unit: 目标长度单位（或"auto"表示从文件读取）
         
     Returns:
         TopoDS_Shape: 导入的几何形状
@@ -45,13 +126,91 @@ def import_geometry_file(filename: str) -> TopoDS_Shape:
     file_ext = os.path.splitext(filename)[1].lower()
     
     if file_ext in ['.step', '.stp']:
-        return import_step_file(filename)
+        shape = import_step_file(filename)
     elif file_ext in ['.iges', '.igs']:
-        return import_iges_file(filename)
+        shape = import_iges_file(filename)
     elif file_ext in ['.stl']:
-        return import_stl_file(filename)
+        shape = import_stl_file(filename)
     else:
         raise ValueError(f"不支持的文件格式: {file_ext}")
+
+    unit_source = "manual"
+    auto_detected = True
+    unit_to_apply = unit
+    if unit == "auto":
+        unit_source = "auto"
+        unit_to_apply, auto_detected = detect_geometry_unit(filename, file_ext)
+
+    shape, _, unit_key = scale_shape_from_mm(shape, unit_to_apply)
+    if return_unit_info:
+        return shape, unit_key, unit_source, auto_detected
+    return shape
+
+
+def detect_geometry_unit(filename: str, file_ext: str) -> Tuple[str, bool]:
+    """尝试从几何文件中读取长度单位，失败时返回(mm, False)"""
+    if file_ext in ['.step', '.stp']:
+        return _detect_step_unit(filename)
+    if file_ext in ['.iges', '.igs']:
+        return _detect_iges_unit(filename)
+    return "mm", False
+
+
+def _detect_step_unit(filename: str) -> Tuple[str, bool]:
+    try:
+        from OCC.Core.STEPControl import STEPControl_Reader
+        from OCC.Core.TDocStd import TDocStd_Document
+        from OCC.Core.XCAFApp import XCAFApp_Application
+        from OCC.Core.XCAFDoc import XCAFDoc_DocumentTool
+    except Exception:
+        return "mm", False
+
+    reader = STEPControl_Reader()
+    if reader.ReadFile(filename) != IFSelect_RetDone:
+        return "mm", False
+
+    app = XCAFApp_Application.GetApplication().GetObject()
+    doc = TDocStd_Document("pythonocc-doc")
+    app.NewDocument("MDTV-XCAF", doc)
+    if reader.Transfer(doc):
+        try:
+            shape_tool = XCAFDoc_DocumentTool.ShapeTool(doc.Main())
+            unit = shape_tool.GetLengthUnit()
+            if unit and unit > 0:
+                unit_name = _convert_mm_value_to_unit_name(unit)
+                return unit_name, True
+        except Exception:
+            return "mm", False
+
+    return "mm", False
+
+
+def _detect_iges_unit(filename: str) -> Tuple[str, bool]:
+    try:
+        from OCC.Core.IGESControl import IGESControl_Reader
+    except Exception:
+        return "mm", False
+
+    reader = IGESControl_Reader()
+    if reader.ReadFile(filename) != IFSelect_RetDone:
+        return "mm", False
+
+    try:
+        unit = reader.Model().GlobalSection().UnitValue()
+        if unit and unit > 0:
+            return _convert_mm_value_to_unit_name(unit), True
+    except Exception:
+        return "mm", False
+
+    return "mm", False
+
+
+def _convert_mm_value_to_unit_name(mm_value: float) -> str:
+    tolerance = 1e-6
+    for unit_name, scale in _LENGTH_UNIT_TO_MM.items():
+        if abs(scale - mm_value) <= tolerance:
+            return unit_name
+    return "mm"
 
 
 def import_step_file(filename: str) -> TopoDS_Shape:

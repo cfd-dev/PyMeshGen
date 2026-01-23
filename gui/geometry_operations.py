@@ -1,5 +1,5 @@
 import os
-from PyQt5.QtWidgets import QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QInputDialog
 
 
 class GeometryOperations:
@@ -21,7 +21,38 @@ class GeometryOperations:
 
         if file_path:
             try:
-                self.gui.geometry_import_thread = GeometryImportThread(file_path)
+                source_options = ["从数模文件中获取单位", "将单位转换为"]
+                source_choice, ok = QInputDialog.getItem(
+                    self.gui,
+                    "长度单位来源",
+                    "请选择长度单位来源:",
+                    source_options,
+                    0,
+                    False,
+                )
+                if not ok:
+                    self.gui.log_info("导入几何已取消（未选择单位来源）")
+                    self.gui.update_status("导入几何已取消")
+                    return
+
+                unit = "auto"
+                if source_choice == "将单位转换为":
+                    unit_options = ["mm", "cm", "m", "inch", "ft", "um"]
+                    unit, ok = QInputDialog.getItem(
+                        self.gui,
+                        "长度单位",
+                        "请选择几何文件长度单位（内部将转换为 mm）:",
+                        unit_options,
+                        0,
+                        False,
+                    )
+                    if not ok:
+                        self.gui.log_info("导入几何已取消（未选择单位）")
+                        self.gui.update_status("导入几何已取消")
+                        return
+
+                self.gui.geometry_import_thread = GeometryImportThread(file_path, unit=unit)
+                self.gui.geometry_import_thread.unit_source = source_choice
 
                 self.gui.geometry_import_thread.progress_updated.connect(self.gui.on_geometry_import_progress)
                 self.gui.geometry_import_thread.import_finished.connect(self.gui.on_geometry_import_finished)

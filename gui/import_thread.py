@@ -18,9 +18,11 @@ class GeometryImportThread(QThread):
     import_finished = pyqtSignal(object)  # 导入的几何形状
     import_failed = pyqtSignal(str)  # 错误信息
 
-    def __init__(self, file_path, create_vtk_actors=None):
+    def __init__(self, file_path, create_vtk_actors=None, unit="mm", unit_source=None):
         super().__init__()
         self.file_path = file_path
+        self.unit = unit
+        self.unit_source = unit_source
         self._is_running = True
 
         # 如果create_vtk_actors参数未指定，则根据文件扩展名决定
@@ -48,7 +50,11 @@ class GeometryImportThread(QThread):
             if not self._is_running:
                 return
 
-            shape = import_geometry_file(self.file_path)
+            shape, unit_key, unit_source, auto_detected = import_geometry_file(
+                self.file_path,
+                unit=self.unit,
+                return_unit_info=True,
+            )
 
             if not self._is_running:
                 return
@@ -66,7 +72,10 @@ class GeometryImportThread(QThread):
             result = {
                 'shape': shape,
                 'stats': stats,
-                'file_path': self.file_path
+                'file_path': self.file_path,
+                'unit': unit_key,
+                'unit_source': unit_source,
+                'auto_detected': auto_detected,
             }
 
             if self.create_vtk_actors:
