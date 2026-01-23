@@ -347,7 +347,7 @@ class _AreaSelectionFilter(QObject):
         self._rubber_band = QRubberBand(QRubberBand.Rectangle, helper.mesh_display.frame)
         self._rubber_band.setAttribute(Qt.WA_TranslucentBackground, True)
         self._rubber_band.setStyleSheet(
-            "QRubberBand { background-color: rgba(255, 255, 255, 0); border: 1px dashed rgb(255, 210, 0); }"
+            "QRubberBand { background-color: transparent; border: 2px dashed rgba(255, 210, 0, 255); }"
         )
 
     def eventFilter(self, obj, event):
