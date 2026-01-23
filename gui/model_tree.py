@@ -1056,6 +1056,9 @@ class ModelTreeWidget:
             category = element_data[0]
             if category == "parts":
                 menu.addSeparator()
+                params_action = QAction("设置部件参数", self.tree)
+                params_action.triggered.connect(lambda: self._open_part_params_dialog(item))
+                menu.addAction(params_action)
                 add_elements_action = QAction("添加元素到部件", self.tree)
                 add_elements_action.triggered.connect(lambda: self._open_add_elements_dialog(item))
                 menu.addAction(add_elements_action)
@@ -1286,6 +1289,15 @@ class ModelTreeWidget:
         if handler:
             handler(part_info)
         part_item.setToolTip(0, f"几何元素: {sum(len(v) for v in part_info.get('geometry_elements', {}).values())}, 网格元素: {sum(len(v) for v in part_info.get('mesh_elements', {}).values())}")
+
+    def _open_part_params_dialog(self, part_item):
+        element_data = part_item.data(0, Qt.UserRole)
+        if not (isinstance(element_data, tuple) and len(element_data) >= 2):
+            return
+        part_name = part_item.text(0)
+        handler = self._get_parent_handler("edit_mesh_params_for_part")
+        if handler:
+            handler(part_name)
 
     def get_visible_elements(self, category=None, element_type=None):
         """

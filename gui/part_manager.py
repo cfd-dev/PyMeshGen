@@ -92,6 +92,60 @@ class PartManager:
             self.gui.log_info("取消设置部件参数")
             self.gui.update_status("已取消部件参数设置")
 
+    def edit_mesh_params_for_part(self, part_name):
+        """编辑指定部件的参数"""
+        from PyQt5.QtWidgets import QDialog
+        from gui.part_params_dialog import PartParamsDialog
+
+        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+            QMessageBox.warning(self.gui, "警告", "请先导入网格文件以获取部件列表")
+            self.gui.log_info("未检测到导入的网格数据，无法设置部件参数")
+            self.gui.update_status("未检测到导入的网格数据")
+            return
+
+        current_part_names = []
+        if isinstance(self.gui.cas_parts_info, dict):
+            current_part_names = list(self.gui.cas_parts_info.keys())
+        elif isinstance(self.gui.cas_parts_info, list):
+            current_part_names = [part_info.get('part_name', f'部件{self.gui.cas_parts_info.index(part_info)}') for part_info in self.gui.cas_parts_info]
+
+        if part_name not in current_part_names:
+            self.gui.log_info(f"未找到部件: {part_name}")
+            self.gui.update_status("未找到部件")
+            return
+
+        saved_params_map = {}
+        if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
+            for param in self.gui.parts_params:
+                if 'part_name' in param:
+                    saved_params_map[param['part_name']] = param
+
+        parts_params = []
+        for name in current_part_names:
+            if name in saved_params_map:
+                parts_params.append(saved_params_map[name])
+            else:
+                parts_params.append({
+                    "part_name": name,
+                    "max_size": 1e6,
+                    "PRISM_SWITCH": "off",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "max_layers": 5,
+                    "full_layers": 5,
+                    "multi_direction": False
+                })
+
+        current_index = current_part_names.index(part_name)
+        dialog = PartParamsDialog(self.gui, parts=parts_params, current_part=current_index)
+        if dialog.exec_() == QDialog.Accepted:
+            self.gui.parts_params = dialog.get_parts_params()
+            self.gui.log_info(f"已更新部件参数，共 {len(self.gui.parts_params)} 个部件")
+            self.gui.update_status("部件参数已更新")
+        else:
+            self.gui.log_info("取消设置部件参数")
+            self.gui.update_status("已取消部件参数设置")
+
     def update_parts_list(self, update_status=True):
         """更新部件列表"""
         if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
