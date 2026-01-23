@@ -259,19 +259,28 @@ class GeometryPickingHelper:
                 selected = self._polydata_intersects(polydata, frustum)
             if not selected:
                 continue
-            self._highlight_actor(actor, element_info["element_type"])
-            if self._on_pick:
-                self._on_pick(
-                    element_info["element_type"],
-                    element_info["element_obj"],
-                    element_info["element_index"],
-                )
-            if self.gui and hasattr(self.gui, "part_manager"):
-                self.gui.part_manager.on_geometry_element_selected(
-                    element_info["element_type"],
-                    element_info["element_obj"],
-                    element_info["element_index"],
-                )
+            if actor in self._highlighted_actors:
+                self._unhighlight_actor(actor)
+                if self._on_unpick:
+                    self._on_unpick(
+                        element_info["element_type"],
+                        element_info["element_obj"],
+                        element_info["element_index"],
+                    )
+            else:
+                self._highlight_actor(actor, element_info["element_type"])
+                if self._on_pick:
+                    self._on_pick(
+                        element_info["element_type"],
+                        element_info["element_obj"],
+                        element_info["element_index"],
+                    )
+                if self.gui and hasattr(self.gui, "part_manager"):
+                    self.gui.part_manager.on_geometry_element_selected(
+                        element_info["element_type"],
+                        element_info["element_obj"],
+                        element_info["element_index"],
+                    )
 
     def _polydata_intersects(self, polydata, frustum):
         extractor = vtk.vtkExtractSelectedFrustum()
