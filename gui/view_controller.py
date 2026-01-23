@@ -19,6 +19,8 @@ class ViewController:
 
     def __init__(self, gui_instance):
         self.gui = gui_instance
+        self._picking_helper = None
+        self._picking_enabled = False
 
     def reset_view(self):
         """重置视图"""
@@ -149,6 +151,32 @@ class ViewController:
             else:
                 self.gui.status_bar.status_bar.show()
                 self.gui.log_info("状态栏已显示")
+
+    def toggle_picking_mode(self):
+        """切换拾取模式开关"""
+        self.set_picking_mode(not self._picking_enabled)
+
+    def set_picking_mode(self, enabled):
+        """设置拾取模式"""
+        if enabled:
+            if self._picking_helper is None:
+                if not hasattr(self.gui, 'mesh_display') or self.gui.mesh_display is None:
+                    self.gui.log_warning("拾取模式开启失败: 未找到视图区")
+                    self.gui.update_status("拾取模式开启失败")
+                    return
+                from .geometry_picking import GeometryPickingHelper
+                self._picking_helper = GeometryPickingHelper(self.gui.mesh_display, gui=self.gui)
+            self._picking_helper.enable()
+            self._picking_enabled = True
+            self.gui.log_info("拾取模式已开启")
+            self.gui.update_status("拾取模式: 开启")
+        else:
+            if self._picking_helper is not None:
+                self._picking_helper.cleanup()
+                self._picking_helper = None
+            self._picking_enabled = False
+            self.gui.log_info("拾取模式已关闭")
+            self.gui.update_status("拾取模式: 关闭")
 
     def _apply_render_mode_to_geometry(self, mode):
         display_mode = getattr(self.gui, 'display_mode', 'full')

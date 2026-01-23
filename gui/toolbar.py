@@ -62,6 +62,16 @@ class ViewToolbar(QToolBar):
         self.actions['surface-wireframe'] = surface_wireframe_action
         
         self.addSeparator()
+
+        # Picking mode toggle
+        picking_action = QAction(get_icon('view-picking'), "拾取模式", self)
+        picking_action.setStatusTip("切换拾取/显示模式")
+        picking_action.setCheckable(True)
+        picking_action.triggered.connect(self._emit_picking_toggle)
+        self.addAction(picking_action)
+        self.actions['picking'] = picking_action
+        
+        self.addSeparator()
         
         # View orientation actions
         # Reset view
@@ -222,6 +232,21 @@ class ViewToolbar(QToolBar):
         except Exception:
             # 忽略日志错误，确保不影响主逻辑
             pass
+
+    def _emit_picking_toggle(self, checked):
+        """Emit signal for picking toggle - to be connected externally"""
+        view_controller = None
+        if hasattr(self.parent(), 'view_controller'):
+            view_controller = self.parent().view_controller
+        elif hasattr(self.window(), 'view_controller'):
+            view_controller = self.window().view_controller
+
+        if view_controller and hasattr(view_controller, 'set_picking_mode'):
+            view_controller.set_picking_mode(checked)
+        elif hasattr(self.parent(), 'set_picking_mode'):
+            self.parent().set_picking_mode(checked)
+        elif hasattr(self.window(), 'set_picking_mode'):
+            self.window().set_picking_mode(checked)
 
     def add_view_toolbar_to_main_window(self, main_window):
         """Connect the toolbar to the main window methods
