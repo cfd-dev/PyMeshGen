@@ -21,6 +21,9 @@ class ViewController:
         self.gui = gui_instance
         self._picking_helper = None
         self._picking_enabled = False
+        self._point_pick_observer_id = None
+        self._point_pick_callback = None
+        self._point_picker = None
 
     def reset_view(self):
         """重置视图"""
@@ -177,6 +180,54 @@ class ViewController:
             self._picking_enabled = False
             self.gui.log_info("拾取模式已关闭")
             self.gui.update_status("拾取模式: 关闭")
+
+    def start_point_pick(self, callback):
+        """开始点拾取"""
+        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+            return
+        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
+        if interactor is None:
+            return
+        self._point_pick_callback = callback
+        if self._point_picker is None:
+            import vtk
+            self._point_picker = vtk.vtkCellPicker()
+            self._point_picker.SetTolerance(0.0005)
+        if self._point_pick_observer_id is None:
+            self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick)
+        self.gui.update_status("点拾取: 开启")
+
+    def stop_point_pick(self):
+        """停止点拾取"""
+        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+            return
+        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
+        if interactor is not None and self._point_pick_observer_id is not None:
+            interactor.RemoveObserver(self._point_pick_observer_id)
+        self._point_pick_observer_id = None
+        self._point_pick_callback = None
+        self.gui.update_status("点拾取: 关闭")
+
+    def is_point_pick_active(self):
+        return self._point_pick_observer_id is not None
+
+    def _on_point_pick(self, obj, event):
+        if not self._point_pick_callback:
+            return
+        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+            return
+        renderer = getattr(self.gui.mesh_display, 'renderer', None)
+        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
+        if renderer is None or interactor is None:
+            return
+        click_pos = interactor.GetEventPosition()
+        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+        if picked:
+            pos = self._point_picker.GetPickPosition()
+            self._point_pick_callback((pos[0], pos[1], pos[2]))
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnLeftButtonDown()
 
     def _apply_render_mode_to_geometry(self, mode):
         display_mode = getattr(self.gui, 'display_mode', 'full')

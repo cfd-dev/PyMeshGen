@@ -967,6 +967,20 @@ class PyMeshGenGUI(QMainWindow):
         """导入几何文件（使用异步线程，避免GUI卡顿）"""
         self.geometry_operations.import_geometry()
 
+    def open_geometry_create_dialog(self):
+        """打开几何创建对话框"""
+        from gui.geometry_create_dialog import GeometryCreateDialog
+        existing_dialog = getattr(self, "_geometry_create_dialog", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+        dialog = GeometryCreateDialog(self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda: setattr(self, "_geometry_create_dialog", None))
+        self._geometry_create_dialog = dialog
+        dialog.show()
+
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
         self._update_progress(message, progress, "geometry")

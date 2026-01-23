@@ -352,6 +352,7 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['import_geometry'] = geometry_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
         self.buttons['geometry']['import'] = geometry_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
         self.buttons['geometry']['extract_boundary'] = geometry_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
+        self.buttons['geometry']['create_geometry'] = geometry_group.add_large_button("创建几何", tooltip="创建点/线/圆弧/曲线")
         layout.addWidget(geometry_group)
 
         layout.addStretch(1)
@@ -419,6 +420,7 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
         self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
         self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
+        self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))
 
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))
