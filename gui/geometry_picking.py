@@ -342,6 +342,10 @@ class _AreaSelectionFilter(QObject):
         self._origin = None
         self._mode = None
         self._rubber_band = QRubberBand(QRubberBand.Rectangle, helper.mesh_display.frame)
+        self._rubber_band.setAttribute(Qt.WA_TranslucentBackground, True)
+        self._rubber_band.setStyleSheet(
+            "QRubberBand { background-color: rgba(255, 255, 255, 0); border: 1px dashed rgb(255, 210, 0); }"
+        )
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.MouseButtonPress and event.modifiers() & Qt.AltModifier:
@@ -381,3 +385,5 @@ class _AreaSelectionFilter(QObject):
             self.helper._area_selecting = False
 
         return False
+
+
