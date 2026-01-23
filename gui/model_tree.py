@@ -1047,11 +1047,20 @@ class ModelTreeWidget:
                     view_volume_action.triggered.connect(lambda: self._show_solid_properties(element_obj, item))
                     menu.addAction(view_volume_action)
 
+                delete_action = QAction("删除几何", self.tree)
+                delete_action.triggered.connect(self._open_geometry_delete_dialog)
+                menu.addAction(delete_action)
+
         if element_data == "parts":
             menu.addSeparator()
             create_part_action = QAction("创建部件", self.tree)
             create_part_action.triggered.connect(lambda: self._create_part_dialog())
             menu.addAction(create_part_action)
+        if element_data == "geometry":
+            menu.addSeparator()
+            delete_action = QAction("删除几何", self.tree)
+            delete_action.triggered.connect(self._open_geometry_delete_dialog)
+            menu.addAction(delete_action)
         elif isinstance(element_data, tuple) and len(element_data) >= 2:
             category = element_data[0]
             if category == "parts":
@@ -1282,6 +1291,11 @@ class ModelTreeWidget:
         dialog.setAttribute(Qt.WA_DeleteOnClose, True)
         dialog.accepted.connect(lambda: self._on_add_elements_dialog_accepted(dialog, part_item))
         dialog.show()
+
+    def _open_geometry_delete_dialog(self):
+        handler = self._get_parent_handler('open_geometry_delete_dialog')
+        if handler:
+            handler()
 
     def _on_add_elements_dialog_accepted(self, dialog, part_item):
         part_info = dialog.get_part_info()

@@ -59,56 +59,6 @@ class GeometryOperations:
                 QMessageBox.critical(self.gui, "错误", f"导入几何失败: {str(e)}")
                 self.gui.log_error(f"导入几何失败: {str(e)}")
 
-
-class _GeometryUnitDialog(QDialog):
-    """几何单位设置对话框"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("几何单位设置")
-        self.setMinimumWidth(360)
-        self._unit_options = ["mm", "cm", "m", "inch", "ft", "um", "km", "mi"]
-        self._init_ui()
-
-    def _init_ui(self):
-        main_layout = QVBoxLayout(self)
-
-        source_group = QGroupBox("单位来源")
-        source_layout = QVBoxLayout(source_group)
-        self.auto_radio = QRadioButton("从数模文件中获取单位")
-        self.convert_radio = QRadioButton("将单位转换为")
-        self.auto_radio.setChecked(True)
-        source_layout.addWidget(self.auto_radio)
-        source_layout.addWidget(self.convert_radio)
-        main_layout.addWidget(source_group)
-
-        convert_group = QGroupBox("转换单位")
-        convert_layout = QHBoxLayout(convert_group)
-        convert_layout.addWidget(QLabel("目标单位:"))
-        self.unit_combo = QComboBox()
-        self.unit_combo.addItems(self._unit_options)
-        self.unit_combo.setEnabled(False)
-        convert_layout.addWidget(self.unit_combo)
-        convert_layout.addStretch()
-        main_layout.addWidget(convert_group)
-
-        self.convert_radio.toggled.connect(self.unit_combo.setEnabled)
-
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-        ok_button = QPushButton("确定")
-        cancel_button = QPushButton("取消")
-        ok_button.clicked.connect(self.accept)
-        cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(ok_button)
-        button_layout.addWidget(cancel_button)
-        main_layout.addLayout(button_layout)
-
-    def get_unit(self):
-        if self.convert_radio.isChecked():
-            return self.unit_combo.currentText()
-        return "auto"
-
     def export_geometry(self):
         """导出几何文件"""
         if not hasattr(self.gui, 'current_geometry') or self.gui.current_geometry is None:
@@ -352,6 +302,120 @@ class _GeometryUnitDialog(QDialog):
         shape = BRepPrimAPI_MakeCylinder(axis, radius, height).Shape()
         self._merge_geometry(shape, mode_label="cylinder")
 
+    def delete_geometry(self, element_map):
+        """删除选中的几何元素"""
+        if not element_map:
+            return False
+        if not hasattr(self.gui, 'current_geometry') or self.gui.current_geometry is None:
+            QMessageBox.warning(self.gui, "警告", "请先导入几何文件")
+            self.gui.log_info("未导入几何文件，无法删除几何元素")
+            self.gui.update_status("未导入几何文件")
+            return False
+        if getattr(self.gui, 'geometry_display_source', None) == 'stl':
+            QMessageBox.warning(self.gui, "警告", "STL几何不支持元素级删除")
+            self.gui.log_info("STL几何不支持元素级删除")
+            self.gui.update_status("STL几何不支持元素级删除")
+            return False
+
+        try:
+            from OCC.Core.TopExp import TopExp_Explorer
+            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+            from OCC.Core.BRepTools import BRepTools_ReShape
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"删除几何失败: {str(e)}")
+            self.gui.log_error(f"删除几何失败: {str(e)}")
+            return False
+
+        element_types = [
+            ("vertices", TopAbs_VERTEX),
+            ("edges", TopAbs_EDGE),
+            ("faces", TopAbs_FACE),
+            ("bodies", TopAbs_SOLID),
+        ]
+
+        remove_map = {}
+        for key, occ_type in element_types:
+            indices = set(element_map.get(key, []) or [])
+            if not indices:
+                continue
+            explorer = TopExp_Explorer(self.gui.current_geometry, occ_type)
+            idx = 0
+            while explorer.More():
+                shape = explorer.Current()
+                if idx in indices:
+                    remove_map[shape] = True
+                idx += 1
+                explorer.Next()
+
+        if not remove_map:
+            QMessageBox.warning(self.gui, "警告", "未找到可删除的几何元素")
+            return False
+
+        reshaper = BRepTools_ReShape()
+        for shape in remove_map.keys():
+            reshaper.Remove(shape)
+
+        try:
+            new_shape = reshaper.Apply(self.gui.current_geometry, True)
+        except Exception:
+            new_shape = reshaper.Apply(self.gui.current_geometry)
+
+        try:
+            from fileIO.geometry_io import get_shape_statistics
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"删除几何失败: {str(e)}")
+            self.gui.log_error(f"删除几何失败: {str(e)}")
+            return False
+
+        stats = get_shape_statistics(new_shape)
+        previous_shape = self.gui.current_geometry
+        self.gui.current_geometry = new_shape
+        self.gui.current_geometry_stats = stats
+
+        if hasattr(self.gui, 'part_manager') and hasattr(self.gui.part_manager, 'cleanup_geometry_actors'):
+            self.gui.part_manager.cleanup_geometry_actors()
+
+        if stats.get('num_vertices', 0) == 0 and stats.get('num_edges', 0) == 0 and stats.get('num_faces', 0) == 0 and stats.get('num_solids', 0) == 0:
+            if hasattr(self.gui, 'part_manager') and hasattr(self.gui.part_manager, 'cleanup_geometry_actors'):
+                self.gui.part_manager.cleanup_geometry_actors()
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor and hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
+                try:
+                    self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_actor)
+                except Exception:
+                    pass
+                self.gui.geometry_actor = None
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor and hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
+                try:
+                    self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_edges_actor)
+                except Exception:
+                    pass
+                self.gui.geometry_edges_actor = None
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor and hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
+                try:
+                    self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_points_actor)
+                except Exception:
+                    pass
+                self.gui.geometry_points_actor = None
+            if hasattr(self.gui, 'geometry_actors'):
+                self.gui.geometry_actors = {}
+            if hasattr(self.gui, 'geometry_actors_cache'):
+                self.gui.geometry_actors_cache = {}
+        else:
+            self._refresh_geometry_display(stats)
+
+        if hasattr(self.gui, 'model_tree_widget'):
+            self.gui.model_tree_widget.load_geometry(new_shape, "几何")
+
+        if hasattr(self.gui, '_rebuild_parts_for_geometry'):
+            self.gui._rebuild_parts_for_geometry(previous_shape, new_shape, remove_map)
+
+        if hasattr(self.gui, 'model_tree_widget') and stats.get('num_vertices', 0) == 0 and stats.get('num_edges', 0) == 0 and stats.get('num_faces', 0) == 0 and stats.get('num_solids', 0) == 0:
+            self.gui.model_tree_widget.load_geometry(None, "几何")
+
+        self.gui.log_info("已删除选中几何元素")
+        self.gui.update_status("几何已更新")
+        return True
+
     def _merge_geometry(self, new_shape, mode_label=""):
         if new_shape is None:
             return
@@ -447,6 +511,57 @@ class _GeometryUnitDialog(QDialog):
         if hasattr(self.gui, 'view_controller'):
             self.gui.view_controller._apply_render_mode_to_geometry(self.gui.render_mode)
 
-        if hasattr(self.gui.mesh_display, 'render_window'):
+        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
+
+
+class _GeometryUnitDialog(QDialog):
+    """几何单位设置对话框"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("几何单位设置")
+        self.setMinimumWidth(360)
+        self._unit_options = ["mm", "cm", "m", "inch", "ft", "um", "km", "mi"]
+        self._init_ui()
+
+    def _init_ui(self):
+        main_layout = QVBoxLayout(self)
+
+        source_group = QGroupBox("单位来源")
+        source_layout = QVBoxLayout(source_group)
+        self.auto_radio = QRadioButton("从数模文件中获取单位")
+        self.convert_radio = QRadioButton("将单位转换为")
+        self.auto_radio.setChecked(True)
+        source_layout.addWidget(self.auto_radio)
+        source_layout.addWidget(self.convert_radio)
+        main_layout.addWidget(source_group)
+
+        convert_group = QGroupBox("转换单位")
+        convert_layout = QHBoxLayout(convert_group)
+        convert_layout.addWidget(QLabel("目标单位:"))
+        self.unit_combo = QComboBox()
+        self.unit_combo.addItems(self._unit_options)
+        self.unit_combo.setEnabled(False)
+        convert_layout.addWidget(self.unit_combo)
+        convert_layout.addStretch()
+        main_layout.addWidget(convert_group)
+
+        self.convert_radio.toggled.connect(self.unit_combo.setEnabled)
+
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QPushButton("确定")
+        cancel_button = QPushButton("取消")
+        ok_button.clicked.connect(self.accept)
+        cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(ok_button)
+        button_layout.addWidget(cancel_button)
+        main_layout.addLayout(button_layout)
+
+    def get_unit(self):
+        if self.convert_radio.isChecked():
+            return self.unit_combo.currentText()
+        return "auto"
+
 

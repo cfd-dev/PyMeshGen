@@ -417,7 +417,8 @@ class PyMeshGenGUI(QMainWindow):
             icon_name = {
                 'import': 'document-import',
                 'extract_boundary': 'extract-boundary',
-                'create_geometry': 'geom-create'
+                'create_geometry': 'geom-create',
+                'delete_geometry': 'edit-delete'
             }.get(button_name, 'document-import')
             button.setIcon(get_icon(icon_name))
 
@@ -982,6 +983,22 @@ class PyMeshGenGUI(QMainWindow):
         self._geometry_create_dialog = dialog
         dialog.show()
 
+    def open_geometry_delete_dialog(self):
+        """打开几何删除对话框"""
+        from gui.geometry_delete_dialog import GeometryDeleteDialog
+        existing_dialog = getattr(self, "_geometry_delete_dialog", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+        dialog = GeometryDeleteDialog(self)
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.NonModal)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda: setattr(self, "_geometry_delete_dialog", None))
+        self._geometry_delete_dialog = dialog
+        dialog.show()
+
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
         self._update_progress(message, progress, "geometry")
@@ -1453,6 +1470,95 @@ class PyMeshGenGUI(QMainWindow):
             self.log_error(f"创建Default部件失败: {str(e)}")
             import traceback
             self.log_error(traceback.format_exc())
+
+    def delete_geometry_elements(self, element_map):
+        """删除几何元素（由对话框调用）"""
+        if not hasattr(self, 'geometry_operations'):
+            return False
+        return self.geometry_operations.delete_geometry(element_map)
+
+    def _rebuild_parts_for_geometry(self, old_shape, new_shape, removed_shapes):
+        """根据删除结果重建部件几何索引映射"""
+        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+            return
+
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+
+        type_pairs = [
+            ("vertices", TopAbs_VERTEX),
+            ("edges", TopAbs_EDGE),
+            ("faces", TopAbs_FACE),
+            ("bodies", TopAbs_SOLID),
+        ]
+
+        old_maps = {}
+        for key, occ_type in type_pairs:
+            idx_map = {}
+            explorer = TopExp_Explorer(old_shape, occ_type)
+            idx = 0
+            while explorer.More():
+                shape = explorer.Current()
+                idx_map[idx] = shape
+                idx += 1
+                explorer.Next()
+            old_maps[key] = idx_map
+
+        new_maps = {}
+        for key, occ_type in type_pairs:
+            shape_to_index = {}
+            explorer = TopExp_Explorer(new_shape, occ_type)
+            idx = 0
+            while explorer.More():
+                shape = explorer.Current()
+                shape_to_index[shape] = idx
+                idx += 1
+                explorer.Next()
+            new_maps[key] = shape_to_index
+
+        def _remap_indices(indices, key):
+            updated = []
+            for old_idx in indices:
+                shape = old_maps.get(key, {}).get(old_idx)
+                if shape is None:
+                    continue
+                if shape in removed_shapes:
+                    continue
+                new_idx = new_maps.get(key, {}).get(shape)
+                if new_idx is None:
+                    continue
+                updated.append(new_idx)
+            return sorted(set(updated))
+
+        if isinstance(self.cas_parts_info, dict):
+            for part_name, part_data in self.cas_parts_info.items():
+                if not isinstance(part_data, dict):
+                    continue
+                geometry_elements = part_data.get('geometry_elements') or {}
+                new_elements = {}
+                for key, _ in type_pairs:
+                    new_elements[key] = _remap_indices(geometry_elements.get(key, []), key)
+                part_data['geometry_elements'] = new_elements
+                part_data['num_vertices'] = len(new_elements.get('vertices', []))
+                part_data['num_edges'] = len(new_elements.get('edges', []))
+                part_data['num_faces'] = len(new_elements.get('faces', []))
+                part_data['num_solids'] = len(new_elements.get('bodies', []))
+        else:
+            return
+
+        if self.cas_parts_info:
+            has_geometry = False
+            for part_data in self.cas_parts_info.values():
+                if isinstance(part_data, dict):
+                    geometry_elements = part_data.get('geometry_elements') or {}
+                    if any(geometry_elements.values()):
+                        has_geometry = True
+                        break
+            if not has_geometry:
+                self._create_default_part_for_geometry(new_shape, getattr(self, 'current_geometry_stats', {}))
+
+        if hasattr(self, 'model_tree_widget'):
+            self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
 
     def on_geometry_import_failed(self, error_message):
         """几何导入失败回调"""
