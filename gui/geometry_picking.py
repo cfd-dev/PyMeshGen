@@ -12,12 +12,20 @@ import vtk
 class GeometryPickingHelper:
     """几何元素拾取辅助类"""
 
-    def __init__(self, mesh_display, gui=None, on_pick: Optional[Callable[[str, object, int], None]] = None):
+    def __init__(
+        self,
+        mesh_display,
+        gui=None,
+        on_pick: Optional[Callable[[str, object, int], None]] = None,
+        on_unpick: Optional[Callable[[str, object, int], None]] = None,
+    ):
         self.mesh_display = mesh_display
         self.gui = gui
         self._on_pick = on_pick
+        self._on_unpick = on_unpick
         self._enabled = False
         self._observer_id = None
+        self._observer_right_id = None
         self._saved_display_mode = None
 
         self._picker = vtk.vtkCellPicker()
@@ -36,6 +44,7 @@ class GeometryPickingHelper:
             return
 
         self._observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_left_button_press)
+        self._observer_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_right_button_press)
         self._enabled = True
 
     def disable(self):
@@ -44,9 +53,13 @@ class GeometryPickingHelper:
             return
 
         interactor = self._get_interactor()
-        if interactor is not None and self._observer_id is not None:
-            interactor.RemoveObserver(self._observer_id)
+        if interactor is not None:
+            if self._observer_id is not None:
+                interactor.RemoveObserver(self._observer_id)
+            if self._observer_right_id is not None:
+                interactor.RemoveObserver(self._observer_right_id)
         self._observer_id = None
+        self._observer_right_id = None
         self._enabled = False
         self._restore_display_mode()
 
@@ -129,6 +142,42 @@ class GeometryPickingHelper:
         else:
             if style:
                 style.OnLeftButtonDown()
+
+    def _on_right_button_press(self, obj, event):
+        if not self._enabled:
+            return
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        style = interactor.GetInteractorStyle()
+
+        click_pos = interactor.GetEventPosition()
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+
+        actor_map = self._build_actor_map()
+        if not actor_map:
+            if style:
+                style.OnRightButtonDown()
+            return
+
+        self._picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+        actor = self._picker.GetActor()
+
+        if actor is not None and actor in actor_map:
+            element_info = actor_map[actor]
+            if self._on_unpick:
+                self._on_unpick(
+                    element_info["element_type"],
+                    element_info["element_obj"],
+                    element_info["element_index"],
+                )
+            if hasattr(self.mesh_display, "render_window"):
+                self.mesh_display.render_window.Render()
+        else:
+            if style:
+                style.OnRightButtonDown()
 
     def _build_actor_map(self) -> Dict[vtk.vtkActor, Dict[str, object]]:
         if not self.gui or not hasattr(self.gui, "geometry_actors_cache"):

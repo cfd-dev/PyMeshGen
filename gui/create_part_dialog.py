@@ -415,6 +415,7 @@ class CreatePartDialog(QDialog):
             self.gui.mesh_display,
             gui=self.gui,
             on_pick=self._on_geometry_pick,
+            on_unpick=self._on_geometry_unpick,
         )
         self._picking_helper.enable()
 
@@ -442,6 +443,25 @@ class CreatePartDialog(QDialog):
         self.geometry_tree.blockSignals(False)
         if element_index not in self.selected_geometry_elements[key]:
             self.selected_geometry_elements[key].append(element_index)
+
+    def _on_geometry_unpick(self, element_type, element_obj, element_index):
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+        }
+        key = key_map.get(element_type)
+        if key is None:
+            return
+        tree_item = self._find_geometry_item(key, element_index)
+        if tree_item is None:
+            return
+        self.geometry_tree.blockSignals(True)
+        tree_item.setCheckState(0, Qt.Unchecked)
+        self.geometry_tree.blockSignals(False)
+        if element_index in self.selected_geometry_elements[key]:
+            self.selected_geometry_elements[key].remove(element_index)
 
     def _find_geometry_item(self, element_key, element_index):
         root_map = {
