@@ -154,6 +154,30 @@ class IconManager:
             self._draw_wireframe_icon(painter, size, secondary_color)
         elif icon_name == 'surface-wireframe':
             self._draw_surface_wireframe_icon(painter, size, accent_color)
+        elif icon_name in ['geom-create', 'geometry-create']:
+            self._draw_geometry_create_icon(painter, size, primary_color)
+        elif icon_name in ['geom-point', 'geometry-point']:
+            self._draw_geometry_point_icon(painter, size, primary_color)
+        elif icon_name in ['geom-line', 'geometry-line']:
+            self._draw_geometry_line_icon(painter, size, primary_color)
+        elif icon_name in ['geom-circle', 'geometry-circle', 'geom-arc']:
+            self._draw_geometry_circle_icon(painter, size, primary_color)
+        elif icon_name in ['geom-curve', 'geometry-curve']:
+            self._draw_geometry_curve_icon(painter, size, primary_color)
+        elif icon_name in ['geom-polyline', 'geometry-polyline']:
+            self._draw_geometry_polyline_icon(painter, size, primary_color)
+        elif icon_name in ['geom-rectangle', 'geometry-rectangle']:
+            self._draw_geometry_rectangle_icon(painter, size, primary_color)
+        elif icon_name in ['geom-polygon', 'geometry-polygon']:
+            self._draw_geometry_polygon_icon(painter, size, primary_color)
+        elif icon_name in ['geom-ellipse', 'geometry-ellipse']:
+            self._draw_geometry_ellipse_icon(painter, size, primary_color)
+        elif icon_name in ['geom-box', 'geometry-box']:
+            self._draw_geometry_box_icon(painter, size, accent_color)
+        elif icon_name in ['geom-sphere', 'geometry-sphere']:
+            self._draw_geometry_sphere_icon(painter, size, accent_color)
+        elif icon_name in ['geom-cylinder', 'geometry-cylinder']:
+            self._draw_geometry_cylinder_icon(painter, size, accent_color)
         else:
             # Default fallback: draw a generic icon
             self._draw_generic_icon(painter, size, primary_color)
@@ -819,6 +843,122 @@ class IconManager:
         painter.drawLine(int(center_x), int(center_y - cube_size), int(center_x), int(center_y))
         painter.drawLine(int(center_x), int(center_y), int(center_x - cube_size * 0.866), int(center_y + cube_size * 0.5))
         painter.drawLine(int(center_x), int(center_y), int(center_x + cube_size * 0.866), int(center_y + cube_size * 0.5))
+
+    def _draw_geometry_create_icon(self, painter, size, color):
+        """Draw create geometry icon - combined point, line, and shape"""
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        painter.drawLine(6, size - 8, size - 8, 8)
+        painter.drawRect(6, 6, size // 3, size // 3)
+        painter.setBrush(QBrush(color))
+        dot_radius = max(2, size // 8)
+        painter.drawEllipse(size - 10 - dot_radius, size - 10 - dot_radius, dot_radius * 2, dot_radius * 2)
+
+    def _draw_geometry_point_icon(self, painter, size, color):
+        """Draw point icon"""
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(QBrush(color))
+        radius = max(2, size // 6)
+        painter.drawEllipse(size // 2 - radius, size // 2 - radius, radius * 2, radius * 2)
+
+    def _draw_geometry_line_icon(self, painter, size, color):
+        """Draw line icon"""
+        painter.setPen(QPen(color, 2))
+        painter.drawLine(6, size - 6, size - 6, 6)
+
+    def _draw_geometry_circle_icon(self, painter, size, color):
+        """Draw circle/arc icon"""
+        painter.setPen(QPen(color, 2))
+        rect = (6, 6, size - 12, size - 12)
+        painter.drawArc(*rect, 30 * 16, 300 * 16)
+
+    def _draw_geometry_curve_icon(self, painter, size, color):
+        """Draw curve icon"""
+        from PyQt5.QtGui import QPainterPath
+        painter.setPen(QPen(color, 2))
+        path = QPainterPath()
+        path.moveTo(6, size - 8)
+        path.cubicTo(size // 3, 6, size * 2 // 3, size - 6, size - 6, 8)
+        painter.drawPath(path)
+
+    def _draw_geometry_polyline_icon(self, painter, size, color):
+        """Draw polyline icon"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        painter.setPen(QPen(color, 2))
+        points = [
+            QPoint(6, size - 8),
+            QPoint(size // 3, size // 3),
+            QPoint(size * 2 // 3, size - 10),
+            QPoint(size - 6, 8)
+        ]
+        painter.drawPolyline(QPolygon(points))
+
+    def _draw_geometry_rectangle_icon(self, painter, size, color):
+        """Draw rectangle icon"""
+        painter.setPen(QPen(color, 2))
+        painter.drawRect(6, 6, size - 12, size - 12)
+
+    def _draw_geometry_polygon_icon(self, painter, size, color):
+        """Draw polygon icon"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        painter.setPen(QPen(color, 2))
+        points = [
+            QPoint(size // 2, 6),
+            QPoint(size - 6, size // 3),
+            QPoint(size * 3 // 4, size - 6),
+            QPoint(size // 4, size - 6),
+            QPoint(6, size // 3)
+        ]
+        painter.drawPolygon(QPolygon(points))
+
+    def _draw_geometry_ellipse_icon(self, painter, size, color):
+        """Draw ellipse icon"""
+        painter.setPen(QPen(color, 2))
+        painter.drawEllipse(6, size // 4, size - 12, size // 2)
+
+    def _draw_geometry_box_icon(self, painter, size, color):
+        """Draw box icon"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        painter.setPen(QPen(color, 2))
+        center_x = size // 2
+        center_y = size // 2
+        cube_size = size // 3
+        top_points = [
+            QPoint(center_x, center_y - cube_size),
+            QPoint(int(center_x + cube_size * 0.866), int(center_y - cube_size * 0.5)),
+            QPoint(center_x, center_y),
+            QPoint(int(center_x - cube_size * 0.866), int(center_y - cube_size * 0.5))
+        ]
+        painter.drawPolygon(QPolygon(top_points))
+        painter.drawLine(top_points[0], QPoint(center_x, center_y + cube_size))
+        painter.drawLine(top_points[1], QPoint(int(center_x + cube_size * 0.866), int(center_y + cube_size * 0.5)))
+        painter.drawLine(top_points[3], QPoint(int(center_x - cube_size * 0.866), int(center_y + cube_size * 0.5)))
+        bottom_points = [
+            QPoint(center_x, center_y + cube_size),
+            QPoint(int(center_x + cube_size * 0.866), int(center_y + cube_size * 0.5)),
+            QPoint(center_x, center_y),
+            QPoint(int(center_x - cube_size * 0.866), int(center_y + cube_size * 0.5))
+        ]
+        painter.drawPolygon(QPolygon(bottom_points))
+
+    def _draw_geometry_sphere_icon(self, painter, size, color):
+        """Draw sphere icon"""
+        painter.setPen(QPen(color, 2))
+        painter.drawEllipse(6, 6, size - 12, size - 12)
+        painter.drawArc(6, size // 4, size - 12, size // 2, 0, 180 * 16)
+
+    def _draw_geometry_cylinder_icon(self, painter, size, color):
+        """Draw cylinder icon"""
+        painter.setPen(QPen(color, 2))
+        top_rect = (6, 6, size - 12, size // 3)
+        bottom_rect = (6, size - size // 3 - 6, size - 12, size // 3)
+        painter.drawEllipse(*top_rect)
+        painter.drawArc(*bottom_rect, 0, 180 * 16)
+        painter.drawLine(6, 6 + size // 6, 6, size - size // 6 - 6)
+        painter.drawLine(size - 6, 6 + size // 6, size - 6, size - size // 6 - 6)
     
     def _draw_generic_icon(self, painter, size, color):
         """Draw a generic icon as fallback"""

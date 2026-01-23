@@ -416,7 +416,8 @@ class PyMeshGenGUI(QMainWindow):
         for button_name, button in self.ribbon.buttons.get('geometry', {}).items():
             icon_name = {
                 'import': 'document-import',
-                'extract_boundary': 'extract-boundary'
+                'extract_boundary': 'extract-boundary',
+                'create_geometry': 'geom-create'
             }.get(button_name, 'document-import')
             button.setIcon(get_icon(icon_name))
 

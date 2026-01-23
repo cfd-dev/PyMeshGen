@@ -15,6 +15,7 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 
 from .ui_utils import UIStyles
+from .icon_manager import get_icon
 
 
 class GeometryCreateDialog(QDialog):
@@ -40,8 +41,10 @@ class GeometryCreateDialog(QDialog):
         layout = QVBoxLayout(self)
 
         mode_group = QGroupBox("创建类型")
-        mode_layout = QHBoxLayout(mode_group)
+        mode_layout = QVBoxLayout(mode_group)
         mode_layout.addWidget(QLabel("类型:"))
+        row_2d_layout = QHBoxLayout()
+        row_3d_layout = QHBoxLayout()
         self.point_mode_button = QPushButton("点")
         self.line_mode_button = QPushButton("直线")
         self.circle_mode_button = QPushButton("圆/圆弧")
@@ -50,6 +53,9 @@ class GeometryCreateDialog(QDialog):
         self.rectangle_mode_button = QPushButton("矩形")
         self.polygon_mode_button = QPushButton("多边形")
         self.ellipse_mode_button = QPushButton("椭圆/椭圆弧")
+        self.box_mode_button = QPushButton("长方体")
+        self.sphere_mode_button = QPushButton("圆球")
+        self.cylinder_mode_button = QPushButton("圆柱")
         self.point_mode_button.setCheckable(True)
         self.line_mode_button.setCheckable(True)
         self.circle_mode_button.setCheckable(True)
@@ -58,6 +64,9 @@ class GeometryCreateDialog(QDialog):
         self.rectangle_mode_button.setCheckable(True)
         self.polygon_mode_button.setCheckable(True)
         self.ellipse_mode_button.setCheckable(True)
+        self.box_mode_button.setCheckable(True)
+        self.sphere_mode_button.setCheckable(True)
+        self.cylinder_mode_button.setCheckable(True)
         self.point_mode_button.setChecked(True)
         self.point_mode_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
         self.line_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
@@ -67,15 +76,41 @@ class GeometryCreateDialog(QDialog):
         self.rectangle_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         self.polygon_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         self.ellipse_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
-        mode_layout.addWidget(self.point_mode_button)
-        mode_layout.addWidget(self.line_mode_button)
-        mode_layout.addWidget(self.circle_mode_button)
-        mode_layout.addWidget(self.curve_mode_button)
-        mode_layout.addWidget(self.polyline_mode_button)
-        mode_layout.addWidget(self.rectangle_mode_button)
-        mode_layout.addWidget(self.polygon_mode_button)
-        mode_layout.addWidget(self.ellipse_mode_button)
-        mode_layout.addStretch()
+        self.box_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.sphere_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.cylinder_mode_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.polyline_mode_button.setMinimumWidth(
+            self.fontMetrics().horizontalAdvance(self.polyline_mode_button.text()) + 20
+        )
+        self.ellipse_mode_button.setMinimumWidth(
+            self.fontMetrics().horizontalAdvance(self.ellipse_mode_button.text()) + 20
+        )
+        self.point_mode_button.setIcon(get_icon("geom-point"))
+        self.line_mode_button.setIcon(get_icon("geom-line"))
+        self.circle_mode_button.setIcon(get_icon("geom-circle"))
+        self.curve_mode_button.setIcon(get_icon("geom-curve"))
+        self.polyline_mode_button.setIcon(get_icon("geom-polyline"))
+        self.rectangle_mode_button.setIcon(get_icon("geom-rectangle"))
+        self.polygon_mode_button.setIcon(get_icon("geom-polygon"))
+        self.ellipse_mode_button.setIcon(get_icon("geom-ellipse"))
+        self.box_mode_button.setIcon(get_icon("geom-box"))
+        self.sphere_mode_button.setIcon(get_icon("geom-sphere"))
+        self.cylinder_mode_button.setIcon(get_icon("geom-cylinder"))
+        row_2d_layout.addWidget(self.point_mode_button)
+        row_2d_layout.addWidget(self.line_mode_button)
+        row_2d_layout.addWidget(self.circle_mode_button)
+        row_2d_layout.addWidget(self.curve_mode_button)
+        row_2d_layout.addWidget(self.polyline_mode_button)
+        row_2d_layout.addWidget(self.rectangle_mode_button)
+        row_2d_layout.addWidget(self.polygon_mode_button)
+        row_2d_layout.addWidget(self.ellipse_mode_button)
+        row_2d_layout.addStretch()
+        row_3d_layout.addWidget(self.box_mode_button)
+        row_3d_layout.addWidget(self.sphere_mode_button)
+        row_3d_layout.addWidget(self.cylinder_mode_button)
+        row_3d_layout.addStretch()
+        mode_layout.addLayout(row_2d_layout)
+        mode_layout.addLayout(row_3d_layout)
         layout.addWidget(mode_group)
 
         coord_group = QGroupBox("参数输入")
@@ -184,6 +219,48 @@ class GeometryCreateDialog(QDialog):
         ellipse_layout.addRow("终止角度(°):", self.ellipse_end_angle)
         coord_layout.addWidget(self.ellipse_form)
 
+        self.box_form = QWidget()
+        box_layout = QFormLayout(self.box_form)
+        self.bx1 = self._create_spin()
+        self.by1 = self._create_spin()
+        self.bz1 = self._create_spin()
+        self.bx2 = self._create_spin()
+        self.by2 = self._create_spin()
+        self.bz2 = self._create_spin()
+        box_layout.addRow("P1 X:", self.bx1)
+        box_layout.addRow("P1 Y:", self.by1)
+        box_layout.addRow("P1 Z:", self.bz1)
+        box_layout.addRow("P2 X:", self.bx2)
+        box_layout.addRow("P2 Y:", self.by2)
+        box_layout.addRow("P2 Z:", self.bz2)
+        coord_layout.addWidget(self.box_form)
+
+        self.sphere_form = QWidget()
+        sphere_layout = QFormLayout(self.sphere_form)
+        self.sx = self._create_spin()
+        self.sy = self._create_spin()
+        self.sz = self._create_spin()
+        self.sr = self._create_spin(min_value=1e-6)
+        sphere_layout.addRow("圆心 X:", self.sx)
+        sphere_layout.addRow("圆心 Y:", self.sy)
+        sphere_layout.addRow("圆心 Z:", self.sz)
+        sphere_layout.addRow("半径:", self.sr)
+        coord_layout.addWidget(self.sphere_form)
+
+        self.cylinder_form = QWidget()
+        cylinder_layout = QFormLayout(self.cylinder_form)
+        self.cx3 = self._create_spin()
+        self.cy3 = self._create_spin()
+        self.cz3 = self._create_spin()
+        self.cr = self._create_spin(min_value=1e-6)
+        self.ch = self._create_spin(min_value=1e-6)
+        cylinder_layout.addRow("底面圆心 X:", self.cx3)
+        cylinder_layout.addRow("底面圆心 Y:", self.cy3)
+        cylinder_layout.addRow("底面圆心 Z:", self.cz3)
+        cylinder_layout.addRow("半径:", self.cr)
+        cylinder_layout.addRow("高度:", self.ch)
+        coord_layout.addWidget(self.cylinder_form)
+
         layout.addWidget(coord_group)
 
         pick_group = QGroupBox("拾取")
@@ -218,6 +295,9 @@ class GeometryCreateDialog(QDialog):
         self.rectangle_mode_button.clicked.connect(lambda: self._set_mode("矩形"))
         self.polygon_mode_button.clicked.connect(lambda: self._set_mode("多边形"))
         self.ellipse_mode_button.clicked.connect(lambda: self._set_mode("椭圆/椭圆弧"))
+        self.box_mode_button.clicked.connect(lambda: self._set_mode("长方体"))
+        self.sphere_mode_button.clicked.connect(lambda: self._set_mode("圆球"))
+        self.cylinder_mode_button.clicked.connect(lambda: self._set_mode("圆柱"))
         self.pick_button.clicked.connect(self._toggle_pick)
         self.pick_clear_button.clicked.connect(self._clear_picked)
         self.create_button.clicked.connect(self._create_geometry)
@@ -241,6 +321,9 @@ class GeometryCreateDialog(QDialog):
         self.rectangle_form.setVisible(mode == "矩形")
         self.polygon_form.setVisible(mode == "多边形")
         self.ellipse_form.setVisible(mode == "椭圆/椭圆弧")
+        self.box_form.setVisible(mode == "长方体")
+        self.sphere_form.setVisible(mode == "圆球")
+        self.cylinder_form.setVisible(mode == "圆柱")
 
     def _set_mode(self, mode):
         button_map = {
@@ -252,6 +335,9 @@ class GeometryCreateDialog(QDialog):
             "矩形": self.rectangle_mode_button,
             "多边形": self.polygon_mode_button,
             "椭圆/椭圆弧": self.ellipse_mode_button,
+            "长方体": self.box_mode_button,
+            "圆球": self.sphere_mode_button,
+            "圆柱": self.cylinder_mode_button,
         }
         for key, button in button_map.items():
             button.setChecked(key == mode)
@@ -295,6 +381,21 @@ class GeometryCreateDialog(QDialog):
             if mode == "椭圆/椭圆弧"
             else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
         )
+        self.box_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "长方体"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.sphere_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "圆球"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
+        self.cylinder_mode_button.setStyleSheet(
+            UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET
+            if mode == "圆柱"
+            else UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET
+        )
         self._apply_mode_visibility()
 
     def _current_mode(self):
@@ -312,6 +413,12 @@ class GeometryCreateDialog(QDialog):
             return "多边形"
         if self.ellipse_mode_button.isChecked():
             return "椭圆/椭圆弧"
+        if self.box_mode_button.isChecked():
+            return "长方体"
+        if self.sphere_mode_button.isChecked():
+            return "圆球"
+        if self.cylinder_mode_button.isChecked():
+            return "圆柱"
         return "点"
 
     def _toggle_pick(self):
@@ -413,6 +520,46 @@ class GeometryCreateDialog(QDialog):
                 if self.gui and hasattr(self.gui, 'view_controller'):
                     self.gui.view_controller.stop_point_pick()
                     self.pick_button.setText("进入拾取")
+        elif mode == "长方体":
+            if len(self._picked_points) == 1:
+                self.bx1.setValue(point[0])
+                self.by1.setValue(point[1])
+                self.bz1.setValue(point[2])
+            elif len(self._picked_points) >= 2:
+                self.bx2.setValue(point[0])
+                self.by2.setValue(point[1])
+                self.bz2.setValue(point[2])
+                if self.gui and hasattr(self.gui, 'view_controller'):
+                    self.gui.view_controller.stop_point_pick()
+                    self.pick_button.setText("进入拾取")
+        elif mode == "圆球":
+            if len(self._picked_points) == 1:
+                self.sx.setValue(point[0])
+                self.sy.setValue(point[1])
+                self.sz.setValue(point[2])
+            elif len(self._picked_points) >= 2:
+                dx = point[0] - self.sx.value()
+                dy = point[1] - self.sy.value()
+                dz = point[2] - self.sz.value()
+                self.sr.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
+                if self.gui and hasattr(self.gui, 'view_controller'):
+                    self.gui.view_controller.stop_point_pick()
+                    self.pick_button.setText("进入拾取")
+        elif mode == "圆柱":
+            if len(self._picked_points) == 1:
+                self.cx3.setValue(point[0])
+                self.cy3.setValue(point[1])
+                self.cz3.setValue(point[2])
+            elif len(self._picked_points) == 2:
+                dx = point[0] - self.cx3.value()
+                dy = point[1] - self.cy3.value()
+                dz = point[2] - self.cz3.value()
+                self.cr.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
+            elif len(self._picked_points) >= 3:
+                self.ch.setValue(point[2] - self.cz3.value())
+                if self.gui and hasattr(self.gui, 'view_controller'):
+                    self.gui.view_controller.stop_point_pick()
+                    self.pick_button.setText("进入拾取")
         elif mode == "多边形":
             row = self.polygon_table.rowCount()
             self.polygon_table.insertRow(row)
@@ -474,6 +621,16 @@ class GeometryCreateDialog(QDialog):
                 start_angle=self.ellipse_start_angle.value(),
                 end_angle=self.ellipse_end_angle.value(),
             )
+        elif mode == "长方体":
+            p1 = (self.bx1.value(), self.by1.value(), self.bz1.value())
+            p2 = (self.bx2.value(), self.by2.value(), self.bz2.value())
+            self.gui.geometry_operations.create_geometry_box(p1, p2)
+        elif mode == "圆球":
+            center = (self.sx.value(), self.sy.value(), self.sz.value())
+            self.gui.geometry_operations.create_geometry_sphere(center, self.sr.value())
+        elif mode == "圆柱":
+            base_center = (self.cx3.value(), self.cy3.value(), self.cz3.value())
+            self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
             self.pick_button.setText("进入拾取")

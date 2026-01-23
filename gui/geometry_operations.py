@@ -310,6 +310,48 @@ class _GeometryUnitDialog(QDialog):
             shape = BRepBuilderAPI_MakeEdge(arc).Edge()
         self._merge_geometry(shape, mode_label="ellipse")
 
+    def create_geometry_box(self, corner1, corner2):
+        """创建长方体（基于两对角点）"""
+        try:
+            from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+            from OCC.Core.gp import gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        p1 = gp_Pnt(*corner1)
+        p2 = gp_Pnt(*corner2)
+        shape = BRepPrimAPI_MakeBox(p1, p2).Shape()
+        self._merge_geometry(shape, mode_label="box")
+
+    def create_geometry_sphere(self, center, radius):
+        """创建圆球"""
+        try:
+            from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
+            from OCC.Core.gp import gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if radius <= 0:
+            QMessageBox.warning(self.gui, "警告", "半径必须为正数")
+            return
+        shape = BRepPrimAPI_MakeSphere(gp_Pnt(*center), radius).Shape()
+        self._merge_geometry(shape, mode_label="sphere")
+
+    def create_geometry_cylinder(self, base_center, radius, height):
+        """创建圆柱（沿Z轴）"""
+        try:
+            from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+            from OCC.Core.gp import gp_Ax2, gp_Dir, gp_Pnt
+        except Exception as e:
+            QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return
+        if radius <= 0 or height <= 0:
+            QMessageBox.warning(self.gui, "警告", "半径和高度必须为正数")
+            return
+        axis = gp_Ax2(gp_Pnt(*base_center), gp_Dir(0, 0, 1))
+        shape = BRepPrimAPI_MakeCylinder(axis, radius, height).Shape()
+        self._merge_geometry(shape, mode_label="cylinder")
+
     def _merge_geometry(self, new_shape, mode_label=""):
         if new_shape is None:
             return
