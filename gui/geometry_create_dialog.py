@@ -509,14 +509,14 @@ class GeometryCreateDialog(QDialog):
         )
         self.gui.view_controller.start_point_pick(self._on_continuous_point_picked)
         if hasattr(self.gui, 'log_info'):
-            self.gui.log_info("连续拾取已开启: 左键选中，右键取消，中键确认添加点，Esc退出拾取模式")
+            self.gui.log_info("连续拾取已开启: 左键选中，右键取消，Enter键确认添加点，Esc退出拾取模式")
 
     def _on_continuous_point_picked(self, point):
         """连续拾取点回调（左键选中）"""
         self._last_picked_point = point
 
     def _on_continuous_pick_confirm(self):
-        """连续拾取确认回调（中键确认，添加点到表格）"""
+        """连续拾取确认回调（Enter键确认，添加点到表格）"""
         if self._last_picked_point is None:
             return
         

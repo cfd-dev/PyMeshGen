@@ -22,7 +22,6 @@ class ViewController:
         self._picking_helper = None
         self._picking_enabled = False
         self._point_pick_observer_id = None
-        self._point_pick_middle_id = None
         self._point_pick_right_id = None
         self._point_pick_key_id = None
         self._point_pick_callback = None
@@ -195,7 +194,7 @@ class ViewController:
             self._picking_enabled = True
             self._sync_toolbar_picking_state(True)
             self._show_pick_hint_overlay(is_point=False)
-            hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+            hint = "拾取模式已开启: 左键选中，右键取消，Enter键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
             self.gui.log_info(hint)
             self.gui.update_status(hint)
         else:
@@ -236,7 +235,7 @@ class ViewController:
         self._picking_enabled = True
         self._sync_toolbar_picking_state(True)
         self._show_pick_hint_overlay(is_point=False)
-        hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+        hint = "拾取模式已开启: 左键选中，右键取消，Enter键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
         self.gui.log_info(hint)
         self.gui.update_status(hint)
 
@@ -264,14 +263,12 @@ class ViewController:
             self._point_picker.SetTolerance(0.0005)
         if self._point_pick_observer_id is None:
             self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick)
-        if self._point_pick_middle_id is None:
-            self._point_pick_middle_id = interactor.AddObserver("MiddleButtonPressEvent", self._on_point_pick_confirm)
         if self._point_pick_right_id is None:
             self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_cancel)
         if self._point_pick_key_id is None:
             self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
         self._show_pick_hint_overlay(is_point=True)
-        hint = "点拾取: 左键选中，右键取消，中键确认，Esc退出拾取模式"
+        hint = "点拾取: 左键选中，右键取消，Enter键确认，Esc退出拾取模式"
         self.gui.update_status(hint)
 
     def stop_point_pick(self):
@@ -281,14 +278,11 @@ class ViewController:
         interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
         if interactor is not None and self._point_pick_observer_id is not None:
             interactor.RemoveObserver(self._point_pick_observer_id)
-        if interactor is not None and self._point_pick_middle_id is not None:
-            interactor.RemoveObserver(self._point_pick_middle_id)
         if interactor is not None and self._point_pick_right_id is not None:
             interactor.RemoveObserver(self._point_pick_right_id)
         if interactor is not None and self._point_pick_key_id is not None:
             interactor.RemoveObserver(self._point_pick_key_id)
         self._point_pick_observer_id = None
-        self._point_pick_middle_id = None
         self._point_pick_right_id = None
         self._point_pick_key_id = None
         self._point_pick_callback = None
@@ -326,10 +320,6 @@ class ViewController:
         if style:
             style.OnLeftButtonDown()
 
-    def _on_point_pick_confirm(self, obj, event):
-        if self._point_pick_confirm_callback:
-            self._point_pick_confirm_callback()
-
     def _on_point_pick_cancel(self, obj, event):
         if self._point_pick_cancel_callback:
             self._point_pick_cancel_callback()
@@ -344,6 +334,10 @@ class ViewController:
         if key in ("Escape", "Esc"):
             if self._point_pick_exit_callback:
                 self._point_pick_exit_callback()
+            return
+        if key in ("Return", "Enter", "KP_Enter"):
+            if self._point_pick_confirm_callback:
+                self._point_pick_confirm_callback()
             return
         style = interactor.GetInteractorStyle()
         if style:
@@ -428,9 +422,9 @@ class ViewController:
         if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
             return
         if is_point:
-            text = "左键选中，右键取消，中键确认，Esc退出拾取模式"
+            text = "左键选中，右键取消，Enter键确认，Esc退出拾取模式"
         else:
-            text = "左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+            text = "左键选中，右键取消，Enter键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
         if hasattr(self.gui.mesh_display, 'show_pick_hint'):
             self.gui.mesh_display.show_pick_hint(text)
 

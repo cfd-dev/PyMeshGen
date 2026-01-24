@@ -1549,7 +1549,7 @@ class PyMeshGenGUI(QMainWindow):
             on_cancel=self._on_delete_geometry_cancel,
             on_delete=self._delete_geometry_from_pick,
         )
-        hint = "删除几何: 左键拾取，右键取消，中键确认删除，Delete键删除已选元素，Esc退出"
+        hint = "删除几何: 左键拾取，右键取消，Enter键确认删除，Delete键删除已选元素，Esc退出"
         self.log_info(hint)
         self.update_status(hint)
 

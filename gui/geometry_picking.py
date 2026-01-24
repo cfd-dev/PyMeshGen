@@ -34,7 +34,6 @@ class GeometryPickingHelper:
         self._enabled = False
         self._observer_id = None
         self._observer_right_id = None
-        self._observer_middle_id = None
         self._observer_key_id = None
         self._saved_display_mode = None
         self._highlighted_actors: Dict[vtk.vtkActor, Dict[str, object]] = {}
@@ -73,7 +72,6 @@ class GeometryPickingHelper:
             return
 
         self._observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_left_button_press)
-        self._observer_middle_id = interactor.AddObserver("MiddleButtonPressEvent", self._on_middle_button_press)
         self._observer_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_right_button_press)
         self._observer_key_id = interactor.AddObserver("KeyPressEvent", self._on_key_press)
         self._enabled = True
@@ -87,14 +85,11 @@ class GeometryPickingHelper:
         if interactor is not None:
             if self._observer_id is not None:
                 interactor.RemoveObserver(self._observer_id)
-            if self._observer_middle_id is not None:
-                interactor.RemoveObserver(self._observer_middle_id)
             if self._observer_right_id is not None:
                 interactor.RemoveObserver(self._observer_right_id)
             if self._observer_key_id is not None:
                 interactor.RemoveObserver(self._observer_key_id)
         self._observer_id = None
-        self._observer_middle_id = None
         self._observer_right_id = None
         self._observer_key_id = None
         self._clear_highlights()
@@ -189,14 +184,6 @@ class GeometryPickingHelper:
             if style:
                 style.OnLeftButtonDown()
 
-    def _on_middle_button_press(self, obj, event):
-        if not self._enabled:
-            return
-        if self._area_selecting:
-            return
-        if self._on_confirm:
-            self._on_confirm()
-
     def _on_right_button_press(self, obj, event):
         if not self._enabled:
             return
@@ -247,6 +234,10 @@ class GeometryPickingHelper:
         if key in ("Delete", "BackSpace"):
             if self._on_delete:
                 self._on_delete()
+            return
+        if key in ("Return", "Enter", "KP_Enter"):
+            if self._on_confirm:
+                self._on_confirm()
             return
         style = interactor.GetInteractorStyle()
         if style:
