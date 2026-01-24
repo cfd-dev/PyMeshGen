@@ -104,8 +104,8 @@ class GeometryImportThread(QThread):
                         shape,
                         color=(0.0, 0.0, 0.0),
                         line_width=1.5,
-                        sample_rate=0.1,
-                        max_points_per_edge=50
+                        sample_rate=0.05,
+                        max_points_per_edge=200
                     )
 
                     result['main_actor'] = main_actor
