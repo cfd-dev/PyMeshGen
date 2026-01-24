@@ -727,6 +727,15 @@ class MeshDisplayArea:
     def show_pick_hint(self, text):
         if not self.renderer or not self.frame:
             return
+        if self._pick_hint_actor is not None:
+            try:
+                self.renderer.RemoveActor2D(self._pick_hint_actor)
+            except:
+                try:
+                    self.renderer.RemoveActor(self._pick_hint_actor)
+                except:
+                    pass
+            self._pick_hint_actor = None
         if self._pick_hint_label is None:
             label = QLabel(self.frame)
             label.setWordWrap(False)
@@ -748,15 +757,20 @@ class MeshDisplayArea:
         self._pick_hint_label.move(8, 8)
         self._pick_hint_label.show()
         self._pick_hint_label.raise_()
-        if self._pick_hint_actor is not None:
-            self._pick_hint_actor.SetVisibility(False)
 
     def hide_pick_hint(self):
         if self._pick_hint_label is not None:
             self._pick_hint_label.hide()
         if self._pick_hint_actor is None:
             return
-        self._pick_hint_actor.SetVisibility(False)
+        try:
+            self.renderer.RemoveActor2D(self._pick_hint_actor)
+        except:
+            try:
+                self.renderer.RemoveActor(self._pick_hint_actor)
+            except:
+                pass
+        self._pick_hint_actor = None
         if hasattr(self, "render_window") and self.render_window:
             self.render_window.Render()
     
