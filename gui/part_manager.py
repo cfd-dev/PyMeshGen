@@ -1084,6 +1084,18 @@ class PartManager:
         self._update_geometry_element_display()
         self.refresh_display_all_parts()
 
+        if mode == "elements":
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+                self.gui.geometry_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+                self.gui.geometry_edges_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+                self.gui.geometry_points_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_actors'):
+                for actors in self.gui.geometry_actors.values():
+                    for actor in actors:
+                        actor.SetVisibility(False)
+
     def _get_vertex_point(self, vertex):
         """获取顶点的坐标"""
         from OCC.Core.BRep import BRep_Tool

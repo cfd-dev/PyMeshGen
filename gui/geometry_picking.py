@@ -118,26 +118,19 @@ class GeometryPickingHelper:
             return
         if self.gui.display_mode != "elements":
             self._saved_display_mode = self.gui.display_mode
-            self.gui.display_mode = "elements"
-            handler = None
-            if hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "on_display_mode_changed"):
-                handler = self.gui.part_manager.on_display_mode_changed
-            elif hasattr(self.gui, "on_display_mode_changed"):
-                handler = self.gui.on_display_mode_changed
-            if handler:
-                handler("elements")
-
-    def _restore_display_mode(self):
-        if self._saved_display_mode is None or not self.gui:
-            return
-        self.gui.display_mode = self._saved_display_mode
+        self.gui.display_mode = "elements"
         handler = None
         if hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "on_display_mode_changed"):
             handler = self.gui.part_manager.on_display_mode_changed
         elif hasattr(self.gui, "on_display_mode_changed"):
             handler = self.gui.on_display_mode_changed
         if handler:
-            handler(self._saved_display_mode)
+            handler("elements")
+
+    def _restore_display_mode(self):
+        if self._saved_display_mode is None or not self.gui:
+            return
+        self.gui.display_mode = "elements"
         self._saved_display_mode = None
 
     def _on_left_button_press(self, obj, event):

@@ -348,6 +348,20 @@ class ViewController:
                 action.setChecked(enabled)
                 action.blockSignals(False)
 
+    def set_display_mode(self, mode):
+        if not hasattr(self.gui, 'display_mode'):
+            return
+        if mode not in ("full", "elements"):
+            return
+        self.gui.display_mode = mode
+        handler = None
+        if hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "on_display_mode_changed"):
+            handler = self.gui.part_manager.on_display_mode_changed
+        elif hasattr(self.gui, "on_display_mode_changed"):
+            handler = self.gui.on_display_mode_changed
+        if handler:
+            handler(mode)
+
     def _on_geometry_pick_confirm(self):
         self.stop_geometry_pick(restore_display_mode=False)
 

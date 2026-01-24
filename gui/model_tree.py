@@ -1191,11 +1191,11 @@ class ModelTreeWidget:
 
     def _set_display_mode(self, mode):
         """设置全局显示模式并刷新"""
+        if hasattr(self.parent, 'view_controller') and hasattr(self.parent.view_controller, 'set_display_mode'):
+            self.parent.view_controller.set_display_mode(mode)
+            return
         if hasattr(self.parent, 'display_mode'):
             self.parent.display_mode = mode
-        else:
-            self.parent.display_mode = mode
-
         handler = self._get_parent_handler('on_display_mode_changed')
         if handler:
             handler(mode)
