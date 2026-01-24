@@ -751,6 +751,12 @@ class PartManager:
             return
         display_mode = getattr(self.gui, 'display_mode', 'full')
         if display_mode != 'elements':
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+                self.gui.geometry_actor.SetVisibility(True)
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+                self.gui.geometry_edges_actor.SetVisibility(True)
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+                self.gui.geometry_points_actor.SetVisibility(True)
             self._hide_geometry_element_actors()
             render_mode = getattr(self.gui, 'render_mode', 'surface')
             if hasattr(self.gui, 'view_controller'):
@@ -959,6 +965,12 @@ class PartManager:
         # 如果没有部件包含几何元素，或者只有DefaultPart且所有部件都可见，则显示所有几何元素
         if not part_geometry_elements or (len(part_geometry_elements) == 1 and 'DefaultPart' in part_geometry_elements and len(visible_parts) == len(part_geometry_elements)):
             # 没有部件几何元素映射，或所有部件都可见，使用标准的几何元素显示
+            if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+                self.gui.geometry_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+                self.gui.geometry_edges_actor.SetVisibility(False)
+            if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+                self.gui.geometry_points_actor.SetVisibility(False)
             if not hasattr(self.gui, 'geometry_actors_cache'):
                 self.gui.geometry_actors_cache = {}
             visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
@@ -979,6 +991,12 @@ class PartManager:
                         visible_geometry_indices[elem_type].update(indices)
 
         # 使用缓存的actors机制来设置可见性
+        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+            self.gui.geometry_actor.SetVisibility(False)
+        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+            self.gui.geometry_edges_actor.SetVisibility(False)
+        if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+            self.gui.geometry_points_actor.SetVisibility(False)
         if not hasattr(self.gui, 'geometry_actors_cache'):
             self.gui.geometry_actors_cache = {}
         visible_elements = self.gui.model_tree_widget.get_visible_elements(category='geometry')
