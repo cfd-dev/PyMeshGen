@@ -93,5 +93,5 @@ class HelpModule:
 
     def show_shortcuts(self):
         """显示快捷键"""
-        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nCtrl+G: 导入几何\nCtrl+Shift+E: 导出几何\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏"""
+        shortcuts_text = """常用快捷键：\n\nCtrl+N: 新建工程\nCtrl+O: 打开工程\nCtrl+S: 保存工程\nCtrl+I: 导入网格\nCtrl+E: 导出网格\nCtrl+G: 导入几何\nCtrl+Shift+E: 导出几何\nDelete: 删除选中几何元素\nF5: 生成网格\nF6: 显示网格\nF11: 全屏显示\nEsc: 退出全屏/拾取"""
         QMessageBox.about(self.gui, "快捷键", shortcuts_text)

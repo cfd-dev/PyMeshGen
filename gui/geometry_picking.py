@@ -22,6 +22,7 @@ class GeometryPickingHelper:
         on_unpick: Optional[Callable[[str, object, int], None]] = None,
         on_confirm: Optional[Callable[[], None]] = None,
         on_cancel: Optional[Callable[[], None]] = None,
+        on_delete: Optional[Callable[[], None]] = None,
     ):
         self.mesh_display = mesh_display
         self.gui = gui
@@ -29,6 +30,7 @@ class GeometryPickingHelper:
         self._on_unpick = on_unpick
         self._on_confirm = on_confirm
         self._on_cancel = on_cancel
+        self._on_delete = on_delete
         self._enabled = False
         self._observer_id = None
         self._observer_right_id = None
@@ -49,11 +51,13 @@ class GeometryPickingHelper:
         on_unpick: Optional[Callable[[str, object, int], None]] = None,
         on_confirm: Optional[Callable[[], None]] = None,
         on_cancel: Optional[Callable[[], None]] = None,
+        on_delete: Optional[Callable[[], None]] = None,
     ):
         self._on_pick = on_pick
         self._on_unpick = on_unpick
         self._on_confirm = on_confirm
         self._on_cancel = on_cancel
+        self._on_delete = on_delete
 
     def enable(self):
         """启用拾取"""
@@ -240,6 +244,10 @@ class GeometryPickingHelper:
             if self._on_cancel:
                 self._on_cancel()
             return
+        if key in ("Delete", "BackSpace"):
+            if self._on_delete:
+                self._on_delete()
+            return
         style = interactor.GetInteractorStyle()
         if style:
             style.OnKeyPress()
@@ -391,6 +399,33 @@ class GeometryPickingHelper:
         if self.gui and hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "_get_all_geometry_elements_from_tree"):
             return self.gui.part_manager._get_all_geometry_elements_from_tree()
         return {"vertices": [], "edges": [], "faces": [], "bodies": []}
+
+    def get_selected_elements(self) -> Dict[str, list]:
+        selected = {"vertices": set(), "edges": set(), "faces": set(), "bodies": set()}
+        actor_map = self._build_actor_map()
+        type_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+            "vertices": "vertices",
+            "edges": "edges",
+            "faces": "faces",
+            "bodies": "bodies",
+        }
+        for actor in self._highlighted_actors.keys():
+            element_info = actor_map.get(actor)
+            if not element_info:
+                continue
+            key = type_map.get(element_info.get("element_type"))
+            if key:
+                selected[key].add(element_info.get("element_obj"))
+        return {key: list(values) for key, values in selected.items()}
+
+    def clear_selection(self):
+        self._clear_highlights()
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
 
 
 class _AreaSelectionFilter(QObject):

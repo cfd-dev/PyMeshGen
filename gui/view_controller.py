@@ -168,6 +168,9 @@ class ViewController:
     def set_picking_mode(self, enabled):
         """设置拾取模式"""
         if enabled:
+            on_delete = None
+            if hasattr(self.gui, '_delete_geometry_from_pick'):
+                on_delete = self.gui._delete_geometry_from_pick
             if self._picking_helper is None:
                 if not hasattr(self.gui, 'mesh_display') or self.gui.mesh_display is None:
                     self.gui.log_warning("拾取模式开启失败: 未找到视图区")
@@ -179,17 +182,19 @@ class ViewController:
                     gui=self.gui,
                     on_confirm=self._on_geometry_pick_confirm,
                     on_cancel=self._on_geometry_pick_cancel,
+                    on_delete=on_delete,
                 )
             else:
                 self._picking_helper.set_callbacks(
                     on_confirm=self._on_geometry_pick_confirm,
                     on_cancel=self._on_geometry_pick_cancel,
+                    on_delete=on_delete,
                 )
             self._picking_helper.enable()
             self._picking_enabled = True
             self._sync_toolbar_picking_state(True)
             self._show_pick_hint_overlay(is_point=False)
-            hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+            hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
             self.gui.log_info(hint)
             self.gui.update_status(hint)
         else:
@@ -202,7 +207,7 @@ class ViewController:
             self.gui.log_info("拾取模式已关闭")
             self.gui.update_status("拾取模式: 关闭")
 
-    def start_geometry_pick(self, on_confirm=None, on_cancel=None, on_pick=None, on_unpick=None):
+    def start_geometry_pick(self, on_confirm=None, on_cancel=None, on_pick=None, on_unpick=None, on_delete=None):
         if self._picking_helper is None:
             if not hasattr(self.gui, 'mesh_display') or self.gui.mesh_display is None:
                 self.gui.log_warning("拾取模式开启失败: 未找到视图区")
@@ -216,6 +221,7 @@ class ViewController:
                 on_unpick=on_unpick,
                 on_confirm=on_confirm or self._on_geometry_pick_confirm,
                 on_cancel=on_cancel or self._on_geometry_pick_cancel,
+                on_delete=on_delete,
             )
         else:
             self._picking_helper.set_callbacks(
@@ -223,12 +229,13 @@ class ViewController:
                 on_unpick=on_unpick,
                 on_confirm=on_confirm or self._on_geometry_pick_confirm,
                 on_cancel=on_cancel or self._on_geometry_pick_cancel,
+                on_delete=on_delete,
             )
         self._picking_helper.enable()
         self._picking_enabled = True
         self._sync_toolbar_picking_state(True)
         self._show_pick_hint_overlay(is_point=False)
-        hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+        hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
         self.gui.log_info(hint)
         self.gui.update_status(hint)
 
@@ -374,7 +381,7 @@ class ViewController:
         if is_point:
             text = "左键选中，右键取消，中键确认，Esc退出拾取模式"
         else:
-            text = "左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+            text = "左键选中，右键取消，中键确认，Delete键删除选中元素，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
         if hasattr(self.gui.mesh_display, 'show_pick_hint'):
             self.gui.mesh_display.show_pick_hint(text)
 

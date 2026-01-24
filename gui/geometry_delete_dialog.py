@@ -208,6 +208,7 @@ class GeometryDeleteDialog(QDialog):
                 on_unpick=self._on_geometry_unpick,
                 on_confirm=self._on_pick_confirm,
                 on_cancel=self._on_pick_cancel,
+                on_delete=self.accept,
             )
             self._picking_helper = self.gui.view_controller._picking_helper
             return

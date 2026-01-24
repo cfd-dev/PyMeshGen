@@ -183,6 +183,8 @@ class PyMeshGenGUI(QMainWindow):
         self.geometry_display_source = None   # 几何显示来源（stl/occ）
         self.display_mode = "full"           # 显示模式（full/elements）
         self.geometry_element_actor_cache = {}  # 几何元素actor缓存
+        self._delete_geometry_mode_active = False
+        self._geometry_delete_elements_cache = {}
 
     def _create_widgets(self):
         """创建UI组件"""
@@ -234,6 +236,8 @@ class PyMeshGenGUI(QMainWindow):
     def _create_model_tree_widget(self):
         """创建模型树组件"""
         self.model_tree_widget = ModelTreeWidget(parent=self)
+        if hasattr(self.model_tree_widget, 'tree'):
+            self.model_tree_widget.tree.itemSelectionChanged.connect(self._on_model_tree_selection_changed)
 
         model_tree_frame_container = QGroupBox("模型树")
         model_tree_layout = QVBoxLayout(model_tree_frame_container)
@@ -484,7 +488,15 @@ class PyMeshGenGUI(QMainWindow):
                     self.view_controller._on_point_pick_exit(None, None)
                     return
                 self.view_controller.set_picking_mode(False)
+            if self._delete_geometry_mode_active:
+                self._stop_delete_geometry_mode()
             return
+        if key == Qt.Key_Delete:
+            if self._delete_geometry_mode_active:
+                self._delete_geometry_from_pick()
+                return
+            if self._delete_selected_geometry_from_tree():
+                return
         key_actions = {
             Qt.Key_R: lambda: self.view_controller.reset_view() or self.update_status("已重置视图 (R键)"),
             Qt.Key_F: lambda: self.view_controller.fit_view() or self.update_status("已适应视图 (F键)"),
@@ -991,20 +1003,8 @@ class PyMeshGenGUI(QMainWindow):
         dialog.show()
 
     def open_geometry_delete_dialog(self):
-        """打开几何删除对话框"""
-        from gui.geometry_delete_dialog import GeometryDeleteDialog
-        existing_dialog = getattr(self, "_geometry_delete_dialog", None)
-        if existing_dialog and existing_dialog.isVisible():
-            existing_dialog.raise_()
-            existing_dialog.activateWindow()
-            return
-        dialog = GeometryDeleteDialog(self)
-        dialog.setModal(False)
-        dialog.setWindowModality(Qt.NonModal)
-        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
-        dialog.finished.connect(lambda: setattr(self, "_geometry_delete_dialog", None))
-        self._geometry_delete_dialog = dialog
-        dialog.show()
+        """进入几何删除拾取模式"""
+        self._start_delete_geometry_mode()
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""
@@ -1483,6 +1483,143 @@ class PyMeshGenGUI(QMainWindow):
         if not hasattr(self, 'geometry_operations'):
             return False
         return self.geometry_operations.delete_geometry(element_map)
+
+    def _get_selected_geometry_elements_from_tree(self):
+        if not hasattr(self, 'model_tree_widget'):
+            return {}
+        tree = getattr(self.model_tree_widget, 'tree', None)
+        if tree is None:
+            return {}
+        if hasattr(self, 'view_controller'):
+            helper = getattr(self.view_controller, '_picking_helper', None)
+            if helper is not None and hasattr(helper, 'get_selected_elements'):
+                picked = helper.get_selected_elements()
+                if picked and any(picked.values()):
+                    return picked
+        selected = {"vertices": set(), "edges": set(), "faces": set(), "bodies": set()}
+        selected_items = tree.selectedItems()
+        type_map = {
+            "vertices": "vertices",
+            "edges": "edges",
+            "faces": "faces",
+            "bodies": "bodies",
+        }
+        for item in selected_items:
+            data = item.data(0, Qt.UserRole)
+            if not (isinstance(data, tuple) and len(data) >= 4):
+                continue
+            category, element_type, element_obj = data[0], data[1], data[2]
+            if category != "geometry":
+                continue
+            key = type_map.get(element_type)
+            if key:
+                selected[key].add(element_obj)
+        return {key: list(values) for key, values in selected.items()}
+
+    def _delete_selected_geometry_from_tree(self):
+        element_map = self._get_selected_geometry_elements_from_tree()
+        if not element_map or not any(element_map.values()):
+            self.update_status("删除几何: 未选中元素")
+            return False
+        return self.delete_geometry_elements(element_map)
+
+    def _on_model_tree_selection_changed(self):
+        if not self._delete_geometry_mode_active:
+            return
+        element_map = self._get_selected_geometry_elements_from_tree()
+        self._geometry_delete_elements_cache = {}
+        for key, values in element_map.items():
+            if values:
+                self._geometry_delete_elements_cache[key] = set(values)
+
+    def _start_delete_geometry_mode(self):
+        if self._delete_geometry_mode_active:
+            self.update_status("删除几何: 已在拾取模式")
+            return
+        if not hasattr(self, 'view_controller'):
+            return
+        if hasattr(self, 'model_tree_widget') and hasattr(self.model_tree_widget, 'tree'):
+            self.model_tree_widget.tree.clearSelection()
+        self._delete_geometry_mode_active = True
+        self._geometry_delete_elements_cache = {}
+        self.view_controller.start_geometry_pick(
+            on_pick=self._on_delete_geometry_pick,
+            on_unpick=self._on_delete_geometry_unpick,
+            on_confirm=self._on_delete_geometry_confirm,
+            on_cancel=self._on_delete_geometry_cancel,
+            on_delete=self._delete_geometry_from_pick,
+        )
+        hint = "删除几何: 左键拾取，右键取消，中键确认删除，Delete键删除已选元素，Esc退出"
+        self.log_info(hint)
+        self.update_status(hint)
+
+    def _stop_delete_geometry_mode(self):
+        if not self._delete_geometry_mode_active:
+            return
+        self._delete_geometry_mode_active = False
+        self._geometry_delete_elements_cache = {}
+        if hasattr(self, 'view_controller'):
+            self.view_controller.stop_geometry_pick(restore_display_mode=True)
+        self.update_status("删除几何: 已退出")
+
+    def _on_delete_geometry_pick(self, element_type, element_obj, element_index):
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+        }
+        key = key_map.get(element_type)
+        if key is None:
+            return
+        self._geometry_delete_elements_cache.setdefault(key, set()).add(element_obj)
+
+    def _on_delete_geometry_unpick(self, element_type, element_obj, element_index):
+        key_map = {
+            "vertex": "vertices",
+            "edge": "edges",
+            "face": "faces",
+            "body": "bodies",
+        }
+        key = key_map.get(element_type)
+        if key is None:
+            return
+        if key in self._geometry_delete_elements_cache:
+            self._geometry_delete_elements_cache[key].discard(element_obj)
+
+    def _on_delete_geometry_confirm(self):
+        self._delete_geometry_from_pick()
+
+    def _on_delete_geometry_cancel(self):
+        self._stop_delete_geometry_mode()
+
+    def _collect_picked_geometry_elements(self):
+        if not hasattr(self, 'view_controller'):
+            return {}
+        helper = getattr(self.view_controller, '_picking_helper', None)
+        if helper is None or not hasattr(helper, 'get_selected_elements'):
+            return {}
+        return helper.get_selected_elements()
+
+    def _delete_geometry_from_pick(self):
+        if not self._delete_geometry_mode_active:
+            self._start_delete_geometry_mode()
+        element_map = self._collect_picked_geometry_elements()
+        if not element_map or not any(element_map.values()):
+            element_map = {key: list(values) for key, values in self._geometry_delete_elements_cache.items()}
+        if not element_map or not any(element_map.values()):
+            self.update_status("删除几何: 未选中元素")
+            return False
+        success = self.delete_geometry_elements(element_map)
+        if success and hasattr(self, 'view_controller'):
+            helper = getattr(self.view_controller, '_picking_helper', None)
+            if helper is not None and hasattr(helper, 'clear_selection'):
+                helper.clear_selection()
+            self._geometry_delete_elements_cache = {}
+        return success
+
+    def delete_geometry_selected_elements(self):
+        return self._delete_selected_geometry_from_tree()
 
     def _rebuild_parts_for_geometry(self, old_shape, new_shape, removed_shapes):
         """根据删除结果重建部件几何索引映射"""

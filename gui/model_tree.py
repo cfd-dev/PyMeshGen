@@ -8,9 +8,9 @@
 """
 
 from PyQt5.QtWidgets import (QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
-                             QHeaderView, QMenu, QAction, QActionGroup, QDialog)
+                             QHeaderView, QMenu, QAction, QActionGroup, QDialog, QShortcut)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QKeySequence
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 
 
@@ -69,7 +69,10 @@ class ModelTreeWidget:
         self.tree.itemChanged.connect(self._on_item_changed)
         self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.setSelectionMode(QTreeWidget.ExtendedSelection)
         self.tree.customContextMenuRequested.connect(self._show_context_menu)
+        self._delete_shortcut = QShortcut(QKeySequence(Qt.Key_Delete), self.tree)
+        self._delete_shortcut.activated.connect(self._delete_selected_geometry_elements)
 
     def _setup_ui(self):
         """设置UI布局"""
@@ -1055,8 +1058,8 @@ class ModelTreeWidget:
                     view_volume_action.triggered.connect(lambda: self._show_solid_properties(element_obj, item))
                     menu.addAction(view_volume_action)
 
-                delete_action = QAction("删除几何", self.tree)
-                delete_action.triggered.connect(self._open_geometry_delete_dialog)
+                delete_action = QAction("删除元素", self.tree)
+                delete_action.triggered.connect(self._delete_selected_geometry_elements)
                 menu.addAction(delete_action)
 
         if element_data == "parts":
@@ -1302,6 +1305,11 @@ class ModelTreeWidget:
 
     def _open_geometry_delete_dialog(self):
         handler = self._get_parent_handler('open_geometry_delete_dialog')
+        if handler:
+            handler()
+
+    def _delete_selected_geometry_elements(self):
+        handler = self._get_parent_handler('delete_geometry_selected_elements')
         if handler:
             handler()
 
