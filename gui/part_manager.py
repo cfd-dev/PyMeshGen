@@ -766,6 +766,12 @@ class PartManager:
             return
 
         # 初始化几何actors缓存（如果尚未初始化）
+        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+            self.gui.geometry_actor.SetVisibility(False)
+        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+            self.gui.geometry_edges_actor.SetVisibility(False)
+        if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+            self.gui.geometry_points_actor.SetVisibility(False)
         if not hasattr(self.gui, 'geometry_actors_cache'):
             self.gui.geometry_actors_cache = {}
 

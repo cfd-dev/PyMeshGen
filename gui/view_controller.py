@@ -440,17 +440,22 @@ class ViewController:
                 self.gui.geometry_points_actor.SetVisibility(False)
 
         if hasattr(self.gui, 'geometry_actors'):
-            for elem_type, actors in self.gui.geometry_actors.items():
-                for actor in actors:
-                    if elem_type == 'faces' or elem_type == 'bodies':
-                        actor.SetVisibility(show_faces)
-                        if show_faces:
-                            actor.GetProperty().SetRepresentationToSurface()
-                            actor.GetProperty().EdgeVisibilityOff()
-                    elif elem_type == 'edges':
-                        actor.SetVisibility(show_edges)
-                    elif elem_type == 'vertices':
-                        actor.SetVisibility(show_vertices)
+            if use_element_display:
+                for actors in self.gui.geometry_actors.values():
+                    for actor in actors:
+                        actor.SetVisibility(False)
+            else:
+                for elem_type, actors in self.gui.geometry_actors.items():
+                    for actor in actors:
+                        if elem_type == 'faces' or elem_type == 'bodies':
+                            actor.SetVisibility(show_faces)
+                            if show_faces:
+                                actor.GetProperty().SetRepresentationToSurface()
+                                actor.GetProperty().EdgeVisibilityOff()
+                        elif elem_type == 'edges':
+                            actor.SetVisibility(show_edges)
+                        elif elem_type == 'vertices':
+                            actor.SetVisibility(show_vertices)
 
     def set_render_mode(self, mode):
         """设置渲染模式"""
