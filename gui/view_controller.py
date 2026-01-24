@@ -21,15 +21,6 @@ class ViewController:
         self.gui = gui_instance
         self._picking_helper = None
         self._picking_enabled = False
-        self._point_pick_observer_id = None
-        self._point_pick_right_id = None
-        self._point_pick_key_id = None
-        self._point_pick_callback = None
-        self._point_picker = None
-        self._point_pick_confirm_callback = None
-        self._point_pick_cancel_callback = None
-        self._point_pick_exit_callback = None
-        self._point_highlight_actor = None
 
     def reset_view(self):
         """重置视图"""
@@ -253,141 +244,38 @@ class ViewController:
         """开始点拾取"""
         if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
             return
-        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
-        if interactor is None:
-            return
-        self._point_pick_callback = callback
-        if self._point_picker is None:
-            import vtk
-            self._point_picker = vtk.vtkCellPicker()
-            self._point_picker.SetTolerance(0.02)
-        if self._point_pick_observer_id is None:
-            self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick)
-        if self._point_pick_right_id is None:
-            self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_cancel)
-        if self._point_pick_key_id is None:
-            self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
+        
+        if self._picking_helper is None:
+            from .geometry_picking import GeometryPickingHelper
+            self._picking_helper = GeometryPickingHelper(
+                self.gui.mesh_display,
+                gui=self.gui,
+            )
+        
+        self._picking_helper.start_point_pick(on_pick=callback)
         self._show_pick_hint_overlay(is_point=True)
         hint = "点拾取: 左键选中，右键取消，Enter键确认，Esc退出拾取模式"
         self.gui.update_status(hint)
 
     def stop_point_pick(self):
         """停止点拾取"""
-        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
-            return
-        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
-        if interactor is not None and self._point_pick_observer_id is not None:
-            interactor.RemoveObserver(self._point_pick_observer_id)
-        if interactor is not None and self._point_pick_right_id is not None:
-            interactor.RemoveObserver(self._point_pick_right_id)
-        if interactor is not None and self._point_pick_key_id is not None:
-            interactor.RemoveObserver(self._point_pick_key_id)
-        self._point_pick_observer_id = None
-        self._point_pick_right_id = None
-        self._point_pick_key_id = None
-        self._point_pick_callback = None
-        self._point_pick_confirm_callback = None
-        self._point_pick_cancel_callback = None
-        self._point_pick_exit_callback = None
-        self._remove_point_highlight()
+        if self._picking_helper is not None:
+            self._picking_helper.stop_point_pick()
         self._hide_pick_hint_overlay()
         self.gui.update_status("点拾取: 关闭")
 
     def is_point_pick_active(self):
-        return self._point_pick_observer_id is not None
+        if self._picking_helper is not None:
+            return self._picking_helper.is_point_pick_active()
+        return False
 
     def set_point_pick_callbacks(self, on_confirm=None, on_cancel=None, on_exit=None):
-        self._point_pick_confirm_callback = on_confirm
-        self._point_pick_cancel_callback = on_cancel
-        self._point_pick_exit_callback = on_exit
-
-    def _on_point_pick(self, obj, event):
-        if not self._point_pick_callback:
-            return
-        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
-            return
-        renderer = getattr(self.gui.mesh_display, 'renderer', None)
-        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
-        if renderer is None or interactor is None:
-            return
-        click_pos = interactor.GetEventPosition()
-        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
-        if picked:
-            pos = self._point_picker.GetPickPosition()
-            self._show_point_highlight(pos[0], pos[1], pos[2])
-            self._point_pick_callback((pos[0], pos[1], pos[2]))
-        style = interactor.GetInteractorStyle()
-        if style:
-            style.OnLeftButtonDown()
-
-    def _on_point_pick_cancel(self, obj, event):
-        if self._point_pick_cancel_callback:
-            self._point_pick_cancel_callback()
-
-    def _on_point_pick_key_press(self, obj, event):
-        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
-            return
-        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
-        if interactor is None:
-            return
-        key = interactor.GetKeySym()
-        if key in ("Escape", "Esc"):
-            if self._point_pick_exit_callback:
-                self._point_pick_exit_callback()
-            return
-        if key in ("Return", "Enter", "KP_Enter"):
-            if self._point_pick_confirm_callback:
-                self._point_pick_confirm_callback()
-            return
-        style = interactor.GetInteractorStyle()
-        if style:
-            style.OnKeyPress()
-
-    def _show_point_highlight(self, x, y, z):
-        """显示点高亮"""
-        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
-            return
-        renderer = getattr(self.gui.mesh_display, 'renderer', None)
-        if renderer is None:
-            return
-        
-        import vtk
-        
-        self._remove_point_highlight()
-        
-        sphere = vtk.vtkSphereSource()
-        sphere.SetCenter(x, y, z)
-        sphere.SetRadius(0.05)
-        sphere.SetThetaResolution(16)
-        sphere.SetPhiResolution(16)
-        sphere.Update()
-        
-        mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(sphere.GetOutputPort())
-        
-        actor = vtk.vtkActor()
-        actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-        actor.GetProperty().SetOpacity(0.8)
-        
-        renderer.AddActor(actor)
-        self.gui.mesh_display.render_window.Render()
-        
-        self._point_highlight_actor = actor
-
-    def _remove_point_highlight(self):
-        """移除点高亮"""
-        if self._point_highlight_actor is None:
-            return
-        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
-            return
-        renderer = getattr(self.gui.mesh_display, 'renderer', None)
-        if renderer is None:
-            return
-        
-        renderer.RemoveActor(self._point_highlight_actor)
-        self.gui.mesh_display.render_window.Render()
-        self._point_highlight_actor = None
+        if self._picking_helper is not None:
+            self._picking_helper.set_point_pick_callbacks(
+                on_confirm=on_confirm,
+                on_cancel=on_cancel,
+                on_exit=on_exit
+            )
 
     def _sync_toolbar_picking_state(self, enabled):
         toolbar = getattr(self.gui, 'view_toolbar', None)

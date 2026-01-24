@@ -43,6 +43,18 @@ class GeometryPickingHelper:
 
         self._picker = vtk.vtkCellPicker()
         self._picker.SetTolerance(0.01)
+        
+        self._point_picker = vtk.vtkCellPicker()
+        self._point_picker.SetTolerance(0.02)
+        self._point_pick_enabled = False
+        self._point_pick_observer_id = None
+        self._point_pick_right_id = None
+        self._point_pick_key_id = None
+        self._on_point_pick = None
+        self._on_point_pick_confirm = None
+        self._on_point_pick_cancel = None
+        self._on_point_pick_exit = None
+        self._point_highlight_actor = None
 
     def set_callbacks(
         self,
@@ -104,6 +116,179 @@ class GeometryPickingHelper:
     def cleanup(self, restore_display_mode=True):
         """清理资源"""
         self.disable(restore_display_mode=restore_display_mode)
+        self.stop_point_pick()
+
+    def set_point_pick_callbacks(self, on_pick=None, on_confirm=None, on_cancel=None, on_exit=None):
+        """设置点拾取回调"""
+        self._on_point_pick = on_pick
+        self._on_point_pick_confirm = on_confirm
+        self._on_point_pick_cancel = on_cancel
+        self._on_point_pick_exit = on_exit
+
+    def start_point_pick(self, on_pick=None, on_confirm=None, on_cancel=None, on_exit=None):
+        """启动点拾取"""
+        if self._point_pick_enabled:
+            return
+        
+        if on_pick is not None:
+            self._on_point_pick = on_pick
+        if on_confirm is not None:
+            self._on_point_pick_confirm = on_confirm
+        if on_cancel is not None:
+            self._on_point_pick_cancel = on_cancel
+        if on_exit is not None:
+            self._on_point_pick_exit = on_exit
+        
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        
+        self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick_press)
+        self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_right_press)
+        self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
+        self._point_pick_enabled = True
+
+    def stop_point_pick(self):
+        """停止点拾取"""
+        if not self._point_pick_enabled:
+            return
+        
+        interactor = self._get_interactor()
+        if interactor is not None:
+            if self._point_pick_observer_id is not None:
+                interactor.RemoveObserver(self._point_pick_observer_id)
+            if self._point_pick_right_id is not None:
+                interactor.RemoveObserver(self._point_pick_right_id)
+            if self._point_pick_key_id is not None:
+                interactor.RemoveObserver(self._point_pick_key_id)
+        
+        self._point_pick_observer_id = None
+        self._point_pick_right_id = None
+        self._point_pick_key_id = None
+        self._point_pick_enabled = False
+        self._remove_point_highlight()
+
+    def is_point_pick_active(self):
+        """检查点拾取是否激活"""
+        return self._point_pick_enabled
+
+    def _on_point_pick_press(self, obj, event):
+        """点拾取左键按下事件"""
+        if not self._point_pick_enabled:
+            return
+        if not self._on_point_pick:
+            return
+        
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        click_pos = interactor.GetEventPosition()
+        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+        
+        if picked:
+            pos = self._point_picker.GetPickPosition()
+            self._show_point_highlight(pos[0], pos[1], pos[2])
+            self._on_point_pick((pos[0], pos[1], pos[2]))
+        
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnLeftButtonDown()
+
+    def _on_point_pick_right_press(self, obj, event):
+        """点拾取右键按下事件"""
+        if not self._point_pick_enabled:
+            return
+        
+        if self._on_point_pick_cancel:
+            self._on_point_pick_cancel()
+        
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnRightButtonDown()
+
+    def _on_point_pick_key_press(self, obj, event):
+        """点拾取键盘事件"""
+        if not self._point_pick_enabled:
+            return
+        
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        
+        key = interactor.GetKeySym()
+        
+        if key in ("Escape", "Esc"):
+            if self._on_point_pick_exit:
+                self._on_point_pick_exit()
+            return
+        
+        if key in ("Return", "Enter", "KP_Enter"):
+            if self._on_point_pick_confirm:
+                self._on_point_pick_confirm()
+            return
+        
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnKeyPress()
+
+    def _show_point_highlight(self, x, y, z):
+        """显示点高亮"""
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        self._remove_point_highlight()
+        
+        sphere = vtk.vtkSphereSource()
+        sphere.SetCenter(x, y, z)
+        sphere.SetRadius(0.05)
+        sphere.SetThetaResolution(16)
+        sphere.SetPhiResolution(16)
+        sphere.Update()
+        
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(sphere.GetOutputPort())
+        
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+        actor.GetProperty().SetOpacity(0.8)
+        
+        renderer.AddActor(actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+        
+        self._point_highlight_actor = actor
+
+    def _remove_point_highlight(self):
+        """移除点高亮"""
+        if self._point_highlight_actor is None:
+            return
+        
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        renderer.RemoveActor(self._point_highlight_actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+        
+        self._point_highlight_actor = None
 
     def _get_interactor(self):
         if getattr(self.mesh_display, "frame", None) is None:
