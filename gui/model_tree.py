@@ -36,6 +36,7 @@ class ModelTreeWidget:
         self.mesh_name = "网格"
         self.parts_data = None
         self.parts_name = "部件"
+        self._pending_label_restore = None
 
         self._updating_items = False  # 标志：是否正在更新项（防止递归调用）
 
@@ -211,6 +212,92 @@ class ModelTreeWidget:
 
         self._batch_load_geometry_elements(shape, vertices_item, edges_item, faces_item, bodies_item)
 
+    def set_pending_label_restore(self, old_shape, new_shape):
+        self._pending_label_restore = (old_shape, new_shape)
+
+    def restore_geometry_labels(self, old_shape, new_shape):
+        """根据旧几何索引保持元素名称不变"""
+        if old_shape is None or new_shape is None:
+            return
+        try:
+            from OCC.Core.TopExp import TopExp_Explorer
+            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+        except Exception:
+            return
+
+        geometry_item = self.tree.topLevelItem(0)
+        if geometry_item is None:
+            return
+        self.tree.blockSignals(True)
+
+        type_pairs = [
+            ("vertices", TopAbs_VERTEX, "点_"),
+            ("edges", TopAbs_EDGE, "线_"),
+            ("faces", TopAbs_FACE, "面_"),
+            ("bodies", TopAbs_SOLID, "体_"),
+        ]
+
+        old_maps = {}
+        for key, occ_type, _ in type_pairs:
+            idx_map = {}
+            explorer = TopExp_Explorer(old_shape, occ_type)
+            idx = 0
+            while explorer.More():
+                idx_map[idx] = explorer.Current()
+                idx += 1
+                explorer.Next()
+            old_maps[key] = idx_map
+
+        def _match_old_index(new_shape_obj, key):
+            for old_idx, old_shape_obj in old_maps.get(key, {}).items():
+                try:
+                    if hasattr(old_shape_obj, "IsEqual") and old_shape_obj.IsEqual(new_shape_obj):
+                        return old_idx
+                    if hasattr(old_shape_obj, "IsSame") and old_shape_obj.IsSame(new_shape_obj):
+                        return old_idx
+                except Exception:
+                    continue
+            return None
+
+        for i in range(geometry_item.childCount()):
+            element_type_item = geometry_item.child(i)
+            element_type_data = element_type_item.data(0, Qt.UserRole)
+            if not (isinstance(element_type_data, tuple) and len(element_type_data) >= 2):
+                continue
+            _, elem_type = element_type_data[0], element_type_data[1]
+            label_prefix = None
+            for key, _, prefix in type_pairs:
+                if key == elem_type:
+                    label_prefix = prefix
+                    break
+            if label_prefix is None:
+                continue
+            children = []
+            for j in range(element_type_item.childCount()):
+                element_item = element_type_item.child(j)
+                element_data = element_item.data(0, Qt.UserRole)
+                if not (isinstance(element_data, tuple) and len(element_data) >= 4):
+                    children.append((j, element_item))
+                    continue
+                category, element_type, element_obj, element_index = element_data
+                if element_type != elem_type:
+                    children.append((element_index, element_item))
+                    continue
+                old_index = _match_old_index(element_obj, elem_type)
+                if old_index is None:
+                    children.append((element_index, element_item))
+                    continue
+                element_item.setText(0, f"{label_prefix}{old_index}")
+                element_item.setData(0, Qt.UserRole, (category, element_type, element_obj, old_index))
+                children.append((old_index, element_item))
+
+            if children:
+                for _ in range(element_type_item.childCount()):
+                    element_type_item.takeChild(0)
+                for _, child in sorted(children, key=lambda x: x[0]):
+                    element_type_item.addChild(child)
+        self.tree.blockSignals(False)
+
     def _batch_load_geometry_elements(self, shape, vertices_item, edges_item, faces_item, bodies_item):
         """
         分批加载几何元素到树中
@@ -317,6 +404,10 @@ class ModelTreeWidget:
                 handler = self._get_parent_handler('_update_geometry_element_display')
                 if handler:
                     handler()
+                if self._pending_label_restore:
+                    old_shape, new_shape = self._pending_label_restore
+                    self._pending_label_restore = None
+                    self.restore_geometry_labels(old_shape, new_shape)
 
         QTimer.singleShot(0, process_batch)
 

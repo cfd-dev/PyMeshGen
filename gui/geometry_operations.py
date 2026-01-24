@@ -411,6 +411,8 @@ class GeometryOperations:
 
         if hasattr(self.gui, 'model_tree_widget'):
             self.gui.model_tree_widget.load_geometry(new_shape, "几何")
+            if hasattr(self.gui.model_tree_widget, 'set_pending_label_restore'):
+                self.gui.model_tree_widget.set_pending_label_restore(previous_shape, new_shape)
 
         if hasattr(self.gui, '_rebuild_parts_for_geometry'):
             self.gui._rebuild_parts_for_geometry(previous_shape, new_shape, remove_map)
@@ -471,6 +473,22 @@ class GeometryOperations:
 
         if hasattr(self.gui, 'part_manager') and hasattr(self.gui.part_manager, 'cleanup_geometry_actors'):
             self.gui.part_manager.cleanup_geometry_actors()
+
+        if hasattr(self.gui, 'geometry_actor') and self.gui.geometry_actor:
+            try:
+                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_actor)
+            except Exception:
+                pass
+        if hasattr(self.gui, 'geometry_edges_actor') and self.gui.geometry_edges_actor:
+            try:
+                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_edges_actor)
+            except Exception:
+                pass
+        if hasattr(self.gui, 'geometry_points_actor') and self.gui.geometry_points_actor:
+            try:
+                self.gui.mesh_display.renderer.RemoveActor(self.gui.geometry_points_actor)
+            except Exception:
+                pass
 
         self.gui.geometry_actors = {}
         self.gui.geometry_actor = None

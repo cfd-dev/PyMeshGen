@@ -738,6 +738,15 @@ class PartManager:
         """更新几何元素的显示"""
         if not hasattr(self.gui, 'model_tree_widget') or not hasattr(self.gui, 'current_geometry'):
             return
+        if self.gui.current_geometry is None:
+            if hasattr(self.gui, '_geometry_cache_shape_id') and self.gui._geometry_cache_shape_id is not None:
+                self.cleanup_geometry_actors()
+                self.gui._geometry_cache_shape_id = None
+            return
+        shape_id = id(self.gui.current_geometry)
+        if getattr(self.gui, '_geometry_cache_shape_id', None) != shape_id:
+            self.cleanup_geometry_actors()
+            self.gui._geometry_cache_shape_id = shape_id
         if not self.gui.model_tree_widget.is_category_visible('geometry'):
             self._hide_geometry_element_actors()
             if hasattr(self.gui, 'view_controller'):
