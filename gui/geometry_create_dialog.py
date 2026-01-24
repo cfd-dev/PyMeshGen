@@ -9,7 +9,7 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
     QPushButton, QWidget, QDoubleSpinBox, QTableWidget,
-    QTableWidgetItem, QMessageBox
+    QTableWidgetItem, QMessageBox, QLineEdit
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -33,7 +33,9 @@ class GeometryCreateDialog(QDialog):
         font.setPointSize(9)
         self.setFont(font)
 
-        self._picked_points = []
+        self._current_pick_target = None
+        self._continuous_pick_mode = None
+        self._last_picked_point = None
         self._create_widgets()
         self._connect_signals()
 
@@ -118,41 +120,25 @@ class GeometryCreateDialog(QDialog):
 
         self.point_form = QWidget()
         form = QFormLayout(self.point_form)
-        self.px = self._create_spin()
-        self.py = self._create_spin()
-        self.pz = self._create_spin()
-        form.addRow("X:", self.px)
-        form.addRow("Y:", self.py)
-        form.addRow("Z:", self.pz)
+        self.p_coord_widget, self.p_coord_pick_btn = self._create_coord_input_with_pick()
+        form.addRow("坐标 (x, y, z):", self.p_coord_widget)
         coord_layout.addWidget(self.point_form)
 
         self.line_form = QWidget()
         line_form_layout = QFormLayout(self.line_form)
-        self.lx1 = self._create_spin()
-        self.ly1 = self._create_spin()
-        self.lz1 = self._create_spin()
-        self.lx2 = self._create_spin()
-        self.ly2 = self._create_spin()
-        self.lz2 = self._create_spin()
-        line_form_layout.addRow("P1 X:", self.lx1)
-        line_form_layout.addRow("P1 Y:", self.ly1)
-        line_form_layout.addRow("P1 Z:", self.lz1)
-        line_form_layout.addRow("P2 X:", self.lx2)
-        line_form_layout.addRow("P2 Y:", self.ly2)
-        line_form_layout.addRow("P2 Z:", self.lz2)
+        self.l1_coord_widget, self.l1_coord_pick_btn = self._create_coord_input_with_pick()
+        self.l2_coord_widget, self.l2_coord_pick_btn = self._create_coord_input_with_pick()
+        line_form_layout.addRow("P1 (x, y, z):", self.l1_coord_widget)
+        line_form_layout.addRow("P2 (x, y, z):", self.l2_coord_widget)
         coord_layout.addWidget(self.line_form)
 
         self.circle_form = QWidget()
         circle_form_layout = QFormLayout(self.circle_form)
-        self.cx = self._create_spin()
-        self.cy = self._create_spin()
-        self.cz = self._create_spin()
+        self.c_coord_widget, self.c_coord_pick_btn = self._create_coord_input_with_pick()
         self.radius = self._create_spin(min_value=1e-6)
         self.start_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
         self.end_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
-        circle_form_layout.addRow("圆心 X:", self.cx)
-        circle_form_layout.addRow("圆心 Y:", self.cy)
-        circle_form_layout.addRow("圆心 Z:", self.cz)
+        circle_form_layout.addRow("圆心 (x, y, z):", self.c_coord_widget)
         circle_form_layout.addRow("半径:", self.radius)
         circle_form_layout.addRow("起始角度(°):", self.start_angle)
         circle_form_layout.addRow("终止角度(°):", self.end_angle)
@@ -165,6 +151,15 @@ class GeometryCreateDialog(QDialog):
         self.curve_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
         self.curve_table.horizontalHeader().setStretchLastSection(True)
         curve_layout.addWidget(self.curve_table)
+        curve_button_layout = QHBoxLayout()
+        self.curve_pick_button = QPushButton("进入拾取")
+        self.curve_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
+        self.curve_clear_button = QPushButton("清空")
+        self.curve_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        curve_button_layout.addWidget(self.curve_pick_button)
+        curve_button_layout.addWidget(self.curve_clear_button)
+        curve_button_layout.addStretch()
+        curve_layout.addLayout(curve_button_layout)
         coord_layout.addWidget(self.curve_form)
 
         self.polyline_form = QWidget()
@@ -174,22 +169,23 @@ class GeometryCreateDialog(QDialog):
         self.polyline_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
         self.polyline_table.horizontalHeader().setStretchLastSection(True)
         polyline_layout.addWidget(self.polyline_table)
+        polyline_button_layout = QHBoxLayout()
+        self.polyline_pick_button = QPushButton("进入拾取")
+        self.polyline_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
+        self.polyline_clear_button = QPushButton("清空")
+        self.polyline_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        polyline_button_layout.addWidget(self.polyline_pick_button)
+        polyline_button_layout.addWidget(self.polyline_clear_button)
+        polyline_button_layout.addStretch()
+        polyline_layout.addLayout(polyline_button_layout)
         coord_layout.addWidget(self.polyline_form)
 
         self.rectangle_form = QWidget()
         rectangle_layout = QFormLayout(self.rectangle_form)
-        self.rx1 = self._create_spin()
-        self.ry1 = self._create_spin()
-        self.rz1 = self._create_spin()
-        self.rx2 = self._create_spin()
-        self.ry2 = self._create_spin()
-        self.rz2 = self._create_spin()
-        rectangle_layout.addRow("P1 X:", self.rx1)
-        rectangle_layout.addRow("P1 Y:", self.ry1)
-        rectangle_layout.addRow("P1 Z:", self.rz1)
-        rectangle_layout.addRow("P2 X:", self.rx2)
-        rectangle_layout.addRow("P2 Y:", self.ry2)
-        rectangle_layout.addRow("P2 Z:", self.rz2)
+        self.r1_coord_widget, self.r1_coord_pick_btn = self._create_coord_input_with_pick()
+        self.r2_coord_widget, self.r2_coord_pick_btn = self._create_coord_input_with_pick()
+        rectangle_layout.addRow("P1 (x, y, z):", self.r1_coord_widget)
+        rectangle_layout.addRow("P2 (x, y, z):", self.r2_coord_widget)
         coord_layout.addWidget(self.rectangle_form)
 
         self.polygon_form = QWidget()
@@ -199,20 +195,25 @@ class GeometryCreateDialog(QDialog):
         self.polygon_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
         self.polygon_table.horizontalHeader().setStretchLastSection(True)
         polygon_layout.addWidget(self.polygon_table)
+        polygon_button_layout = QHBoxLayout()
+        self.polygon_pick_button = QPushButton("进入拾取")
+        self.polygon_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
+        self.polygon_clear_button = QPushButton("清空")
+        self.polygon_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        polygon_button_layout.addWidget(self.polygon_pick_button)
+        polygon_button_layout.addWidget(self.polygon_clear_button)
+        polygon_button_layout.addStretch()
+        polygon_layout.addLayout(polygon_button_layout)
         coord_layout.addWidget(self.polygon_form)
 
         self.ellipse_form = QWidget()
         ellipse_layout = QFormLayout(self.ellipse_form)
-        self.ex = self._create_spin()
-        self.ey = self._create_spin()
-        self.ez = self._create_spin()
+        self.e_coord_widget, self.e_coord_pick_btn = self._create_coord_input_with_pick()
         self.major_radius = self._create_spin(min_value=1e-6)
         self.minor_radius = self._create_spin(min_value=1e-6)
         self.ellipse_start_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
         self.ellipse_end_angle = self._create_spin(min_value=-360.0, max_value=360.0, decimals=2)
-        ellipse_layout.addRow("圆心 X:", self.ex)
-        ellipse_layout.addRow("圆心 Y:", self.ey)
-        ellipse_layout.addRow("圆心 Z:", self.ez)
+        ellipse_layout.addRow("圆心 (x, y, z):", self.e_coord_widget)
         ellipse_layout.addRow("长半轴:", self.major_radius)
         ellipse_layout.addRow("短半轴:", self.minor_radius)
         ellipse_layout.addRow("起始角度(°):", self.ellipse_start_angle)
@@ -221,58 +222,31 @@ class GeometryCreateDialog(QDialog):
 
         self.box_form = QWidget()
         box_layout = QFormLayout(self.box_form)
-        self.bx1 = self._create_spin()
-        self.by1 = self._create_spin()
-        self.bz1 = self._create_spin()
-        self.bx2 = self._create_spin()
-        self.by2 = self._create_spin()
-        self.bz2 = self._create_spin()
-        box_layout.addRow("P1 X:", self.bx1)
-        box_layout.addRow("P1 Y:", self.by1)
-        box_layout.addRow("P1 Z:", self.bz1)
-        box_layout.addRow("P2 X:", self.bx2)
-        box_layout.addRow("P2 Y:", self.by2)
-        box_layout.addRow("P2 Z:", self.bz2)
+        self.b1_coord_widget, self.b1_coord_pick_btn = self._create_coord_input_with_pick()
+        self.b2_coord_widget, self.b2_coord_pick_btn = self._create_coord_input_with_pick()
+        box_layout.addRow("P1 (x, y, z):", self.b1_coord_widget)
+        box_layout.addRow("P2 (x, y, z):", self.b2_coord_widget)
         coord_layout.addWidget(self.box_form)
 
         self.sphere_form = QWidget()
         sphere_layout = QFormLayout(self.sphere_form)
-        self.sx = self._create_spin()
-        self.sy = self._create_spin()
-        self.sz = self._create_spin()
+        self.s_coord_widget, self.s_coord_pick_btn = self._create_coord_input_with_pick()
         self.sr = self._create_spin(min_value=1e-6)
-        sphere_layout.addRow("圆心 X:", self.sx)
-        sphere_layout.addRow("圆心 Y:", self.sy)
-        sphere_layout.addRow("圆心 Z:", self.sz)
+        sphere_layout.addRow("圆心 (x, y, z):", self.s_coord_widget)
         sphere_layout.addRow("半径:", self.sr)
         coord_layout.addWidget(self.sphere_form)
 
         self.cylinder_form = QWidget()
         cylinder_layout = QFormLayout(self.cylinder_form)
-        self.cx3 = self._create_spin()
-        self.cy3 = self._create_spin()
-        self.cz3 = self._create_spin()
+        self.cy3_coord_widget, self.cy3_coord_pick_btn = self._create_coord_input_with_pick()
         self.cr = self._create_spin(min_value=1e-6)
         self.ch = self._create_spin(min_value=1e-6)
-        cylinder_layout.addRow("底面圆心 X:", self.cx3)
-        cylinder_layout.addRow("底面圆心 Y:", self.cy3)
-        cylinder_layout.addRow("底面圆心 Z:", self.cz3)
+        cylinder_layout.addRow("底面圆心 (x, y, z):", self.cy3_coord_widget)
         cylinder_layout.addRow("半径:", self.cr)
         cylinder_layout.addRow("高度:", self.ch)
         coord_layout.addWidget(self.cylinder_form)
 
         layout.addWidget(coord_group)
-
-        pick_group = QGroupBox("拾取")
-        pick_layout = QHBoxLayout(pick_group)
-        self.pick_button = QPushButton("进入拾取")
-        self.pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
-        self.pick_clear_button = QPushButton("清空拾取")
-        self.pick_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
-        pick_layout.addWidget(self.pick_button)
-        pick_layout.addWidget(self.pick_clear_button)
-        pick_layout.addStretch()
-        layout.addWidget(pick_group)
 
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -286,6 +260,29 @@ class GeometryCreateDialog(QDialog):
 
         self._apply_mode_visibility()
 
+    def _create_coord_input_with_pick(self):
+        """创建带拾取按钮的坐标输入框"""
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+        
+        line_edit = QLineEdit()
+        line_edit.setPlaceholderText("x, y, z")
+        line_edit.setStyleSheet("background-color: white; padding: 2px;")
+        
+        pick_btn = QPushButton("拾取")
+        pick_btn.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        pick_btn.setMaximumWidth(60)
+        
+        layout.addWidget(line_edit, 1)
+        layout.addWidget(pick_btn, 0)
+        
+        widget.line_edit = line_edit
+        widget.pick_btn = pick_btn
+        
+        return widget, pick_btn
+
     def _connect_signals(self):
         self.point_mode_button.clicked.connect(lambda: self._set_mode("点"))
         self.line_mode_button.clicked.connect(lambda: self._set_mode("直线"))
@@ -298,10 +295,27 @@ class GeometryCreateDialog(QDialog):
         self.box_mode_button.clicked.connect(lambda: self._set_mode("长方体"))
         self.sphere_mode_button.clicked.connect(lambda: self._set_mode("圆球"))
         self.cylinder_mode_button.clicked.connect(lambda: self._set_mode("圆柱"))
-        self.pick_button.clicked.connect(self._toggle_pick)
-        self.pick_clear_button.clicked.connect(self._clear_picked)
         self.create_button.clicked.connect(self._create_geometry)
         self.cancel_button.clicked.connect(self.close)
+
+        self.curve_pick_button.clicked.connect(lambda: self._start_continuous_pick("curve"))
+        self.curve_clear_button.clicked.connect(lambda: self._clear_table(self.curve_table))
+        self.polyline_pick_button.clicked.connect(lambda: self._start_continuous_pick("polyline"))
+        self.polyline_clear_button.clicked.connect(lambda: self._clear_table(self.polyline_table))
+        self.polygon_pick_button.clicked.connect(lambda: self._start_continuous_pick("polygon"))
+        self.polygon_clear_button.clicked.connect(lambda: self._clear_table(self.polygon_table))
+
+        self.p_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.p_coord_widget.line_edit))
+        self.l1_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.l1_coord_widget.line_edit))
+        self.l2_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.l2_coord_widget.line_edit))
+        self.c_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.c_coord_widget.line_edit))
+        self.r1_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.r1_coord_widget.line_edit))
+        self.r2_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.r2_coord_widget.line_edit))
+        self.e_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.e_coord_widget.line_edit))
+        self.b1_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.b1_coord_widget.line_edit))
+        self.b2_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.b2_coord_widget.line_edit))
+        self.s_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.s_coord_widget.line_edit))
+        self.cy3_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.cy3_coord_widget.line_edit))
 
     def _create_spin(self, min_value=-1e6, max_value=1e6, decimals=3):
         spin = QDoubleSpinBox()
@@ -310,6 +324,28 @@ class GeometryCreateDialog(QDialog):
         spin.setSingleStep(0.1)
         spin.setStyleSheet("background-color: white;")
         return spin
+
+    def _parse_coord_input(self, text):
+        """解析坐标输入，支持逗号或空格分隔，返回 (x, y, z) 元组"""
+        if not text or not text.strip():
+            return (0.0, 0.0, 0.0)
+        try:
+            text = text.strip()
+            if ',' in text:
+                parts = [p.strip() for p in text.split(',')]
+            else:
+                parts = text.split()
+            
+            x = float(parts[0]) if len(parts) > 0 else 0.0
+            y = float(parts[1]) if len(parts) > 1 else 0.0
+            z = float(parts[2]) if len(parts) > 2 else 0.0
+            return (x, y, z)
+        except (ValueError, IndexError):
+            return (0.0, 0.0, 0.0)
+
+    def _format_coord_output(self, x, y, z):
+        """格式化坐标输出为字符串"""
+        return f"{x:.6f}, {y:.6f}, {z:.6f}"
 
     def _apply_mode_visibility(self):
         mode = self._current_mode()
@@ -421,261 +457,111 @@ class GeometryCreateDialog(QDialog):
             return "圆柱"
         return "点"
 
-    def _toggle_pick(self):
+    def _start_single_pick(self, target_widget):
+        """启动单个坐标拾取"""
         if not self.gui or not hasattr(self.gui, 'view_controller'):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
-        if hasattr(self.gui.view_controller, 'start_point_pick'):
-            if self.gui.view_controller.is_point_pick_active():
-                self.gui.view_controller.stop_point_pick()
-                self.pick_button.setText("进入拾取")
-            else:
-                self._picked_points.clear()
-                self.gui.view_controller.set_point_pick_callbacks(
-                    on_confirm=self._on_pick_confirm,
-                    on_cancel=self._on_pick_cancel,
-                    on_exit=self._on_pick_exit,
-                )
-                self.gui.view_controller.start_point_pick(self._on_point_picked)
-                self.pick_button.setText("拾取中...")
-                if hasattr(self.gui, 'log_info'):
-                    self.gui.log_info("点拾取已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式")
-                if hasattr(self.gui, 'update_status'):
-                    self.gui.update_status("点拾取: 左键选中，右键取消，中键确认，Esc退出拾取模式")
-        else:
-            QMessageBox.warning(self, "警告", "拾取功能不可用")
+        self._current_pick_target = target_widget
+        self.gui.view_controller.set_point_pick_callbacks(
+            on_confirm=self._on_single_pick_confirm,
+            on_cancel=self._on_single_pick_cancel,
+            on_exit=self._on_single_pick_exit,
+        )
+        self.gui.view_controller.start_point_pick(self._on_single_point_picked)
+        if hasattr(self.gui, 'log_info'):
+            self.gui.log_info("点拾取已开启: 点击视图拾取点坐标")
 
-    def _clear_picked(self):
-        self._picked_points.clear()
-        self.curve_table.setRowCount(0)
+    def _on_single_point_picked(self, point):
+        """单个点拾取回调"""
+        if self._current_pick_target:
+            self._current_pick_target.setText(self._format_coord_output(point[0], point[1], point[2]))
+            self._current_pick_target = None
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
-            self.pick_button.setText("进入拾取")
 
-    def _on_pick_confirm(self):
+    def _on_single_pick_confirm(self):
+        """单个点拾取确认回调"""
+        pass
+
+    def _on_single_pick_cancel(self):
+        """单个点拾取取消回调"""
+        if self._current_pick_target:
+            self._current_pick_target = None
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
-        self.pick_button.setText("进入拾取")
 
-    def _on_pick_exit(self):
-        if self.gui and hasattr(self.gui, 'view_controller'):
-            self.gui.view_controller.stop_point_pick()
-        self.pick_button.setText("进入拾取")
+    def _on_single_pick_exit(self):
+        """单个点拾取退出回调"""
+        if self._current_pick_target:
+            self._current_pick_target = None
 
-    def _on_pick_cancel(self):
-        if not self._picked_points:
+    def _start_continuous_pick(self, mode):
+        """启动连续拾取模式"""
+        if not self.gui or not hasattr(self.gui, 'view_controller'):
+            QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
-        self._picked_points.pop()
-        mode = self._current_mode()
-        if mode == "曲线":
-            row = self.curve_table.rowCount()
-            if row > 0:
-                self.curve_table.removeRow(row - 1)
-        elif mode == "多段线/折线":
-            row = self.polyline_table.rowCount()
-            if row > 0:
-                self.polyline_table.removeRow(row - 1)
-        elif mode == "多边形":
-            row = self.polygon_table.rowCount()
-            if row > 0:
-                self.polygon_table.removeRow(row - 1)
-        else:
-            remaining = len(self._picked_points)
-            if mode == "点" and remaining == 0:
-                self.px.setValue(0.0)
-                self.py.setValue(0.0)
-                self.pz.setValue(0.0)
-            elif mode == "直线":
-                if remaining == 1:
-                    self.lx2.setValue(0.0)
-                    self.ly2.setValue(0.0)
-                    self.lz2.setValue(0.0)
-                elif remaining == 0:
-                    self.lx1.setValue(0.0)
-                    self.ly1.setValue(0.0)
-                    self.lz1.setValue(0.0)
-            elif mode == "圆/圆弧":
-                if remaining == 1:
-                    self.radius.setValue(0.0)
-                elif remaining == 0:
-                    self.cx.setValue(0.0)
-                    self.cy.setValue(0.0)
-                    self.cz.setValue(0.0)
-                    self.radius.setValue(0.0)
-            elif mode == "矩形":
-                if remaining == 1:
-                    self.rx2.setValue(0.0)
-                    self.ry2.setValue(0.0)
-                    self.rz2.setValue(0.0)
-                elif remaining == 0:
-                    self.rx1.setValue(0.0)
-                    self.ry1.setValue(0.0)
-                    self.rz1.setValue(0.0)
-            elif mode == "椭圆/椭圆弧":
-                if remaining == 2:
-                    self.minor_radius.setValue(0.0)
-                elif remaining == 1:
-                    self.major_radius.setValue(0.0)
-                    self.minor_radius.setValue(0.0)
-                elif remaining == 0:
-                    self.ex.setValue(0.0)
-                    self.ey.setValue(0.0)
-                    self.ez.setValue(0.0)
-                    self.major_radius.setValue(0.0)
-                    self.minor_radius.setValue(0.0)
-            elif mode == "长方体":
-                if remaining == 1:
-                    self.bx2.setValue(0.0)
-                    self.by2.setValue(0.0)
-                    self.bz2.setValue(0.0)
-                elif remaining == 0:
-                    self.bx1.setValue(0.0)
-                    self.by1.setValue(0.0)
-                    self.bz1.setValue(0.0)
-            elif mode == "圆球":
-                if remaining == 1:
-                    self.sr.setValue(0.0)
-                elif remaining == 0:
-                    self.sx.setValue(0.0)
-                    self.sy.setValue(0.0)
-                    self.sz.setValue(0.0)
-                    self.sr.setValue(0.0)
-            elif mode == "圆柱":
-                if remaining == 2:
-                    self.ch.setValue(0.0)
-                elif remaining == 1:
-                    self.cr.setValue(0.0)
-                    self.ch.setValue(0.0)
-                elif remaining == 0:
-                    self.cx3.setValue(0.0)
-                    self.cy3.setValue(0.0)
-                    self.cz3.setValue(0.0)
-                    self.cr.setValue(0.0)
-                    self.ch.setValue(0.0)
+        self._continuous_pick_mode = mode
+        self.gui.view_controller.set_point_pick_callbacks(
+            on_confirm=self._on_continuous_pick_confirm,
+            on_cancel=self._on_continuous_pick_cancel,
+            on_exit=self._on_continuous_pick_exit,
+        )
+        self.gui.view_controller.start_point_pick(self._on_continuous_point_picked)
+        if hasattr(self.gui, 'log_info'):
+            self.gui.log_info("连续拾取已开启: 左键选中，右键取消，中键确认添加点，Esc退出拾取模式")
 
-    def _on_point_picked(self, point):
-        self._picked_points.append(point)
-        mode = self._current_mode()
-        if mode == "点":
-            self.px.setValue(point[0])
-            self.py.setValue(point[1])
-            self.pz.setValue(point[2])
-            if self.gui and hasattr(self.gui, 'view_controller'):
-                self.gui.view_controller.stop_point_pick()
-                self.pick_button.setText("进入拾取")
-        elif mode == "直线":
-            if len(self._picked_points) == 1:
-                self.lx1.setValue(point[0])
-                self.ly1.setValue(point[1])
-                self.lz1.setValue(point[2])
-            elif len(self._picked_points) >= 2:
-                self.lx2.setValue(point[0])
-                self.ly2.setValue(point[1])
-                self.lz2.setValue(point[2])
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "圆/圆弧":
-            if len(self._picked_points) == 1:
-                self.cx.setValue(point[0])
-                self.cy.setValue(point[1])
-                self.cz.setValue(point[2])
-            elif len(self._picked_points) == 2:
-                dx = point[0] - self.cx.value()
-                dy = point[1] - self.cy.value()
-                dz = point[2] - self.cz.value()
-                self.radius.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "曲线":
-            row = self.curve_table.rowCount()
-            self.curve_table.insertRow(row)
-            self.curve_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
-            self.curve_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
-            self.curve_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
-        elif mode == "多段线/折线":
-            row = self.polyline_table.rowCount()
-            self.polyline_table.insertRow(row)
-            self.polyline_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
-            self.polyline_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
-            self.polyline_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
-        elif mode == "矩形":
-            if len(self._picked_points) == 1:
-                self.rx1.setValue(point[0])
-                self.ry1.setValue(point[1])
-                self.rz1.setValue(point[2])
-            elif len(self._picked_points) >= 2:
-                self.rx2.setValue(point[0])
-                self.ry2.setValue(point[1])
-                self.rz2.setValue(point[2])
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "椭圆/椭圆弧":
-            if len(self._picked_points) == 1:
-                self.ex.setValue(point[0])
-                self.ey.setValue(point[1])
-                self.ez.setValue(point[2])
-            elif len(self._picked_points) == 2:
-                dx = point[0] - self.ex.value()
-                dy = point[1] - self.ey.value()
-                dz = point[2] - self.ez.value()
-                self.major_radius.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
-            elif len(self._picked_points) >= 3:
-                dx = point[0] - self.ex.value()
-                dy = point[1] - self.ey.value()
-                dz = point[2] - self.ez.value()
-                self.minor_radius.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "长方体":
-            if len(self._picked_points) == 1:
-                self.bx1.setValue(point[0])
-                self.by1.setValue(point[1])
-                self.bz1.setValue(point[2])
-            elif len(self._picked_points) >= 2:
-                self.bx2.setValue(point[0])
-                self.by2.setValue(point[1])
-                self.bz2.setValue(point[2])
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "圆球":
-            if len(self._picked_points) == 1:
-                self.sx.setValue(point[0])
-                self.sy.setValue(point[1])
-                self.sz.setValue(point[2])
-            elif len(self._picked_points) >= 2:
-                dx = point[0] - self.sx.value()
-                dy = point[1] - self.sy.value()
-                dz = point[2] - self.sz.value()
-                self.sr.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "圆柱":
-            if len(self._picked_points) == 1:
-                self.cx3.setValue(point[0])
-                self.cy3.setValue(point[1])
-                self.cz3.setValue(point[2])
-            elif len(self._picked_points) == 2:
-                dx = point[0] - self.cx3.value()
-                dy = point[1] - self.cy3.value()
-                dz = point[2] - self.cz3.value()
-                self.cr.setValue((dx * dx + dy * dy + dz * dz) ** 0.5)
-            elif len(self._picked_points) >= 3:
-                self.ch.setValue(point[2] - self.cz3.value())
-                if self.gui and hasattr(self.gui, 'view_controller'):
-                    self.gui.view_controller.stop_point_pick()
-                    self.pick_button.setText("进入拾取")
-        elif mode == "多边形":
-            row = self.polygon_table.rowCount()
-            self.polygon_table.insertRow(row)
-            self.polygon_table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
-            self.polygon_table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
-            self.polygon_table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
+    def _on_continuous_point_picked(self, point):
+        """连续拾取点回调（左键选中）"""
+        self._last_picked_point = point
+
+    def _on_continuous_pick_confirm(self):
+        """连续拾取确认回调（中键确认，添加点到表格）"""
+        if self._last_picked_point is None:
+            return
+        
+        point = self._last_picked_point
+        table = None
+        if self._continuous_pick_mode == "curve":
+            table = self.curve_table
+        elif self._continuous_pick_mode == "polyline":
+            table = self.polyline_table
+        elif self._continuous_pick_mode == "polygon":
+            table = self.polygon_table
+        
+        if table:
+            row = table.rowCount()
+            table.insertRow(row)
+            table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
+            table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
+            table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info(f"已添加点 ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
+
+    def _on_continuous_pick_cancel(self):
+        """连续拾取取消回调（右键取消，移除最后一个点）"""
+        table = None
+        if self._continuous_pick_mode == "curve":
+            table = self.curve_table
+        elif self._continuous_pick_mode == "polyline":
+            table = self.polyline_table
+        elif self._continuous_pick_mode == "polygon":
+            table = self.polygon_table
+        
+        if table and table.rowCount() > 0:
+            table.removeRow(table.rowCount() - 1)
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info("已移除最后一个点")
+
+    def _on_continuous_pick_exit(self):
+        """连续拾取退出回调"""
+        self._continuous_pick_mode = None
+        if self.gui and hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller.stop_point_pick()
+
+    def _clear_table(self, table):
+        """清空表格"""
+        table.setRowCount(0)
 
     def _create_geometry(self):
         if not self.gui or not hasattr(self.gui, 'geometry_operations'):
@@ -683,16 +569,16 @@ class GeometryCreateDialog(QDialog):
             return
         mode = self._current_mode()
         if mode == "点":
-            points = [(self.px.value(), self.py.value(), self.pz.value())]
+            points = [self._parse_coord_input(self.p_coord_widget.line_edit.text())]
             self.gui.geometry_operations.create_geometry_from_points(points, mode="point")
         elif mode == "直线":
             points = [
-                (self.lx1.value(), self.ly1.value(), self.lz1.value()),
-                (self.lx2.value(), self.ly2.value(), self.lz2.value()),
+                self._parse_coord_input(self.l1_coord_widget.line_edit.text()),
+                self._parse_coord_input(self.l2_coord_widget.line_edit.text()),
             ]
             self.gui.geometry_operations.create_geometry_from_points(points, mode="line")
         elif mode == "圆/圆弧":
-            center = (self.cx.value(), self.cy.value(), self.cz.value())
+            center = self._parse_coord_input(self.c_coord_widget.line_edit.text())
             radius = self.radius.value()
             self.gui.geometry_operations.create_geometry_circle(
                 center,
@@ -713,8 +599,8 @@ class GeometryCreateDialog(QDialog):
                 return
             self.gui.geometry_operations.create_geometry_polyline(points)
         elif mode == "矩形":
-            p1 = (self.rx1.value(), self.ry1.value(), self.rz1.value())
-            p2 = (self.rx2.value(), self.ry2.value(), self.rz2.value())
+            p1 = self._parse_coord_input(self.r1_coord_widget.line_edit.text())
+            p2 = self._parse_coord_input(self.r2_coord_widget.line_edit.text())
             self.gui.geometry_operations.create_geometry_rectangle(p1, p2)
         elif mode == "多边形":
             points = self._get_table_points(self.polygon_table)
@@ -723,7 +609,7 @@ class GeometryCreateDialog(QDialog):
                 return
             self.gui.geometry_operations.create_geometry_polygon(points)
         elif mode == "椭圆/椭圆弧":
-            center = (self.ex.value(), self.ey.value(), self.ez.value())
+            center = self._parse_coord_input(self.e_coord_widget.line_edit.text())
             self.gui.geometry_operations.create_geometry_ellipse(
                 center,
                 self.major_radius.value(),
@@ -732,18 +618,15 @@ class GeometryCreateDialog(QDialog):
                 end_angle=self.ellipse_end_angle.value(),
             )
         elif mode == "长方体":
-            p1 = (self.bx1.value(), self.by1.value(), self.bz1.value())
-            p2 = (self.bx2.value(), self.by2.value(), self.bz2.value())
+            p1 = self._parse_coord_input(self.b1_coord_widget.line_edit.text())
+            p2 = self._parse_coord_input(self.b2_coord_widget.line_edit.text())
             self.gui.geometry_operations.create_geometry_box(p1, p2)
         elif mode == "圆球":
-            center = (self.sx.value(), self.sy.value(), self.sz.value())
+            center = self._parse_coord_input(self.s_coord_widget.line_edit.text())
             self.gui.geometry_operations.create_geometry_sphere(center, self.sr.value())
         elif mode == "圆柱":
-            base_center = (self.cx3.value(), self.cy3.value(), self.cz3.value())
+            base_center = self._parse_coord_input(self.cy3_coord_widget.line_edit.text())
             self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
-        if self.gui and hasattr(self.gui, 'view_controller'):
-            self.gui.view_controller.stop_point_pick()
-            self.pick_button.setText("进入拾取")
 
     def _get_curve_points(self):
         points = []
