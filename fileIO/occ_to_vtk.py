@@ -109,13 +109,13 @@ def shape_to_vtk_polydata(shape: TopoDS_Shape,
 
 
 def shape_edges_to_vtk_polydata(shape: TopoDS_Shape,
-                               sample_rate: float = 0.1) -> vtk.vtkPolyData:
+                               sample_rate: float = 0.0025) -> vtk.vtkPolyData:
     """
     将TopoDS_Shape的边转换为VTK PolyData（仅边框）
     
     Args:
         shape: OpenCASCADE形状
-        sample_rate: 采样率（控制边的采样密度）
+        sample_rate: 采样率（控制边的采样密度，默认0.0025）
         
     Returns:
         vtk.vtkPolyData: VTK多边形数据对象（仅包含边）
@@ -384,7 +384,7 @@ def create_vertex_actor(vertex: TopoDS_Vertex,
 def create_edge_actor(edge: TopoDS_Edge,
                      color: Tuple[float, float, float] = (0.0, 0.0, 1.0),
                      line_width: float = 2.0,
-                     sample_rate: float = 0.05) -> vtk.vtkActor:
+                     sample_rate: float = 0.0025) -> vtk.vtkActor:
     """
     为边创建VTK Actor
     
@@ -392,7 +392,7 @@ def create_edge_actor(edge: TopoDS_Edge,
         edge: OpenCASCADE边
         color: 颜色 (R, G, B)
         line_width: 线宽
-        sample_rate: 采样率（控制边的采样密度，默认0.05）
+        sample_rate: 采样率（控制边的采样密度，默认0.0025）
         
     Returns:
         vtk.vtkActor: VTK Actor对象
@@ -521,8 +521,8 @@ def create_face_actor(face: TopoDS_Face,
 def create_geometry_edges_actor(shape: TopoDS_Shape,
                                color: Tuple[float, float, float] = (0.0, 0.0, 0.0),
                                line_width: float = 1.5,
-                               sample_rate: float = 0.05,
-                               max_points_per_edge: int = 200) -> vtk.vtkActor:
+                               sample_rate: float = 0.0025,
+                               max_points_per_edge: int = 2000) -> vtk.vtkActor:
     """
     为几何形状创建仅包含原始几何曲线的VTK Actor
     
@@ -530,8 +530,8 @@ def create_geometry_edges_actor(shape: TopoDS_Shape,
         shape: OpenCASCADE形状
         color: 线条颜色 (R, G, B)
         line_width: 线宽
-        sample_rate: 采样率（控制边的采样密度，越大越粗略，默认0.05）
-        max_points_per_edge: 每条边的最大采样点数，防止长边产生过多点（默认200）
+        sample_rate: 采样率（控制边的采样密度，越大越粗略，默认0.0025）
+        max_points_per_edge: 每条边的最大采样点数，防止长边产生过多点（默认2000）
         
     Returns:
         vtk.vtkActor: VTK Actor对象（仅包含原始几何曲线）

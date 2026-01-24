@@ -497,8 +497,8 @@ class GeometryOperations:
                 self.gui.current_geometry,
                 color=(0.0, 0.0, 0.0),
                 line_width=1.5,
-                sample_rate=0.05,
-                max_points_per_edge=200
+                sample_rate=0.0025,
+                max_points_per_edge=2000
             )
             self.gui.mesh_display.renderer.AddActor(self.gui.geometry_edges_actor)
             self.gui.geometry_actors['edges'] = [self.gui.geometry_edges_actor]
