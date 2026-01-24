@@ -42,7 +42,7 @@ class GeometryPickingHelper:
         self._area_filter = _AreaSelectionFilter(self)
 
         self._picker = vtk.vtkCellPicker()
-        self._picker.SetTolerance(0.0005)
+        self._picker.SetTolerance(0.01)
 
     def set_callbacks(
         self,

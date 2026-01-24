@@ -260,7 +260,7 @@ class ViewController:
         if self._point_picker is None:
             import vtk
             self._point_picker = vtk.vtkCellPicker()
-            self._point_picker.SetTolerance(0.0005)
+            self._point_picker.SetTolerance(0.02)
         if self._point_pick_observer_id is None:
             self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick)
         if self._point_pick_right_id is None:
