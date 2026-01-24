@@ -478,6 +478,13 @@ class PyMeshGenGUI(QMainWindow):
     def on_mesh_display_key(self, event):
         """处理网格显示区域的键盘事件"""
         key = event.key()
+        if key == Qt.Key_Escape:
+            if hasattr(self, 'view_controller'):
+                if self.view_controller.is_point_pick_active():
+                    self.view_controller._on_point_pick_exit(None, None)
+                    return
+                self.view_controller.set_picking_mode(False)
+            return
         key_actions = {
             Qt.Key_R: lambda: self.view_controller.reset_view() or self.update_status("已重置视图 (R键)"),
             Qt.Key_F: lambda: self.view_controller.fit_view() or self.update_status("已适应视图 (F键)"),

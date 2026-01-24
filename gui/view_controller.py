@@ -22,8 +22,14 @@ class ViewController:
         self._picking_helper = None
         self._picking_enabled = False
         self._point_pick_observer_id = None
+        self._point_pick_middle_id = None
+        self._point_pick_right_id = None
+        self._point_pick_key_id = None
         self._point_pick_callback = None
         self._point_picker = None
+        self._point_pick_confirm_callback = None
+        self._point_pick_cancel_callback = None
+        self._point_pick_exit_callback = None
 
     def reset_view(self):
         """重置视图"""
@@ -168,18 +174,73 @@ class ViewController:
                     self.gui.update_status("拾取模式开启失败")
                     return
                 from .geometry_picking import GeometryPickingHelper
-                self._picking_helper = GeometryPickingHelper(self.gui.mesh_display, gui=self.gui)
+                self._picking_helper = GeometryPickingHelper(
+                    self.gui.mesh_display,
+                    gui=self.gui,
+                    on_confirm=self._on_geometry_pick_confirm,
+                    on_cancel=self._on_geometry_pick_cancel,
+                )
+            else:
+                self._picking_helper.set_callbacks(
+                    on_confirm=self._on_geometry_pick_confirm,
+                    on_cancel=self._on_geometry_pick_cancel,
+                )
             self._picking_helper.enable()
             self._picking_enabled = True
-            self.gui.log_info("拾取模式已开启")
-            self.gui.update_status("拾取模式: 开启")
+            self._sync_toolbar_picking_state(True)
+            self._show_pick_hint_overlay(is_point=False)
+            hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+            self.gui.log_info(hint)
+            self.gui.update_status(hint)
         else:
             if self._picking_helper is not None:
                 self._picking_helper.cleanup(restore_display_mode=False)
                 self._picking_helper = None
             self._picking_enabled = False
+            self._sync_toolbar_picking_state(False)
+            self._hide_pick_hint_overlay()
             self.gui.log_info("拾取模式已关闭")
             self.gui.update_status("拾取模式: 关闭")
+
+    def start_geometry_pick(self, on_confirm=None, on_cancel=None, on_pick=None, on_unpick=None):
+        if self._picking_helper is None:
+            if not hasattr(self.gui, 'mesh_display') or self.gui.mesh_display is None:
+                self.gui.log_warning("拾取模式开启失败: 未找到视图区")
+                self.gui.update_status("拾取模式开启失败")
+                return
+            from .geometry_picking import GeometryPickingHelper
+            self._picking_helper = GeometryPickingHelper(
+                self.gui.mesh_display,
+                gui=self.gui,
+                on_pick=on_pick,
+                on_unpick=on_unpick,
+                on_confirm=on_confirm or self._on_geometry_pick_confirm,
+                on_cancel=on_cancel or self._on_geometry_pick_cancel,
+            )
+        else:
+            self._picking_helper.set_callbacks(
+                on_pick=on_pick,
+                on_unpick=on_unpick,
+                on_confirm=on_confirm or self._on_geometry_pick_confirm,
+                on_cancel=on_cancel or self._on_geometry_pick_cancel,
+            )
+        self._picking_helper.enable()
+        self._picking_enabled = True
+        self._sync_toolbar_picking_state(True)
+        self._show_pick_hint_overlay(is_point=False)
+        hint = "拾取模式已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+        self.gui.log_info(hint)
+        self.gui.update_status(hint)
+
+    def stop_geometry_pick(self, restore_display_mode=True):
+        if self._picking_helper is not None:
+            self._picking_helper.cleanup(restore_display_mode=restore_display_mode)
+            self._picking_helper = None
+        self._picking_enabled = False
+        self._sync_toolbar_picking_state(False)
+        self._hide_pick_hint_overlay()
+        self.gui.log_info("拾取模式已关闭")
+        self.gui.update_status("拾取模式: 关闭")
 
     def start_point_pick(self, callback):
         """开始点拾取"""
@@ -195,7 +256,15 @@ class ViewController:
             self._point_picker.SetTolerance(0.0005)
         if self._point_pick_observer_id is None:
             self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick)
-        self.gui.update_status("点拾取: 开启")
+        if self._point_pick_middle_id is None:
+            self._point_pick_middle_id = interactor.AddObserver("MiddleButtonPressEvent", self._on_point_pick_confirm)
+        if self._point_pick_right_id is None:
+            self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_cancel)
+        if self._point_pick_key_id is None:
+            self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
+        self._show_pick_hint_overlay(is_point=True)
+        hint = "点拾取: 左键选中，右键取消，中键确认，Esc退出拾取模式"
+        self.gui.update_status(hint)
 
     def stop_point_pick(self):
         """停止点拾取"""
@@ -204,12 +273,30 @@ class ViewController:
         interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
         if interactor is not None and self._point_pick_observer_id is not None:
             interactor.RemoveObserver(self._point_pick_observer_id)
+        if interactor is not None and self._point_pick_middle_id is not None:
+            interactor.RemoveObserver(self._point_pick_middle_id)
+        if interactor is not None and self._point_pick_right_id is not None:
+            interactor.RemoveObserver(self._point_pick_right_id)
+        if interactor is not None and self._point_pick_key_id is not None:
+            interactor.RemoveObserver(self._point_pick_key_id)
         self._point_pick_observer_id = None
+        self._point_pick_middle_id = None
+        self._point_pick_right_id = None
+        self._point_pick_key_id = None
         self._point_pick_callback = None
+        self._point_pick_confirm_callback = None
+        self._point_pick_cancel_callback = None
+        self._point_pick_exit_callback = None
+        self._hide_pick_hint_overlay()
         self.gui.update_status("点拾取: 关闭")
 
     def is_point_pick_active(self):
         return self._point_pick_observer_id is not None
+
+    def set_point_pick_callbacks(self, on_confirm=None, on_cancel=None, on_exit=None):
+        self._point_pick_confirm_callback = on_confirm
+        self._point_pick_cancel_callback = on_cancel
+        self._point_pick_exit_callback = on_exit
 
     def _on_point_pick(self, obj, event):
         if not self._point_pick_callback:
@@ -228,6 +315,58 @@ class ViewController:
         style = interactor.GetInteractorStyle()
         if style:
             style.OnLeftButtonDown()
+
+    def _on_point_pick_confirm(self, obj, event):
+        if self._point_pick_confirm_callback:
+            self._point_pick_confirm_callback()
+
+    def _on_point_pick_cancel(self, obj, event):
+        if self._point_pick_cancel_callback:
+            self._point_pick_cancel_callback()
+
+    def _on_point_pick_key_press(self, obj, event):
+        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+            return
+        interactor = self.gui.mesh_display.frame.GetRenderWindow().GetInteractor()
+        if interactor is None:
+            return
+        key = interactor.GetKeySym()
+        if key in ("Escape", "Esc"):
+            if self._point_pick_exit_callback:
+                self._point_pick_exit_callback()
+            return
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnKeyPress()
+
+    def _sync_toolbar_picking_state(self, enabled):
+        toolbar = getattr(self.gui, 'view_toolbar', None)
+        if toolbar and hasattr(toolbar, 'actions') and 'picking' in toolbar.actions:
+            action = toolbar.actions['picking']
+            if action.isChecked() != enabled:
+                action.blockSignals(True)
+                action.setChecked(enabled)
+                action.blockSignals(False)
+
+    def _on_geometry_pick_confirm(self):
+        self.stop_geometry_pick(restore_display_mode=False)
+
+    def _on_geometry_pick_cancel(self):
+        self.stop_geometry_pick(restore_display_mode=False)
+
+    def _show_pick_hint_overlay(self, is_point=False):
+        if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+            return
+        if is_point:
+            text = "左键选中，右键取消，中键确认，Esc退出拾取模式"
+        else:
+            text = "左键选中，右键取消，中键确认，Esc退出拾取模式，ALT+左键框选（相交选中），ALT+右键框选（包含选中）"
+        if hasattr(self.gui.mesh_display, 'show_pick_hint'):
+            self.gui.mesh_display.show_pick_hint(text)
+
+    def _hide_pick_hint_overlay(self):
+        if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display and hasattr(self.gui.mesh_display, 'hide_pick_hint'):
+            self.gui.mesh_display.hide_pick_hint()
 
     def _apply_render_mode_to_geometry(self, mode):
         display_mode = getattr(self.gui, 'display_mode', 'full')

@@ -20,14 +20,20 @@ class GeometryPickingHelper:
         gui=None,
         on_pick: Optional[Callable[[str, object, int], None]] = None,
         on_unpick: Optional[Callable[[str, object, int], None]] = None,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
     ):
         self.mesh_display = mesh_display
         self.gui = gui
         self._on_pick = on_pick
         self._on_unpick = on_unpick
+        self._on_confirm = on_confirm
+        self._on_cancel = on_cancel
         self._enabled = False
         self._observer_id = None
         self._observer_right_id = None
+        self._observer_middle_id = None
+        self._observer_key_id = None
         self._saved_display_mode = None
         self._highlighted_actors: Dict[vtk.vtkActor, Dict[str, object]] = {}
         self._area_selecting = False
@@ -36,6 +42,18 @@ class GeometryPickingHelper:
 
         self._picker = vtk.vtkCellPicker()
         self._picker.SetTolerance(0.0005)
+
+    def set_callbacks(
+        self,
+        on_pick: Optional[Callable[[str, object, int], None]] = None,
+        on_unpick: Optional[Callable[[str, object, int], None]] = None,
+        on_confirm: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
+    ):
+        self._on_pick = on_pick
+        self._on_unpick = on_unpick
+        self._on_confirm = on_confirm
+        self._on_cancel = on_cancel
 
     def enable(self):
         """启用拾取"""
@@ -51,7 +69,9 @@ class GeometryPickingHelper:
             return
 
         self._observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_left_button_press)
+        self._observer_middle_id = interactor.AddObserver("MiddleButtonPressEvent", self._on_middle_button_press)
         self._observer_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_right_button_press)
+        self._observer_key_id = interactor.AddObserver("KeyPressEvent", self._on_key_press)
         self._enabled = True
 
     def disable(self, restore_display_mode=True):
@@ -63,10 +83,16 @@ class GeometryPickingHelper:
         if interactor is not None:
             if self._observer_id is not None:
                 interactor.RemoveObserver(self._observer_id)
+            if self._observer_middle_id is not None:
+                interactor.RemoveObserver(self._observer_middle_id)
             if self._observer_right_id is not None:
                 interactor.RemoveObserver(self._observer_right_id)
+            if self._observer_key_id is not None:
+                interactor.RemoveObserver(self._observer_key_id)
         self._observer_id = None
+        self._observer_middle_id = None
         self._observer_right_id = None
+        self._observer_key_id = None
         self._clear_highlights()
         self._enabled = False
         if restore_display_mode:
@@ -140,14 +166,21 @@ class GeometryPickingHelper:
 
         if actor is not None and actor in actor_map:
             element_info = actor_map[actor]
-            self._highlight_actor(actor, element_info["element_type"])
-            if self._on_pick:
-                self._on_pick(
-                    element_info["element_type"],
-                    element_info["element_obj"],
-                    element_info["element_index"],
-                )
-            if self.gui and hasattr(self.gui, "part_manager"):
+            if actor not in self._highlighted_actors:
+                self._highlight_actor(actor, element_info["element_type"])
+                if self._on_pick:
+                    self._on_pick(
+                        element_info["element_type"],
+                        element_info["element_obj"],
+                        element_info["element_index"],
+                    )
+                if self.gui and hasattr(self.gui, "part_manager"):
+                    self.gui.part_manager.on_geometry_element_selected(
+                        element_info["element_type"],
+                        element_info["element_obj"],
+                        element_info["element_index"],
+                    )
+            elif self.gui and hasattr(self.gui, "part_manager"):
                 self.gui.part_manager.on_geometry_element_selected(
                     element_info["element_type"],
                     element_info["element_obj"],
@@ -158,6 +191,14 @@ class GeometryPickingHelper:
         else:
             if style:
                 style.OnLeftButtonDown()
+
+    def _on_middle_button_press(self, obj, event):
+        if not self._enabled:
+            return
+        if self._area_selecting:
+            return
+        if self._on_confirm:
+            self._on_confirm()
 
     def _on_right_button_press(self, obj, event):
         if not self._enabled:
@@ -183,7 +224,7 @@ class GeometryPickingHelper:
         self._picker.Pick(click_pos[0], click_pos[1], 0, renderer)
         actor = self._picker.GetActor()
 
-        if actor is not None and actor in actor_map:
+        if actor is not None and actor in actor_map and actor in self._highlighted_actors:
             element_info = actor_map[actor]
             self._unhighlight_actor(actor)
             if self._on_unpick:
@@ -194,9 +235,21 @@ class GeometryPickingHelper:
                 )
             if hasattr(self.mesh_display, "render_window"):
                 self.mesh_display.render_window.Render()
-        else:
-            if style:
-                style.OnRightButtonDown()
+        elif style:
+            style.OnRightButtonDown()
+
+    def _on_key_press(self, obj, event):
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        key = interactor.GetKeySym()
+        if key in ("Escape", "Esc"):
+            if self._on_cancel:
+                self._on_cancel()
+            return
+        style = interactor.GetInteractorStyle()
+        if style:
+            style.OnKeyPress()
 
     def _build_actor_map(self) -> Dict[vtk.vtkActor, Dict[str, object]]:
         if not self.gui or not hasattr(self.gui, "geometry_actors_cache"):

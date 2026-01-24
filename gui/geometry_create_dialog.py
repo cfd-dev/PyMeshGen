@@ -425,14 +425,23 @@ class GeometryCreateDialog(QDialog):
         if not self.gui or not hasattr(self.gui, 'view_controller'):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
-        self._picked_points.clear()
         if hasattr(self.gui.view_controller, 'start_point_pick'):
             if self.gui.view_controller.is_point_pick_active():
                 self.gui.view_controller.stop_point_pick()
                 self.pick_button.setText("进入拾取")
             else:
+                self._picked_points.clear()
+                self.gui.view_controller.set_point_pick_callbacks(
+                    on_confirm=self._on_pick_confirm,
+                    on_cancel=self._on_pick_cancel,
+                    on_exit=self._on_pick_exit,
+                )
                 self.gui.view_controller.start_point_pick(self._on_point_picked)
                 self.pick_button.setText("拾取中...")
+                if hasattr(self.gui, 'log_info'):
+                    self.gui.log_info("点拾取已开启: 左键选中，右键取消，中键确认，Esc退出拾取模式")
+                if hasattr(self.gui, 'update_status'):
+                    self.gui.update_status("点拾取: 左键选中，右键取消，中键确认，Esc退出拾取模式")
         else:
             QMessageBox.warning(self, "警告", "拾取功能不可用")
 
@@ -442,6 +451,107 @@ class GeometryCreateDialog(QDialog):
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
             self.pick_button.setText("进入拾取")
+
+    def _on_pick_confirm(self):
+        if self.gui and hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller.stop_point_pick()
+        self.pick_button.setText("进入拾取")
+
+    def _on_pick_exit(self):
+        if self.gui and hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller.stop_point_pick()
+        self.pick_button.setText("进入拾取")
+
+    def _on_pick_cancel(self):
+        if not self._picked_points:
+            return
+        self._picked_points.pop()
+        mode = self._current_mode()
+        if mode == "曲线":
+            row = self.curve_table.rowCount()
+            if row > 0:
+                self.curve_table.removeRow(row - 1)
+        elif mode == "多段线/折线":
+            row = self.polyline_table.rowCount()
+            if row > 0:
+                self.polyline_table.removeRow(row - 1)
+        elif mode == "多边形":
+            row = self.polygon_table.rowCount()
+            if row > 0:
+                self.polygon_table.removeRow(row - 1)
+        else:
+            remaining = len(self._picked_points)
+            if mode == "点" and remaining == 0:
+                self.px.setValue(0.0)
+                self.py.setValue(0.0)
+                self.pz.setValue(0.0)
+            elif mode == "直线":
+                if remaining == 1:
+                    self.lx2.setValue(0.0)
+                    self.ly2.setValue(0.0)
+                    self.lz2.setValue(0.0)
+                elif remaining == 0:
+                    self.lx1.setValue(0.0)
+                    self.ly1.setValue(0.0)
+                    self.lz1.setValue(0.0)
+            elif mode == "圆/圆弧":
+                if remaining == 1:
+                    self.radius.setValue(0.0)
+                elif remaining == 0:
+                    self.cx.setValue(0.0)
+                    self.cy.setValue(0.0)
+                    self.cz.setValue(0.0)
+                    self.radius.setValue(0.0)
+            elif mode == "矩形":
+                if remaining == 1:
+                    self.rx2.setValue(0.0)
+                    self.ry2.setValue(0.0)
+                    self.rz2.setValue(0.0)
+                elif remaining == 0:
+                    self.rx1.setValue(0.0)
+                    self.ry1.setValue(0.0)
+                    self.rz1.setValue(0.0)
+            elif mode == "椭圆/椭圆弧":
+                if remaining == 2:
+                    self.minor_radius.setValue(0.0)
+                elif remaining == 1:
+                    self.major_radius.setValue(0.0)
+                    self.minor_radius.setValue(0.0)
+                elif remaining == 0:
+                    self.ex.setValue(0.0)
+                    self.ey.setValue(0.0)
+                    self.ez.setValue(0.0)
+                    self.major_radius.setValue(0.0)
+                    self.minor_radius.setValue(0.0)
+            elif mode == "长方体":
+                if remaining == 1:
+                    self.bx2.setValue(0.0)
+                    self.by2.setValue(0.0)
+                    self.bz2.setValue(0.0)
+                elif remaining == 0:
+                    self.bx1.setValue(0.0)
+                    self.by1.setValue(0.0)
+                    self.bz1.setValue(0.0)
+            elif mode == "圆球":
+                if remaining == 1:
+                    self.sr.setValue(0.0)
+                elif remaining == 0:
+                    self.sx.setValue(0.0)
+                    self.sy.setValue(0.0)
+                    self.sz.setValue(0.0)
+                    self.sr.setValue(0.0)
+            elif mode == "圆柱":
+                if remaining == 2:
+                    self.ch.setValue(0.0)
+                elif remaining == 1:
+                    self.cr.setValue(0.0)
+                    self.ch.setValue(0.0)
+                elif remaining == 0:
+                    self.cx3.setValue(0.0)
+                    self.cy3.setValue(0.0)
+                    self.cz3.setValue(0.0)
+                    self.cr.setValue(0.0)
+                    self.ch.setValue(0.0)
 
     def _on_point_picked(self, point):
         self._picked_points.append(point)

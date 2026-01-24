@@ -405,6 +405,15 @@ class CreatePartDialog(QDialog):
             self._disable_picking()
 
     def _enable_picking(self):
+        if self.gui and hasattr(self.gui, "view_controller"):
+            self.gui.view_controller.start_geometry_pick(
+                on_pick=self._on_geometry_pick,
+                on_unpick=self._on_geometry_unpick,
+                on_confirm=self._on_pick_confirm,
+                on_cancel=self._on_pick_cancel,
+            )
+            self._picking_helper = self.gui.view_controller._picking_helper
+            return
         if self._picking_helper is not None:
             self._picking_helper.enable()
             return
@@ -416,14 +425,29 @@ class CreatePartDialog(QDialog):
             gui=self.gui,
             on_pick=self._on_geometry_pick,
             on_unpick=self._on_geometry_unpick,
+            on_confirm=self._on_pick_confirm,
+            on_cancel=self._on_pick_cancel,
         )
         self._picking_helper.enable()
 
     def _disable_picking(self):
+        if self.gui and hasattr(self.gui, "view_controller"):
+            self.gui.view_controller.stop_geometry_pick(restore_display_mode=True)
         if self._picking_helper is None:
             return
         self._picking_helper.cleanup()
         self._picking_helper = None
+
+    def _on_pick_confirm(self):
+        if not self.isVisible():
+            return
+        self.accept()
+
+    def _on_pick_cancel(self):
+        if not self.isVisible():
+            return
+        self._disable_picking()
+        self.enable_pick_checkbox.setChecked(False)
 
     def _on_geometry_pick(self, element_type, element_obj, element_index):
         key_map = {

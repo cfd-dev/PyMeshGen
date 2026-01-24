@@ -10,7 +10,7 @@ PyQt网格显示模块
 import os
 import time
 import numpy as np
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt5.QtCore import Qt
 import vtk
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -33,6 +33,8 @@ class MeshDisplayArea:
         self.mesh_actor = None
         self.boundary_actors = []
         self.axes_actor = None  # 添加坐标轴演员引用
+        self._pick_hint_actor = None
+        self._pick_hint_label = None
         
         # 显示控制变量
         self.show_boundary = True
@@ -75,6 +77,16 @@ class MeshDisplayArea:
             except:
                 pass
             self.axes_actor = None
+        
+        if self.renderer and self._pick_hint_actor:
+            try:
+                self.renderer.RemoveActor(self._pick_hint_actor)
+            except:
+                pass
+            self._pick_hint_actor = None
+        if self._pick_hint_label is not None:
+            self._pick_hint_label.deleteLater()
+            self._pick_hint_label = None
 
         if self.renderer:
             try:
@@ -711,6 +723,42 @@ class MeshDisplayArea:
                 self.axes_actor = axes
             except Exception as fallback_e:
                 print(f"备用坐标轴方法也失败: {str(fallback_e)}")
+
+    def show_pick_hint(self, text):
+        if not self.renderer or not self.frame:
+            return
+        if self._pick_hint_label is None:
+            label = QLabel(self.frame)
+            label.setWordWrap(False)
+            label.setStyleSheet(
+                "QLabel {"
+                "color: #ffffff;"
+                "background-color: rgba(0, 0, 0, 120);"
+                "border: none;"
+                "padding: 4px 6px;"
+                "}"
+            )
+            label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            self._pick_hint_label = label
+            font = label.font()
+            font.setPointSize(12)
+            label.setFont(font)
+        self._pick_hint_label.setText(text)
+        self._pick_hint_label.adjustSize()
+        self._pick_hint_label.move(8, 8)
+        self._pick_hint_label.show()
+        self._pick_hint_label.raise_()
+        if self._pick_hint_actor is not None:
+            self._pick_hint_actor.SetVisibility(False)
+
+    def hide_pick_hint(self):
+        if self._pick_hint_label is not None:
+            self._pick_hint_label.hide()
+        if self._pick_hint_actor is None:
+            return
+        self._pick_hint_actor.SetVisibility(False)
+        if hasattr(self, "render_window") and self.render_window:
+            self.render_window.Render()
     
     def clear_mesh_actors(self):
         """清除所有网格相关的演员"""
