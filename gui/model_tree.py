@@ -8,7 +8,7 @@
 """
 
 from PyQt5.QtWidgets import (QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
-                             QHeaderView, QMenu, QAction, QDialog)
+                             QHeaderView, QMenu, QAction, QActionGroup, QDialog)
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QIcon
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
@@ -1011,12 +1011,20 @@ class ModelTreeWidget:
 
         if element_data in ("geometry", "mesh", "parts"):
             menu.addSeparator()
+            display_group = QActionGroup(self.tree)
+            display_group.setExclusive(True)
             full_action = QAction("整体显示", self.tree)
+            full_action.setCheckable(True)
+            full_action.setChecked(getattr(self.parent, 'display_mode', 'full') == "full")
             full_action.triggered.connect(lambda: self._set_display_mode("full"))
+            display_group.addAction(full_action)
             menu.addAction(full_action)
 
             element_action = QAction("元素显示", self.tree)
+            element_action.setCheckable(True)
+            element_action.setChecked(getattr(self.parent, 'display_mode', 'full') == "elements")
             element_action.triggered.connect(lambda: self._set_display_mode("elements"))
+            display_group.addAction(element_action)
             menu.addAction(element_action)
 
         if isinstance(element_data, tuple) and len(element_data) >= 3:
