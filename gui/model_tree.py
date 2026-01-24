@@ -228,6 +228,9 @@ class ModelTreeWidget:
         geometry_item = self.tree.topLevelItem(0)
         if geometry_item is None:
             return
+        cleanup_handler = self._get_parent_handler('cleanup_geometry_actors')
+        if cleanup_handler:
+            cleanup_handler()
         self.tree.blockSignals(True)
 
         type_pairs = [
@@ -297,6 +300,9 @@ class ModelTreeWidget:
                 for _, child in sorted(children, key=lambda x: x[0]):
                     element_type_item.addChild(child)
         self.tree.blockSignals(False)
+        handler = self._get_parent_handler('_update_geometry_element_display')
+        if handler:
+            handler()
 
     def _batch_load_geometry_elements(self, shape, vertices_item, edges_item, faces_item, bodies_item):
         """
