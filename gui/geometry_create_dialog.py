@@ -9,7 +9,7 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
     QPushButton, QWidget, QDoubleSpinBox, QTableWidget,
-    QTableWidgetItem, QMessageBox, QLineEdit
+    QTableWidgetItem, QMessageBox, QLineEdit, QCheckBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -248,6 +248,15 @@ class GeometryCreateDialog(QDialog):
 
         layout.addWidget(coord_group)
 
+        options_group = QGroupBox("拾取选项")
+        options_layout = QHBoxLayout(options_group)
+        self.snap_checkbox = QCheckBox("启用磁吸")
+        self.snap_checkbox.setChecked(True)
+        self.snap_checkbox.setToolTip("启用后，拾取点时会自动吸附到附近的几何点")
+        options_layout.addWidget(self.snap_checkbox)
+        options_layout.addStretch()
+        layout.addWidget(options_group)
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
         self.create_button = QPushButton("创建")
@@ -297,6 +306,7 @@ class GeometryCreateDialog(QDialog):
         self.cylinder_mode_button.clicked.connect(lambda: self._set_mode("圆柱"))
         self.create_button.clicked.connect(self._create_geometry)
         self.cancel_button.clicked.connect(self.close)
+        self.snap_checkbox.toggled.connect(self._on_snap_toggled)
 
         self.curve_pick_button.clicked.connect(lambda: self._start_continuous_pick("curve"))
         self.curve_clear_button.clicked.connect(lambda: self._clear_table(self.curve_table))
@@ -457,12 +467,24 @@ class GeometryCreateDialog(QDialog):
             return "圆柱"
         return "点"
 
+    def _on_snap_toggled(self, checked):
+        """磁吸复选框切换回调"""
+        if self.gui and hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller.set_point_snap_enabled(checked)
+            status = "启用" if checked else "禁用"
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info(f"磁吸功能已{status}")
+
     def _start_single_pick(self, target_widget):
         """启动单个坐标拾取"""
         if not self.gui or not hasattr(self.gui, 'view_controller'):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
         self._current_pick_target = target_widget
+        
+        snap_enabled = self.snap_checkbox.isChecked()
+        self.gui.view_controller.set_point_snap_enabled(snap_enabled)
+        
         self.gui.view_controller.set_point_pick_callbacks(
             on_confirm=self._on_single_pick_confirm,
             on_cancel=self._on_single_pick_cancel,
@@ -470,7 +492,8 @@ class GeometryCreateDialog(QDialog):
         )
         self.gui.view_controller.start_point_pick(self._on_single_point_picked)
         if hasattr(self.gui, 'log_info'):
-            self.gui.log_info("点拾取已开启: 点击视图拾取点坐标")
+            snap_status = "启用" if snap_enabled else "禁用"
+            self.gui.log_info(f"点拾取已开启: 点击视图拾取点坐标 (磁吸{snap_status})")
 
     def _on_single_point_picked(self, point):
         """单个点拾取回调"""
@@ -502,6 +525,10 @@ class GeometryCreateDialog(QDialog):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
         self._continuous_pick_mode = mode
+        
+        snap_enabled = self.snap_checkbox.isChecked()
+        self.gui.view_controller.set_point_snap_enabled(snap_enabled)
+        
         self.gui.view_controller.set_point_pick_callbacks(
             on_confirm=self._on_continuous_pick_confirm,
             on_cancel=self._on_continuous_pick_cancel,
@@ -509,7 +536,8 @@ class GeometryCreateDialog(QDialog):
         )
         self.gui.view_controller.start_point_pick(self._on_continuous_point_picked)
         if hasattr(self.gui, 'log_info'):
-            self.gui.log_info("连续拾取已开启: 左键选中，右键取消，Enter键确认添加点，Esc退出拾取模式")
+            snap_status = "启用" if snap_enabled else "禁用"
+            self.gui.log_info(f"连续拾取已开启: 左键选中，右键取消，Enter键确认添加点，Esc退出拾取模式 (磁吸{snap_status})")
 
     def _on_continuous_point_picked(self, point):
         """连续拾取点回调（左键选中）"""

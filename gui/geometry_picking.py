@@ -55,6 +55,14 @@ class GeometryPickingHelper:
         self._on_point_pick_cancel = None
         self._on_point_pick_exit = None
         self._point_highlight_actor = None
+        
+        self._snap_enabled = False
+        self._snap_tolerance = 0.1
+        self._geometry_points_cache = []
+        self._snap_line_actor = None
+        self._snap_point_actor = None
+        self._last_pick_pos = None
+        self._last_snap_pos = None
 
     def set_callbacks(
         self,
@@ -146,6 +154,7 @@ class GeometryPickingHelper:
         self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick_press)
         self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_right_press)
         self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
+        self._point_pick_move_id = interactor.AddObserver("MouseMoveEvent", self._on_point_pick_move)
         self._point_pick_enabled = True
 
     def stop_point_pick(self):
@@ -161,16 +170,69 @@ class GeometryPickingHelper:
                 interactor.RemoveObserver(self._point_pick_right_id)
             if self._point_pick_key_id is not None:
                 interactor.RemoveObserver(self._point_pick_key_id)
+            if self._point_pick_move_id is not None:
+                interactor.RemoveObserver(self._point_pick_move_id)
         
         self._point_pick_observer_id = None
         self._point_pick_right_id = None
         self._point_pick_key_id = None
+        self._point_pick_move_id = None
         self._point_pick_enabled = False
         self._remove_point_highlight()
+        self._remove_snap_visualization()
 
     def is_point_pick_active(self):
         """检查点拾取是否激活"""
         return self._point_pick_enabled
+
+    def set_snap_enabled(self, enabled):
+        """设置是否启用磁吸"""
+        self._snap_enabled = enabled
+        if enabled:
+            self._update_geometry_points_cache()
+
+    def set_snap_tolerance(self, tolerance):
+        """设置磁吸容差"""
+        self._snap_tolerance = tolerance
+
+    def _update_geometry_points_cache(self):
+        """更新几何点缓存"""
+        self._geometry_points_cache = []
+        if not self.gui:
+            return
+        
+        elements = self._get_all_geometry_elements()
+        vertices = elements.get("vertices", [])
+        
+        from OCC.Core.BRep import BRep_Tool
+        
+        for vertex_obj, vertex_index in vertices:
+            try:
+                pnt = BRep_Tool.Pnt(vertex_obj)
+                self._geometry_points_cache.append((pnt.X(), pnt.Y(), pnt.Z()))
+            except Exception:
+                continue
+
+    def _find_nearest_point(self, point):
+        """找到最近的几何点"""
+        if not self._geometry_points_cache:
+            return None
+        
+        min_dist = float('inf')
+        nearest_point = None
+        
+        for cached_point in self._geometry_points_cache:
+            dist = ((point[0] - cached_point[0]) ** 2 + 
+                   (point[1] - cached_point[1]) ** 2 + 
+                   (point[2] - cached_point[2]) ** 2) ** 0.5
+            
+            if dist < min_dist:
+                min_dist = dist
+                nearest_point = cached_point
+        
+        if min_dist <= self._snap_tolerance:
+            return nearest_point
+        return None
 
     def _on_point_pick_press(self, obj, event):
         """点拾取左键按下事件"""
@@ -192,6 +254,13 @@ class GeometryPickingHelper:
         
         if picked:
             pos = self._point_picker.GetPickPosition()
+            
+            if self._snap_enabled:
+                nearest_point = self._find_nearest_point(pos)
+                if nearest_point:
+                    pos = nearest_point
+            
+            self._remove_snap_visualization()
             self._show_point_highlight(pos[0], pos[1], pos[2])
             self._on_point_pick((pos[0], pos[1], pos[2]))
         
@@ -239,6 +308,107 @@ class GeometryPickingHelper:
         style = interactor.GetInteractorStyle()
         if style:
             style.OnKeyPress()
+
+    def _on_point_pick_move(self, obj, event):
+        """点拾取鼠标移动事件"""
+        if not self._point_pick_enabled:
+            return
+        if not self._snap_enabled:
+            return
+        
+        interactor = self._get_interactor()
+        if interactor is None:
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        click_pos = interactor.GetEventPosition()
+        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+        
+        if picked:
+            pos = self._point_picker.GetPickPosition()
+            self._last_pick_pos = pos
+            
+            nearest_point = self._find_nearest_point(pos)
+            if nearest_point:
+                self._last_snap_pos = nearest_point
+                self._show_snap_visualization(pos, nearest_point)
+            else:
+                self._last_snap_pos = None
+                self._remove_snap_visualization()
+        else:
+            self._last_pick_pos = None
+            self._last_snap_pos = None
+            self._remove_snap_visualization()
+
+    def _show_snap_visualization(self, pick_pos, snap_pos):
+        """显示磁吸可视化效果"""
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        self._remove_snap_visualization()
+        
+        line_source = vtk.vtkLineSource()
+        line_source.SetPoint1(pick_pos[0], pick_pos[1], pick_pos[2])
+        line_source.SetPoint2(snap_pos[0], snap_pos[1], snap_pos[2])
+        line_source.Update()
+        
+        line_mapper = vtk.vtkPolyDataMapper()
+        line_mapper.SetInputConnection(line_source.GetOutputPort())
+        
+        line_actor = vtk.vtkActor()
+        line_actor.SetMapper(line_mapper)
+        line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
+        line_actor.GetProperty().SetLineWidth(2)
+        line_actor.GetProperty().SetLineStipplePattern(0xAAAA)
+        line_actor.GetProperty().SetLineStippleRepeatFactor(1)
+        
+        sphere = vtk.vtkSphereSource()
+        sphere.SetCenter(snap_pos[0], snap_pos[1], snap_pos[2])
+        sphere.SetRadius(0.03)
+        sphere.SetThetaResolution(16)
+        sphere.SetPhiResolution(16)
+        sphere.Update()
+        
+        sphere_mapper = vtk.vtkPolyDataMapper()
+        sphere_mapper.SetInputConnection(sphere.GetOutputPort())
+        
+        sphere_actor = vtk.vtkActor()
+        sphere_actor.SetMapper(sphere_mapper)
+        sphere_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
+        sphere_actor.GetProperty().SetOpacity(0.8)
+        
+        renderer.AddActor(line_actor)
+        renderer.AddActor(sphere_actor)
+        
+        self._snap_line_actor = line_actor
+        self._snap_point_actor = sphere_actor
+        
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+
+    def _remove_snap_visualization(self):
+        """移除磁吸可视化效果"""
+        if self._snap_line_actor is not None:
+            renderer = getattr(self.mesh_display, "renderer", None)
+            if renderer is not None:
+                renderer.RemoveActor(self._snap_line_actor)
+            self._snap_line_actor = None
+        
+        if self._snap_point_actor is not None:
+            renderer = getattr(self.mesh_display, "renderer", None)
+            if renderer is not None:
+                renderer.RemoveActor(self._snap_point_actor)
+            self._snap_point_actor = None
+        
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
 
     def _show_point_highlight(self, x, y, z):
         """显示点高亮"""
