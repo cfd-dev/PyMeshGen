@@ -277,6 +277,28 @@ class ViewController:
                 on_exit=on_exit
             )
 
+    def set_point_snap_enabled(self, enabled):
+        """设置点拾取磁吸功能开关"""
+        if self._picking_helper is None:
+            if not hasattr(self.gui, 'mesh_display') or not self.gui.mesh_display:
+                return
+            from .geometry_picking import GeometryPickingHelper
+            self._picking_helper = GeometryPickingHelper(
+                self.gui.mesh_display,
+                gui=self.gui,
+            )
+        
+        self._picking_helper.set_snap_enabled(enabled)
+        
+        if hasattr(self.gui, 'log_info'):
+            status = "启用" if enabled else "禁用"
+            self.gui.log_info(f"点拾取磁吸功能已{status}")
+
+    def set_point_snap_tolerance(self, tolerance):
+        """设置点拾取磁吸容差"""
+        if self._picking_helper is not None:
+            self._picking_helper.set_snap_tolerance(tolerance)
+
     def _sync_toolbar_picking_state(self, enabled):
         toolbar = getattr(self.gui, 'view_toolbar', None)
         if toolbar and hasattr(toolbar, 'actions') and 'picking' in toolbar.actions:

@@ -189,48 +189,66 @@ class GeometryPickingHelper:
         """设置是否启用磁吸"""
         self._snap_enabled = enabled
         if enabled:
-            self._update_geometry_points_cache()
+            if not self._geometry_points_cache:
+                self._update_geometry_points_cache()
 
     def set_snap_tolerance(self, tolerance):
         """设置磁吸容差"""
         self._snap_tolerance = tolerance
 
+    def refresh_geometry_cache(self):
+        """手动刷新几何点缓存"""
+        self._geometry_points_cache = []
+        self._update_geometry_points_cache()
+
     def _update_geometry_points_cache(self):
         """更新几何点缓存"""
-        self._geometry_points_cache = []
         if not self.gui:
             return
         
-        elements = self._get_all_geometry_elements()
-        vertices = elements.get("vertices", [])
-        
-        from OCC.Core.BRep import BRep_Tool
-        
-        for vertex_obj, vertex_index in vertices:
-            try:
-                pnt = BRep_Tool.Pnt(vertex_obj)
-                self._geometry_points_cache.append((pnt.X(), pnt.Y(), pnt.Z()))
-            except Exception:
-                continue
+        try:
+            elements = self._get_all_geometry_elements()
+            vertices = elements.get("vertices", [])
+            
+            if not vertices:
+                self._geometry_points_cache = []
+                return
+            
+            from OCC.Core.BRep import BRep_Tool
+            
+            new_cache = []
+            for vertex_obj, vertex_index in vertices:
+                try:
+                    pnt = BRep_Tool.Pnt(vertex_obj)
+                    new_cache.append((pnt.X(), pnt.Y(), pnt.Z()))
+                except Exception:
+                    continue
+            
+            self._geometry_points_cache = new_cache
+            
+        except Exception as e:
+            print(f"更新几何点缓存失败: {e}")
+            self._geometry_points_cache = []
 
     def _find_nearest_point(self, point):
-        """找到最近的几何点"""
+        """找到最近的几何点（优化版）"""
         if not self._geometry_points_cache:
             return None
         
-        min_dist = float('inf')
+        min_dist_sq = float('inf')
         nearest_point = None
+        tolerance_sq = self._snap_tolerance ** 2
         
         for cached_point in self._geometry_points_cache:
-            dist = ((point[0] - cached_point[0]) ** 2 + 
-                   (point[1] - cached_point[1]) ** 2 + 
-                   (point[2] - cached_point[2]) ** 2) ** 0.5
+            dist_sq = (point[0] - cached_point[0]) ** 2 + \
+                     (point[1] - cached_point[1]) ** 2 + \
+                     (point[2] - cached_point[2]) ** 2
             
-            if dist < min_dist:
-                min_dist = dist
+            if dist_sq < min_dist_sq:
+                min_dist_sq = dist_sq
                 nearest_point = cached_point
         
-        if min_dist <= self._snap_tolerance:
+        if min_dist_sq <= tolerance_sq:
             return nearest_point
         return None
 
