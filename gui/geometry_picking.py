@@ -4,6 +4,7 @@
 基于VTK拾取器实现点/线/面/体的鼠标拾取
 """
 
+import math
 from typing import Callable, Dict, Optional
 
 import vtk
@@ -46,6 +47,7 @@ class GeometryPickingHelper:
         
         self._point_picker = vtk.vtkCellPicker()
         self._point_picker.SetTolerance(0.02)
+        self._world_picker = vtk.vtkWorldPointPicker()
         self._point_pick_enabled = False
         self._point_pick_observer_id = None
         self._point_pick_right_id = None
@@ -254,6 +256,45 @@ class GeometryPickingHelper:
             return nearest_point
         return None
 
+    def _pick_on_plane(self, click_pos, renderer):
+        """在空白区域拾取坐标（使用参考平面）"""
+        if renderer is None:
+            return None
+        
+        camera = renderer.GetActiveCamera()
+        if camera is None:
+            return None
+        
+        self._world_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+        pick_pos = self._world_picker.GetPickPosition()
+        
+        if pick_pos is not None and not (pick_pos[0] == 0 and pick_pos[1] == 0 and pick_pos[2] == 0):
+            return pick_pos
+        
+        focal_point = camera.GetFocalPoint()
+        position = camera.GetPosition()
+        
+        click_vec = [click_pos[0] - renderer.GetSize()[0] / 2,
+                    click_pos[1] - renderer.GetSize()[1] / 2, 0]
+        
+        view_width = camera.GetViewAngle()
+        aspect = renderer.GetAspect()
+        
+        if aspect > 0:
+            view_height = 2 * abs(position[2] - focal_point[2]) * abs(math.tan(math.radians(view_width / 2)))
+            view_width = view_height * aspect
+        else:
+            view_width = 2 * abs(position[2] - focal_point[2]) * abs(math.tan(math.radians(view_width / 2)))
+        
+        if click_pos[0] != 0 or click_pos[1] != 0:
+            scale_factor = abs(position[2] - focal_point[2]) / (renderer.GetSize()[1] / 2) if renderer.GetSize()[1] > 0 else 1
+            x_offset = (click_pos[0] - renderer.GetSize()[0] / 2) * scale_factor
+            y_offset = (click_pos[1] - renderer.GetSize()[1] / 2) * scale_factor
+            
+            return [focal_point[0] + x_offset, focal_point[1] + y_offset, focal_point[2]]
+        
+        return focal_point
+
     def _on_point_pick_press(self, obj, event):
         """点拾取左键按下事件"""
         if not self._point_pick_enabled:
@@ -281,7 +322,11 @@ class GeometryPickingHelper:
                 if nearest_point:
                     pos = nearest_point
                     self._is_snapped = True
-            
+        else:
+            pos = self._pick_on_plane(click_pos, renderer)
+            self._is_snapped = False
+        
+        if pos is not None:
             self._show_point_highlight(pos[0], pos[1], pos[2])
             
             if self._is_snapped:
@@ -368,10 +413,16 @@ class GeometryPickingHelper:
                 self._is_snapped = False
                 self._remove_snap_visualization()
         else:
-            self._last_pick_pos = None
-            self._last_snap_pos = None
-            self._is_snapped = False
-            self._remove_snap_visualization()
+            pos = self._pick_on_plane(click_pos, renderer)
+            if pos is not None:
+                self._last_pick_pos = pos
+                self._last_snap_pos = None
+                self._is_snapped = False
+                self._remove_snap_visualization()
+            else:
+                self._last_pick_pos = None
+                self._last_snap_pos = None
+                self._is_snapped = False
 
     def _show_snap_visualization(self, pick_pos, snap_pos):
         """显示磁吸可视化效果"""
