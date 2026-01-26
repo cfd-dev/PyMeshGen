@@ -63,6 +63,7 @@ class GeometryPickingHelper:
         self._snap_point_actor = None
         self._last_pick_pos = None
         self._last_snap_pos = None
+        self._is_snapped = False  # 标记当前是否磁吸到现有点
 
     def set_callbacks(
         self,
@@ -178,6 +179,7 @@ class GeometryPickingHelper:
         self._point_pick_key_id = None
         self._point_pick_move_id = None
         self._point_pick_enabled = False
+        self._is_snapped = False
         self._remove_point_highlight()
         self._remove_snap_visualization()
 
@@ -272,14 +274,21 @@ class GeometryPickingHelper:
         
         if picked:
             pos = self._point_picker.GetPickPosition()
+            self._is_snapped = False
             
             if self._snap_enabled:
                 nearest_point = self._find_nearest_point(pos)
                 if nearest_point:
                     pos = nearest_point
+                    self._is_snapped = True
             
-            self._remove_snap_visualization()
             self._show_point_highlight(pos[0], pos[1], pos[2])
+            
+            if self._is_snapped:
+                self._show_snap_visualization(pos, pos)
+            else:
+                self._remove_snap_visualization()
+            
             self._on_point_pick((pos[0], pos[1], pos[2]))
         
         style = interactor.GetInteractorStyle()
@@ -328,7 +337,7 @@ class GeometryPickingHelper:
             style.OnKeyPress()
 
     def _on_point_pick_move(self, obj, event):
-        """点拾取鼠标移动事件"""
+        """点拾取鼠标移动事件 - 实时显示磁吸效果"""
         if not self._point_pick_enabled:
             return
         if not self._snap_enabled:
@@ -352,13 +361,16 @@ class GeometryPickingHelper:
             nearest_point = self._find_nearest_point(pos)
             if nearest_point:
                 self._last_snap_pos = nearest_point
+                self._is_snapped = True
                 self._show_snap_visualization(pos, nearest_point)
             else:
                 self._last_snap_pos = None
+                self._is_snapped = False
                 self._remove_snap_visualization()
         else:
             self._last_pick_pos = None
             self._last_snap_pos = None
+            self._is_snapped = False
             self._remove_snap_visualization()
 
     def _show_snap_visualization(self, pick_pos, snap_pos):
@@ -372,24 +384,32 @@ class GeometryPickingHelper:
         
         self._remove_snap_visualization()
         
-        line_source = vtk.vtkLineSource()
-        line_source.SetPoint1(pick_pos[0], pick_pos[1], pick_pos[2])
-        line_source.SetPoint2(snap_pos[0], snap_pos[1], snap_pos[2])
-        line_source.Update()
+        is_aligned = (abs(pick_pos[0] - snap_pos[0]) < 1e-6 and 
+                     abs(pick_pos[1] - snap_pos[1]) < 1e-6 and 
+                     abs(pick_pos[2] - snap_pos[2]) < 1e-6)
         
-        line_mapper = vtk.vtkPolyDataMapper()
-        line_mapper.SetInputConnection(line_source.GetOutputPort())
-        
-        line_actor = vtk.vtkActor()
-        line_actor.SetMapper(line_mapper)
-        line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
-        line_actor.GetProperty().SetLineWidth(2)
-        line_actor.GetProperty().SetLineStipplePattern(0xAAAA)
-        line_actor.GetProperty().SetLineStippleRepeatFactor(1)
+        if not is_aligned:
+            line_source = vtk.vtkLineSource()
+            line_source.SetPoint1(pick_pos[0], pick_pos[1], pick_pos[2])
+            line_source.SetPoint2(snap_pos[0], snap_pos[1], snap_pos[2])
+            line_source.Update()
+            
+            line_mapper = vtk.vtkPolyDataMapper()
+            line_mapper.SetInputConnection(line_source.GetOutputPort())
+            
+            line_actor = vtk.vtkActor()
+            line_actor.SetMapper(line_mapper)
+            line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
+            line_actor.GetProperty().SetLineWidth(2)
+            line_actor.GetProperty().SetLineStipplePattern(0xAAAA)
+            line_actor.GetProperty().SetLineStippleRepeatFactor(1)
+            
+            renderer.AddActor(line_actor)
+            self._snap_line_actor = line_actor
         
         sphere = vtk.vtkSphereSource()
         sphere.SetCenter(snap_pos[0], snap_pos[1], snap_pos[2])
-        sphere.SetRadius(0.03)
+        sphere.SetRadius(0.05 if is_aligned else 0.03)
         sphere.SetThetaResolution(16)
         sphere.SetPhiResolution(16)
         sphere.Update()
@@ -399,13 +419,15 @@ class GeometryPickingHelper:
         
         sphere_actor = vtk.vtkActor()
         sphere_actor.SetMapper(sphere_mapper)
-        sphere_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
-        sphere_actor.GetProperty().SetOpacity(0.8)
         
-        renderer.AddActor(line_actor)
+        if is_aligned:
+            sphere_actor.GetProperty().SetColor(0.2, 0.8, 0.2)
+        else:
+            sphere_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
+        
+        sphere_actor.GetProperty().SetOpacity(0.9)
+        
         renderer.AddActor(sphere_actor)
-        
-        self._snap_line_actor = line_actor
         self._snap_point_actor = sphere_actor
         
         if hasattr(self.mesh_display, "render_window"):

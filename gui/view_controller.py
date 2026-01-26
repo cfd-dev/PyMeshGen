@@ -33,8 +33,10 @@ class ViewController:
         """适应视图"""
         if hasattr(self.gui, 'mesh_display'):
             self.gui.mesh_display.fit_view()
-        self.gui.log_info("已适应视图")
-        self.gui.update_status("已适应视图")
+        if hasattr(self.gui, 'log_info'):
+            self.gui.log_info("已适应视图")
+        if hasattr(self.gui, 'update_status'):
+            self.gui.update_status("已适应视图")
 
     def set_view_x_positive(self):
         """设置X轴正向视图"""
@@ -263,6 +265,13 @@ class ViewController:
             self._picking_helper.stop_point_pick()
         self._hide_pick_hint_overlay()
         self.gui.update_status("点拾取: 关闭")
+
+    def _on_point_pick_exit(self, obj, event):
+        """点拾取退出事件处理"""
+        if self.is_point_pick_active():
+            self.stop_point_pick()
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info("已退出点拾取模式")
 
     def is_point_pick_active(self):
         if self._picking_helper is not None:

@@ -106,11 +106,11 @@ class GeometryOperations:
             from OCC.Core.TColgp import TColgp_Array1OfPnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
 
         if not points:
             QMessageBox.warning(self.gui, "警告", "未提供点数据")
-            return
+            return False
 
         shape = None
         if mode == "point":
@@ -119,23 +119,24 @@ class GeometryOperations:
         elif mode == "line":
             if len(points) < 2:
                 QMessageBox.warning(self.gui, "警告", "直线需要两个点")
-                return
+                return False
             p1 = gp_Pnt(*points[0])
             p2 = gp_Pnt(*points[1])
             shape = BRepBuilderAPI_MakeEdge(GC_MakeSegment(p1, p2).Value()).Edge()
         elif mode == "curve":
             if len(points) < 2:
                 QMessageBox.warning(self.gui, "警告", "曲线至少需要两个点")
-                return
+                return False
             arr = TColgp_Array1OfPnt(1, len(points))
             for i, pt in enumerate(points, start=1):
                 arr.SetValue(i, gp_Pnt(*pt))
             spline = GeomAPI_PointsToBSpline(arr).Curve()
             shape = BRepBuilderAPI_MakeEdge(spline).Edge()
         else:
-            return
+            return False
 
         self._merge_geometry(shape, mode_label=mode)
+        return True
 
     def create_geometry_circle(self, center, radius, start_angle=0.0, end_angle=360.0):
         """创建圆/圆弧几何"""
@@ -145,7 +146,7 @@ class GeometryOperations:
             from OCC.Core.GC import GC_MakeArcOfCircle, GC_MakeCircle
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
 
         center_pnt = gp_Pnt(*center)
         axis = gp_Ax2(center_pnt, gp_Dir(0, 0, 1))
@@ -159,6 +160,7 @@ class GeometryOperations:
             shape = BRepBuilderAPI_MakeEdge(arc).Edge()
 
         self._merge_geometry(shape, mode_label="circle")
+        return True
 
     def create_geometry_polyline(self, points):
         """创建多段线/折线"""
@@ -167,10 +169,10 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if len(points) < 2:
             QMessageBox.warning(self.gui, "警告", "多段线至少需要两个点")
-            return
+            return False
         wire_maker = BRepBuilderAPI_MakeWire()
         for idx in range(len(points) - 1):
             p1 = gp_Pnt(*points[idx])
@@ -178,8 +180,9 @@ class GeometryOperations:
             wire_maker.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge())
         if not wire_maker.IsDone():
             QMessageBox.warning(self.gui, "警告", "多段线创建失败")
-            return
+            return False
         self._merge_geometry(wire_maker.Wire(), mode_label="polyline")
+        return True
 
     def create_geometry_polygon(self, points):
         """创建多边形（闭合线框）"""
@@ -188,10 +191,10 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if len(points) < 3:
             QMessageBox.warning(self.gui, "警告", "多边形至少需要三个点")
-            return
+            return False
         wire_maker = BRepBuilderAPI_MakeWire()
         for idx in range(len(points) - 1):
             p1 = gp_Pnt(*points[idx])
@@ -201,8 +204,9 @@ class GeometryOperations:
             wire_maker.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(*points[-1]), gp_Pnt(*points[0])).Edge())
         if not wire_maker.IsDone():
             QMessageBox.warning(self.gui, "警告", "多边形创建失败")
-            return
+            return False
         self._merge_geometry(wire_maker.Wire(), mode_label="polygon")
+        return True
 
     def create_geometry_rectangle(self, p1, p2):
         """创建矩形（基于两对角点，假定XY平面）"""
@@ -211,10 +215,10 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if len(p1) < 3 or len(p2) < 3:
             QMessageBox.warning(self.gui, "警告", "矩形需要两个点")
-            return
+            return False
         if abs(p1[2] - p2[2]) > 1e-6:
             QMessageBox.warning(self.gui, "警告", "矩形点Z坐标不一致，已使用第一个点的Z")
         z = p1[2]
@@ -233,8 +237,9 @@ class GeometryOperations:
             wire_maker.Add(BRepBuilderAPI_MakeEdge(p_start, p_end).Edge())
         if not wire_maker.IsDone():
             QMessageBox.warning(self.gui, "警告", "矩形创建失败")
-            return
+            return False
         self._merge_geometry(wire_maker.Wire(), mode_label="rectangle")
+        return True
 
     def create_geometry_ellipse(self, center, major_radius, minor_radius, start_angle=0.0, end_angle=360.0):
         """创建椭圆/椭圆弧（XY平面）"""
@@ -244,10 +249,10 @@ class GeometryOperations:
             from OCC.Core.GC import GC_MakeEllipse, GC_MakeArcOfEllipse
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if major_radius <= 0 or minor_radius <= 0:
             QMessageBox.warning(self.gui, "警告", "椭圆半径必须为正数")
-            return
+            return False
         center_pnt = gp_Pnt(*center)
         axis = gp_Ax2(center_pnt, gp_Dir(0, 0, 1))
         ellipse = gp_Elips(axis, major_radius, minor_radius)
@@ -259,6 +264,7 @@ class GeometryOperations:
             arc = GC_MakeArcOfEllipse(ellipse, start_rad, end_rad, True).Value()
             shape = BRepBuilderAPI_MakeEdge(arc).Edge()
         self._merge_geometry(shape, mode_label="ellipse")
+        return True
 
     def create_geometry_box(self, corner1, corner2):
         """创建长方体（基于两对角点）"""
@@ -267,11 +273,12 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         p1 = gp_Pnt(*corner1)
         p2 = gp_Pnt(*corner2)
         shape = BRepPrimAPI_MakeBox(p1, p2).Shape()
         self._merge_geometry(shape, mode_label="box")
+        return True
 
     def create_geometry_sphere(self, center, radius):
         """创建圆球"""
@@ -280,12 +287,13 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if radius <= 0:
             QMessageBox.warning(self.gui, "警告", "半径必须为正数")
-            return
+            return False
         shape = BRepPrimAPI_MakeSphere(gp_Pnt(*center), radius).Shape()
         self._merge_geometry(shape, mode_label="sphere")
+        return True
 
     def create_geometry_cylinder(self, base_center, radius, height):
         """创建圆柱（沿Z轴）"""
@@ -294,13 +302,14 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Ax2, gp_Dir, gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
-            return
+            return False
         if radius <= 0 or height <= 0:
             QMessageBox.warning(self.gui, "警告", "半径和高度必须为正数")
-            return
+            return False
         axis = gp_Ax2(gp_Pnt(*base_center), gp_Dir(0, 0, 1))
         shape = BRepPrimAPI_MakeCylinder(axis, radius, height).Shape()
         self._merge_geometry(shape, mode_label="cylinder")
+        return True
 
     def delete_geometry(self, element_map):
         """删除选中的几何元素"""

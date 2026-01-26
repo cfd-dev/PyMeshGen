@@ -587,6 +587,13 @@ class GeometryCreateDialog(QDialog):
         if self.gui and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.stop_point_pick()
 
+    def close(self):
+        """关闭对话框时停止点拾取模式"""
+        if self.gui and hasattr(self.gui, 'view_controller'):
+            if self.gui.view_controller.is_point_pick_active():
+                self.gui.view_controller.stop_point_pick()
+        super().close()
+
     def _clear_table(self, table):
         """清空表格"""
         table.setRowCount(0)
@@ -595,20 +602,26 @@ class GeometryCreateDialog(QDialog):
         if not self.gui or not hasattr(self.gui, 'geometry_operations'):
             QMessageBox.warning(self, "警告", "几何操作器未初始化")
             return
+        
+        if self.gui.view_controller.is_point_pick_active():
+            self.gui.view_controller.stop_point_pick()
+        
         mode = self._current_mode()
+        result = None
+        
         if mode == "点":
             points = [self._parse_coord_input(self.p_coord_widget.line_edit.text())]
-            self.gui.geometry_operations.create_geometry_from_points(points, mode="point")
+            result = self.gui.geometry_operations.create_geometry_from_points(points, mode="point")
         elif mode == "直线":
             points = [
                 self._parse_coord_input(self.l1_coord_widget.line_edit.text()),
                 self._parse_coord_input(self.l2_coord_widget.line_edit.text()),
             ]
-            self.gui.geometry_operations.create_geometry_from_points(points, mode="line")
+            result = self.gui.geometry_operations.create_geometry_from_points(points, mode="line")
         elif mode == "圆/圆弧":
             center = self._parse_coord_input(self.c_coord_widget.line_edit.text())
             radius = self.radius.value()
-            self.gui.geometry_operations.create_geometry_circle(
+            result = self.gui.geometry_operations.create_geometry_circle(
                 center,
                 radius,
                 start_angle=self.start_angle.value(),
@@ -619,26 +632,26 @@ class GeometryCreateDialog(QDialog):
             if len(points) < 2:
                 QMessageBox.warning(self, "警告", "曲线至少需要两个点")
                 return
-            self.gui.geometry_operations.create_geometry_from_points(points, mode="curve")
+            result = self.gui.geometry_operations.create_geometry_from_points(points, mode="curve")
         elif mode == "多段线/折线":
             points = self._get_table_points(self.polyline_table)
             if len(points) < 2:
                 QMessageBox.warning(self, "警告", "多段线至少需要两个点")
                 return
-            self.gui.geometry_operations.create_geometry_polyline(points)
+            result = self.gui.geometry_operations.create_geometry_polyline(points)
         elif mode == "矩形":
             p1 = self._parse_coord_input(self.r1_coord_widget.line_edit.text())
             p2 = self._parse_coord_input(self.r2_coord_widget.line_edit.text())
-            self.gui.geometry_operations.create_geometry_rectangle(p1, p2)
+            result = self.gui.geometry_operations.create_geometry_rectangle(p1, p2)
         elif mode == "多边形":
             points = self._get_table_points(self.polygon_table)
             if len(points) < 3:
                 QMessageBox.warning(self, "警告", "多边形至少需要三个点")
                 return
-            self.gui.geometry_operations.create_geometry_polygon(points)
+            result = self.gui.geometry_operations.create_geometry_polygon(points)
         elif mode == "椭圆/椭圆弧":
             center = self._parse_coord_input(self.e_coord_widget.line_edit.text())
-            self.gui.geometry_operations.create_geometry_ellipse(
+            result = self.gui.geometry_operations.create_geometry_ellipse(
                 center,
                 self.major_radius.value(),
                 self.minor_radius.value(),
@@ -648,13 +661,16 @@ class GeometryCreateDialog(QDialog):
         elif mode == "长方体":
             p1 = self._parse_coord_input(self.b1_coord_widget.line_edit.text())
             p2 = self._parse_coord_input(self.b2_coord_widget.line_edit.text())
-            self.gui.geometry_operations.create_geometry_box(p1, p2)
+            result = self.gui.geometry_operations.create_geometry_box(p1, p2)
         elif mode == "圆球":
             center = self._parse_coord_input(self.s_coord_widget.line_edit.text())
-            self.gui.geometry_operations.create_geometry_sphere(center, self.sr.value())
+            result = self.gui.geometry_operations.create_geometry_sphere(center, self.sr.value())
         elif mode == "圆柱":
             base_center = self._parse_coord_input(self.cy3_coord_widget.line_edit.text())
-            self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
+            result = self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
+        
+        if result and hasattr(self.gui, 'view_controller'):
+            self.gui.view_controller.fit_view()
 
     def _get_curve_points(self):
         points = []
