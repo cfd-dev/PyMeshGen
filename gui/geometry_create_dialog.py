@@ -8,8 +8,8 @@
 
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox, QLabel,
-    QPushButton, QWidget, QDoubleSpinBox, QTableWidget,
-    QTableWidgetItem, QMessageBox, QLineEdit, QCheckBox
+    QPushButton, QWidget, QDoubleSpinBox,
+    QMessageBox, QLineEdit, QCheckBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -34,8 +34,6 @@ class GeometryCreateDialog(QDialog):
         self.setFont(font)
 
         self._current_pick_target = None
-        self._continuous_pick_mode = None
-        self._last_picked_point = None
         self._create_widgets()
         self._connect_signals()
 
@@ -145,39 +143,49 @@ class GeometryCreateDialog(QDialog):
         coord_layout.addWidget(self.circle_form)
 
         self.curve_form = QWidget()
-        curve_layout = QVBoxLayout(self.curve_form)
-        curve_layout.addWidget(QLabel("曲线点集 (至少2点):"))
-        self.curve_table = QTableWidget(0, 3)
-        self.curve_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
-        self.curve_table.horizontalHeader().setStretchLastSection(True)
-        curve_layout.addWidget(self.curve_table)
-        curve_button_layout = QHBoxLayout()
-        self.curve_pick_button = QPushButton("进入拾取")
-        self.curve_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
-        self.curve_clear_button = QPushButton("清空")
-        self.curve_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
-        curve_button_layout.addWidget(self.curve_pick_button)
-        curve_button_layout.addWidget(self.curve_clear_button)
-        curve_button_layout.addStretch()
-        curve_layout.addLayout(curve_button_layout)
+        curve_form_layout = QFormLayout(self.curve_form)
+        self.curve_num_points = self._create_spin(min_value=2, max_value=100, decimals=0)
+        self.curve_num_points.setValue(2)
+        curve_form_layout.addRow("点数量:", self.curve_num_points)
+        self.curve_point_inputs_layout = QVBoxLayout()
+        self.curve_point_widgets = []
+        for i in range(2):  # 默认显示2个点
+            widget, btn = self._create_coord_input_with_pick()
+            self.curve_point_widgets.append((widget, btn))
+            self.curve_point_inputs_layout.addWidget(widget)
+        curve_form_layout.addRow("点坐标:", self.curve_point_inputs_layout)
+        self.curve_add_point_button = QPushButton("增加点")
+        self.curve_add_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.curve_remove_point_button = QPushButton("减少点")
+        self.curve_remove_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        point_button_layout = QHBoxLayout()
+        point_button_layout.addWidget(self.curve_add_point_button)
+        point_button_layout.addWidget(self.curve_remove_point_button)
+        point_button_layout.addStretch()
+        curve_form_layout.addRow("", point_button_layout)
         coord_layout.addWidget(self.curve_form)
 
         self.polyline_form = QWidget()
-        polyline_layout = QVBoxLayout(self.polyline_form)
-        polyline_layout.addWidget(QLabel("多段线点集 (至少2点):"))
-        self.polyline_table = QTableWidget(0, 3)
-        self.polyline_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
-        self.polyline_table.horizontalHeader().setStretchLastSection(True)
-        polyline_layout.addWidget(self.polyline_table)
+        polyline_form_layout = QFormLayout(self.polyline_form)
+        self.polyline_num_points = self._create_spin(min_value=2, max_value=100, decimals=0)
+        self.polyline_num_points.setValue(2)
+        polyline_form_layout.addRow("点数量:", self.polyline_num_points)
+        self.polyline_point_inputs_layout = QVBoxLayout()
+        self.polyline_point_widgets = []
+        for i in range(2):  # 默认显示2个点
+            widget, btn = self._create_coord_input_with_pick()
+            self.polyline_point_widgets.append((widget, btn))
+            self.polyline_point_inputs_layout.addWidget(widget)
+        polyline_form_layout.addRow("点坐标:", self.polyline_point_inputs_layout)
+        self.polyline_add_point_button = QPushButton("增加点")
+        self.polyline_add_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.polyline_remove_point_button = QPushButton("减少点")
+        self.polyline_remove_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         polyline_button_layout = QHBoxLayout()
-        self.polyline_pick_button = QPushButton("进入拾取")
-        self.polyline_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
-        self.polyline_clear_button = QPushButton("清空")
-        self.polyline_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
-        polyline_button_layout.addWidget(self.polyline_pick_button)
-        polyline_button_layout.addWidget(self.polyline_clear_button)
+        polyline_button_layout.addWidget(self.polyline_add_point_button)
+        polyline_button_layout.addWidget(self.polyline_remove_point_button)
         polyline_button_layout.addStretch()
-        polyline_layout.addLayout(polyline_button_layout)
+        polyline_form_layout.addRow("", polyline_button_layout)
         coord_layout.addWidget(self.polyline_form)
 
         self.rectangle_form = QWidget()
@@ -189,21 +197,26 @@ class GeometryCreateDialog(QDialog):
         coord_layout.addWidget(self.rectangle_form)
 
         self.polygon_form = QWidget()
-        polygon_layout = QVBoxLayout(self.polygon_form)
-        polygon_layout.addWidget(QLabel("多边形点集 (至少3点):"))
-        self.polygon_table = QTableWidget(0, 3)
-        self.polygon_table.setHorizontalHeaderLabels(["X", "Y", "Z"])
-        self.polygon_table.horizontalHeader().setStretchLastSection(True)
-        polygon_layout.addWidget(self.polygon_table)
+        polygon_form_layout = QFormLayout(self.polygon_form)
+        self.polygon_num_points = self._create_spin(min_value=3, max_value=100, decimals=0)
+        self.polygon_num_points.setValue(3)
+        polygon_form_layout.addRow("点数量:", self.polygon_num_points)
+        self.polygon_point_inputs_layout = QVBoxLayout()
+        self.polygon_point_widgets = []
+        for i in range(3):  # 默认显示3个点
+            widget, btn = self._create_coord_input_with_pick()
+            self.polygon_point_widgets.append((widget, btn))
+            self.polygon_point_inputs_layout.addWidget(widget)
+        polygon_form_layout.addRow("点坐标:", self.polygon_point_inputs_layout)
+        self.polygon_add_point_button = QPushButton("增加点")
+        self.polygon_add_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
+        self.polygon_remove_point_button = QPushButton("减少点")
+        self.polygon_remove_point_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
         polygon_button_layout = QHBoxLayout()
-        self.polygon_pick_button = QPushButton("进入拾取")
-        self.polygon_pick_button.setStyleSheet(UIStyles.DIALOG_PRIMARY_BUTTON_STYLESHEET)
-        self.polygon_clear_button = QPushButton("清空")
-        self.polygon_clear_button.setStyleSheet(UIStyles.DIALOG_SECONDARY_BUTTON_STYLESHEET)
-        polygon_button_layout.addWidget(self.polygon_pick_button)
-        polygon_button_layout.addWidget(self.polygon_clear_button)
+        polygon_button_layout.addWidget(self.polygon_add_point_button)
+        polygon_button_layout.addWidget(self.polygon_remove_point_button)
         polygon_button_layout.addStretch()
-        polygon_layout.addLayout(polygon_button_layout)
+        polygon_form_layout.addRow("", polygon_button_layout)
         coord_layout.addWidget(self.polygon_form)
 
         self.ellipse_form = QWidget()
@@ -308,12 +321,15 @@ class GeometryCreateDialog(QDialog):
         self.cancel_button.clicked.connect(self.close)
         self.snap_checkbox.toggled.connect(self._on_snap_toggled)
 
-        self.curve_pick_button.clicked.connect(lambda: self._start_continuous_pick("curve"))
-        self.curve_clear_button.clicked.connect(lambda: self._clear_table(self.curve_table))
-        self.polyline_pick_button.clicked.connect(lambda: self._start_continuous_pick("polyline"))
-        self.polyline_clear_button.clicked.connect(lambda: self._clear_table(self.polyline_table))
-        self.polygon_pick_button.clicked.connect(lambda: self._start_continuous_pick("polygon"))
-        self.polygon_clear_button.clicked.connect(lambda: self._clear_table(self.polygon_table))
+        self.curve_num_points.valueChanged.connect(lambda: self._update_point_inputs("curve"))
+        self.curve_add_point_button.clicked.connect(lambda: self._add_point_input("curve"))
+        self.curve_remove_point_button.clicked.connect(lambda: self._remove_point_input("curve"))
+        self.polyline_num_points.valueChanged.connect(lambda: self._update_point_inputs("polyline"))
+        self.polyline_add_point_button.clicked.connect(lambda: self._add_point_input("polyline"))
+        self.polyline_remove_point_button.clicked.connect(lambda: self._remove_point_input("polyline"))
+        self.polygon_num_points.valueChanged.connect(lambda: self._update_point_inputs("polygon"))
+        self.polygon_add_point_button.clicked.connect(lambda: self._add_point_input("polygon"))
+        self.polygon_remove_point_button.clicked.connect(lambda: self._remove_point_input("polygon"))
 
         self.p_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.p_coord_widget.line_edit))
         self.l1_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.l1_coord_widget.line_edit))
@@ -327,6 +343,9 @@ class GeometryCreateDialog(QDialog):
         self.s_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.s_coord_widget.line_edit))
         self.cy3_coord_pick_btn.clicked.connect(lambda: self._start_single_pick(self.cy3_coord_widget.line_edit))
 
+        # 初始化曲线和折线的拾取按钮连接
+        self._connect_curve_polyline_buttons()
+
     def _create_spin(self, min_value=-1e6, max_value=1e6, decimals=3):
         spin = QDoubleSpinBox()
         spin.setRange(min_value, max_value)
@@ -334,6 +353,88 @@ class GeometryCreateDialog(QDialog):
         spin.setSingleStep(0.1)
         spin.setStyleSheet("background-color: white;")
         return spin
+
+    def _connect_curve_polyline_buttons(self):
+        """连接曲线、折线和多边形的拾取按钮"""
+        # 连接初始的曲线拾取按钮
+        for widget, btn in self.curve_point_widgets:
+            btn.clicked.connect(lambda checked=False, w=widget: self._start_single_pick(w.line_edit))
+
+        # 连接初始的折线拾取按钮
+        for widget, btn in self.polyline_point_widgets:
+            btn.clicked.connect(lambda checked=False, w=widget: self._start_single_pick(w.line_edit))
+
+        # 连接初始的多边形拾取按钮
+        for widget, btn in self.polygon_point_widgets:
+            btn.clicked.connect(lambda checked=False, w=widget: self._start_single_pick(w.line_edit))
+
+    def _update_point_inputs(self, mode):
+        """根据点数更新输入控件"""
+        if mode == "curve":
+            widgets_list = self.curve_point_widgets
+            inputs_layout = self.curve_point_inputs_layout
+            num_points = int(self.curve_num_points.value())
+        elif mode == "polyline":
+            widgets_list = self.polyline_point_widgets
+            inputs_layout = self.polyline_point_inputs_layout
+            num_points = int(self.polyline_num_points.value())
+        elif mode == "polygon":
+            widgets_list = self.polygon_point_widgets
+            inputs_layout = self.polygon_point_inputs_layout
+            num_points = int(self.polygon_num_points.value())
+        else:
+            return
+
+        current_count = len(widgets_list)
+
+        # 添加缺少的输入控件
+        while current_count < num_points:
+            widget, btn = self._create_coord_input_with_pick()
+            widgets_list.append((widget, btn))
+            inputs_layout.addWidget(widget)
+            # 连接新添加的拾取按钮
+            btn.clicked.connect(lambda checked=False, w=widget: self._start_single_pick(w.line_edit))
+            current_count += 1
+
+        # 移除多余的输入控件
+        while current_count > num_points:
+            widget, btn = widgets_list.pop()
+            # 断开信号连接
+            try:
+                btn.clicked.disconnect()
+            except TypeError:
+                # 如果没有连接信号，disconnect会抛出异常，忽略即可
+                pass
+            inputs_layout.removeWidget(widget)
+            widget.setParent(None)  # 完全移除控件
+            current_count -= 1
+
+    def _add_point_input(self, mode):
+        """增加一个点输入控件"""
+        if mode == "curve":
+            current_value = self.curve_num_points.value()
+            self.curve_num_points.setValue(current_value + 1)
+        elif mode == "polyline":
+            current_value = self.polyline_num_points.value()
+            self.polyline_num_points.setValue(current_value + 1)
+        elif mode == "polygon":
+            current_value = self.polygon_num_points.value()
+            self.polygon_num_points.setValue(current_value + 1)
+
+    def _remove_point_input(self, mode):
+        """减少一个点输入控件（最少保留2个点）"""
+        if mode == "curve":
+            current_value = self.curve_num_points.value()
+            if current_value > 2:
+                self.curve_num_points.setValue(current_value - 1)
+        elif mode == "polyline":
+            current_value = self.polyline_num_points.value()
+            if current_value > 2:
+                self.polyline_num_points.setValue(current_value - 1)
+        elif mode == "polygon":
+            current_value = self.polygon_num_points.value()
+            if current_value > 3:
+                self.polygon_num_points.setValue(current_value - 1)
 
     def _parse_coord_input(self, text):
         """解析坐标输入，支持逗号或空格分隔，返回 (x, y, z) 元组"""
@@ -480,112 +581,83 @@ class GeometryCreateDialog(QDialog):
         if not self.gui or not hasattr(self.gui, 'view_controller'):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
-        self._current_pick_target = target_widget
-        
+
+        def on_point_picked(point):
+            """单个点拾取回调"""
+            # 检查是否拾取到了现有点
+            is_existing_point = False
+            if self.gui and hasattr(self.gui, 'view_controller') and hasattr(self.gui.view_controller, '_picking_helper'):
+                picking_helper = self.gui.view_controller._picking_helper
+                if picking_helper and hasattr(picking_helper, '_find_vertex_by_point'):
+                    vertex_obj = picking_helper._find_vertex_by_point(point)
+                    if vertex_obj:
+                        is_existing_point = True
+                        # 输出拾取到现有点的信息
+                        if hasattr(self.gui, 'log_info'):
+                            self.gui.log_info(f"拾取到现有点: {vertex_obj}")
+
+            if not is_existing_point:
+                # 输出拾取到新点的信息
+                if hasattr(self.gui, 'log_info'):
+                    self.gui.log_info(f"拾取到新点坐标: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
+
+            if target_widget:
+                target_widget.setText(self._format_coord_output(point[0], point[1], point[2]))
+
+        def on_confirm():
+            """单个点拾取确认回调"""
+            if self.gui and hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller.stop_point_pick()
+
+        def on_cancel():
+            """单个点拾取取消回调"""
+            if target_widget:
+                target_widget = None
+            if self.gui and hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller.stop_point_pick()
+
+        def on_exit():
+            """单个点拾取退出回调"""
+            if target_widget:
+                target_widget = None
+            if self.gui and hasattr(self.gui, 'view_controller'):
+                self.gui.view_controller.stop_point_pick()
+
+        self._start_general_point_pick(
+            on_point_picked=on_point_picked,
+            on_confirm=on_confirm,
+            on_cancel=on_cancel,
+            on_exit=on_exit,
+            continuous_mode=False,
+            target_widget=target_widget
+        )
+
+    def _start_general_point_pick(self, on_point_picked, on_confirm, on_cancel, on_exit, continuous_mode=False, target_widget=None):
+        """通用的点拾取方法"""
+        if not self.gui or not hasattr(self.gui, 'view_controller'):
+            QMessageBox.warning(self, "警告", "未找到视图控制器")
+            return
+
+        # 设置拾取目标（如果是单个点拾取）
+        if target_widget is not None:
+            self._current_pick_target = target_widget
+
         snap_enabled = self.snap_checkbox.isChecked()
         self.gui.view_controller.set_point_snap_enabled(snap_enabled)
-        
+
         self.gui.view_controller.set_point_pick_callbacks(
-            on_confirm=self._on_single_pick_confirm,
-            on_cancel=self._on_single_pick_cancel,
-            on_exit=self._on_single_pick_exit,
+            on_pick=on_point_picked,
+            on_confirm=on_confirm,
+            on_cancel=on_cancel,
+            on_exit=on_exit,
         )
-        self.gui.view_controller.start_point_pick(self._on_single_point_picked)
+        self.gui.view_controller.start_point_pick(on_point_picked)
+
         if hasattr(self.gui, 'log_info'):
             snap_status = "启用" if snap_enabled else "禁用"
             self.gui.log_info(f"点拾取已开启: 点击视图拾取点坐标 (磁吸{snap_status})")
 
-    def _on_single_point_picked(self, point):
-        """单个点拾取回调"""
-        if self._current_pick_target:
-            self._current_pick_target.setText(self._format_coord_output(point[0], point[1], point[2]))
-            self._current_pick_target = None
-        if self.gui and hasattr(self.gui, 'view_controller'):
-            self.gui.view_controller.stop_point_pick()
 
-    def _on_single_pick_confirm(self):
-        """单个点拾取确认回调"""
-        pass
-
-    def _on_single_pick_cancel(self):
-        """单个点拾取取消回调"""
-        if self._current_pick_target:
-            self._current_pick_target = None
-        if self.gui and hasattr(self.gui, 'view_controller'):
-            self.gui.view_controller.stop_point_pick()
-
-    def _on_single_pick_exit(self):
-        """单个点拾取退出回调"""
-        if self._current_pick_target:
-            self._current_pick_target = None
-
-    def _start_continuous_pick(self, mode):
-        """启动连续拾取模式"""
-        if not self.gui or not hasattr(self.gui, 'view_controller'):
-            QMessageBox.warning(self, "警告", "未找到视图控制器")
-            return
-        self._continuous_pick_mode = mode
-        
-        snap_enabled = self.snap_checkbox.isChecked()
-        self.gui.view_controller.set_point_snap_enabled(snap_enabled)
-        
-        self.gui.view_controller.set_point_pick_callbacks(
-            on_confirm=self._on_continuous_pick_confirm,
-            on_cancel=self._on_continuous_pick_cancel,
-            on_exit=self._on_continuous_pick_exit,
-        )
-        self.gui.view_controller.start_point_pick(self._on_continuous_point_picked)
-        if hasattr(self.gui, 'log_info'):
-            snap_status = "启用" if snap_enabled else "禁用"
-            self.gui.log_info(f"连续拾取已开启: 左键选中，右键取消，Enter键确认添加点，Esc退出拾取模式 (磁吸{snap_status})")
-
-    def _on_continuous_point_picked(self, point):
-        """连续拾取点回调（左键选中）"""
-        self._last_picked_point = point
-
-    def _on_continuous_pick_confirm(self):
-        """连续拾取确认回调（Enter键确认，添加点到表格）"""
-        if self._last_picked_point is None:
-            return
-        
-        point = self._last_picked_point
-        table = None
-        if self._continuous_pick_mode == "curve":
-            table = self.curve_table
-        elif self._continuous_pick_mode == "polyline":
-            table = self.polyline_table
-        elif self._continuous_pick_mode == "polygon":
-            table = self.polygon_table
-        
-        if table:
-            row = table.rowCount()
-            table.insertRow(row)
-            table.setItem(row, 0, QTableWidgetItem(f"{point[0]:.6f}"))
-            table.setItem(row, 1, QTableWidgetItem(f"{point[1]:.6f}"))
-            table.setItem(row, 2, QTableWidgetItem(f"{point[2]:.6f}"))
-            if hasattr(self.gui, 'log_info'):
-                self.gui.log_info(f"已添加点 ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
-
-    def _on_continuous_pick_cancel(self):
-        """连续拾取取消回调（右键取消，移除最后一个点）"""
-        table = None
-        if self._continuous_pick_mode == "curve":
-            table = self.curve_table
-        elif self._continuous_pick_mode == "polyline":
-            table = self.polyline_table
-        elif self._continuous_pick_mode == "polygon":
-            table = self.polygon_table
-        
-        if table and table.rowCount() > 0:
-            table.removeRow(table.rowCount() - 1)
-            if hasattr(self.gui, 'log_info'):
-                self.gui.log_info("已移除最后一个点")
-
-    def _on_continuous_pick_exit(self):
-        """连续拾取退出回调"""
-        self._continuous_pick_mode = None
-        if self.gui and hasattr(self.gui, 'view_controller'):
-            self.gui.view_controller.stop_point_pick()
 
     def close(self):
         """关闭对话框时停止点拾取模式"""
@@ -593,10 +665,6 @@ class GeometryCreateDialog(QDialog):
             if self.gui.view_controller.is_point_pick_active():
                 self.gui.view_controller.stop_point_pick()
         super().close()
-
-    def _clear_table(self, table):
-        """清空表格"""
-        table.setRowCount(0)
 
     def _create_geometry(self):
         if not self.gui or not hasattr(self.gui, 'geometry_operations'):
@@ -628,13 +696,19 @@ class GeometryCreateDialog(QDialog):
                 end_angle=self.end_angle.value()
             )
         elif mode == "曲线":
-            points = self._get_curve_points()
+            points = []
+            for widget, btn in self.curve_point_widgets:
+                point = self._parse_coord_input(widget.line_edit.text())
+                points.append(point)
             if len(points) < 2:
                 QMessageBox.warning(self, "警告", "曲线至少需要两个点")
                 return
             result = self.gui.geometry_operations.create_geometry_from_points(points, mode="curve")
         elif mode == "多段线/折线":
-            points = self._get_table_points(self.polyline_table)
+            points = []
+            for widget, btn in self.polyline_point_widgets:
+                point = self._parse_coord_input(widget.line_edit.text())
+                points.append(point)
             if len(points) < 2:
                 QMessageBox.warning(self, "警告", "多段线至少需要两个点")
                 return
@@ -644,7 +718,10 @@ class GeometryCreateDialog(QDialog):
             p2 = self._parse_coord_input(self.r2_coord_widget.line_edit.text())
             result = self.gui.geometry_operations.create_geometry_rectangle(p1, p2)
         elif mode == "多边形":
-            points = self._get_table_points(self.polygon_table)
+            points = []
+            for widget, btn in self.polygon_point_widgets:
+                point = self._parse_coord_input(widget.line_edit.text())
+                points.append(point)
             if len(points) < 3:
                 QMessageBox.warning(self, "警告", "多边形至少需要三个点")
                 return
@@ -672,26 +749,3 @@ class GeometryCreateDialog(QDialog):
         if result and hasattr(self.gui, 'view_controller'):
             self.gui.view_controller.fit_view()
 
-    def _get_curve_points(self):
-        points = []
-        for row in range(self.curve_table.rowCount()):
-            try:
-                x = float(self.curve_table.item(row, 0).text())
-                y = float(self.curve_table.item(row, 1).text())
-                z = float(self.curve_table.item(row, 2).text())
-                points.append((x, y, z))
-            except Exception:
-                continue
-        return points
-
-    def _get_table_points(self, table):
-        points = []
-        for row in range(table.rowCount()):
-            try:
-                x = float(table.item(row, 0).text())
-                y = float(table.item(row, 1).text())
-                z = float(table.item(row, 2).text())
-                points.append((x, y, z))
-            except Exception:
-                continue
-        return points

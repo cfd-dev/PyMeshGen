@@ -278,9 +278,10 @@ class ViewController:
             return self._picking_helper.is_point_pick_active()
         return False
 
-    def set_point_pick_callbacks(self, on_confirm=None, on_cancel=None, on_exit=None):
+    def set_point_pick_callbacks(self, on_pick=None, on_confirm=None, on_cancel=None, on_exit=None):
         if self._picking_helper is not None:
             self._picking_helper.set_point_pick_callbacks(
+                on_pick=on_pick,
                 on_confirm=on_confirm,
                 on_cancel=on_cancel,
                 on_exit=on_exit

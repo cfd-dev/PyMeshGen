@@ -66,6 +66,7 @@ class GeometryPickingHelper:
         self._last_pick_pos = None
         self._last_snap_pos = None
         self._is_snapped = False  # 标记当前是否磁吸到现有点
+        self._geometry_vertex_highlight_actors = {}  # 存储高亮的几何点actor {vertex_obj: actor}
 
     def set_callbacks(
         self,
@@ -184,6 +185,7 @@ class GeometryPickingHelper:
         self._is_snapped = False
         self._remove_point_highlight()
         self._remove_snap_visualization()
+        self._clear_geometry_vertex_highlights()
 
     def is_point_pick_active(self):
         """检查点拾取是否激活"""
@@ -328,13 +330,18 @@ class GeometryPickingHelper:
         
         if pos is not None:
             self._show_point_highlight(pos[0], pos[1], pos[2])
-            
+
             if self._is_snapped:
                 self._show_snap_visualization(pos, pos)
+                vertex_obj = self._find_vertex_by_point(pos)
+                if vertex_obj:
+                    self._highlight_geometry_vertex(vertex_obj)
             else:
                 self._remove_snap_visualization()
-            
+                self._clear_geometry_vertex_highlights()
+
             self._on_point_pick((pos[0], pos[1], pos[2]))
+            self._remove_point_highlight()
         
         style = interactor.GetInteractorStyle()
         if style:
@@ -387,31 +394,37 @@ class GeometryPickingHelper:
             return
         if not self._snap_enabled:
             return
-        
+
         interactor = self._get_interactor()
         if interactor is None:
             return
-        
+
         renderer = getattr(self.mesh_display, "renderer", None)
         if renderer is None:
             return
-        
+
         click_pos = interactor.GetEventPosition()
         picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
-        
+
         if picked:
             pos = self._point_picker.GetPickPosition()
             self._last_pick_pos = pos
-            
+
             nearest_point = self._find_nearest_point(pos)
             if nearest_point:
                 self._last_snap_pos = nearest_point
                 self._is_snapped = True
                 self._show_snap_visualization(pos, nearest_point)
+                # 不在这里高亮几何点，只在实际点击时高亮
+                # vertex_obj = self._find_vertex_by_point(nearest_point)
+                # if vertex_obj:
+                #     self._highlight_geometry_vertex(vertex_obj)
             else:
                 self._last_snap_pos = None
                 self._is_snapped = False
                 self._remove_snap_visualization()
+                # 不在这里清除几何点高亮，只在拾取到非几何点时清除
+                # self._clear_geometry_vertex_highlights()
         else:
             pos = self._pick_on_plane(click_pos, renderer)
             if pos is not None:
@@ -419,10 +432,13 @@ class GeometryPickingHelper:
                 self._last_snap_pos = None
                 self._is_snapped = False
                 self._remove_snap_visualization()
+                # 不在这里清除几何点高亮，只在拾取到非几何点时清除
+                # self._clear_geometry_vertex_highlights()
             else:
                 self._last_pick_pos = None
                 self._last_snap_pos = None
                 self._is_snapped = False
+                # self._clear_geometry_vertex_highlights()
 
     def _show_snap_visualization(self, pick_pos, snap_pos):
         """显示磁吸可视化效果"""
@@ -550,6 +566,112 @@ class GeometryPickingHelper:
             self.mesh_display.render_window.Render()
         
         self._point_highlight_actor = None
+
+    def _highlight_geometry_vertex(self, vertex_obj):
+        """高亮几何点（黄色）"""
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        if vertex_obj in self._geometry_vertex_highlight_actors:
+            return
+        
+        try:
+            from OCC.Core.BRep import BRep_Tool
+            pnt = BRep_Tool.Pnt(vertex_obj)
+            x, y, z = pnt.X(), pnt.Y(), pnt.Z()
+        except Exception:
+            return
+        
+        sphere = vtk.vtkSphereSource()
+        sphere.SetCenter(x, y, z)
+        sphere.SetRadius(0.06)
+        sphere.SetThetaResolution(16)
+        sphere.SetPhiResolution(16)
+        sphere.Update()
+        
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(sphere.GetOutputPort())
+        
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
+        actor.GetProperty().SetOpacity(0.9)
+        
+        renderer.AddActor(actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+        
+        self._geometry_vertex_highlight_actors[vertex_obj] = actor
+
+    def _unhighlight_geometry_vertex(self, vertex_obj):
+        """取消高亮几何点"""
+        if vertex_obj not in self._geometry_vertex_highlight_actors:
+            return
+        
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        actor = self._geometry_vertex_highlight_actors.pop(vertex_obj)
+        renderer.RemoveActor(actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+
+    def _clear_geometry_vertex_highlights(self):
+        """清除所有几何点高亮"""
+        if not self._geometry_vertex_highlight_actors:
+            return
+        
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        for vertex_obj in list(self._geometry_vertex_highlight_actors.keys()):
+            actor = self._geometry_vertex_highlight_actors.pop(vertex_obj)
+            renderer.RemoveActor(actor)
+        
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+
+    def _find_vertex_by_point(self, point):
+        """根据坐标找到对应的几何点对象"""
+        if not self.gui:
+            return None
+        
+        try:
+            elements = self._get_all_geometry_elements()
+            vertices = elements.get("vertices", [])
+            
+            if not vertices:
+                return None
+            
+            from OCC.Core.BRep import BRep_Tool
+            
+            for vertex_obj, vertex_index in vertices:
+                try:
+                    pnt = BRep_Tool.Pnt(vertex_obj)
+                    vertex_point = (pnt.X(), pnt.Y(), pnt.Z())
+                    
+                    if (abs(vertex_point[0] - point[0]) < 1e-6 and
+                        abs(vertex_point[1] - point[1]) < 1e-6 and
+                        abs(vertex_point[2] - point[2]) < 1e-6):
+                        return vertex_obj
+                except Exception:
+                    continue
+            
+            return None
+        except Exception:
+            return None
 
     def _get_interactor(self):
         if getattr(self.mesh_display, "frame", None) is None:
