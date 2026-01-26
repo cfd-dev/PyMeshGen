@@ -59,7 +59,7 @@ class GeometryPickingHelper:
         self._point_highlight_actor = None
         
         self._snap_enabled = False
-        self._snap_tolerance = 0.1
+        self._snap_tolerance = 0.5
         self._geometry_points_cache = []
         self._snap_line_actor = None
         self._snap_point_actor = None
