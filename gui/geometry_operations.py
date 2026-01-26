@@ -417,6 +417,8 @@ class GeometryOperations:
                 self.gui.geometry_actors = {}
             if hasattr(self.gui, 'geometry_actors_cache'):
                 self.gui.geometry_actors_cache = {}
+            if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+                self.gui.mesh_display.render_window.Render()
         else:
             self._refresh_geometry_display(stats)
 

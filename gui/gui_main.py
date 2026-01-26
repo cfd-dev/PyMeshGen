@@ -1145,7 +1145,6 @@ class PyMeshGenGUI(QMainWindow):
                 self.log_info(f"非STL文件，跳过初始显示，等待模型树加载...")
 
             if unit_source == "auto" and not auto_detected:
-                QMessageBox.warning(self, "提示", "未能从数模文件中读取单位，已按毫米(mm)处理")
                 self.log_warning("未能从数模文件中读取单位，已按毫米(mm)处理")
             self.log_info(f"已导入几何: {file_path} (单位: {unit})")
             self.update_status("已导入几何")

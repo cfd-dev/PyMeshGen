@@ -932,6 +932,8 @@ class PartManager:
                     if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
                         self.gui.mesh_display.renderer.RemoveActor(actor)
             self.gui.geometry_actors_cache = {}
+        if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
+            self.gui.mesh_display.render_window.Render()
 
     def _update_mesh_part_display(self):
         """更新网格部件的显示"""
