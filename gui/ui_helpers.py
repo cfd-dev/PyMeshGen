@@ -19,6 +19,16 @@ class UIHelpers:
         if hasattr(self.gui, 'info_output'):
             self.gui.info_output.log_warning(message)
 
+    def log_debug(self, message):
+        """记录调试日志"""
+        if hasattr(self.gui, 'info_output'):
+            self.gui.info_output.log_debug(message)
+
+    def log_verbose(self, message):
+        """记录详细日志"""
+        if hasattr(self.gui, 'info_output'):
+            self.gui.info_output.log_verbose(message)
+
     def update_status(self, message):
         """更新状态栏信息"""
         if hasattr(self.gui, 'status_bar'):

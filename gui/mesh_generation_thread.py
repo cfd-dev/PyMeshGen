@@ -133,6 +133,14 @@ class GUIAdapter:
         """记录警告"""
         self.signals.log.emit(f"[WARNING] {message}")
 
+    def log_debug(self, message):
+        """记录调试信息"""
+        self.signals.log.emit(f"[DEBUG] {message}")
+
+    def log_verbose(self, message):
+        """记录详细信息"""
+        self.signals.log.emit(f"[VERBOSE] {message}")
+
     def update_status(self, message):
         """更新状态"""
         self.signals.log.emit(message)

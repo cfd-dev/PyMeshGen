@@ -1799,6 +1799,14 @@ class PyMeshGenGUI(QMainWindow):
         """记录警告日志"""
         self.ui_helpers.log_warning(message)
 
+    def log_debug(self, message):
+        """记录调试日志"""
+        self.ui_helpers.log_debug(message)
+
+    def log_verbose(self, message):
+        """记录详细日志"""
+        self.ui_helpers.log_verbose(message)
+
     def append_info_output(self, message):
         """添加信息到输出窗口，供 utils.message 模块调用"""
         if hasattr(self, 'info_output'):
