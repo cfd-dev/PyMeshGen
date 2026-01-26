@@ -375,6 +375,8 @@ class GeometryOperations:
         except Exception:
             new_shape = reshaper.Apply(self.gui.current_geometry)
 
+        self.gui.log_info(f"删除后 new_shape 类型: {type(new_shape)}, IsNull: {new_shape.IsNull() if hasattr(new_shape, 'IsNull') else 'N/A'}")
+
         try:
             from fileIO.geometry_io import get_shape_statistics
         except Exception as e:
@@ -428,6 +430,11 @@ class GeometryOperations:
 
         if hasattr(self.gui, 'model_tree_widget') and stats.get('num_vertices', 0) == 0 and stats.get('num_edges', 0) == 0 and stats.get('num_faces', 0) == 0 and stats.get('num_solids', 0) == 0:
             self.gui.model_tree_widget.load_geometry(None, "几何")
+            if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info and 'DefaultPart' in self.gui.cas_parts_info:
+                del self.gui.cas_parts_info['DefaultPart']
+                if hasattr(self.gui, 'model_tree_widget'):
+                    self.gui.model_tree_widget.load_parts({'parts_info': self.gui.cas_parts_info})
+                self.gui.log_info("已清除 DefaultPart")
 
         self.gui.log_info("已删除选中几何元素")
         self.gui.update_status("几何已更新")

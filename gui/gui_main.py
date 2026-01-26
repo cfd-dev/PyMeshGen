@@ -1626,6 +1626,10 @@ class PyMeshGenGUI(QMainWindow):
         if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
             return
 
+        if new_shape is None or (hasattr(new_shape, 'IsNull') and new_shape.IsNull()):
+            self.log_info(f"new_shape 为空或无效，跳过部件重建")
+            return
+
         from OCC.Core.TopExp import TopExp_Explorer
         from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
 

@@ -674,6 +674,9 @@ def get_shape_statistics(shape: TopoDS_Shape) -> dict:
         'bounding_box': None
     }
     
+    if shape is None or not hasattr(shape, 'IsNull') or shape.IsNull():
+        return stats
+    
     # 统计各种几何元素
     explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
     while explorer.More():
