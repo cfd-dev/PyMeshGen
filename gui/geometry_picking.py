@@ -381,13 +381,16 @@ class GeometryPickingHelper:
         self._is_snapped = False
         final_pos = world_pos
         vertex_obj = None
+        vertex_index = None
 
         if self._snap_enabled:
             nearest_point = self._find_nearest_point_from_screen_pos(click_pos, renderer)
             if nearest_point:
                 final_pos = nearest_point
                 self._is_snapped = True
-                vertex_obj = self._find_vertex_by_point(final_pos)
+                result = self._find_vertex_by_point(final_pos)
+                if result:
+                    vertex_obj, vertex_index = result
 
         if final_pos is not None:
             if self._is_snapped and vertex_obj:
@@ -406,8 +409,9 @@ class GeometryPickingHelper:
             self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]), vertex_obj)
 
             if self.gui and hasattr(self.gui, 'status_bar'):
-                if self._is_snapped:
-                    self.gui.status_bar.update_status(f"已拾取几何点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f}) [磁吸]")
+                if self._is_snapped and vertex_obj is not None:
+                    vertex_name = f"点_{vertex_index}" if vertex_index is not None else "未知点"
+                    self.gui.status_bar.update_status(f"磁吸拾取现有几何点: {vertex_name}({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f})")
                 else:
                     self.gui.status_bar.update_status(f"已拾取新点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f})")
 
@@ -550,10 +554,15 @@ class GeometryPickingHelper:
                         (click_pos[0] - nearest_display[0]) ** 2 +
                         (click_pos[1] - nearest_display[1]) ** 2
                     )
-                    if distance < 1e-6:
-                        self.gui.status_bar.update_status(f"磁吸到几何点: ({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) [像素距离: {pixel_distance:.1f}]")
-                    else:
-                        self.gui.status_bar.update_status(f"磁吸到几何点: ({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) 世界距离: {distance:.3f} [像素距离: {pixel_distance:.1f}]")
+                    # 获取 vertex 的索引和名称
+                    result = self._find_vertex_by_point(nearest_point)
+                    if result:
+                        _, vertex_index = result
+                        vertex_name = f"点_{vertex_index}" if vertex_index is not None else "未知点"
+                        if distance < 1e-6:
+                            self.gui.status_bar.update_status(f"磁吸现有几何点: {vertex_name}({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) [像素距离: {pixel_distance:.1f}]")
+                        else:
+                            self.gui.status_bar.update_status(f"磁吸现有几何点: {vertex_name}({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) 世界距离: {distance:.3f} [像素距离: {pixel_distance:.1f}]")
 
             # 不在这里高亮几何点，只在实际点击时高亮
             # vertex_obj = self._find_vertex_by_point(nearest_point)
@@ -930,11 +939,11 @@ class GeometryPickingHelper:
                                    (pick_display[1] - vertex_display[1]) ** 2
 
                     if pixel_dist_sq <= tolerance_sq:
-                        return vertex_obj
+                        return vertex_obj, vertex_index
                 except Exception:
                     continue
 
-            return None
+            return None, None
         except Exception:
             return None
 
