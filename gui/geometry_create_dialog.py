@@ -646,6 +646,10 @@ class GeometryCreateDialog(QDialog):
         if target_widget is not None:
             self._current_pick_target = target_widget
 
+        # 设置显示模式为元素模式，以便能看到几何元素进行拾取
+        if hasattr(self.gui.view_controller, 'set_display_mode'):
+            self.gui.view_controller.set_display_mode("elements")
+
         snap_enabled = self.snap_checkbox.isChecked()
         self.gui.view_controller.set_point_snap_enabled(snap_enabled)
 
@@ -759,6 +763,10 @@ class GeometryCreateDialog(QDialog):
             result = self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
         
         if result and hasattr(self.gui, 'view_controller'):
+            # 设置显示模式为元素模式
+            if hasattr(self.gui.view_controller, 'set_display_mode'):
+                self.gui.view_controller.set_display_mode("elements")
+
             # 清除所有高亮点
             if hasattr(self.gui.view_controller, '_picking_helper'):
                 picking_helper = self.gui.view_controller._picking_helper
