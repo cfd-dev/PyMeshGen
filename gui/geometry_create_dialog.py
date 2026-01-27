@@ -34,6 +34,7 @@ class GeometryCreateDialog(QDialog):
         self.setFont(font)
 
         self._current_pick_target = None
+        self._picked_points_history = []  # 拾取点历史记录 [(target_widget, point_coords), ...]
         self._create_widgets()
         self._connect_signals()
 
@@ -603,6 +604,8 @@ class GeometryCreateDialog(QDialog):
 
             if target_widget:
                 target_widget.setText(self._format_coord_output(point[0], point[1], point[2]))
+                # 记录拾取历史
+                self._picked_points_history.append((target_widget, point))
 
         def on_confirm():
             """单个点拾取确认回调"""
@@ -610,16 +613,17 @@ class GeometryCreateDialog(QDialog):
                 self.gui.view_controller.stop_point_pick()
 
         def on_cancel():
-            """单个点拾取取消回调"""
-            if target_widget:
-                target_widget = None
-            if self.gui and hasattr(self.gui, 'view_controller'):
-                self.gui.view_controller.stop_point_pick()
+            """单个点拾取取消回调 - 只取消上一次拾取，不退出拾取模式"""
+            # 取消上一次拾取的点（如果有的话）
+            if self._picked_points_history:
+                last_target, last_point = self._picked_points_history.pop()
+                if last_target:
+                    last_target.clear()
+            # 注意：不调用 stop_point_pick()，保持拾取模式继续
 
         def on_exit():
             """单个点拾取退出回调"""
-            if target_widget:
-                target_widget = None
+            self._picked_points_history.clear()
             if self.gui and hasattr(self.gui, 'view_controller'):
                 self.gui.view_controller.stop_point_pick()
 
@@ -660,10 +664,18 @@ class GeometryCreateDialog(QDialog):
 
 
     def close(self):
-        """关闭对话框时停止点拾取模式"""
+        """关闭对话框时停止点拾取模式并清理高亮点"""
         if self.gui and hasattr(self.gui, 'view_controller'):
             if self.gui.view_controller.is_point_pick_active():
                 self.gui.view_controller.stop_point_pick()
+            # 清理所有高亮点
+            if hasattr(self.gui.view_controller, '_picking_helper'):
+                picking_helper = self.gui.view_controller._picking_helper
+                if picking_helper:
+                    picking_helper._clear_geometry_vertex_highlights()
+                    picking_helper._remove_point_highlight()
+                    picking_helper._remove_snap_visualization()
+        self._picked_points_history.clear()
         super().close()
 
     def _create_geometry(self):
@@ -747,5 +759,14 @@ class GeometryCreateDialog(QDialog):
             result = self.gui.geometry_operations.create_geometry_cylinder(base_center, self.cr.value(), self.ch.value())
         
         if result and hasattr(self.gui, 'view_controller'):
+            # 清除所有高亮点
+            if hasattr(self.gui.view_controller, '_picking_helper'):
+                picking_helper = self.gui.view_controller._picking_helper
+                if picking_helper:
+                    picking_helper._clear_geometry_vertex_highlights()
+                    picking_helper._remove_point_highlight()
+                    picking_helper._remove_snap_visualization()
             self.gui.view_controller.fit_view()
+            # 清空拾取历史
+            self._picked_points_history.clear()
 
