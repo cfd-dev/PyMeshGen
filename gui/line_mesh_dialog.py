@@ -355,11 +355,15 @@ class LineMeshGenerationDialog(QDialog):
         
     def _on_pick_confirm(self):
         """确认选择"""
-        self.stop_edge_picking()
+        # 先获取拾取结果，再停止拾取模式
         if self.gui and hasattr(self.gui, 'view_controller') and self.gui.view_controller:
             picking_helper = getattr(self.gui.view_controller, '_picking_helper', None)
             if picking_helper is not None:
                 self.selected_edges = picking_helper.get_picked_elements()
+        
+        # 停止拾取模式
+        self.stop_edge_picking()
+        
         self.update_status(f"已确认选择 {len(self.selected_edges)} 条几何线")
         self.pick_confirmed.emit(self.selected_edges)
         
