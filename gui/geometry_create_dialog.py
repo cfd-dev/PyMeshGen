@@ -583,16 +583,18 @@ class GeometryCreateDialog(QDialog):
             QMessageBox.warning(self, "警告", "未找到视图控制器")
             return
 
-        def on_point_picked(point):
+        def on_point_picked(point, vertex_obj=None):
             """单个点拾取回调"""
-            # 磁吸功能已经在拾取过程中处理，这里只需要记录点坐标
+            is_snapped = vertex_obj is not None
             if hasattr(self.gui, 'log_info'):
-                self.gui.log_info(f"拾取点坐标: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
+                if is_snapped:
+                    self.gui.log_info(f"磁吸拾取几何点: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
+                else:
+                    self.gui.log_info(f"拾取新点坐标: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
 
             if target_widget:
                 target_widget.setText(self._format_coord_output(point[0], point[1], point[2]))
-                # 记录拾取历史
-                self._picked_points_history.append((target_widget, point))
+                self._picked_points_history.append((target_widget, point, vertex_obj))
 
         def on_confirm():
             """单个点拾取确认回调"""
@@ -601,12 +603,11 @@ class GeometryCreateDialog(QDialog):
 
         def on_cancel():
             """单个点拾取取消回调 - 只取消上一次拾取，不退出拾取模式"""
-            # 取消上一次拾取的点（如果有的话）
             if self._picked_points_history:
-                last_target, last_point = self._picked_points_history.pop()
+                last_entry = self._picked_points_history.pop()
+                last_target = last_entry[0] if last_entry else None
                 if last_target:
                     last_target.clear()
-            # 注意：不调用 stop_point_pick()，保持拾取模式继续
 
         def on_exit():
             """单个点拾取退出回调"""

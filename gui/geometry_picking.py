@@ -68,8 +68,9 @@ class GeometryPickingHelper:
         self._last_snap_pos = None
         self._is_snapped = False  # 标记当前是否磁吸到现有点
         self._geometry_vertex_highlight_actors = {}  # 存储高亮的几何点actor {vertex_obj: actor}
-        self._picked_points = []  # 存储已拾取的点列表 [(x, y, z), ...]
+        self._picked_points = []  # 存储已拾取的点列表 [(x, y, z, vertex_obj), ...]
         self._picked_point_actors = []  # 存储已拾取点的actor列表
+        self._last_picked_vertex = None  # 最近一次拾取到的几何点对象
 
     def set_callbacks(
         self,
@@ -207,6 +208,10 @@ class GeometryPickingHelper:
         self._remove_snap_visualization()
         self._clear_geometry_vertex_highlights()
 
+    def get_last_picked_vertex(self):
+        """获取最近一次拾取到的几何点对象（如果有的话）"""
+        return self._last_picked_vertex
+
     def set_snap_enabled(self, enabled):
         """设置是否启用磁吸"""
         self._snap_enabled = enabled
@@ -239,7 +244,7 @@ class GeometryPickingHelper:
             from OCC.Core.BRep import BRep_Tool
             
             new_cache = []
-            for vertex_obj, vertex_index in vertices:
+            for vertex_index, vertex_obj in vertices:
                 try:
                     pnt = BRep_Tool.Pnt(vertex_obj)
                     new_cache.append((pnt.X(), pnt.Y(), pnt.Z()))
@@ -375,18 +380,18 @@ class GeometryPickingHelper:
 
         self._is_snapped = False
         final_pos = world_pos
+        vertex_obj = None
 
         if self._snap_enabled:
             nearest_point = self._find_nearest_point_from_screen_pos(click_pos, renderer)
             if nearest_point:
                 final_pos = nearest_point
                 self._is_snapped = True
+                vertex_obj = self._find_vertex_by_point(final_pos)
 
         if final_pos is not None:
-            if self._is_snapped:
-                vertex_obj = self._find_vertex_by_point(final_pos)
-                if vertex_obj:
-                    self._highlight_geometry_vertex(vertex_obj)
+            if self._is_snapped and vertex_obj:
+                self._highlight_geometry_vertex(vertex_obj)
                 self._remove_snap_visualization()
             else:
                 self._remove_snap_visualization()
@@ -394,10 +399,11 @@ class GeometryPickingHelper:
 
             actor = self._show_picked_point_highlight(final_pos[0], final_pos[1], final_pos[2])
             if actor:
-                self._picked_points.append((final_pos[0], final_pos[1], final_pos[2]))
+                self._picked_points.append((final_pos[0], final_pos[1], final_pos[2], vertex_obj))
                 self._picked_point_actors.append(actor)
 
-            self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]))
+            self._last_picked_vertex = vertex_obj
+            self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]), vertex_obj)
 
             if self.gui and hasattr(self.gui, 'status_bar'):
                 if self._is_snapped:
@@ -609,42 +615,38 @@ class GeometryPickingHelper:
             renderer.AddActor(line_actor)
             self._snap_line_actor = line_actor
 
-        # 创建磁吸点指示器（绿色球体）
-        sphere = vtk.vtkSphereSource()
-        sphere.SetCenter(snap_pos[0], snap_pos[1], snap_pos[2])
-        sphere.SetRadius(0.06)  # 增大半径使其更明显
-        sphere.SetThetaResolution(24)
-        sphere.SetPhiResolution(24)
-        sphere.Update()
-
-        sphere_mapper = vtk.vtkPolyDataMapper()
-        sphere_mapper.SetInputConnection(sphere.GetOutputPort())
-
-        sphere_actor = vtk.vtkActor()
-        sphere_actor.SetMapper(sphere_mapper)
-
+        # 创建磁吸点指示器（绿色圆环）
+        num_points = 64
+        points_list = []
+        for i in range(num_points + 1):
+            angle = 2 * math.pi * i / num_points
+            px = snap_pos[0] + 0.08 * math.cos(angle)
+            py = snap_pos[1] + 0.08 * math.sin(angle)
+            pz = snap_pos[2]
+            points_list.append((px, py, pz))
+        
+        points = vtk.vtkPoints()
+        for i, (x, y, z) in enumerate(points_list):
+            points.InsertNextPoint(x, y, z)
+        
+        line_source = vtk.vtkLineSource()
+        line_source.SetPoints(points)
+        
+        line_mapper = vtk.vtkPolyDataMapper()
+        line_mapper.SetInputConnection(line_source.GetOutputPort())
+        
+        line_actor = vtk.vtkActor()
+        line_actor.SetMapper(line_mapper)
+        
         if is_aligned:
-            # 完全对齐时使用亮绿色
-            sphere_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
-            sphere_actor.GetProperty().SetAmbient(0.4)
-            sphere_actor.GetProperty().SetDiffuse(0.6)
-            sphere_actor.GetProperty().SetSpecular(0.3)
+            line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
         else:
-            # 未完全对齐时使用半透明绿色
-            sphere_actor.GetProperty().SetColor(0.0, 0.8, 0.0)
-            sphere_actor.GetProperty().SetAmbient(0.3)
-            sphere_actor.GetProperty().SetDiffuse(0.5)
-            sphere_actor.GetProperty().SetSpecular(0.2)
-
-        sphere_actor.GetProperty().SetOpacity(0.9)
-
-        # 添加轮廓线使球体更明显
-        sphere_actor.GetProperty().EdgeVisibilityOn()
-        sphere_actor.GetProperty().SetEdgeColor(0.0, 0.5, 0.0)
-        sphere_actor.GetProperty().SetEdgeWidth(1.5)
-
-        renderer.AddActor(sphere_actor)
-        self._snap_point_actor = sphere_actor
+            line_actor.GetProperty().SetColor(0.0, 0.8, 0.0)
+        
+        line_actor.GetProperty().SetLineWidth(2.5)
+        
+        renderer.AddActor(line_actor)
+        self._snap_point_actor = line_actor
 
         if hasattr(self.mesh_display, "render_window"):
             self.mesh_display.render_window.Render()
@@ -915,7 +917,7 @@ class GeometryPickingHelper:
             pixel_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0)
             tolerance_sq = pixel_tolerance ** 2
 
-            for vertex_obj, vertex_index in vertices:
+            for vertex_index, vertex_obj in vertices:
                 try:
                     pnt = BRep_Tool.Pnt(vertex_obj)
                     vertex_point = (pnt.X(), pnt.Y(), pnt.Z())
