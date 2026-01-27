@@ -68,6 +68,8 @@ class GeometryPickingHelper:
         self._last_snap_pos = None
         self._is_snapped = False  # 标记当前是否磁吸到现有点
         self._geometry_vertex_highlight_actors = {}  # 存储高亮的几何点actor {vertex_obj: actor}
+        self._picked_points = []  # 存储已拾取的点列表 [(x, y, z), ...]
+        self._picked_point_actors = []  # 存储已拾取点的actor列表
 
     def set_callbacks(
         self,
@@ -191,12 +193,19 @@ class GeometryPickingHelper:
         self._remove_point_highlight()
         self._remove_snap_visualization()
         self._clear_geometry_vertex_highlights()
-        # 清空缓存，下次使用时重新构建
+        self._clear_picked_points()
         self._geometry_points_cache = []
 
     def is_point_pick_active(self):
         """检查点拾取是否激活"""
         return self._point_pick_enabled
+
+    def clear_pick_highlights(self):
+        """清除所有拾取高亮点（供创建几何时调用）"""
+        self._clear_picked_points()
+        self._remove_point_highlight()
+        self._remove_snap_visualization()
+        self._clear_geometry_vertex_highlights()
 
     def set_snap_enabled(self, enabled):
         """设置是否启用磁吸"""
@@ -356,10 +365,8 @@ class GeometryPickingHelper:
 
         click_pos = interactor.GetEventPosition()
 
-        # 首先获取鼠标点击位置对应的世界坐标（使用参考平面）
         world_pos = self._pick_on_plane(click_pos, renderer)
         if world_pos is None:
-            # 如果无法获取世界坐标，尝试从几何体拾取
             picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
             if picked:
                 world_pos = self._point_picker.GetPickPosition()
@@ -369,9 +376,7 @@ class GeometryPickingHelper:
         self._is_snapped = False
         final_pos = world_pos
 
-        # 只有在启用磁吸时才进行磁吸判断
         if self._snap_enabled:
-            # 基于鼠标屏幕位置进行磁吸判断（正确的方法）
             nearest_point = self._find_nearest_point_from_screen_pos(click_pos, renderer)
             if nearest_point:
                 final_pos = nearest_point
@@ -379,47 +384,44 @@ class GeometryPickingHelper:
 
         if final_pos is not None:
             if self._is_snapped:
-                # 拾取现有点：高亮现有点并显示磁吸反馈
                 vertex_obj = self._find_vertex_by_point(final_pos)
                 if vertex_obj:
                     self._highlight_geometry_vertex(vertex_obj)
-                # 显示磁吸点的高亮效果（绿色）
-                self._show_snap_point_highlight(final_pos[0], final_pos[1], final_pos[2])
-                # 移除移动时的磁吸可视化
                 self._remove_snap_visualization()
             else:
-                # 拾取新点：显示临时预览点（黄色）
-                self._show_point_highlight(final_pos[0], final_pos[1], final_pos[2])
                 self._remove_snap_visualization()
                 self._clear_geometry_vertex_highlights()
 
+            actor = self._show_picked_point_highlight(final_pos[0], final_pos[1], final_pos[2])
+            if actor:
+                self._picked_points.append((final_pos[0], final_pos[1], final_pos[2]))
+                self._picked_point_actors.append(actor)
+
             self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]))
 
-            # 在状态栏显示拾取结果
             if self.gui and hasattr(self.gui, 'status_bar'):
                 if self._is_snapped:
                     self.gui.status_bar.update_status(f"已拾取几何点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f}) [磁吸]")
                 else:
                     self.gui.status_bar.update_status(f"已拾取新点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f})")
 
-            # 短暂显示后移除预览点（给用户视觉反馈）
-            if not self._is_snapped:
-                self._remove_point_highlight()
-            else:
-                # 磁吸点的高亮稍后移除
-                pass
-
         style = interactor.GetInteractorStyle()
         if style:
             style.OnLeftButtonDown()
 
     def _on_point_pick_right_press(self, obj, event):
-        """点拾取右键按下事件"""
+        """点拾取右键按下事件 - 取消上一次拾取的点"""
         if not self._point_pick_enabled:
             return
         
-        if self._on_point_pick_cancel:
-            self._on_point_pick_cancel()
+        if self._picked_points:
+            self._remove_last_picked_point()
+            
+            if self.gui and hasattr(self.gui, 'status_bar'):
+                self.gui.status_bar.update_status(f"已取消上一次拾取，剩余 {len(self._picked_points)} 个点")
+        else:
+            if self._on_point_pick_cancel:
+                self._on_point_pick_cancel()
         
         interactor = self._get_interactor()
         if interactor is None:
@@ -428,6 +430,50 @@ class GeometryPickingHelper:
         style = interactor.GetInteractorStyle()
         if style:
             style.OnRightButtonDown()
+
+    def _remove_last_picked_point(self):
+        """移除最后一次拾取的点和对应的高亮actor"""
+        if not self._picked_points or not self._picked_point_actors:
+            return
+        
+        self._picked_points.pop()
+        last_actor = self._picked_point_actors.pop()
+        
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+        
+        renderer.RemoveActor(last_actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+
+    def _clear_picked_points(self):
+        """清除所有已拾取的点和对应的高亮actor"""
+        if not self._picked_points:
+            return
+        
+        if not hasattr(self.mesh_display, "renderer"):
+            self._picked_points = []
+            self._picked_point_actors = []
+            return
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            self._picked_points = []
+            self._picked_point_actors = []
+            return
+        
+        for actor in self._picked_point_actors:
+            renderer.RemoveActor(actor)
+        
+        self._picked_points = []
+        self._picked_point_actors = []
+        
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
 
     def _on_point_pick_key_press(self, obj, event):
         """点拾取键盘事件"""
@@ -621,7 +667,7 @@ class GeometryPickingHelper:
             self.mesh_display.render_window.Render()
 
     def _show_point_highlight(self, x, y, z):
-        """显示点高亮"""
+        """显示点高亮（蓝色，使用与几何点一致的显示方式）"""
         if not hasattr(self.mesh_display, "renderer"):
             return
         
@@ -631,20 +677,25 @@ class GeometryPickingHelper:
         
         self._remove_point_highlight()
         
-        sphere = vtk.vtkSphereSource()
-        sphere.SetCenter(x, y, z)
-        sphere.SetRadius(0.05)
-        sphere.SetThetaResolution(16)
-        sphere.SetPhiResolution(16)
-        sphere.Update()
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        
+        vertices = vtk.vtkCellArray()
+        vertex_id = vtk.vtkVertex()
+        vertex_id.GetPointIds().SetId(0, 0)
+        vertices.InsertNextCell(vertex_id)
+        
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        polydata.SetVerts(vertices)
         
         mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(sphere.GetOutputPort())
+        mapper.SetInputData(polydata)
         
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-        actor.GetProperty().SetOpacity(0.8)
+        actor.GetProperty().SetColor(0.0, 0.0, 1.0)
+        actor.GetProperty().SetPointSize(10)
         
         renderer.AddActor(actor)
         if hasattr(self.mesh_display, "render_window"):
@@ -670,8 +721,43 @@ class GeometryPickingHelper:
 
         self._point_highlight_actor = None
 
+    def _show_picked_point_highlight(self, x, y, z):
+        """显示已拾取点的高亮（蓝色，与几何点显示方式一致），返回actor以便后续管理"""
+        if not hasattr(self.mesh_display, "renderer"):
+            return None
+        
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return None
+        
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        
+        vertices = vtk.vtkCellArray()
+        vertex_id = vtk.vtkVertex()
+        vertex_id.GetPointIds().SetId(0, 0)
+        vertices.InsertNextCell(vertex_id)
+        
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        polydata.SetVerts(vertices)
+        
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputData(polydata)
+        
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(0.0, 0.0, 1.0)
+        actor.GetProperty().SetPointSize(10)
+        
+        renderer.AddActor(actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+        
+        return actor
+
     def _show_snap_point_highlight(self, x, y, z):
-        """显示磁吸点高亮（绿色）"""
+        """显示磁吸点高亮（蓝色，与几何点显示方式一致）"""
         if not hasattr(self.mesh_display, "renderer"):
             return
 
@@ -679,26 +765,27 @@ class GeometryPickingHelper:
         if renderer is None:
             return
 
-        # 移除可能存在的旧高亮
         self._remove_point_highlight()
 
-        sphere = vtk.vtkSphereSource()
-        sphere.SetCenter(x, y, z)
-        sphere.SetRadius(0.06)  # 比普通高亮点稍大
-        sphere.SetThetaResolution(20)
-        sphere.SetPhiResolution(20)
-        sphere.Update()
-
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        
+        vertices = vtk.vtkCellArray()
+        vertex_id = vtk.vtkVertex()
+        vertex_id.GetPointIds().SetId(0, 0)
+        vertices.InsertNextCell(vertex_id)
+        
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        polydata.SetVerts(vertices)
+        
         mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(sphere.GetOutputPort())
-
+        mapper.SetInputData(polydata)
+        
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(0.0, 1.0, 0.0)  # 绿色表示磁吸成功
-        actor.GetProperty().SetOpacity(0.9)
-        actor.GetProperty().SetAmbient(0.3)
-        actor.GetProperty().SetDiffuse(0.7)
-        actor.GetProperty().SetSpecular(0.2)
+        actor.GetProperty().SetColor(0.0, 0.0, 1.0)
+        actor.GetProperty().SetPointSize(10)
 
         renderer.AddActor(actor)
         if hasattr(self.mesh_display, "render_window"):
@@ -707,7 +794,7 @@ class GeometryPickingHelper:
         self._point_highlight_actor = actor
 
     def _highlight_geometry_vertex(self, vertex_obj):
-        """高亮几何点（黄色）"""
+        """高亮几何点（蓝色，与几何点显示方式一致）"""
         if not hasattr(self.mesh_display, "renderer"):
             return
         
@@ -725,20 +812,25 @@ class GeometryPickingHelper:
         except Exception:
             return
         
-        sphere = vtk.vtkSphereSource()
-        sphere.SetCenter(x, y, z)
-        sphere.SetRadius(0.06)
-        sphere.SetThetaResolution(16)
-        sphere.SetPhiResolution(16)
-        sphere.Update()
+        points = vtk.vtkPoints()
+        points.InsertNextPoint(x, y, z)
+        
+        vertices = vtk.vtkCellArray()
+        vertex_id = vtk.vtkVertex()
+        vertex_id.GetPointIds().SetId(0, 0)
+        vertices.InsertNextCell(vertex_id)
+        
+        polydata = vtk.vtkPolyData()
+        polydata.SetPoints(points)
+        polydata.SetVerts(vertices)
         
         mapper = vtk.vtkPolyDataMapper()
-        mapper.SetInputConnection(sphere.GetOutputPort())
+        mapper.SetInputData(polydata)
         
         actor = vtk.vtkActor()
         actor.SetMapper(mapper)
-        actor.GetProperty().SetColor(1.0, 1.0, 0.0)
-        actor.GetProperty().SetOpacity(0.9)
+        actor.GetProperty().SetColor(0.0, 0.0, 1.0)
+        actor.GetProperty().SetPointSize(10)
         
         renderer.AddActor(actor)
         if hasattr(self.mesh_display, "render_window"):
