@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTimer
 
 from gui.ui_utils import PARTS_INFO_RESERVED_KEYS
 

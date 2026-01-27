@@ -1103,7 +1103,7 @@ class PyMeshGenGUI(QMainWindow):
                         if has_surface:
                             self.geometry_actor = create_shape_actor(
                                 shape,
-                                mesh_quality=8.0,
+                                mesh_quality=2.0,
                                 display_mode='surface',
                                 color=(0.8, 0.8, 0.9),
                                 opacity=0.8
@@ -1116,8 +1116,8 @@ class PyMeshGenGUI(QMainWindow):
                                 shape,
                                 color=(0.0, 0.0, 0.0),
                                 line_width=1.5,
-                                sample_rate=0.0025,
-                                max_points_per_edge=2000
+                                sample_rate=0.01,
+                                max_points_per_edge=500
                             )
                             self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
                             self.geometry_actors['edges'] = [self.geometry_edges_actor]
@@ -1125,7 +1125,7 @@ class PyMeshGenGUI(QMainWindow):
                         if has_vertices:
                             self.geometry_points_actor = create_shape_actor(
                                 shape,
-                                mesh_quality=8.0,
+                                mesh_quality=2.0,
                                 display_mode='points',
                                 color=(1.0, 0.0, 0.0),
                                 opacity=1.0
@@ -1221,7 +1221,7 @@ class PyMeshGenGUI(QMainWindow):
                 if has_surface:
                     self.geometry_actor = create_shape_actor(
                         shape,
-                        mesh_quality=8.0,
+                        mesh_quality=2.0,
                         display_mode='surface',
                         color=(0.8, 0.8, 0.9),
                         opacity=0.8
@@ -1234,8 +1234,8 @@ class PyMeshGenGUI(QMainWindow):
                         shape,
                         color=(0.0, 0.0, 0.0),
                         line_width=1.5,
-                        sample_rate=0.0025,
-                        max_points_per_edge=2000
+                        sample_rate=0.01,
+                        max_points_per_edge=500
                     )
                     self.mesh_display.renderer.AddActor(self.geometry_edges_actor)
                     self.geometry_actors['edges'] = [self.geometry_edges_actor]

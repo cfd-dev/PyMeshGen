@@ -26,6 +26,7 @@ class GeometryImportThread(QThread):
         self._is_running = True
 
         # 如果create_vtk_actors参数未指定，则根据文件扩展名决定
+        # 对于STL文件，创建VTK actors；对于其他文件，延迟到模型树加载后显示
         if create_vtk_actors is None:
             file_ext = os.path.splitext(file_path)[1].lower()
             # 对于STL文件，创建VTK actors；对于其他文件，延迟到模型树加载后显示
@@ -104,8 +105,8 @@ class GeometryImportThread(QThread):
                         shape,
                         color=(0.0, 0.0, 0.0),
                         line_width=1.5,
-                        sample_rate=0.0025,
-                        max_points_per_edge=2000
+                        sample_rate=0.01,
+                        max_points_per_edge=500
                     )
 
                     result['main_actor'] = main_actor

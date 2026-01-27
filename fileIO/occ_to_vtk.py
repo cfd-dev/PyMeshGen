@@ -384,7 +384,7 @@ def create_vertex_actor(vertex: TopoDS_Vertex,
 def create_edge_actor(edge: TopoDS_Edge,
                      color: Tuple[float, float, float] = (0.0, 0.0, 1.0),
                      line_width: float = 2.0,
-                     sample_rate: float = 0.0025) -> vtk.vtkActor:
+                     sample_rate: float = 0.01) -> vtk.vtkActor:
     """
     为边创建VTK Actor
     
@@ -439,7 +439,7 @@ def create_edge_actor(edge: TopoDS_Edge,
 def create_face_actor(face: TopoDS_Face,
                       color: Tuple[float, float, float] = (0.0, 1.0, 0.0),
                       opacity: float = 0.8,
-                      mesh_quality: float = 1.0) -> vtk.vtkActor:
+                      mesh_quality: float = 2.0) -> vtk.vtkActor:
     """
     为面创建VTK Actor
     
