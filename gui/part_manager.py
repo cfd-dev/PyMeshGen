@@ -879,6 +879,9 @@ class PartManager:
                     else:
                         continue
 
+                    # 默认设为不可见，避免与整体显示重叠
+                    actor.SetVisibility(False)
+
                     # 添加到渲染器
                     if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'renderer'):
                         self.gui.mesh_display.renderer.AddActor(actor)

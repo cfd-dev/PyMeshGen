@@ -33,6 +33,11 @@ class GeometryOperations:
 
         if file_path:
             try:
+                # 导入前重置为整体显示模式
+                self.gui.display_mode = "full"
+                if hasattr(self.gui, 'view_controller') and hasattr(self.gui.view_controller, 'set_display_mode'):
+                    self.gui.view_controller.set_display_mode("full")
+
                 unit_dialog = _GeometryUnitDialog(self.gui)
                 if unit_dialog.exec_() != QDialog.Accepted:
                     self.gui.log_info("导入几何已取消（未设置单位）")
