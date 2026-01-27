@@ -60,7 +60,7 @@ class GeometryPickingHelper:
         
         # FIXME 磁吸现有点的功能未能正确运行，待检查修复
         self._snap_enabled = False
-        self._snap_pixel_tolerance = 12.0  # 默认像素容差（12像素，提高磁吸灵敏度）
+        self._snap_pixel_tolerance = 12.0  # 默认像素容差（12像素）
         self._geometry_points_cache = []
         self._snap_line_actor = None
         self._snap_point_actor = None
@@ -280,6 +280,35 @@ class GeometryPickingHelper:
                 return (display_point[0], display_point[1])
             except Exception:
                 return None
+
+    def _get_pixel_to_world_scale(self, world_point, renderer):
+        """计算世界坐标中1像素对应的世界距离"""
+        if renderer is None or world_point is None:
+            return 0.01  # 默认值
+
+        camera = renderer.GetActiveCamera()
+        if camera is None:
+            return 0.01
+
+        try:
+            focal_point = camera.GetFocalPoint()
+            camera_pos = camera.GetPosition()
+            distance = math.sqrt(
+                (focal_point[0] - camera_pos[0]) ** 2 +
+                (focal_point[1] - camera_pos[1]) ** 2 +
+                (focal_point[2] - camera_pos[2]) ** 2
+            )
+
+            view_angle = camera.GetViewAngle()
+            viewport_height = renderer.GetSize()[1]
+            if viewport_height > 0 and view_angle > 0:
+                world_height = 2 * distance * math.tan(math.radians(view_angle / 2))
+                pixels_per_unit = viewport_height / world_height if world_height > 0 else 100
+                return 1.0 / pixels_per_unit if pixels_per_unit > 0 else 0.01
+
+            return 0.01
+        except Exception:
+            return 0.01
 
     def _find_nearest_point_from_screen_pos(self, screen_pos, renderer, pixel_tolerance=None):
         """基于屏幕位置找到最近的几何点"""
@@ -625,12 +654,17 @@ class GeometryPickingHelper:
             self._snap_line_actor = line_actor
 
         # 创建磁吸点指示器（绿色圆环）
+        # 计算与像素容差一致的世界坐标半径
+        pixel_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0)
+        pixel_to_world = self._get_pixel_to_world_scale(snap_pos, renderer)
+        ring_radius = pixel_tolerance * pixel_to_world
+
         num_points = 64
         points_list = []
         for i in range(num_points + 1):
             angle = 2 * math.pi * i / num_points
-            px = snap_pos[0] + 0.08 * math.cos(angle)
-            py = snap_pos[1] + 0.08 * math.sin(angle)
+            px = snap_pos[0] + ring_radius * math.cos(angle)
+            py = snap_pos[1] + ring_radius * math.sin(angle)
             pz = snap_pos[2]
             points_list.append((px, py, pz))
         
