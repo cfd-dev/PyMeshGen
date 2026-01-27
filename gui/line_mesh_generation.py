@@ -1,0 +1,435 @@
+# -*- coding: utf-8 -*-
+"""
+线网格生成核心模块
+提供离散化算法、Connector生成和front2d结构生成功能
+"""
+
+import numpy as np
+from math import tanh, sqrt
+from typing import List, Tuple, Dict, Optional
+from dataclasses import dataclass
+
+from data_structure.basic_elements import NodeElement, NodeElementALM, Connector, Part
+from data_structure.front2d import Front
+from utils.geom_toolkit import calculate_distance
+
+
+@dataclass
+class LineMeshParams:
+    """线网格生成参数"""
+    method: str = "uniform"  # uniform, geometric, tanh
+    num_elements: int = 10
+    start_size: float = 0.1
+    end_size: float = 0.2
+    growth_rate: float = 1.2
+    tanh_factor: float = 2.0
+    bc_type: str = "wall"
+    part_name: str = "default_line"
+
+
+def generate_discretization_params(
+    start_point: Tuple[float, float, float],
+    end_point: Tuple[float, float, float],
+    params: LineMeshParams
+) -> List[float]:
+    """
+    根据离散化方法生成参数坐标（0到1之间的值）
+    
+    Args:
+        start_point: 起点坐标
+        end_point: 终点坐标
+        params: 线网格生成参数
+        
+    Returns:
+        参数坐标列表 [0, t1, t2, ..., 1]
+    """
+    num_points = params.num_elements + 1
+    
+    if params.method == "uniform":
+        return generate_uniform_params(num_points)
+    elif params.method == "geometric":
+        return generate_geometric_params(
+            num_points, 
+            params.start_size, 
+            params.end_size, 
+            params.growth_rate
+        )
+    elif params.method == "tanh":
+        return generate_tanh_params(
+            num_points,
+            params.start_size,
+            params.end_size,
+            params.tanh_factor
+        )
+    else:
+        return generate_uniform_params(num_points)
+
+
+def generate_uniform_params(num_points: int) -> List[float]:
+    """生成均匀分布的参数坐标"""
+    return [i / (num_points - 1) for i in range(num_points)]
+
+
+def generate_geometric_params(
+    num_points: int,
+    start_size: float,
+    end_size: float,
+    growth_rate: float
+) -> List[float]:
+    """
+    生成几何级数分布的参数坐标
+    
+    几何级数分布的特点是相邻线段长度按固定比率增长
+    """
+    if num_points < 2:
+        return [0.0, 1.0]
+    
+    total_length = 0.0
+    segment_lengths = []
+    
+    # 计算各段长度
+    for i in range(num_points - 1):
+        if i == 0:
+            length = start_size
+        else:
+            length = segment_lengths[-1] * growth_rate
+        
+        # 检查是否超出剩余长度
+        if total_length + length > 1.0:
+            break
+            
+        segment_lengths.append(length)
+        total_length += length
+    
+    # 确保最后一段到达终点
+    if total_length < 1.0 and len(segment_lengths) > 0:
+        segment_lengths[-1] += (1.0 - total_length)
+    
+    # 生成参数坐标
+    params = [0.0]
+    cumulative = 0.0
+    for length in segment_lengths:
+        cumulative += length
+        params.append(min(cumulative, 1.0))
+    
+    # 确保最后一个点是1.0
+    if params[-1] < 1.0:
+        params.append(1.0)
+    
+    return params
+
+
+def generate_tanh_params(
+    num_points: int,
+    start_size: float,
+    end_size: float,
+    tanh_factor: float
+) -> List[float]:
+    """
+    生成Tanh函数分布的参数坐标
+    
+    Tanh分布的特点是在起点和终点附近网格较密，中间较疏
+    通过调整tanh_factor可以控制疏密程度
+    """
+    if num_points < 2:
+        return [0.0, 1.0]
+    
+    params = []
+    
+    for i in range(num_points):
+        t = i / (num_points - 1)
+        
+        # 使用tanh函数进行非线性变换
+        # 将[0,1]映射到[-a,a]，然后通过tanh变换
+        scaled_t = (2 * t - 1) * tanh_factor
+        transformed_t = (tanh(scaled_t) + 1) / 2
+        
+        params.append(transformed_t)
+    
+    # 归一化到[0,1]
+    min_val = min(params)
+    max_val = max(params)
+    if max_val - min_val > 1e-10:
+        params = [(p - min_val) / (max_val - min_val) for p in params]
+    
+    # 确保端点正好是0和1
+    params[0] = 0.0
+    params[-1] = 1.0
+    
+    return params
+
+
+def discretize_line(
+    start_point: Tuple[float, float, float],
+    end_point: Tuple[float, float, float],
+    params: LineMeshParams
+) -> List[Tuple[float, float, float]]:
+    """
+    对线段进行离散化
+    
+    Args:
+        start_point: 起点坐标
+        end_point: 终点坐标
+        params: 线网格生成参数
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    param_coords = generate_discretization_params(start_point, end_point, params)
+    
+    start = np.array(start_point)
+    end = np.array(end_point)
+    
+    points = []
+    for t in param_coords:
+        point = start + t * (end - start)
+        points.append(tuple(point))
+    
+    return points
+
+
+def create_fronts_from_points(
+    points: List[Tuple[float, float, float]],
+    bc_type: str,
+    part_name: str
+) -> List[Front]:
+    """
+    从离散点创建Front对象列表
+    
+    Args:
+        points: 离散点列表
+        bc_type: 边界类型
+        part_name: 部件名称
+        
+    Returns:
+        Front对象列表
+    """
+    if len(points) < 2:
+        return []
+    
+    fronts = []
+    
+    for i in range(len(points) - 1):
+        p1 = points[i]
+        p2 = points[i + 1]
+        
+        node1 = NodeElementALM(
+            coords=p1,
+            idx=-1,
+            bc_type=bc_type,
+            part_name=part_name
+        )
+        node2 = NodeElementALM(
+            coords=p2,
+            idx=-1,
+            bc_type=bc_type,
+            part_name=part_name
+        )
+        
+        front = Front(
+            node_elem1=node1,
+            node_elem2=node2,
+            idx=i,
+            bc_type=bc_type,
+            part_name=part_name
+        )
+        
+        fronts.append(front)
+    
+    return fronts
+
+
+def create_connector_from_edge(
+    edge_info: Dict,
+    params: LineMeshParams
+) -> Connector:
+    """
+    从几何边信息创建Connector
+    
+    Args:
+        edge_info: 边信息字典（包含start_point, end_point, curve等）
+        params: 线网格生成参数
+        
+    Returns:
+        Connector对象
+    """
+    start_point = edge_info['start_point']
+    end_point = edge_info['end_point']
+    
+    # 离散化线段
+    points = discretize_line(start_point, end_point, params)
+    
+    # 创建Front列表
+    fronts = create_fronts_from_points(points, params.bc_type, params.part_name)
+    
+    # 创建Connector
+    connector = Connector(
+        part_name=params.part_name,
+        curve_name=edge_info.get('name', 'default'),
+        param=None,
+        cad_obj=edge_info
+    )
+    connector.front_list = fronts
+    
+    return connector
+
+
+def create_part_from_connectors(
+    part_name: str,
+    connectors: List[Connector]
+) -> Part:
+    """
+    从Connector列表创建Part
+    
+    Args:
+        part_name: 部件名称
+        connectors: Connector列表
+        
+    Returns:
+        Part对象
+    """
+    from data_structure.parameters import MeshParameters
+    
+    part_params = MeshParameters(
+        part_name=part_name,
+        max_size=0.1,
+        PRISM_SWITCH="off"
+    )
+    
+    part = Part(part_name, part_params, connectors)
+    part.init_part_front_list()
+    
+    return part
+
+
+def generate_line_mesh(
+    edges_info: List[Dict],
+    params: LineMeshParams
+) -> Tuple[List[Connector], List[Part]]:
+    """
+    生成线网格
+    
+    Args:
+        edges_info: 边信息列表
+        params: 线网格生成参数
+        
+    Returns:
+        (Connector列表, Part列表)
+    """
+    connectors = []
+    
+    for idx, edge_info in enumerate(edges_info):
+        edge_params = LineMeshParams(
+            method=params.method,
+            num_elements=params.num_elements,
+            start_size=params.start_size,
+            end_size=params.end_size,
+            growth_rate=params.growth_rate,
+            tanh_factor=params.tanh_factor,
+            bc_type=params.bc_type,
+            part_name=f"{params.part_name}_{idx}"
+        )
+        
+        connector = create_connector_from_edge(edge_info, edge_params)
+        connectors.append(connector)
+    
+    # 按部件名称分组
+    part_dict = {}
+    for conn in connectors:
+        if conn.part_name not in part_dict:
+            part_dict[conn.part_name] = []
+        part_dict[conn.part_name].append(conn)
+    
+    # 创建Part列表
+    parts = []
+    for part_name, conn_list in part_dict.items():
+        part = create_part_from_connectors(part_name, conn_list)
+        parts.append(part)
+    
+    return connectors, parts
+
+
+def get_all_fronts_from_parts(parts: List[Part]) -> List[Front]:
+    """
+    从Part列表获取所有Front
+    
+    Args:
+        parts: Part列表
+        
+    Returns:
+        所有Front的列表
+    """
+    all_fronts = []
+    for part in parts:
+        all_fronts.extend(part.front_list)
+    return all_fronts
+
+
+def extract_edge_info_from_geometry(geometry_obj) -> List[Dict]:
+    """
+    从几何对象提取边信息
+    
+    Args:
+        geometry_obj: 几何对象（OCC形状或其他）
+        
+    Returns:
+        边信息列表
+    """
+    edges_info = []
+    
+    if geometry_obj is None:
+        return edges_info
+    
+    try:
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_EDGE
+        from OCC.Core.BRep import BRep_Tool
+        
+        explorer = TopExp_Explorer(geometry_obj, TopAbs_EDGE)
+        
+        idx = 0
+        while explorer.More():
+            edge = explorer.Current()
+            
+            # 获取边的几何信息
+            curve = BRep_Tool.Curve(edge)
+            if curve:
+                from OCC.Core.GProp import GProp_GProps
+                from OCC.Core.BRepGProp import brepgprop_Length
+                
+                gprop = GProp_GProps()
+                brepgprop_Length(edge, gprop)
+                length = gprop.Mass()
+                
+                # 获取端点
+                from OCC.Core.TopoDS import TopoDS_Vertex
+                from OCC.Core.TopExp import TopExp_Explorer as TopExp_Explorer_V
+                from OCC.Core.TopAbs import TopAbs_VERTEX
+                
+                v_explorer = TopExp_Explorer_V(edge, TopAbs_VERTEX)
+                
+                vertices = []
+                while v_explorer.More():
+                    v = TopoDS_Vertex(v_explorer.Current())
+                    pnt = BRep_Tool.Pnt(v)
+                    vertices.append((pnt.X(), pnt.Y(), pnt.Z()))
+                    v_explorer.Next()
+                
+                if len(vertices) >= 2:
+                    edge_info = {
+                        'idx': idx,
+                        'curve': curve,
+                        'length': length,
+                        'start_point': vertices[0],
+                        'end_point': vertices[-1],
+                        'name': f"edge_{idx}"
+                    }
+                    edges_info.append(edge_info)
+                    idx += 1
+            
+            explorer.Next()
+            
+    except ImportError:
+        pass
+    
+    return edges_info

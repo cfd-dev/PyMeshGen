@@ -612,3 +612,247 @@ class _GeometryUnitDialog(QDialog):
         return "auto"
 
 
+class LineMeshGenerationDialog(QDialog):
+    """线网格生成参数设置对话框"""
+    
+    UNIFORM = "uniform"
+    GEOMETRIC = "geometric"
+    TANH = "tanh"
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("线网格生成参数设置")
+        self.setMinimumWidth(450)
+        self.selected_edges = []
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """设置UI"""
+        from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QRadioButton, QComboBox, QPushButton, QSpinBox, QDoubleSpinBox, QLineEdit, QGridLayout
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        
+        # 几何线选择组
+        line_group = QGroupBox("几何线选择")
+        line_layout = QVBoxLayout()
+        line_layout.setSpacing(5)
+        
+        info_layout = QHBoxLayout()
+        self.lbl_selected_lines = QLabel("未选择几何线")
+        self.lbl_selected_lines.setStyleSheet("color: #666; font-style: italic;")
+        info_layout.addWidget(self.lbl_selected_lines)
+        line_layout.addLayout(info_layout)
+        
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        
+        self.btn_pick_lines = QPushButton("拾取几何线")
+        self.btn_pick_lines.setCheckable(True)
+        self.btn_pick_lines.clicked.connect(self.on_pick_lines_clicked)
+        button_layout.addWidget(self.btn_pick_lines)
+        
+        self.btn_clear_lines = QPushButton("清除选择")
+        self.btn_clear_lines.clicked.connect(self.on_clear_lines_clicked)
+        button_layout.addWidget(self.btn_clear_lines)
+        
+        button_layout.addStretch()
+        line_layout.addLayout(button_layout)
+        
+        line_group.setLayout(line_layout)
+        layout.addWidget(line_group)
+        
+        # 离散化方法组
+        method_group = QGroupBox("离散化方法")
+        method_layout = QVBoxLayout()
+        method_layout.setSpacing(8)
+        
+        self.radio_uniform = QRadioButton("均匀分布")
+        self.radio_uniform.setChecked(True)
+        self.radio_uniform.toggled.connect(self.on_method_changed)
+        method_layout.addWidget(self.radio_uniform)
+        
+        self.radio_geometric = QRadioButton("几何级数分布")
+        self.radio_geometric.toggled.connect(self.on_method_changed)
+        method_layout.addWidget(self.radio_geometric)
+        
+        self.radio_tanh = QRadioButton("Tanh函数分布")
+        self.radio_tanh.toggled.connect(self.on_method_changed)
+        method_layout.addWidget(self.radio_tanh)
+        
+        method_group.setLayout(method_layout)
+        layout.addWidget(method_group)
+        
+        # 离散化参数组
+        params_group = QGroupBox("离散化参数")
+        params_layout = QGridLayout()
+        params_layout.setSpacing(10)
+        
+        params_layout.addWidget(QLabel("网格数量:"), 0, 0)
+        self.spin_num_elements = QSpinBox()
+        self.spin_num_elements.setRange(2, 1000)
+        self.spin_num_elements.setValue(10)
+        self.spin_num_elements.valueChanged.connect(self.on_params_changed)
+        params_layout.addWidget(self.spin_num_elements, 0, 1)
+        
+        params_layout.addWidget(QLabel("起始尺寸:"), 1, 0)
+        self.spin_start_size = QDoubleSpinBox()
+        self.spin_start_size.setRange(1e-6, 1e6)
+        self.spin_start_size.setValue(0.1)
+        self.spin_start_size.setDecimals(6)
+        self.spin_start_size.setSuffix(" (可选)")
+        params_layout.addWidget(self.spin_start_size, 1, 1)
+        
+        params_layout.addWidget(QLabel("结束尺寸:"), 2, 0)
+        self.spin_end_size = QDoubleSpinBox()
+        self.spin_end_size.setRange(1e-6, 1e6)
+        self.spin_end_size.setValue(0.2)
+        self.spin_end_size.setDecimals(6)
+        self.spin_end_size.setSuffix(" (可选)")
+        params_layout.addWidget(self.spin_end_size, 2, 1)
+        
+        params_layout.addWidget(QLabel("增长比率:"), 3, 0)
+        self.spin_growth_rate = QDoubleSpinBox()
+        self.spin_growth_rate.setRange(0.1, 10.0)
+        self.spin_growth_rate.setValue(1.2)
+        self.spin_growth_rate.setDecimals(2)
+        self.spin_growth_rate.setSingleStep(0.1)
+        params_layout.addWidget(self.spin_growth_rate, 3, 1)
+        
+        params_layout.addWidget(QLabel("Tanh拉伸系数:"), 4, 0)
+        self.spin_tanh_factor = QDoubleSpinBox()
+        self.spin_tanh_factor.setRange(0.1, 10.0)
+        self.spin_tanh_factor.setValue(2.0)
+        self.spin_tanh_factor.setDecimals(2)
+        self.spin_tanh_factor.setSingleStep(0.1)
+        params_layout.addWidget(self.spin_tanh_factor, 4, 1)
+        
+        params_group.setLayout(params_layout)
+        layout.addWidget(params_group)
+        
+        self.update_params_group_state()
+        
+        # 边界条件组
+        bc_group = QGroupBox("边界条件")
+        bc_layout = QGridLayout()
+        bc_layout.setSpacing(10)
+        
+        bc_layout.addWidget(QLabel("边界类型:"), 0, 0)
+        self.combo_bc_type = QComboBox()
+        self.combo_bc_type.addItems([
+            "无", "壁面(wall)", "进流(inflow)", "出流(outflow)",
+            "对称(symmetry)", "周期(periodic)", "内部(interior)"
+        ])
+        bc_layout.addWidget(self.combo_bc_type, 0, 1)
+        
+        bc_layout.addWidget(QLabel("部件名称:"), 1, 0)
+        self.edit_part_name = QLineEdit("default_line")
+        bc_layout.addWidget(self.edit_part_name, 1, 1)
+        
+        bc_group.setLayout(bc_layout)
+        layout.addWidget(bc_group)
+        
+        # 按钮组
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(10)
+        
+        layout.addStretch()
+        
+        self.btn_preview = QPushButton("预览")
+        self.btn_preview.clicked.connect(self.on_preview_clicked)
+        button_layout.addWidget(self.btn_preview)
+        
+        self.btn_generate = QPushButton("生成线网格")
+        self.btn_generate.clicked.connect(self.on_generate_clicked)
+        button_layout.addWidget(self.btn_generate)
+        
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(self.btn_cancel)
+        
+        layout.addLayout(button_layout)
+        
+    def get_discretization_method(self):
+        """获取当前选择的离散化方法"""
+        if self.radio_uniform.isChecked():
+            return self.UNIFORM
+        elif self.radio_geometric.isChecked():
+            return self.GEOMETRIC
+        elif self.radio_tanh.isChecked():
+            return self.TANH
+        return self.UNIFORM
+        
+    def get_parameters(self):
+        """获取所有参数"""
+        return {
+            'method': self.get_discretization_method(),
+            'num_elements': self.spin_num_elements.value(),
+            'start_size': self.spin_start_size.value(),
+            'end_size': self.spin_end_size.value(),
+            'growth_rate': self.spin_growth_rate.value(),
+            'tanh_factor': self.spin_tanh_factor.value(),
+            'bc_type': self.combo_bc_type.currentText(),
+            'part_name': self.edit_part_name.text()
+        }
+        
+    def set_selected_lines_count(self, count):
+        """设置选中的几何线数量"""
+        if count > 0:
+            self.lbl_selected_lines.setText(f"已选择 {count} 条几何线")
+            self.lbl_selected_lines.setStyleSheet("color: #006400; font-weight: bold;")
+        else:
+            self.lbl_selected_lines.setText("未选择几何线")
+            self.lbl_selected_lines.setStyleSheet("color: #666; font-style: italic;")
+            
+    def on_method_changed(self):
+        """离散化方法改变时的处理"""
+        self.update_params_group_state()
+        
+    def update_params_group_state(self):
+        """更新参数组的状态"""
+        method = self.get_discretization_method()
+        
+        if method == self.UNIFORM:
+            self.spin_start_size.setEnabled(False)
+            self.spin_end_size.setEnabled(False)
+            self.spin_growth_rate.setEnabled(False)
+            self.spin_tanh_factor.setEnabled(False)
+        elif method == self.GEOMETRIC:
+            self.spin_start_size.setEnabled(True)
+            self.spin_end_size.setEnabled(True)
+            self.spin_growth_rate.setEnabled(True)
+            self.spin_tanh_factor.setEnabled(False)
+        elif method == self.TANH:
+            self.spin_start_size.setEnabled(True)
+            self.spin_end_size.setEnabled(True)
+            self.spin_growth_rate.setEnabled(False)
+            self.spin_tanh_factor.setEnabled(True)
+            
+    def on_params_changed(self):
+        """参数改变时的处理"""
+        pass
+        
+    def on_pick_lines_clicked(self):
+        """点击拾取几何线按钮"""
+        if self.btn_pick_lines.isChecked():
+            self.btn_pick_lines.setText("取消拾取")
+        else:
+            self.btn_pick_lines.setText("拾取几何线")
+            
+    def on_clear_lines_clicked(self):
+        """清除选择的线"""
+        self.set_selected_lines_count(0)
+        self.btn_pick_lines.setChecked(False)
+        self.btn_pick_lines.setText("拾取几何线")
+        
+    def on_preview_clicked(self):
+        """预览按钮点击"""
+        params = self.get_parameters()
+        self.accept()
+        
+    def on_generate_clicked(self):
+        """生成按钮点击"""
+        params = self.get_parameters()
+        self.accept()
+
+

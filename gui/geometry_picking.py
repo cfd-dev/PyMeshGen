@@ -1366,6 +1366,24 @@ class GeometryPickingHelper:
                 selected[key].add(element_info.get("element_obj"))
         return {key: list(values) for key, values in selected.items()}
 
+    def get_picked_elements(self) -> list:
+        """获取当前拾取的元素列表
+        
+        Returns:
+            拾取的元素列表 [(element_type, element_obj, element_index), ...]
+        """
+        actor_map = self._build_actor_map()
+        picked_elements = []
+        for actor in self._highlighted_actors.keys():
+            element_info = actor_map.get(actor)
+            if element_info:
+                picked_elements.append((
+                    element_info.get("element_type"),
+                    element_info.get("element_obj"),
+                    element_info.get("element_index")
+                ))
+        return picked_elements
+
     def clear_selection(self):
         self._clear_highlights()
         if hasattr(self.mesh_display, "render_window"):

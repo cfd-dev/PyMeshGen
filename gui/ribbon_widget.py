@@ -356,6 +356,11 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['delete_geometry'] = geometry_group.add_large_button("删除几何", tooltip="删除选中的几何元素")
         layout.addWidget(geometry_group)
 
+        line_mesh_group = RibbonGroup("")
+        self.buttons['geometry']['line_mesh'] = line_mesh_group.add_large_button("线网格生成", tooltip="生成线网格 (Ctrl+L)")
+        self.buttons['geometry']['line_mesh_params'] = line_mesh_group.add_small_button("参数设置", tooltip="设置线网格生成参数")
+        layout.addWidget(line_mesh_group)
+
         layout.addStretch(1)
 
         tab_widget.setLayout(layout)
@@ -423,6 +428,8 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
         self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))
         self.buttons['geometry']['delete_geometry'].clicked.connect(_wrap(main_window.open_geometry_delete_dialog, "删除几何"))
+        self.buttons['geometry']['line_mesh'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
+        self.buttons['geometry']['line_mesh_params'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
 
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))

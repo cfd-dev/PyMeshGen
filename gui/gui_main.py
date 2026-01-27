@@ -347,6 +347,9 @@ class PyMeshGenGUI(QMainWindow):
         export_geometry_shortcut = QShortcut(QKeySequence("Ctrl+Shift+E"), self)
         export_geometry_shortcut.activated.connect(self.export_geometry)
 
+        line_mesh_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        line_mesh_shortcut.activated.connect(self.open_line_mesh_dialog)
+
     def _setup_ribbon_icons(self):
         """设置功能区图标"""
         from gui.icon_manager import get_icon
@@ -422,7 +425,9 @@ class PyMeshGenGUI(QMainWindow):
                 'import': 'document-import',
                 'extract_boundary': 'extract-boundary',
                 'create_geometry': 'geom-create',
-                'delete_geometry': 'edit-delete'
+                'delete_geometry': 'edit-delete',
+                'line_mesh': 'mesh-generate',
+                'line_mesh_params': 'configure'
             }.get(button_name, 'document-import')
             button.setIcon(get_icon(icon_name))
 
@@ -1005,6 +1010,20 @@ class PyMeshGenGUI(QMainWindow):
     def open_geometry_delete_dialog(self):
         """进入几何删除拾取模式"""
         self._start_delete_geometry_mode()
+
+    def open_line_mesh_dialog(self):
+        """打开线网格生成对话框"""
+        from gui.line_mesh_dialog import LineMeshGenerationDialog
+        existing_dialog = getattr(self, "_line_mesh_dialog", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+        dialog = LineMeshGenerationDialog(self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda: setattr(self, "_line_mesh_dialog", None))
+        self._line_mesh_dialog = dialog
+        dialog.show()
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""

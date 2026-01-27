@@ -1106,3 +1106,165 @@ def create_test_square_shape():
     # 创建面
     face_maker = BRepBuilderAPI_MakeFace(wire)
     return face_maker.Shape()
+
+
+def discretize_edge_geometric(
+    edge_info: dict, 
+    num_segments: int,
+    growth_rate: float = 1.2
+) -> List[Tuple[float, float, float]]:
+    """
+    使用几何级数方法离散化边
+    
+    Args:
+        edge_info: 边信息字典（由extract_edges_with_info返回）
+        num_segments: 段数
+        growth_rate: 增长比率
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    geom_curve = edge_info['curve']
+    first = edge_info['first']
+    last = edge_info['last']
+    length = edge_info['length']
+    
+    if length < 1e-10:
+        return [edge_info['start_point'], edge_info['end_point']]
+    
+    if num_segments < 1:
+        num_segments = 1
+    
+    segment_lengths = []
+    total_length = 0.0
+    
+    for i in range(num_segments):
+        if i == 0:
+            seg_length = length / num_segments / growth_rate
+        else:
+            seg_length = segment_lengths[-1] * growth_rate
+        
+        if total_length + seg_length > length:
+            seg_length = length - total_length
+        
+        if seg_length < 1e-10:
+            break
+            
+        segment_lengths.append(seg_length)
+        total_length += seg_length
+    
+    if total_length < length and len(segment_lengths) > 0:
+        segment_lengths[-1] += (length - total_length)
+    
+    points = [edge_info['start_point']]
+    cumulative = 0.0
+    for seg_length in segment_lengths:
+        cumulative += seg_length
+        t = min(cumulative / length, 1.0)
+        param = first + (last - first) * t
+        pnt = geom_curve.Value(param)
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    
+    if len(points) < 2 or calculate_3d_distance(points[-1], edge_info['end_point']) > 1e-6:
+        points.append(edge_info['end_point'])
+    
+    return points
+
+
+def discretize_edge_tanh(
+    edge_info: dict,
+    num_segments: int,
+    tanh_factor: float = 2.0
+) -> List[Tuple[float, float, float]]:
+    """
+    使用tanh函数方法离散化边
+    
+    Args:
+        edge_info: 边信息字典（由extract_edges_with_info返回）
+        num_segments: 段数
+        tanh_factor: tanh拉伸系数，控制疏密程度
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    import math
+    geom_curve = edge_info['curve']
+    first = edge_info['first']
+    last = edge_info['last']
+    length = edge_info['length']
+    
+    if length < 1e-10:
+        return [edge_info['start_point'], edge_info['end_point']]
+    
+    if num_segments < 1:
+        num_segments = 1
+    
+    params = []
+    for i in range(num_segments + 1):
+        t = i / num_segments
+        scaled_t = (2 * t - 1) * tanh_factor
+        transformed_t = (math.tanh(scaled_t) + 1) / 2
+        params.append(transformed_t)
+    
+    min_val = min(params)
+    max_val = max(params)
+    if max_val - min_val > 1e-10:
+        params = [(p - min_val) / (max_val - min_val) for p in params]
+    
+    params[0] = 0.0
+    params[-1] = 1.0
+    
+    points = []
+    for t in params:
+        param = first + (last - first) * t
+        pnt = geom_curve.Value(param)
+        points.append((pnt.X(), pnt.Y(), pnt.Z()))
+    
+    return points
+
+
+def calculate_3d_distance(p1: Tuple[float, float, float], p2: Tuple[float, float, float]) -> float:
+    """计算3D空间中两点之间的距离"""
+    return sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2 + (p2[2] - p1[2])**2)
+
+
+def discretize_edge_advanced(
+    edge_info: dict,
+    method: str = "uniform",
+    num_elements: int = 10,
+    start_size: float = None,
+    end_size: float = None,
+    growth_rate: float = 1.2,
+    tanh_factor: float = 2.0
+) -> List[Tuple[float, float, float]]:
+    """
+    高级离散化函数，支持多种离散化方法
+    
+    Args:
+        edge_info: 边信息字典（由extract_edges_with_info返回）
+        method: 离散化方法 ("uniform", "geometric", "tanh")
+        num_elements: 网格数量
+        start_size: 起始端点尺寸（可选，用于几何级数和tanh方法）
+        end_size: 结束端点尺寸（可选，用于几何级数和tanh方法）
+        growth_rate: 增长比率（用于几何级数方法）
+        tanh_factor: tanh拉伸系数（用于tanh方法）
+        
+    Returns:
+        离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
+    """
+    length = edge_info['length']
+    
+    if length < 1e-10:
+        return [edge_info['start_point'], edge_info['end_point']]
+    
+    if method == "uniform":
+        return discretize_edge_by_count(edge_info, num_elements + 1)
+    
+    elif method == "geometric":
+        return discretize_edge_geometric(edge_info, num_elements, growth_rate)
+    
+    elif method == "tanh":
+        return discretize_edge_tanh(edge_info, num_elements, tanh_factor)
+    
+    else:
+        return discretize_edge_by_count(edge_info, num_elements + 1)
