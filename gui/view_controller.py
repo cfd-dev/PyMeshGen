@@ -309,6 +309,13 @@ class ViewController:
         if self._picking_helper is not None:
             self._picking_helper.set_snap_pixel_tolerance(pixel_tolerance)
 
+    def refresh_geometry_snap_cache(self):
+        """刷新几何磁吸缓存"""
+        if self._picking_helper is not None:
+            self._picking_helper.refresh_geometry_cache()
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info("几何磁吸缓存已刷新")
+
     def _sync_toolbar_picking_state(self, enabled):
         toolbar = getattr(self.gui, 'view_toolbar', None)
         if toolbar and hasattr(toolbar, 'actions') and 'picking' in toolbar.actions:

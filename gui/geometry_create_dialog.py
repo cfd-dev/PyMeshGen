@@ -585,22 +585,9 @@ class GeometryCreateDialog(QDialog):
 
         def on_point_picked(point):
             """单个点拾取回调"""
-            # 检查是否拾取到了现有点
-            is_existing_point = False
-            if self.gui and hasattr(self.gui, 'view_controller') and hasattr(self.gui.view_controller, '_picking_helper'):
-                picking_helper = self.gui.view_controller._picking_helper
-                if picking_helper and hasattr(picking_helper, '_find_vertex_by_point'):
-                    vertex_obj = picking_helper._find_vertex_by_point(point)
-                    if vertex_obj:
-                        is_existing_point = True
-                        # 输出拾取到现有点的信息
-                        if hasattr(self.gui, 'log_info'):
-                            self.gui.log_info(f"拾取到现有点: {vertex_obj}")
-
-            if not is_existing_point:
-                # 输出拾取到新点的信息
-                if hasattr(self.gui, 'log_info'):
-                    self.gui.log_info(f"拾取到新点坐标: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
+            # 磁吸功能已经在拾取过程中处理，这里只需要记录点坐标
+            if hasattr(self.gui, 'log_info'):
+                self.gui.log_info(f"拾取点坐标: ({point[0]:.6f}, {point[1]:.6f}, {point[2]:.6f})")
 
             if target_widget:
                 target_widget.setText(self._format_coord_output(point[0], point[1], point[2]))
@@ -774,6 +761,11 @@ class GeometryCreateDialog(QDialog):
                     picking_helper._clear_geometry_vertex_highlights()
                     picking_helper._remove_point_highlight()
                     picking_helper._remove_snap_visualization()
+
+            # 刷新几何磁吸缓存（新创建的几何点需要加入缓存）
+            if hasattr(self.gui.view_controller, 'refresh_geometry_snap_cache'):
+                self.gui.view_controller.refresh_geometry_snap_cache()
+
             self.gui.view_controller.fit_view()
             # 清空拾取历史
             self._picked_points_history.clear()

@@ -58,7 +58,7 @@ class GeometryPickingHelper:
         self._on_point_pick_exit = None
         self._point_highlight_actor = None
         
-        # FIXME 磁吸功能无法正确实现，待修复
+        # FIXME 磁吸现有点的功能未能正确运行，待检查修复
         self._snap_enabled = False
         self._snap_pixel_tolerance = 12.0  # 默认像素容差（12像素，提高磁吸灵敏度）
         self._geometry_points_cache = []
@@ -142,7 +142,7 @@ class GeometryPickingHelper:
         """启动点拾取"""
         if self._point_pick_enabled:
             return
-        
+
         if on_pick is not None:
             self._on_point_pick = on_pick
         if on_confirm is not None:
@@ -151,11 +151,15 @@ class GeometryPickingHelper:
             self._on_point_pick_cancel = on_cancel
         if on_exit is not None:
             self._on_point_pick_exit = on_exit
-        
+
+        # 启动点拾取时更新几何点缓存
+        if self._snap_enabled:
+            self._update_geometry_points_cache()
+
         interactor = self._get_interactor()
         if interactor is None:
             return
-        
+
         self._point_pick_observer_id = interactor.AddObserver("LeftButtonPressEvent", self._on_point_pick_press)
         self._point_pick_right_id = interactor.AddObserver("RightButtonPressEvent", self._on_point_pick_right_press)
         self._point_pick_key_id = interactor.AddObserver("KeyPressEvent", self._on_point_pick_key_press)
@@ -166,7 +170,7 @@ class GeometryPickingHelper:
         """停止点拾取"""
         if not self._point_pick_enabled:
             return
-        
+
         interactor = self._get_interactor()
         if interactor is not None:
             if self._point_pick_observer_id is not None:
@@ -177,7 +181,7 @@ class GeometryPickingHelper:
                 interactor.RemoveObserver(self._point_pick_key_id)
             if self._point_pick_move_id is not None:
                 interactor.RemoveObserver(self._point_pick_move_id)
-        
+
         self._point_pick_observer_id = None
         self._point_pick_right_id = None
         self._point_pick_key_id = None
@@ -187,6 +191,8 @@ class GeometryPickingHelper:
         self._remove_point_highlight()
         self._remove_snap_visualization()
         self._clear_geometry_vertex_highlights()
+        # 清空缓存，下次使用时重新构建
+        self._geometry_points_cache = []
 
     def is_point_pick_active(self):
         """检查点拾取是否激活"""
@@ -196,8 +202,8 @@ class GeometryPickingHelper:
         """设置是否启用磁吸"""
         self._snap_enabled = enabled
         if enabled:
-            if not self._geometry_points_cache:
-                self._update_geometry_points_cache()
+            # 启用磁吸时强制更新缓存
+            self._update_geometry_points_cache()
 
     def set_snap_pixel_tolerance(self, pixel_tolerance):
         """设置磁吸像素容差"""
@@ -270,10 +276,6 @@ class GeometryPickingHelper:
         if pixel_tolerance is None:
             pixel_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0)
 
-        # 获取渲染器尺寸，用于Y坐标转换
-        renderer_size = renderer.GetSize()
-        screen_height = renderer_size[1] if renderer_size else 0
-
         min_pixel_dist_sq = float('inf')
         nearest_point = None
         tolerance_sq = pixel_tolerance ** 2
@@ -284,18 +286,10 @@ class GeometryPickingHelper:
             if cached_display is None:
                 continue
 
-            # VTK的显示坐标原点在左下角，需要转换为左上角坐标系
-            # 鼠标事件位置使用左上角坐标系
-            vtk_y = cached_display[1]
-            mouse_y = screen_pos[1]
-
-            # 转换Y坐标：VTK Y = 屏幕高度 - 鼠标 Y
-            # 或者：鼠标 Y = 屏幕高度 - VTK Y
-            converted_vtk_y = screen_height - vtk_y
-
-            # 计算屏幕像素距离的平方
+            # VTK的显示坐标原点在左下角，鼠标事件位置也是左下角原点
+            # 直接比较屏幕坐标即可
             pixel_dist_sq = (screen_pos[0] - cached_display[0]) ** 2 + \
-                           (mouse_y - converted_vtk_y) ** 2
+                           (screen_pos[1] - cached_display[1]) ** 2
 
             if pixel_dist_sq < min_pixel_dist_sq:
                 min_pixel_dist_sq = pixel_dist_sq
@@ -385,11 +379,14 @@ class GeometryPickingHelper:
 
         if final_pos is not None:
             if self._is_snapped:
-                # 拾取现有点：直接高亮现有点（黄色），不显示临时预览点
+                # 拾取现有点：高亮现有点并显示磁吸反馈
                 vertex_obj = self._find_vertex_by_point(final_pos)
                 if vertex_obj:
                     self._highlight_geometry_vertex(vertex_obj)
-                # 不调用 _show_point_highlight 和 _show_snap_visualization
+                # 显示磁吸点的高亮效果（绿色）
+                self._show_snap_point_highlight(final_pos[0], final_pos[1], final_pos[2])
+                # 移除移动时的磁吸可视化
+                self._remove_snap_visualization()
             else:
                 # 拾取新点：显示临时预览点（黄色）
                 self._show_point_highlight(final_pos[0], final_pos[1], final_pos[2])
@@ -398,9 +395,19 @@ class GeometryPickingHelper:
 
             self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]))
 
-            # 只在拾取新点时移除预览点
+            # 在状态栏显示拾取结果
+            if self.gui and hasattr(self.gui, 'status_bar'):
+                if self._is_snapped:
+                    self.gui.status_bar.update_status(f"已拾取几何点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f}) [磁吸]")
+                else:
+                    self.gui.status_bar.update_status(f"已拾取新点: ({final_pos[0]:.3f}, {final_pos[1]:.3f}, {final_pos[2]:.3f})")
+
+            # 短暂显示后移除预览点（给用户视觉反馈）
             if not self._is_snapped:
                 self._remove_point_highlight()
+            else:
+                # 磁吸点的高亮稍后移除
+                pass
 
         style = interactor.GetInteractorStyle()
         if style:
@@ -476,6 +483,26 @@ class GeometryPickingHelper:
             self._last_snap_pos = nearest_point
             self._is_snapped = True
             self._show_snap_visualization(pos, nearest_point)
+
+            # 在状态栏显示磁吸提示
+            if self.gui and hasattr(self.gui, 'status_bar'):
+                distance = math.sqrt(
+                    (pos[0] - nearest_point[0]) ** 2 +
+                    (pos[1] - nearest_point[1]) ** 2 +
+                    (pos[2] - nearest_point[2]) ** 2
+                )
+                # 计算屏幕像素距离
+                nearest_display = self._world_to_display_coords(nearest_point, renderer)
+                if nearest_display:
+                    pixel_distance = math.sqrt(
+                        (click_pos[0] - nearest_display[0]) ** 2 +
+                        (click_pos[1] - nearest_display[1]) ** 2
+                    )
+                    if distance < 1e-6:
+                        self.gui.status_bar.update_status(f"磁吸到几何点: ({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) [像素距离: {pixel_distance:.1f}]")
+                    else:
+                        self.gui.status_bar.update_status(f"磁吸到几何点: ({nearest_point[0]:.3f}, {nearest_point[1]:.3f}, {nearest_point[2]:.3f}) 世界距离: {distance:.3f} [像素距离: {pixel_distance:.1f}]")
+
             # 不在这里高亮几何点，只在实际点击时高亮
             # vertex_obj = self._find_vertex_by_point(nearest_point)
             # if vertex_obj:
@@ -487,6 +514,11 @@ class GeometryPickingHelper:
                 self._last_snap_pos = None
                 self._is_snapped = False
                 self._remove_snap_visualization()
+
+                # 在状态栏显示自由拾取提示
+                if self.gui and hasattr(self.gui, 'status_bar'):
+                    self.gui.status_bar.update_status(f"自由拾取: ({pos[0]:.3f}, {pos[1]:.3f}, {pos[2]:.3f})")
+
                 # 不在这里清除几何点高亮，只在拾取到非几何点时清除
                 # self._clear_geometry_vertex_highlights()
             else:
@@ -499,59 +531,75 @@ class GeometryPickingHelper:
         """显示磁吸可视化效果"""
         if not hasattr(self.mesh_display, "renderer"):
             return
-        
+
         renderer = getattr(self.mesh_display, "renderer", None)
         if renderer is None:
             return
-        
+
         self._remove_snap_visualization()
-        
-        is_aligned = (abs(pick_pos[0] - snap_pos[0]) < 1e-6 and 
-                     abs(pick_pos[1] - snap_pos[1]) < 1e-6 and 
+
+        is_aligned = (abs(pick_pos[0] - snap_pos[0]) < 1e-6 and
+                     abs(pick_pos[1] - snap_pos[1]) < 1e-6 and
                      abs(pick_pos[2] - snap_pos[2]) < 1e-6)
-        
+
         if not is_aligned:
+            # 创建虚线连接线
             line_source = vtk.vtkLineSource()
             line_source.SetPoint1(pick_pos[0], pick_pos[1], pick_pos[2])
             line_source.SetPoint2(snap_pos[0], snap_pos[1], snap_pos[2])
             line_source.Update()
-            
+
             line_mapper = vtk.vtkPolyDataMapper()
             line_mapper.SetInputConnection(line_source.GetOutputPort())
-            
+
             line_actor = vtk.vtkActor()
             line_actor.SetMapper(line_mapper)
-            line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
-            line_actor.GetProperty().SetLineWidth(2)
-            line_actor.GetProperty().SetLineStipplePattern(0xAAAA)
-            line_actor.GetProperty().SetLineStippleRepeatFactor(1)
-            
+            line_actor.GetProperty().SetColor(0.0, 1.0, 0.0)  # 绿色
+            line_actor.GetProperty().SetLineWidth(3)  # 加粗
+            line_actor.GetProperty().SetLineStipplePattern(0xF0F0)  # 更明显的虚线
+            line_actor.GetProperty().SetLineStippleRepeatFactor(2)
+            line_actor.GetProperty().SetOpacity(0.8)
+
             renderer.AddActor(line_actor)
             self._snap_line_actor = line_actor
-        
+
+        # 创建磁吸点指示器（绿色球体）
         sphere = vtk.vtkSphereSource()
         sphere.SetCenter(snap_pos[0], snap_pos[1], snap_pos[2])
-        sphere.SetRadius(0.05 if is_aligned else 0.03)
-        sphere.SetThetaResolution(16)
-        sphere.SetPhiResolution(16)
+        sphere.SetRadius(0.06)  # 增大半径使其更明显
+        sphere.SetThetaResolution(24)
+        sphere.SetPhiResolution(24)
         sphere.Update()
-        
+
         sphere_mapper = vtk.vtkPolyDataMapper()
         sphere_mapper.SetInputConnection(sphere.GetOutputPort())
-        
+
         sphere_actor = vtk.vtkActor()
         sphere_actor.SetMapper(sphere_mapper)
-        
+
         if is_aligned:
-            sphere_actor.GetProperty().SetColor(0.2, 0.8, 0.2)
-        else:
+            # 完全对齐时使用亮绿色
             sphere_actor.GetProperty().SetColor(0.0, 1.0, 0.0)
-        
+            sphere_actor.GetProperty().SetAmbient(0.4)
+            sphere_actor.GetProperty().SetDiffuse(0.6)
+            sphere_actor.GetProperty().SetSpecular(0.3)
+        else:
+            # 未完全对齐时使用半透明绿色
+            sphere_actor.GetProperty().SetColor(0.0, 0.8, 0.0)
+            sphere_actor.GetProperty().SetAmbient(0.3)
+            sphere_actor.GetProperty().SetDiffuse(0.5)
+            sphere_actor.GetProperty().SetSpecular(0.2)
+
         sphere_actor.GetProperty().SetOpacity(0.9)
-        
+
+        # 添加轮廓线使球体更明显
+        sphere_actor.GetProperty().EdgeVisibilityOn()
+        sphere_actor.GetProperty().SetEdgeColor(0.0, 0.5, 0.0)
+        sphere_actor.GetProperty().SetEdgeWidth(1.5)
+
         renderer.AddActor(sphere_actor)
         self._snap_point_actor = sphere_actor
-        
+
         if hasattr(self.mesh_display, "render_window"):
             self.mesh_display.render_window.Render()
 
@@ -608,19 +656,55 @@ class GeometryPickingHelper:
         """移除点高亮"""
         if self._point_highlight_actor is None:
             return
-        
+
         if not hasattr(self.mesh_display, "renderer"):
             return
-        
+
         renderer = getattr(self.mesh_display, "renderer", None)
         if renderer is None:
             return
-        
+
         renderer.RemoveActor(self._point_highlight_actor)
         if hasattr(self.mesh_display, "render_window"):
             self.mesh_display.render_window.Render()
-        
+
         self._point_highlight_actor = None
+
+    def _show_snap_point_highlight(self, x, y, z):
+        """显示磁吸点高亮（绿色）"""
+        if not hasattr(self.mesh_display, "renderer"):
+            return
+
+        renderer = getattr(self.mesh_display, "renderer", None)
+        if renderer is None:
+            return
+
+        # 移除可能存在的旧高亮
+        self._remove_point_highlight()
+
+        sphere = vtk.vtkSphereSource()
+        sphere.SetCenter(x, y, z)
+        sphere.SetRadius(0.06)  # 比普通高亮点稍大
+        sphere.SetThetaResolution(20)
+        sphere.SetPhiResolution(20)
+        sphere.Update()
+
+        mapper = vtk.vtkPolyDataMapper()
+        mapper.SetInputConnection(sphere.GetOutputPort())
+
+        actor = vtk.vtkActor()
+        actor.SetMapper(mapper)
+        actor.GetProperty().SetColor(0.0, 1.0, 0.0)  # 绿色表示磁吸成功
+        actor.GetProperty().SetOpacity(0.9)
+        actor.GetProperty().SetAmbient(0.3)
+        actor.GetProperty().SetDiffuse(0.7)
+        actor.GetProperty().SetSpecular(0.2)
+
+        renderer.AddActor(actor)
+        if hasattr(self.mesh_display, "render_window"):
+            self.mesh_display.render_window.Render()
+
+        self._point_highlight_actor = actor
 
     def _highlight_geometry_vertex(self, vertex_obj):
         """高亮几何点（黄色）"""
