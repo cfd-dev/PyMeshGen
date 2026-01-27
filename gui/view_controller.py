@@ -304,10 +304,10 @@ class ViewController:
             status = "启用" if enabled else "禁用"
             self.gui.log_info(f"点拾取磁吸功能已{status}")
 
-    def set_point_snap_tolerance(self, tolerance):
-        """设置点拾取磁吸容差"""
+    def set_point_snap_pixel_tolerance(self, pixel_tolerance):
+        """设置点拾取磁吸像素容差"""
         if self._picking_helper is not None:
-            self._picking_helper.set_snap_tolerance(tolerance)
+            self._picking_helper.set_snap_pixel_tolerance(pixel_tolerance)
 
     def _sync_toolbar_picking_state(self, enabled):
         toolbar = getattr(self.gui, 'view_toolbar', None)

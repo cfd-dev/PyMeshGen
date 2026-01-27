@@ -58,8 +58,9 @@ class GeometryPickingHelper:
         self._on_point_pick_exit = None
         self._point_highlight_actor = None
         
+        # FIXME 磁吸功能无法正确实现，待修复
         self._snap_enabled = False
-        self._snap_tolerance = 0.1  # 合理的默认磁吸容差
+        self._snap_pixel_tolerance = 12.0  # 默认像素容差（12像素，提高磁吸灵敏度）
         self._geometry_points_cache = []
         self._snap_line_actor = None
         self._snap_point_actor = None
@@ -198,9 +199,9 @@ class GeometryPickingHelper:
             if not self._geometry_points_cache:
                 self._update_geometry_points_cache()
 
-    def set_snap_tolerance(self, tolerance):
-        """设置磁吸容差"""
-        self._snap_tolerance = tolerance
+    def set_snap_pixel_tolerance(self, pixel_tolerance):
+        """设置磁吸像素容差"""
+        self._snap_pixel_tolerance = pixel_tolerance
 
     def refresh_geometry_cache(self):
         """手动刷新几何点缓存"""
@@ -236,27 +237,74 @@ class GeometryPickingHelper:
             print(f"更新几何点缓存失败: {e}")
             self._geometry_points_cache = []
 
-    def _find_nearest_point(self, point):
-        """找到最近的几何点（优化版）"""
-        if not self._geometry_points_cache:
+    def _world_to_display_coords(self, world_point, renderer):
+        """将世界坐标转换为显示坐标（屏幕像素坐标）"""
+        if renderer is None:
             return None
-        
-        min_dist_sq = float('inf')
+
+        try:
+            # 使用 vtkCoordinate 进行坐标转换（更可靠的方法）
+            coord = vtk.vtkCoordinate()
+            coord.SetCoordinateSystemToWorld()
+            coord.SetValue(world_point[0], world_point[1], world_point[2])
+            display_point = coord.GetComputedDisplayValue(renderer)
+
+            # 返回2D屏幕坐标 (x, y)
+            return (display_point[0], display_point[1])
+        except Exception:
+            # 回退到渲染器方法
+            try:
+                renderer.SetWorldPoint(world_point[0], world_point[1], world_point[2], 1.0)
+                renderer.WorldToDisplay()
+                display_point = renderer.GetDisplayPoint()
+                return (display_point[0], display_point[1])
+            except Exception:
+                return None
+
+    def _find_nearest_point_from_screen_pos(self, screen_pos, renderer, pixel_tolerance=None):
+        """基于屏幕位置找到最近的几何点"""
+        if not self._geometry_points_cache or renderer is None:
+            return None
+
+        # 使用实例变量的容差值，如果未提供参数
+        if pixel_tolerance is None:
+            pixel_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0)
+
+        # 获取渲染器尺寸，用于Y坐标转换
+        renderer_size = renderer.GetSize()
+        screen_height = renderer_size[1] if renderer_size else 0
+
+        min_pixel_dist_sq = float('inf')
         nearest_point = None
-        tolerance_sq = self._snap_tolerance ** 2
-        
+        tolerance_sq = pixel_tolerance ** 2
+
         for cached_point in self._geometry_points_cache:
-            dist_sq = (point[0] - cached_point[0]) ** 2 + \
-                     (point[1] - cached_point[1]) ** 2 + \
-                     (point[2] - cached_point[2]) ** 2
-            
-            if dist_sq < min_dist_sq:
-                min_dist_sq = dist_sq
+            # 将缓存的几何点世界坐标转换为屏幕坐标
+            cached_display = self._world_to_display_coords(cached_point, renderer)
+            if cached_display is None:
+                continue
+
+            # VTK的显示坐标原点在左下角，需要转换为左上角坐标系
+            # 鼠标事件位置使用左上角坐标系
+            vtk_y = cached_display[1]
+            mouse_y = screen_pos[1]
+
+            # 转换Y坐标：VTK Y = 屏幕高度 - 鼠标 Y
+            # 或者：鼠标 Y = 屏幕高度 - VTK Y
+            converted_vtk_y = screen_height - vtk_y
+
+            # 计算屏幕像素距离的平方
+            pixel_dist_sq = (screen_pos[0] - cached_display[0]) ** 2 + \
+                           (mouse_y - converted_vtk_y) ** 2
+
+            if pixel_dist_sq < min_pixel_dist_sq:
+                min_pixel_dist_sq = pixel_dist_sq
                 nearest_point = cached_point
-        
-        if min_dist_sq <= tolerance_sq:
+
+        if min_pixel_dist_sq <= tolerance_sq:
             return nearest_point
         return None
+
 
     def _pick_on_plane(self, click_pos, renderer):
         """在空白区域拾取坐标（使用参考平面）"""
@@ -303,46 +351,57 @@ class GeometryPickingHelper:
             return
         if not self._on_point_pick:
             return
-        
+
         interactor = self._get_interactor()
         if interactor is None:
             return
-        
+
         renderer = getattr(self.mesh_display, "renderer", None)
         if renderer is None:
             return
-        
-        click_pos = interactor.GetEventPosition()
-        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
-        
-        if picked:
-            pos = self._point_picker.GetPickPosition()
-            self._is_snapped = False
-            
-            if self._snap_enabled:
-                nearest_point = self._find_nearest_point(pos)
-                if nearest_point:
-                    pos = nearest_point
-                    self._is_snapped = True
-        else:
-            pos = self._pick_on_plane(click_pos, renderer)
-            self._is_snapped = False
-        
-        if pos is not None:
-            self._show_point_highlight(pos[0], pos[1], pos[2])
 
+        click_pos = interactor.GetEventPosition()
+
+        # 首先获取鼠标点击位置对应的世界坐标（使用参考平面）
+        world_pos = self._pick_on_plane(click_pos, renderer)
+        if world_pos is None:
+            # 如果无法获取世界坐标，尝试从几何体拾取
+            picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
+            if picked:
+                world_pos = self._point_picker.GetPickPosition()
+            else:
+                world_pos = [0.0, 0.0, 0.0]
+
+        self._is_snapped = False
+        final_pos = world_pos
+
+        # 只有在启用磁吸时才进行磁吸判断
+        if self._snap_enabled:
+            # 基于鼠标屏幕位置进行磁吸判断（正确的方法）
+            nearest_point = self._find_nearest_point_from_screen_pos(click_pos, renderer)
+            if nearest_point:
+                final_pos = nearest_point
+                self._is_snapped = True
+
+        if final_pos is not None:
             if self._is_snapped:
-                self._show_snap_visualization(pos, pos)
-                vertex_obj = self._find_vertex_by_point(pos)
+                # 拾取现有点：直接高亮现有点（黄色），不显示临时预览点
+                vertex_obj = self._find_vertex_by_point(final_pos)
                 if vertex_obj:
                     self._highlight_geometry_vertex(vertex_obj)
+                # 不调用 _show_point_highlight 和 _show_snap_visualization
             else:
+                # 拾取新点：显示临时预览点（黄色）
+                self._show_point_highlight(final_pos[0], final_pos[1], final_pos[2])
                 self._remove_snap_visualization()
                 self._clear_geometry_vertex_highlights()
 
-            self._on_point_pick((pos[0], pos[1], pos[2]))
-            self._remove_point_highlight()
-        
+            self._on_point_pick((final_pos[0], final_pos[1], final_pos[2]))
+
+            # 只在拾取新点时移除预览点
+            if not self._is_snapped:
+                self._remove_point_highlight()
+
         style = interactor.GetInteractorStyle()
         if style:
             style.OnLeftButtonDown()
@@ -404,27 +463,23 @@ class GeometryPickingHelper:
             return
 
         click_pos = interactor.GetEventPosition()
-        picked = self._point_picker.Pick(click_pos[0], click_pos[1], 0, renderer)
 
-        if picked:
-            pos = self._point_picker.GetPickPosition()
+        # 基于鼠标屏幕位置进行磁吸判断（实时预览）
+        nearest_point = self._find_nearest_point_from_screen_pos(click_pos, renderer)
+        if nearest_point:
+            # 获取鼠标点击的世界坐标用于可视化
+            pos = self._pick_on_plane(click_pos, renderer)
+            if pos is None:
+                pos = [0.0, 0.0, 0.0]
+
             self._last_pick_pos = pos
-
-            nearest_point = self._find_nearest_point(pos)
-            if nearest_point:
-                self._last_snap_pos = nearest_point
-                self._is_snapped = True
-                self._show_snap_visualization(pos, nearest_point)
-                # 不在这里高亮几何点，只在实际点击时高亮
-                # vertex_obj = self._find_vertex_by_point(nearest_point)
-                # if vertex_obj:
-                #     self._highlight_geometry_vertex(vertex_obj)
-            else:
-                self._last_snap_pos = None
-                self._is_snapped = False
-                self._remove_snap_visualization()
-                # 不在这里清除几何点高亮，只在拾取到非几何点时清除
-                # self._clear_geometry_vertex_highlights()
+            self._last_snap_pos = nearest_point
+            self._is_snapped = True
+            self._show_snap_visualization(pos, nearest_point)
+            # 不在这里高亮几何点，只在实际点击时高亮
+            # vertex_obj = self._find_vertex_by_point(nearest_point)
+            # if vertex_obj:
+            #     self._highlight_geometry_vertex(vertex_obj)
         else:
             pos = self._pick_on_plane(click_pos, renderer)
             if pos is not None:
@@ -644,31 +699,63 @@ class GeometryPickingHelper:
             self.mesh_display.render_window.Render()
 
     def _find_vertex_by_point(self, point):
-        """根据坐标找到对应的几何点对象"""
+        """根据坐标找到对应的几何点对象（使用像素距离转换）"""
         if not self.gui:
             return None
-        
+
         try:
             elements = self._get_all_geometry_elements()
             vertices = elements.get("vertices", [])
-            
+
             if not vertices:
                 return None
-            
+
             from OCC.Core.BRep import BRep_Tool
-            
+
+            renderer = getattr(self.mesh_display, "renderer", None)
+            if renderer is None:
+                # 回退到世界坐标距离比较
+                snap_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0) * 0.01  # 粗略转换
+                for vertex_obj, vertex_index in vertices:
+                    try:
+                        pnt = BRep_Tool.Pnt(vertex_obj)
+                        vertex_point = (pnt.X(), pnt.Y(), pnt.Z())
+
+                        dist_sq = (vertex_point[0] - point[0]) ** 2 + \
+                                 (vertex_point[1] - point[1]) ** 2 + \
+                                 (vertex_point[2] - point[2]) ** 2
+
+                        if dist_sq <= snap_tolerance ** 2:
+                            return vertex_obj
+                    except Exception:
+                        continue
+                return None
+
+            # 使用像素距离进行比较
+            pick_display = self._world_to_display_coords(point, renderer)
+            if pick_display is None:
+                return None
+
+            pixel_tolerance = getattr(self, '_snap_pixel_tolerance', 12.0)
+            tolerance_sq = pixel_tolerance ** 2
+
             for vertex_obj, vertex_index in vertices:
                 try:
                     pnt = BRep_Tool.Pnt(vertex_obj)
                     vertex_point = (pnt.X(), pnt.Y(), pnt.Z())
-                    
-                    if (abs(vertex_point[0] - point[0]) < 1e-6 and
-                        abs(vertex_point[1] - point[1]) < 1e-6 and
-                        abs(vertex_point[2] - point[2]) < 1e-6):
+
+                    vertex_display = self._world_to_display_coords(vertex_point, renderer)
+                    if vertex_display is None:
+                        continue
+
+                    pixel_dist_sq = (pick_display[0] - vertex_display[0]) ** 2 + \
+                                   (pick_display[1] - vertex_display[1]) ** 2
+
+                    if pixel_dist_sq <= tolerance_sq:
                         return vertex_obj
                 except Exception:
                     continue
-            
+
             return None
         except Exception:
             return None
