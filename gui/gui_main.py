@@ -1022,8 +1022,104 @@ class PyMeshGenGUI(QMainWindow):
         dialog = LineMeshGenerationDialog(self)
         dialog.setAttribute(Qt.WA_DeleteOnClose, True)
         dialog.finished.connect(lambda: setattr(self, "_line_mesh_dialog", None))
+        dialog.generation_requested.connect(self._on_line_mesh_generation_requested)
         self._line_mesh_dialog = dialog
         dialog.show()
+
+    def _on_line_mesh_generation_requested(self, params):
+        """处理线网格生成请求"""
+        from gui.line_mesh_generation import generate_line_mesh, LineMeshParams
+
+        if not params.get('edges'):
+            return
+
+        edges_info = []
+        for edge in params['edges']:
+            try:
+                edge_obj = edge.get('obj')
+                if edge_obj is None:
+                    continue
+                if hasattr(edge_obj, 'Shape'):
+                    shape = edge_obj.Shape()
+                    if shape.IsNull():
+                        continue
+                    from OCC.Core.TopExp import TopExp_Explorer
+                    from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE
+                    from OCC.Core.BRep import BRep_Tool
+                    from OCC.Core.BRepGProp import brepgprop_Length
+                    from OCC.Core.GProp import GProp_GProps
+                    from OCC.Core.TopoDS import TopoDS_Vertex
+
+                    v_exp = TopExp_Explorer(shape, TopAbs_VERTEX)
+                    vertices = []
+                    while v_exp.More():
+                        v = TopoDS_Vertex(v_exp.Current())
+                        pnt = BRep_Tool.Pnt(v)
+                        vertices.append((pnt.X(), pnt.Y(), pnt.Z()))
+                        v_exp.Next()
+
+                    if len(vertices) < 2:
+                        continue
+
+                    gprop = GProp_GProps()
+                    brepgprop_Length(shape, gprop)
+
+                    curve = BRep_Tool.Curve(shape)
+
+                    edges_info.append({
+                        'start_point': vertices[0],
+                        'end_point': vertices[-1],
+                        'curve': curve,
+                        'length': gprop.Mass(),
+                        'name': edge.get('name', f"edge_{len(edges_info)}"),
+                        'obj': edge_obj
+                    })
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                continue
+
+        if not edges_info:
+            return
+
+        line_mesh_params = LineMeshParams(
+            method=params.get('method', 'uniform'),
+            num_elements=params.get('num_elements', 10),
+            start_size=params.get('start_size', 0.1),
+            end_size=params.get('end_size', 0.2),
+            growth_rate=params.get('growth_rate', 1.2),
+            tanh_factor=params.get('tanh_factor', 2.0),
+            bc_type=params.get('bc_type', 'wall'),
+            part_name=params.get('part_name', 'default_line')
+        )
+
+        connectors, parts = generate_line_mesh(edges_info, line_mesh_params)
+
+        if connectors:
+            self._update_mesh_display_with_connectors(connectors)
+            self.update_status(f"成功生成 {len(connectors)} 个线网格Connector")
+
+    def _update_mesh_display_with_connectors(self, connectors):
+        """更新网格显示以显示Connector"""
+        if not hasattr(self, 'mesh_display') or not self.mesh_display:
+            return
+
+        for conn in connectors:
+            if hasattr(conn, 'front_list') and conn.front_list:
+                for front in conn.front_list:
+                    if hasattr(front, 'node_elem1') and front.node_elem1:
+                        node1 = front.node_elem1
+                        if hasattr(node1, 'coords'):
+                            x, y, z = node1.coords if len(node1.coords) == 3 else (*node1.coords, 0.0)
+                            self.mesh_display.add_node(x, y, z)
+
+                    if hasattr(front, 'node_elem2') and front.node_elem2:
+                        node2 = front.node_elem2
+                        if hasattr(node2, 'coords'):
+                            x, y, z = node2.coords if len(node2.coords) == 3 else (*node2.coords, 0.0)
+                            self.mesh_display.add_node(x, y, z)
+
+        self.mesh_display.render()
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""

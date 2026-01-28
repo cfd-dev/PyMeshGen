@@ -178,6 +178,8 @@ class IconManager:
             self._draw_geometry_sphere_icon(painter, size, accent_color)
         elif icon_name in ['geom-cylinder', 'geometry-cylinder']:
             self._draw_geometry_cylinder_icon(painter, size, accent_color)
+        elif icon_name in ['line-mesh-generate', 'line_mesh_generate', 'line-discretize']:
+            self._draw_line_mesh_icon(painter, size, primary_color)
         else:
             # Default fallback: draw a generic icon
             self._draw_generic_icon(painter, size, primary_color)
@@ -865,6 +867,26 @@ class IconManager:
         """Draw line icon"""
         painter.setPen(QPen(color, 2))
         painter.drawLine(6, size - 6, size - 6, 6)
+
+    def _draw_line_mesh_icon(self, painter, size, color):
+        """Draw line mesh icon - a line with mesh nodes along it"""
+        from PyQt5.QtCore import QPoint
+
+        painter.setPen(QPen(color, 2))
+
+        x1, y1 = 6, size - 6
+        x2, y2 = size - 6, 6
+
+        painter.drawLine(x1, y1, x2, y2)
+
+        painter.setBrush(color)
+
+        num_points = 5
+        for i in range(num_points + 1):
+            t = i / num_points
+            x = int(x1 + t * (x2 - x1))
+            y = int(y1 + t * (y2 - y1))
+            painter.drawEllipse(QPoint(x, y), 2, 2)
 
     def _draw_geometry_circle_icon(self, painter, size, color):
         """Draw circle/arc icon"""

@@ -348,17 +348,24 @@ class RibbonWidget(QWidget):
             alignment=Qt.AlignLeft
         )
 
-        geometry_group = RibbonGroup("")
-        self.buttons['geometry']['import_geometry'] = geometry_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
-        self.buttons['geometry']['import'] = geometry_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
-        self.buttons['geometry']['extract_boundary'] = geometry_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
+        geometry_io_group = RibbonGroup("几何输入输出")
+        self.buttons['geometry']['import_geometry'] = geometry_io_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
+        self.buttons['geometry']['export_geometry'] = geometry_io_group.add_large_button("导出几何", tooltip="导出几何文件 (IGES/STEP/STL等)")
+        layout.addWidget(geometry_io_group)
+        
+
+        geometry_group = RibbonGroup("几何操作")
         self.buttons['geometry']['create_geometry'] = geometry_group.add_large_button("创建几何", tooltip="创建点/线/圆弧/曲线")
         self.buttons['geometry']['delete_geometry'] = geometry_group.add_large_button("删除几何", tooltip="删除选中的几何元素")
         layout.addWidget(geometry_group)
 
-        line_mesh_group = RibbonGroup("")
-        self.buttons['geometry']['line_mesh'] = line_mesh_group.add_large_button("线网格生成", tooltip="生成线网格 (Ctrl+L)")
-        self.buttons['geometry']['line_mesh_params'] = line_mesh_group.add_small_button("参数设置", tooltip="设置线网格生成参数")
+        boundary_extract_group = RibbonGroup("边界网格提取")
+        self.buttons['geometry']['import'] = boundary_extract_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['geometry']['extract_boundary'] = boundary_extract_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
+        layout.addWidget(boundary_extract_group)
+
+        line_mesh_group = RibbonGroup("线网格生成")
+        self.buttons['geometry']['line_mesh'] = line_mesh_group.add_large_button("线网格", icon=get_icon('line-mesh-generate'), tooltip="生成线网格 (Ctrl+L)")
         layout.addWidget(line_mesh_group)
 
         layout.addStretch(1)
@@ -424,12 +431,12 @@ class RibbonWidget(QWidget):
 
         # Geometry tab callbacks
         self.buttons['geometry']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
+        self.buttons['geometry']['export_geometry'].clicked.connect(_wrap(main_window.export_geometry, "导出几何"))
         self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
         self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
         self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))
         self.buttons['geometry']['delete_geometry'].clicked.connect(_wrap(main_window.open_geometry_delete_dialog, "删除几何"))
         self.buttons['geometry']['line_mesh'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
-        self.buttons['geometry']['line_mesh_params'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
 
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))
