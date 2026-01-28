@@ -629,6 +629,7 @@ class PyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.clear()
                     self.mesh_display.clear_mesh_actors()
+                    self.mesh_display.clear_line_mesh_actors()  # 清除线网格
                     self.mesh_display.clear_boundary_actors()
                     self.mesh_display.clear_highlights()
                     self.mesh_display.mesh_data = None
@@ -1161,27 +1162,17 @@ class PyMeshGenGUI(QMainWindow):
             traceback.print_exc()
 
     def _update_mesh_display_with_unstructured_grid(self, unstr_grid):
-        """使用Unstructured_Grid更新网格显示"""
+        """使用Unstructured_Grid更新网格显示（保留之前生成的线网格）"""
         if not hasattr(self, 'mesh_display') or not self.mesh_display:
             self.log_warning("网格显示对象不存在，无法显示生成的线网格")
             return
 
         try:
-            # 设置mesh_data
-            self.mesh_display.mesh_data = unstr_grid
-            
-            # 显示网格
-            success = self.mesh_display.display_mesh(render_immediately=True)
+            # 添加线网格演员（保留之前生成的线网格）
+            success = self.mesh_display.add_line_mesh_actor(unstr_grid, render_immediately=True)
             
             if success:
                 self.log_info(f"线网格显示成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
-                
-                # 为线网格设置红色显示
-                if self.mesh_display.mesh_actor:
-                    self.mesh_display.mesh_actor.GetProperty().SetColor(1.0, 0.0, 0.0)
-                    self.mesh_display.mesh_actor.GetProperty().SetLineWidth(3.0)
-                    self.mesh_display.mesh_actor.GetProperty().SetRepresentationToWireframe()
-                    self.mesh_display.render_window.Render()
                 
                 # 更新模型树
                 if hasattr(self, 'model_tree_widget'):

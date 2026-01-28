@@ -536,6 +536,9 @@ class PartManager:
             # If no parts are visible, clear display
             self.gui.mesh_display.clear()
 
+        # 刷新线网格显示（根据可见部件列表）
+        self.gui.mesh_display.refresh_line_mesh_display(visible_parts)
+
         # Re-add axes after displaying parts
         self.gui.mesh_display.add_axes()
 

@@ -442,11 +442,6 @@ def convert_connectors_to_unstructured_grid(
                                 node_coords.append([float(x) for x in coords])
                                 node_idx += 1
     
-    # 调试信息：打印节点坐标
-    print(f"线网格节点坐标 (共 {len(node_coords)} 个节点):")
-    for i, coord in enumerate(node_coords):
-        print(f"  节点 {i}: {coord}")
-    
     # 创建边界节点
     boundary_nodes = []
     for idx, coords in enumerate(node_coords):
@@ -464,8 +459,8 @@ def convert_connectors_to_unstructured_grid(
                     node2 = front.node_elems[1]
                     
                     if hasattr(node1, 'coords') and hasattr(node2, 'coords'):
-                        coords1 = tuple(node1.coords)
-                        coords2 = tuple(node2.coords)
+                        coords1 = tuple(float(x) for x in node1.coords)
+                        coords2 = tuple(float(x) for x in node2.coords)
                         
                         if coords1 in node_map and coords2 in node_map:
                             node_id1 = node_map[coords1]
@@ -479,11 +474,6 @@ def convert_connectors_to_unstructured_grid(
                             )
                             cell_container.append(line_segment)
                             cell_idx += 1
-    
-    # 调试信息：打印线段单元
-    print(f"线网格单元 (共 {len(cell_container)} 个单元):")
-    for i, cell in enumerate(cell_container):
-        print(f"  单元 {i}: 节点索引 {cell.node_ids}, 部件 {cell.part_name}")
     
     # 创建Unstructured_Grid
     grid = Unstructured_Grid(

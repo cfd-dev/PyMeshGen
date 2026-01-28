@@ -32,6 +32,7 @@ class MeshDisplayArea:
         self.interactor = None
         self.mesh_actor = None
         self.boundary_actors = []
+        self.line_mesh_actors = []  # 线网格演员列表，用于保留多次生成的线网格
         self.axes_actor = None  # 添加坐标轴演员引用
         self._pick_hint_actor = None
         self._pick_hint_label = None
@@ -63,6 +64,15 @@ class MeshDisplayArea:
                 except:
                     pass
             self.boundary_actors.clear()
+
+        # 清除线网格演员
+        if self.renderer and self.line_mesh_actors:
+            for actor in self.line_mesh_actors:
+                try:
+                    self.renderer.RemoveActor(actor)
+                except:
+                    pass
+            self.line_mesh_actors.clear()
 
         if self.renderer and self.mesh_actor:
             try:
@@ -785,8 +795,12 @@ class MeshDisplayArea:
         if hasattr(self, "render_window") and self.render_window:
             self.render_window.Render()
     
-    def clear_mesh_actors(self):
-        """清除所有网格相关的演员"""
+    def clear_mesh_actors(self, clear_line_meshes=False):
+        """清除所有网格相关的演员
+        
+        Args:
+            clear_line_meshes: 是否清除线网格演员，默认为False（保留线网格）
+        """
         # 清除主网格演员
         if self.mesh_actor:
             try:
@@ -810,24 +824,224 @@ class MeshDisplayArea:
             except:
                 pass  # 忽略移除演员时的错误
         self.boundary_actors.clear()
+
+        # 清除高亮演员
+        self.clear_highlights()
+
+        # 清除额外演员（由display_part方法添加的）
+        if hasattr(self, 'additional_actors'):
+            for actor in self.additional_actors:
+                try:
+                    self.renderer.RemoveActor(actor)
+                except:
+                    pass  # 忽略移除演员时的错误
+            self.additional_actors.clear()
+
+        # 清除线网格演员（可选）
+        if clear_line_meshes:
+            for actor in self.line_mesh_actors:
+                try:
+                    self.renderer.RemoveActor(actor)
+                except:
+                    pass  # 忽略移除演员时的错误
+            self.line_mesh_actors.clear()
         
-    def clear_display(self):
-        """清除显示"""
+    def clear_display(self, clear_line_meshes=False):
+        """清除显示
+        
+        Args:
+            clear_line_meshes: 是否清除线网格演员，默认为False（保留线网格）
+        """
         try:
-            self.clear_mesh_actors()
+            self.clear_mesh_actors(clear_line_meshes=clear_line_meshes)
             self.render_window.Render()
         except Exception as e:
             print(f"清除显示失败: {str(e)}")
 
-    def clear(self):
-        """清除显示的网格"""
-        self.clear_display()
+    def clear(self, clear_line_meshes=False):
+        """清除显示的网格
+        
+        Args:
+            clear_line_meshes: 是否清除线网格演员，默认为False（保留线网格）
+        """
+        self.clear_display(clear_line_meshes=clear_line_meshes)
 
     def clear_boundary_actors(self):
         """清除所有边界演员"""
         for actor in self.boundary_actors:
             self.renderer.RemoveActor(actor)
         self.boundary_actors = []
+    
+    def clear_line_mesh_actors(self):
+        """清除所有线网格演员"""
+        for actor in self.line_mesh_actors:
+            try:
+                self.renderer.RemoveActor(actor)
+            except:
+                pass
+        self.line_mesh_actors.clear()
+        if hasattr(self, 'render_window') and self.render_window:
+            self.render_window.Render()
+    
+    def set_line_mesh_visibility(self, part_name, visible):
+        """根据部件名称设置线网格actor的可见性
+        
+        Args:
+            part_name: 部件名称
+            visible: 是否可见
+            
+        Returns:
+            是否有匹配的线网格actor被更新
+        """
+        if visible:
+            for actor in self.line_mesh_actors:
+                if not hasattr(actor, '_visible') or not actor._visible:
+                    try:
+                        self.renderer.AddActor(actor)
+                        actor._visible = True
+                    except:
+                        pass
+        else:
+            for actor in self.line_mesh_actors:
+                if hasattr(actor, '_part_names') and part_name in actor._part_names:
+                    try:
+                        self.renderer.RemoveActor(actor)
+                        actor._visible = False
+                    except:
+                        pass
+    
+    def display_line_mesh_by_part(self, part_name, visible, render_immediately=True):
+        """根据部件名称显示或隐藏线网格
+        
+        Args:
+            part_name: 部件名称
+            visible: 是否可见
+            render_immediately: 是否立即渲染
+        """
+        self.set_line_mesh_visibility(part_name, visible)
+        if render_immediately and hasattr(self, 'render_window') and self.render_window:
+            self.render_window.Render()
+    
+    def refresh_line_mesh_display(self, visible_parts):
+        """刷新线网格显示，只显示在visible_parts中的部件
+        
+        Args:
+            visible_parts: 可见部件名称列表
+        """
+        for actor in self.line_mesh_actors:
+            part_names = getattr(actor, '_part_names', [])
+            is_visible = any(part_name in visible_parts for part_name in part_names)
+            if is_visible and (not hasattr(actor, '_visible') or not actor._visible):
+                try:
+                    self.renderer.AddActor(actor)
+                    actor._visible = True
+                except:
+                    pass
+            elif not is_visible and hasattr(actor, '_visible') and actor._visible:
+                try:
+                    self.renderer.RemoveActor(actor)
+                    actor._visible = False
+                except:
+                    pass
+        
+        if hasattr(self, 'render_window') and self.render_window:
+            self.render_window.Render()
+    
+    def add_line_mesh_actor(self, unstr_grid, render_immediately=True):
+        """添加线网格演员（保留之前生成的线网格）
+        
+        Args:
+            unstr_grid: Unstructured_Grid对象
+            render_immediately: 是否立即渲染
+        """
+        try:
+            # 创建线网格的VTK PolyData
+            vtk_polydata = self._create_boundary_polydata_from_grid(unstr_grid)
+            
+            if vtk_polydata is None:
+                return False
+            
+            # 创建mapper和actor
+            mapper = vtk.vtkPolyDataMapper()
+            mapper.SetInputData(vtk_polydata)
+            
+            line_actor = vtk.vtkActor()
+            line_actor.SetMapper(mapper)
+            
+            # 设置线网格样式（红色，线宽3.0）
+            line_actor.GetProperty().SetColor(1.0, 0.0, 0.0)
+            line_actor.GetProperty().SetLineWidth(3.0)
+            line_actor.GetProperty().SetRepresentationToWireframe()
+            line_actor.GetProperty().SetOpacity(1.0)
+            
+            # 保存部件名称到actor
+            if hasattr(unstr_grid, 'parts_info') and unstr_grid.parts_info:
+                part_names = list(unstr_grid.parts_info.keys())
+                line_actor._part_names = part_names
+            else:
+                line_actor._part_names = []
+            
+            # 初始化可见性状态
+            line_actor._visible = True
+            
+            # 添加到渲染器和列表
+            self.renderer.AddActor(line_actor)
+            self.line_mesh_actors.append(line_actor)
+            
+            if render_immediately:
+                self.render_window.Render()
+            
+            return True
+        except Exception as e:
+            print(f"添加线网格演员失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _create_boundary_polydata_from_grid(self, grid):
+        """从Unstructured_Grid创建VTK PolyData（用于线网格）
+        
+        Args:
+            grid: Unstructured_Grid对象
+            
+        Returns:
+            vtkPolyData对象，失败返回None
+        """
+        try:
+            if not hasattr(grid, 'node_coords') or not grid.node_coords:
+                return None
+            
+            # 创建点
+            points = vtk.vtkPoints()
+            for coord in grid.node_coords:
+                if len(coord) == 2:
+                    points.InsertNextPoint(coord[0], coord[1], 0.0)
+                else:
+                    points.InsertNextPoint(coord[0], coord[1], coord[2])
+            
+            # 创建线段
+            lines = vtk.vtkCellArray()
+            
+            if hasattr(grid, 'cell_container') and grid.cell_container:
+                for cell in grid.cell_container:
+                    if cell is None:
+                        continue
+                    if hasattr(cell, 'node_ids') and len(cell.node_ids) >= 2:
+                        line = vtk.vtkLine()
+                        for i, node_id in enumerate(cell.node_ids[:2]):
+                            line.GetPointIds().SetId(i, node_id)
+                        lines.InsertNextCell(line)
+            
+            # 创建PolyData
+            polydata = vtk.vtkPolyData()
+            polydata.SetPoints(points)
+            if lines.GetNumberOfCells() > 0:
+                polydata.SetLines(lines)
+            
+            return polydata
+        except Exception as e:
+            print(f"从Unstructured_Grid创建VTK PolyData失败: {str(e)}")
+            return None
     
     def toggle_boundary_display(self, show_boundary=None):
         """切换边界显示"""
@@ -1001,44 +1215,6 @@ class MeshDisplayArea:
                     self.render_window.Render()
         except Exception as e:
             pass
-    
-    def clear_mesh_actors(self):
-        """清除所有网格相关的演员"""
-        # 清除主网格演员
-        if self.mesh_actor:
-            try:
-                self.renderer.RemoveActor(self.mesh_actor)
-            except:
-                pass  # 忽略移除演员时的错误
-            self.mesh_actor = None
-            
-        # 清除坐标轴演员
-        if hasattr(self, 'axes_actor') and self.axes_actor:
-            try:
-                self.renderer.RemoveActor(self.axes_actor)
-            except:
-                pass  # 忽略移除演员时的错误
-            self.axes_actor = None
-            
-        # 清除边界演员
-        for actor in self.boundary_actors:
-            try:
-                self.renderer.RemoveActor(actor)
-            except:
-                pass  # 忽略移除演员时的错误
-        self.boundary_actors.clear()
-
-        # 清除高亮演员
-        self.clear_highlights()
-
-        # 清除额外演员（由display_part方法添加的）
-        if hasattr(self, 'additional_actors'):
-            for actor in self.additional_actors:
-                try:
-                    self.renderer.RemoveActor(actor)
-                except:
-                    pass  # 忽略移除演员时的错误
-            self.additional_actors.clear()
     
     def set_render_mode(self, mode):
         """设置渲染模式
