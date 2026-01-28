@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from data_structure.basic_elements import NodeElement, NodeElementALM, Connector, Part
 from data_structure.front2d import Front
 from utils.geom_toolkit import calculate_distance
+from utils.message import error as log_error
 
 
 @dataclass
@@ -177,56 +178,45 @@ def discretize_line(
     Returns:
         离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
     """
+    # 使用现成的函数生成 [0, 1] 范围内的参数坐标
     param_coords = generate_discretization_params(start_point, end_point, params)
     
-    # 如果提供了几何曲线，将点投影到曲线上
+    # 如果提供了几何曲线，使用参数坐标映射进行离散化
     if curve is not None:
-        points = []
-        
-        # 获取曲线的参数范围
         try:
             curve_first = curve.FirstParameter()
             curve_last = curve.LastParameter()
-            print(f"曲线参数范围: [{curve_first}, {curve_last}]")
+            curve_length = curve_last - curve_first
+            
+            if curve_length < 1e-10:
+                raise ValueError("曲线参数范围过小")
+            
+            # 将 [0, 1] 范围的参数坐标映射到曲线参数范围
+            curve_param_coords = [curve_first + t * curve_length for t in param_coords]
+            
+            # 使用参数坐标在曲线上采样点
+            points = []
+            for t in curve_param_coords:
+                point = curve.Value(t)
+                points.append((point.X(), point.Y(), point.Z()))
+            
+            return points
+            
         except Exception as e:
-            print(f"获取曲线参数范围失败: {e}")
-            # 如果获取参数范围失败，使用线性插值
+            print(f"曲线离散化失败，使用线性插值: {e}")
+            # 如果曲线离散化失败，回退到线性插值
             start = np.array(start_point)
             end = np.array(end_point)
+            
+            points = []
             for t in param_coords:
                 point = start + t * (end - start)
                 points.append(tuple(point))
+            
             return points
-        
-        for t in param_coords:
-            # 计算参数 t 对应的曲线上的点
-            try:
-                # 将参数 t 映射到曲线的参数范围 [FirstParameter, LastParameter]
-                curve_t = curve_first + t * (curve_last - curve_first)
-                
-                # 获取曲线上的点
-                point = curve.Value(curve_t)
-                points.append((point.X(), point.Y(), point.Z()))
-            except Exception as e:
-                print(f"投影点到曲线失败: {e}")
-                # 如果投影失败，使用线性插值
-                start = np.array(start_point)
-                end = np.array(end_point)
-                point = start + t * (end - start)
-                points.append(tuple(point))
-        
-        return points
     else:
-        # 如果没有提供曲线，使用线性插值
-        start = np.array(start_point)
-        end = np.array(end_point)
-        
-        points = []
-        for t in param_coords:
-            point = start + t * (end - start)
-            points.append(tuple(point))
-        
-        return points
+        log_error("无法进行离散化：未提供几何曲线对象")
+        return []
 
 
 def create_fronts_from_points(
