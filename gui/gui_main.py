@@ -1098,7 +1098,14 @@ class PyMeshGenGUI(QMainWindow):
                 gprop = GProp_GProps()
                 brepgprop.LinearProperties(shape, gprop)
 
-                curve = BRep_Tool.Curve(shape)
+                # BRep_Tool.Curve 返回一个元组 (curve, first_param, last_param)
+                curve_result = BRep_Tool.Curve(shape)
+                if curve_result and len(curve_result) == 3:
+                    curve, first_param, last_param = curve_result
+                    print(f"提取曲线: 类型={type(curve)}, 参数范围=[{first_param}, {last_param}]")
+                else:
+                    curve = None
+                    print(f"无法提取曲线: curve_result={curve_result}")
 
                 edges_info.append({
                     'start_point': vertices[0],
@@ -1108,7 +1115,7 @@ class PyMeshGenGUI(QMainWindow):
                     'name': edge.get('name', f"edge_{len(edges_info)}"),
                     'obj': edge_obj
                 })
-                self.log_info(f"成功处理第 {idx+1} 条边: 长度={gprop.Mass():.4f}, 顶点数={len(vertices)}")
+                self.log_info(f"成功处理第 {idx+1} 条边: 长度={gprop.Mass():.4f}, 顶点数={len(vertices)}, 起点={vertices[0]}, 终点={vertices[-1]}")
             except Exception as e:
                 import traceback
                 error_msg = f"处理第 {idx+1} 条边时出错: {str(e)}"

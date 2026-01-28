@@ -162,7 +162,8 @@ def generate_tanh_params(
 def discretize_line(
     start_point: Tuple[float, float, float],
     end_point: Tuple[float, float, float],
-    params: LineMeshParams
+    params: LineMeshParams,
+    curve=None
 ) -> List[Tuple[float, float, float]]:
     """
     对线段进行离散化
@@ -171,21 +172,61 @@ def discretize_line(
         start_point: 起点坐标
         end_point: 终点坐标
         params: 线网格生成参数
+        curve: 几何曲线对象（可选，如果提供则将点投影到曲线上）
         
     Returns:
         离散点列表 [(x1, y1, z1), (x2, y2, z2), ...]
     """
     param_coords = generate_discretization_params(start_point, end_point, params)
     
-    start = np.array(start_point)
-    end = np.array(end_point)
-    
-    points = []
-    for t in param_coords:
-        point = start + t * (end - start)
-        points.append(tuple(point))
-    
-    return points
+    # 如果提供了几何曲线，将点投影到曲线上
+    if curve is not None:
+        points = []
+        
+        # 获取曲线的参数范围
+        try:
+            curve_first = curve.FirstParameter()
+            curve_last = curve.LastParameter()
+            print(f"曲线参数范围: [{curve_first}, {curve_last}]")
+        except Exception as e:
+            print(f"获取曲线参数范围失败: {e}")
+            # 如果获取参数范围失败，使用线性插值
+            start = np.array(start_point)
+            end = np.array(end_point)
+            for t in param_coords:
+                point = start + t * (end - start)
+                points.append(tuple(point))
+            return points
+        
+        for t in param_coords:
+            # 计算参数 t 对应的曲线上的点
+            try:
+                # 将参数 t 映射到曲线的参数范围 [FirstParameter, LastParameter]
+                curve_t = curve_first + t * (curve_last - curve_first)
+                
+                # 获取曲线上的点
+                point = curve.Value(curve_t)
+                points.append((point.X(), point.Y(), point.Z()))
+            except Exception as e:
+                print(f"投影点到曲线失败: {e}")
+                # 如果投影失败，使用线性插值
+                start = np.array(start_point)
+                end = np.array(end_point)
+                point = start + t * (end - start)
+                points.append(tuple(point))
+        
+        return points
+    else:
+        # 如果没有提供曲线，使用线性插值
+        start = np.array(start_point)
+        end = np.array(end_point)
+        
+        points = []
+        for t in param_coords:
+            point = start + t * (end - start)
+            points.append(tuple(point))
+        
+        return points
 
 
 def create_fronts_from_points(
@@ -255,9 +296,26 @@ def create_connector_from_edge(
     """
     start_point = edge_info['start_point']
     end_point = edge_info['end_point']
+    curve = edge_info.get('curve')  # 获取几何曲线对象
     
-    # 离散化线段
-    points = discretize_line(start_point, end_point, params)
+    # 调试：检查 curve 的类型
+    print(f"create_connector_from_edge: curve 类型 = {type(curve)}, curve = {curve}")
+    
+    # 检查 curve 是否是有效的几何曲线对象
+    valid_curve = False
+    if curve is not None:
+        try:
+            # 尝试调用 FirstParameter 方法
+            if hasattr(curve, 'FirstParameter'):
+                valid_curve = True
+                print(f"curve 是有效的几何曲线对象")
+            else:
+                print(f"curve 不是有效的几何曲线对象，没有 FirstParameter 方法")
+        except Exception as e:
+            print(f"检查 curve 类型时出错: {e}")
+    
+    # 离散化线段（传递几何曲线，将点投影到曲线上）
+    points = discretize_line(start_point, end_point, params, curve=curve if valid_curve else None)
     
     # 创建Front列表
     fronts = create_fronts_from_points(points, params.bc_type, params.part_name)
@@ -377,11 +435,17 @@ def convert_connectors_to_unstructured_grid(
                 if hasattr(front, 'node_elems') and len(front.node_elems) >= 2:
                     for node_elem in front.node_elems:
                         if hasattr(node_elem, 'coords'):
-                            coords = tuple(node_elem.coords)
+                            # 确保 coords 是数值列表，而不是 numpy 类型对象
+                            coords = tuple(float(x) for x in node_elem.coords)
                             if coords not in node_map:
                                 node_map[coords] = node_idx
-                                node_coords.append(list(coords))
+                                node_coords.append([float(x) for x in coords])
                                 node_idx += 1
+    
+    # 调试信息：打印节点坐标
+    print(f"线网格节点坐标 (共 {len(node_coords)} 个节点):")
+    for i, coord in enumerate(node_coords):
+        print(f"  节点 {i}: {coord}")
     
     # 创建边界节点
     boundary_nodes = []
@@ -415,6 +479,11 @@ def convert_connectors_to_unstructured_grid(
                             )
                             cell_container.append(line_segment)
                             cell_idx += 1
+    
+    # 调试信息：打印线段单元
+    print(f"线网格单元 (共 {len(cell_container)} 个单元):")
+    for i, cell in enumerate(cell_container):
+        print(f"  单元 {i}: 节点索引 {cell.node_ids}, 部件 {cell.part_name}")
     
     # 创建Unstructured_Grid
     grid = Unstructured_Grid(
@@ -526,6 +595,7 @@ def extract_edge_info_from_geometry(geometry_obj) -> List[Dict]:
                         'name': f"edge_{idx}"
                     }
                     edges_info.append(edge_info)
+                    print(f"提取边 {idx}: 起点 {vertices[0]}, 终点 {vertices[-1]}, 长度 {length}")
                     idx += 1
             
             explorer.Next()

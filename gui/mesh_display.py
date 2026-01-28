@@ -566,7 +566,7 @@ class MeshDisplayArea:
 
                 num_nodes = len(nodes)
 
-                # Handle 2-node cases as line segments (for 2D boundaries)
+                # Handlefor 2D as line segments ( 2-node cases boundaries)
                 if num_nodes == 2:
                     line = vtk.vtkLine()
                     line.GetPointIds().SetNumberOfIds(2)
@@ -576,13 +576,11 @@ class MeshDisplayArea:
                             try:
                                 node_id_int = int(node_id)
                             except (ValueError, TypeError):
-                                print(f"无效的节点ID: {node_id}")
                                 continue
 
                             coord = self._get_node_coord(node_id_int)
 
                             if coord is None:
-                                print(f"无法获取节点坐标: {node_id}")
                                 continue
 
                             if len(coord) == 2:
@@ -607,13 +605,11 @@ class MeshDisplayArea:
                             try:
                                 node_id_int = int(node_id)
                             except (ValueError, TypeError):
-                                print(f"无效的节点ID: {node_id}")
                                 continue
 
                             coord = self._get_node_coord(node_id_int)
 
                             if coord is None:
-                                print(f"无法获取节点坐标: {node_id}")
                                 continue
 
                             if len(coord) == 2:
@@ -639,7 +635,9 @@ class MeshDisplayArea:
 
             return boundary_polydata
         except Exception as e:
-            print(f"创建边界多边形数据失败: {str(e)}")
+            pass
+            import traceback
+            traceback.print_exc()
             return None
     
     def _get_node_coord(self, node_id_0):
