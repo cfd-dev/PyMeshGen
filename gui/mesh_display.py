@@ -371,6 +371,7 @@ class MeshDisplayArea:
         try:
             points = vtk.vtkPoints()
             polys = vtk.vtkCellArray()
+            lines = vtk.vtkCellArray()
 
             # 使用numpy数组批量处理节点坐标以提高性能
             node_coords = np.array(unstr_grid.node_coords, dtype=np.float64)
@@ -398,11 +399,13 @@ class MeshDisplayArea:
                 num_nodes = len(node_ids)
                 
                 if num_nodes == 2:
+                    # 线段单元 - 使用 lines 单元数组
                     line = vtk.vtkLine()
                     line.GetPointIds().SetId(0, node_ids[0])
                     line.GetPointIds().SetId(1, node_ids[1])
-                    polys.InsertNextCell(line)
+                    lines.InsertNextCell(line)
                 elif num_nodes == 3:
+                    # 三角形面单元
                     triangle = vtk.vtkTriangle()
                     triangle.GetPointIds().SetId(0, node_ids[0])
                     triangle.GetPointIds().SetId(1, node_ids[1])
@@ -461,7 +464,12 @@ class MeshDisplayArea:
 
             polydata = vtk.vtkPolyData()
             polydata.SetPoints(points)
-            polydata.SetPolys(polys)
+            
+            # 分别设置线段和多边形单元
+            if lines.GetNumberOfCells() > 0:
+                polydata.SetLines(lines)
+            if polys.GetNumberOfCells() > 0:
+                polydata.SetPolys(polys)
 
             return polydata
 
@@ -1297,8 +1305,70 @@ class MeshDisplayArea:
                             part_faces = part_data.get('faces', []) if isinstance(part_data, dict) else []
                             break
 
-            # 如果已有部件数据但无面数据，避免回退显示整个网格
+            # 如果已有部件数据但无面数据，尝试显示线段单元
             if not part_faces and part_data:
+                # 检查是否有线段单元（用于线网格）
+                part_lines = []
+                if hasattr(self.mesh_data, 'cell_container') and self.mesh_data.cell_container:
+                    for cell in self.mesh_data.cell_container:
+                        if cell is None:
+                            continue
+                        # 检查单元是否属于当前部件
+                        if hasattr(cell, 'part_name') and cell.part_name == actual_part_name:
+                            if hasattr(cell, 'node_ids') and len(cell.node_ids) == 2:
+                                part_lines.append({'nodes': cell.node_ids})
+                
+                # 如果有线段单元，创建线段网格
+                if part_lines:
+                    part_polydata = self._create_boundary_polydata(part_lines)
+
+                    if part_polydata:
+                        mapper = vtk.vtkPolyDataMapper()
+                        mapper.SetInputData(part_polydata)
+
+                        part_actor = vtk.vtkActor()
+                        part_actor.SetMapper(mapper)
+
+                        # 设置部件颜色（如果未指定颜色，则使用不同颜色区分不同部件）
+                        if color:
+                            part_actor.GetProperty().SetColor(color)
+                        else:
+                            # Generate a unique color for each part based on its name
+                            color_index = hash(actual_part_name) % 10
+                            colors = [
+                                (1.0, 0.0, 0.0),  # Red
+                                (0.0, 1.0, 0.0),  # Green
+                                (0.0, 0.0, 1.0),  # Blue
+                                (1.0, 1.0, 0.0),  # Yellow
+                                (1.0, 0.0, 1.0),  # Magenta
+                                (0.0, 1.0, 1.0),  # Cyan
+                                (1.0, 0.5, 0.0),  # Orange
+                                (0.5, 0.0, 1.0),  # Purple
+                                (0.0, 0.5, 1.0),  # Light Blue
+                                (1.0, 0.5, 0.5),  # Pink
+                            ]
+                            part_actor.GetProperty().SetColor(colors[color_index])
+
+                        # 线段使用线框模式
+                        part_actor.GetProperty().SetRepresentationToWireframe()
+                        part_actor.GetProperty().SetLineWidth(3.0)
+
+                        part_actor.GetProperty().SetOpacity(1.0)
+
+                        # 添加部件演员
+                        self.renderer.AddActor(part_actor)
+
+                        # 保存额外演员引用
+                        if not hasattr(self, 'additional_actors'):
+                            self.additional_actors = []
+                        self.additional_actors.append(part_actor)
+
+                        if render_immediately:
+                            self.render_window.Render()
+
+                        return True
+
+                # 如果既没有面数据也没有线段数据，返回 False
                 if render_immediately:
                     self.render_window.Render()
                 return False

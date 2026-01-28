@@ -1169,10 +1169,25 @@ class PyMeshGenGUI(QMainWindow):
             if success:
                 self.log_info(f"线网格显示成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
                 
-                # 更新模型树（合并部件，不覆盖现有部件）
+                # 为线网格设置红色显示
+                if self.mesh_display.mesh_actor:
+                    self.mesh_display.mesh_actor.GetProperty().SetColor(1.0, 0.0, 0.0)
+                    self.mesh_display.mesh_actor.GetProperty().SetLineWidth(3.0)
+                    self.mesh_display.mesh_actor.GetProperty().SetRepresentationToWireframe()
+                    self.mesh_display.render_window.Render()
+                
+                # 更新模型树
                 if hasattr(self, 'model_tree_widget'):
                     self.model_tree_widget.load_mesh(unstr_grid, mesh_name="线网格")
-                    self.model_tree_widget.load_parts(unstr_grid, merge=True)
+                    
+                    # 合并部件信息（使用现成的合并方法，保留已有几何元素）
+                    if hasattr(unstr_grid, 'parts_info') and unstr_grid.parts_info:
+                        self._merge_parts_info(unstr_grid.parts_info)
+                        self.log_info(f"已合并线网格部件信息，共 {len(unstr_grid.parts_info)} 个部件")
+                    
+                    # 更新模型树显示
+                    if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
+                        self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
             else:
                 self.log_warning("线网格显示失败")
         except Exception as e:
