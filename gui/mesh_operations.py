@@ -294,7 +294,21 @@ class MeshOperations:
                 self.gui.progress_dialog.show()
 
                 from gui.mesh_generation_thread import MeshGenerationThread
-                self.gui.mesh_generation_thread = MeshGenerationThread(params, self.gui.current_mesh, self.gui)
+                
+                # 优先使用线网格生成的connectors和parts
+                connectors = self.gui.line_connectors if hasattr(self.gui, 'line_connectors') else None
+                parts = self.gui.line_parts if hasattr(self.gui, 'line_parts') else None
+                
+                if connectors:
+                    self.gui.log_info(f"使用线网格数据: {len(connectors)} connectors, {len(parts) if parts else 0} parts")
+                
+                self.gui.mesh_generation_thread = MeshGenerationThread(
+                    params, 
+                    self.gui.current_mesh, 
+                    connectors=connectors,
+                    parts=parts,
+                    gui_instance=self.gui
+                )
 
                 if hasattr(self.gui, '_reset_progress_cache'):
                     self.gui._reset_progress_cache("mesh_generation")

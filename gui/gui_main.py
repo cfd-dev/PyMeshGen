@@ -174,6 +174,8 @@ class PyMeshGenGUI(QMainWindow):
         self.cas_parts_info = None            # CAS文件的部件信息
         self.original_node_coords = None      # 原始节点坐标
         self.parts_params = []                # 部件参数列表
+        self.line_connectors = None           # 线网格生成的connectors列表
+        self.line_parts = None                # 线网格生成的parts列表
         self.render_mode = "surface"           # 渲染模式（surface：表面渲染）
         self.show_boundary = True             # 是否显示边界
         self.mesh_generation_thread = None    # 网格生成的线程实例
@@ -1145,6 +1147,11 @@ class PyMeshGenGUI(QMainWindow):
             connectors, parts = generate_line_mesh(edges_info, line_mesh_params)
             self.log_info(f"线网格生成完成: connectors={len(connectors) if connectors else 0}, parts={len(parts) if parts else 0}")
 
+            # 保存connectors和parts，供后续网格生成使用
+            self.line_connectors = connectors
+            self.line_parts = parts
+            self.log_info(f"已保存线网格数据: {len(connectors)} connectors, {len(parts)} parts")
+
             if connectors:
                 # 转换为Unstructured_Grid
                 unstr_grid = convert_connectors_to_unstructured_grid(connectors, grid_dimension=2)
@@ -1913,6 +1920,8 @@ class PyMeshGenGUI(QMainWindow):
     def clear_mesh(self):
         """清空网格"""
         self.current_mesh = None
+        self.line_connectors = None
+        self.line_parts = None
         self._apply_mesh_dimension(GLOBAL_MESH_DIMENSION, update_mesh=False)
         if hasattr(self, 'mesh_display'):
             self.mesh_display.clear()
