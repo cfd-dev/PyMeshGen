@@ -4,6 +4,7 @@
 基于VTK拾取器实现点/线/面/体的鼠标拾取
 """
 
+import inspect
 import math
 from typing import Callable, Dict, Optional
 
@@ -538,6 +539,48 @@ class GeometryPickingHelper:
         style = interactor.GetInteractorStyle()
         if style:
             style.OnKeyPress()
+
+    def _confirm_pick(self):
+        """确认拾取并显示结果"""
+        selected_elements = self.get_selected_elements()
+        element_counts = {}
+        total_count = 0
+        for elem_type, elements in selected_elements.items():
+            count = len(elements) if elements else 0
+            if count > 0:
+                type_name = {"vertices": "顶点", "edges": "边", "faces": "面", "bodies": "体"}.get(elem_type, elem_type)
+                element_counts[type_name] = count
+                total_count += count
+        
+        if element_counts:
+            counts_str = ", ".join([f"{name}: {count}个" for name, count in element_counts.items()])
+            status_msg = f"拾取完成: {counts_str}，共 {total_count} 个元素"
+        else:
+            status_msg = "拾取完成: 未拾取任何元素"
+        
+        print(status_msg)
+        
+        if self.gui:
+            if hasattr(self.gui, "status_bar"):
+                try:
+                    self.gui.status_bar.update_status(status_msg)
+                except Exception:
+                    pass
+            if hasattr(self.gui, "info_output") and hasattr(self.gui.info_output, "log_info"):
+                try:
+                    self.gui.info_output.log_info(status_msg)
+                except Exception:
+                    pass
+        
+        if self._on_confirm:
+            try:
+                sig = inspect.signature(self._on_confirm)
+                if len(sig.parameters) > 0:
+                    self._on_confirm(selected_elements)
+                else:
+                    self._on_confirm()
+            except (ValueError, TypeError):
+                self._on_confirm()
 
     def _on_point_pick_move(self, obj, event):
         """点拾取鼠标移动事件 - 实时显示磁吸效果"""
@@ -1146,7 +1189,8 @@ class GeometryPickingHelper:
             return
         if key in ("Return", "Enter", "KP_Enter"):
             if self._on_confirm:
-                self._on_confirm()
+                self._confirm_pick()
+            self.disable()
             return
         style = interactor.GetInteractorStyle()
         if style:
@@ -1376,6 +1420,15 @@ class _AreaSelectionFilter(QObject):
             self._mode = None
             self._rubber_band.hide()
             self.helper._area_selecting = False
+
+        if event.type() == QEvent.KeyPress:
+            key = event.key()
+            if key in (Qt.Key_Return, Qt.Key_Enter):
+                print(f"Enter键事件触发，当前选中的actor数量: {len(self.helper._highlighted_actors)}")
+                if self.helper._on_confirm:
+                    self.helper._confirm_pick()
+                self.helper.disable()
+                return True
 
         return False
 
