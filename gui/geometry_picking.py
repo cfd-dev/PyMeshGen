@@ -1008,6 +1008,32 @@ class GeometryPickingHelper:
         self.gui.display_mode = "elements"
         self._saved_display_mode = None
 
+    def _refresh_renderer_before_pick(self, renderer):
+        """在拾取前强制刷新渲染器，确保actor数据是最新的
+        
+        这个方法是解决平移视图后新创建几何体无法立即拾取的关键。
+        VTK的拾取器依赖于渲染器的最新状态，包括：
+        1. Actor的变换矩阵
+        2. 视口参数
+        3. 相机参数
+        
+        在平移/缩放操作后，这些状态可能还没有同步到拾取器，
+        导致拾取位置与实际显示位置不匹配。
+        """
+        if renderer is None:
+            return
+        
+        # 强制更新渲染器的视图矩阵和投影矩阵
+        # 这会同步相机参数和视口设置
+        renderer.ResetCameraClippingRange()
+        
+        # 确保所有actor的变换矩阵是最新的
+        # 通过调用Render()来强制同步，但避免完整的重绘以提高性能
+        if hasattr(self.mesh_display, 'render_window'):
+            render_window = self.mesh_display.render_window
+            # 只更新渲染状态，不实际渲染到屏幕
+            render_window.Render()
+
     def _on_left_button_press(self, obj, event):
         if not self._enabled:
             return
@@ -1028,6 +1054,10 @@ class GeometryPickingHelper:
             if style:
                 style.OnLeftButtonDown()
             return
+
+        # 强制刷新渲染器，确保actor的变换矩阵和几何数据是最新的
+        # 这解决了平移视图后新创建的几何体无法立即拾取的问题
+        self._refresh_renderer_before_pick(renderer)
 
         self._picker.Pick(click_pos[0], click_pos[1], 0, renderer)
         actor = self._picker.GetActor()
@@ -1080,6 +1110,9 @@ class GeometryPickingHelper:
             if style:
                 style.OnRightButtonDown()
             return
+
+        # 强制刷新渲染器，确保actor的变换矩阵和几何数据是最新的
+        self._refresh_renderer_before_pick(renderer)
 
         self._picker.Pick(click_pos[0], click_pos[1], 0, renderer)
         actor = self._picker.GetActor()

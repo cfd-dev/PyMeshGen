@@ -558,91 +558,9 @@ class GeometryOperations:
         if hasattr(self.gui, 'view_controller'):
             self.gui.view_controller._apply_render_mode_to_geometry(self.gui.render_mode)
 
-        # 为从零创建的几何创建单独的元素actors，用于拾取功能
-        # 这些actors默认不可见，只在元素显示模式下可见
-        self._create_individual_geometry_actors()
-
         if hasattr(self.gui, 'mesh_display') and hasattr(self.gui.mesh_display, 'render_window'):
             self.gui.mesh_display.render_window.Render()
-
-    def _create_individual_geometry_actors(self):
-        """为当前几何创建单独的元素actors，用于拾取功能"""
-        try:
-            from OCC.Core.TopExp import TopExp_Explorer
-            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
-            from fileIO.occ_to_vtk import create_vertex_actor, create_edge_actor, create_face_actor, create_solid_actor
-        except Exception:
-            return
-
-        if not hasattr(self.gui, 'current_geometry') or self.gui.current_geometry is None:
-            return
-
-        # 确保缓存存在
-        if not hasattr(self.gui, 'geometry_actors_cache'):
-            self.gui.geometry_actors_cache = {}
-
-        shape = self.gui.current_geometry
-
-        # 创建顶点actors
-        if 'vertices' not in self.gui.geometry_actors_cache:
-            self.gui.geometry_actors_cache['vertices'] = {}
-        vertex_explorer = TopExp_Explorer(shape, TopAbs_VERTEX)
-        vertex_index = 0
-        while vertex_explorer.More():
-            vertex = vertex_explorer.Current()
-            if vertex_index not in self.gui.geometry_actors_cache['vertices']:
-                actor = create_vertex_actor(vertex, color=(1.0, 0.0, 0.0), point_size=8.0)
-                actor.SetVisibility(False)
-                self.gui.mesh_display.renderer.AddActor(actor)
-                self.gui.geometry_actors_cache['vertices'][vertex_index] = actor
-            vertex_index += 1
-            vertex_explorer.Next()
-
-        # 创建边actors
-        if 'edges' not in self.gui.geometry_actors_cache:
-            self.gui.geometry_actors_cache['edges'] = {}
-        edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)
-        edge_index = 0
-        while edge_explorer.More():
-            edge = edge_explorer.Current()
-            if edge_index not in self.gui.geometry_actors_cache['edges']:
-                actor = create_edge_actor(edge, color=(0.0, 0.0, 1.0), line_width=2.0)
-                actor.SetVisibility(False)
-                self.gui.mesh_display.renderer.AddActor(actor)
-                self.gui.geometry_actors_cache['edges'][edge_index] = actor
-            edge_index += 1
-            edge_explorer.Next()
-
-        # 创建面actors
-        if 'faces' not in self.gui.geometry_actors_cache:
-            self.gui.geometry_actors_cache['faces'] = {}
-        face_explorer = TopExp_Explorer(shape, TopAbs_FACE)
-        face_index = 0
-        while face_explorer.More():
-            face = face_explorer.Current()
-            if face_index not in self.gui.geometry_actors_cache['faces']:
-                actor = create_face_actor(face, color=(0.0, 1.0, 0.0), opacity=0.6)
-                actor.SetVisibility(False)
-                self.gui.mesh_display.renderer.AddActor(actor)
-                self.gui.geometry_actors_cache['faces'][face_index] = actor
-            face_index += 1
-            face_explorer.Next()
-
-        # 创建体actors
-        if 'bodies' not in self.gui.geometry_actors_cache:
-            self.gui.geometry_actors_cache['bodies'] = {}
-        body_explorer = TopExp_Explorer(shape, TopAbs_SOLID)
-        body_index = 0
-        while body_explorer.More():
-            body = body_explorer.Current()
-            if body_index not in self.gui.geometry_actors_cache['bodies']:
-                actor = create_solid_actor(body, color=(0.8, 0.8, 0.9), opacity=0.5)
-                actor.SetVisibility(False)
-                self.gui.mesh_display.renderer.AddActor(actor)
-                self.gui.geometry_actors_cache['bodies'][body_index] = actor
-            body_index += 1
-            body_explorer.Next()
-
+            
 
 class _GeometryUnitDialog(QDialog):
     """几何单位设置对话框"""
