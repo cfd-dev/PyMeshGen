@@ -646,10 +646,13 @@ class ModelTreeWidget:
                 if cell is None:
                     continue
                 cell_name = cell.__class__.__name__
+                
+                # 处理具体单元类型
                 if cell_name in ('Triangle', 'Quadrilateral'):
                     face_count += 1
                 elif cell_name in ('Tetrahedron', 'Pyramid', 'Prism', 'Hexahedron'):
                     volume_count += 1
+                # 处理GenericCell（包括线段单元）
                 elif hasattr(cell, 'node_ids'):
                     node_count = len(cell.node_ids)
                     if node_count == 2:
@@ -658,6 +661,7 @@ class ModelTreeWidget:
                         face_count += 1
                     elif node_count in (4, 5, 6, 8) and getattr(mesh_data, 'dimension', 3) == 3:
                         volume_count += 1
+                # 处理list/tuple类型的单元（兼容性）
                 elif isinstance(cell, (list, tuple)):
                     node_count = len(cell)
                     if node_count == 2:

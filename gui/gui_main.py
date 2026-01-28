@@ -1168,6 +1168,11 @@ class PyMeshGenGUI(QMainWindow):
             
             if success:
                 self.log_info(f"线网格显示成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
+                
+                # 更新模型树
+                if hasattr(self, 'model_tree_widget'):
+                    self.model_tree_widget.load_mesh(unstr_grid, mesh_name="线网格")
+                    self.model_tree_widget.load_parts(unstr_grid)
             else:
                 self.log_warning("线网格显示失败")
         except Exception as e:

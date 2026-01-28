@@ -397,7 +397,12 @@ class MeshDisplayArea:
                 node_ids = cell.node_ids
                 num_nodes = len(node_ids)
                 
-                if num_nodes == 3:
+                if num_nodes == 2:
+                    line = vtk.vtkLine()
+                    line.GetPointIds().SetId(0, node_ids[0])
+                    line.GetPointIds().SetId(1, node_ids[1])
+                    polys.InsertNextCell(line)
+                elif num_nodes == 3:
                     triangle = vtk.vtkTriangle()
                     triangle.GetPointIds().SetId(0, node_ids[0])
                     triangle.GetPointIds().SetId(1, node_ids[1])
