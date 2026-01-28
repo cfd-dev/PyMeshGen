@@ -1031,56 +1031,96 @@ class PyMeshGenGUI(QMainWindow):
         from gui.line_mesh_generation import generate_line_mesh, LineMeshParams
 
         if not params.get('edges'):
+            self.log_warning("未选择几何线，请先拾取几何线")
             return
 
+        self.log_info(f"开始处理 {len(params['edges'])} 条几何线的网格生成请求")
+
         edges_info = []
-        for edge in params['edges']:
+        for idx, edge in enumerate(params['edges']):
             try:
                 edge_obj = edge.get('obj')
                 if edge_obj is None:
+                    self.log_warning(f"第 {idx+1} 条边的对象为空，已跳过")
                     continue
-                if hasattr(edge_obj, 'Shape'):
+                
+                self.log_info(f"第 {idx+1} 条边的对象类型: {type(edge_obj).__name__}")
+                
+                from OCC.Core.TopoDS import TopoDS_Edge, TopoDS_Shape
+                from OCC.Core.TopExp import TopExp_Explorer
+                from OCC.Core.TopAbs import TopAbs_VERTEX
+                from OCC.Core.BRep import BRep_Tool
+                from OCC.Core.BRepGProp import brepgprop
+                from OCC.Core.GProp import GProp_GProps
+                from OCC.Core.TopoDS import TopoDS_Vertex
+
+                shape = None
+                
+                if isinstance(edge_obj, TopoDS_Edge):
+                    self.log_info(f"第 {idx+1} 条边是 TopoDS_Edge 类型，直接使用")
+                    shape = edge_obj
+                elif hasattr(edge_obj, 'Shape'):
                     shape = edge_obj.Shape()
                     if shape.IsNull():
+                        self.log_warning(f"第 {idx+1} 条边的形状为空，已跳过")
                         continue
-                    from OCC.Core.TopExp import TopExp_Explorer
-                    from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE
-                    from OCC.Core.BRep import BRep_Tool
-                    from OCC.Core.BRepGProp import brepgprop_Length
-                    from OCC.Core.GProp import GProp_GProps
-                    from OCC.Core.TopoDS import TopoDS_Vertex
-
-                    v_exp = TopExp_Explorer(shape, TopAbs_VERTEX)
-                    vertices = []
-                    while v_exp.More():
-                        v = TopoDS_Vertex(v_exp.Current())
-                        pnt = BRep_Tool.Pnt(v)
-                        vertices.append((pnt.X(), pnt.Y(), pnt.Z()))
-                        v_exp.Next()
-
-                    if len(vertices) < 2:
+                elif hasattr(edge_obj, 'geometry') or hasattr(edge_obj, 'geom'):
+                    geom = getattr(edge_obj, 'geometry', None) or getattr(edge_obj, 'geom', None)
+                    self.log_info(f"第 {idx+1} 条边有 geometry/geom 属性: {type(geom).__name__ if geom else 'None'}")
+                    if geom and hasattr(geom, 'Shape'):
+                        shape = geom.Shape()
+                        if shape.IsNull():
+                            self.log_warning(f"第 {idx+1} 条边的geometry形状为空，已跳过")
+                            continue
+                    else:
+                        self.log_warning(f"第 {idx+1} 条边没有Shape或geometry属性，无法处理")
                         continue
+                else:
+                    self.log_warning(f"第 {idx+1} 条边类型 {type(edge_obj).__name__} 不支持，无法处理")
+                    continue
 
-                    gprop = GProp_GProps()
-                    brepgprop_Length(shape, gprop)
+                if shape is None or shape.IsNull():
+                    self.log_warning(f"第 {idx+1} 条边的形状为空，已跳过")
+                    continue
 
-                    curve = BRep_Tool.Curve(shape)
+                v_exp = TopExp_Explorer(shape, TopAbs_VERTEX)
+                vertices = []
+                while v_exp.More():
+                    v = TopoDS_Vertex(v_exp.Current())
+                    pnt = BRep_Tool.Pnt(v)
+                    vertices.append((pnt.X(), pnt.Y(), pnt.Z()))
+                    v_exp.Next()
 
-                    edges_info.append({
-                        'start_point': vertices[0],
-                        'end_point': vertices[-1],
-                        'curve': curve,
-                        'length': gprop.Mass(),
-                        'name': edge.get('name', f"edge_{len(edges_info)}"),
-                        'obj': edge_obj
-                    })
+                if len(vertices) < 2:
+                    self.log_warning(f"第 {idx+1} 条边的顶点数量不足（{len(vertices)}个），已跳过")
+                    continue
+
+                gprop = GProp_GProps()
+                brepgprop.LinearProperties(shape, gprop)
+
+                curve = BRep_Tool.Curve(shape)
+
+                edges_info.append({
+                    'start_point': vertices[0],
+                    'end_point': vertices[-1],
+                    'curve': curve,
+                    'length': gprop.Mass(),
+                    'name': edge.get('name', f"edge_{len(edges_info)}"),
+                    'obj': edge_obj
+                })
+                self.log_info(f"成功处理第 {idx+1} 条边: 长度={gprop.Mass():.4f}, 顶点数={len(vertices)}")
             except Exception as e:
                 import traceback
+                error_msg = f"处理第 {idx+1} 条边时出错: {str(e)}"
+                self.log_error(error_msg)
                 traceback.print_exc()
                 continue
 
         if not edges_info:
+            self.log_warning("没有有效的几何线可用于生成网格，请检查选择的几何线")
             return
+
+        self.log_info(f"共有 {len(edges_info)} 条有效几何线可用于生成网格")
 
         line_mesh_params = LineMeshParams(
             method=params.get('method', 'uniform'),
@@ -1093,33 +1133,105 @@ class PyMeshGenGUI(QMainWindow):
             part_name=params.get('part_name', 'default_line')
         )
 
-        connectors, parts = generate_line_mesh(edges_info, line_mesh_params)
+        try:
+            connectors, parts = generate_line_mesh(edges_info, line_mesh_params)
+            self.log_info(f"线网格生成完成: connectors={len(connectors) if connectors else 0}, parts={len(parts) if parts else 0}")
 
-        if connectors:
-            self._update_mesh_display_with_connectors(connectors)
-            self.update_status(f"成功生成 {len(connectors)} 个线网格Connector")
+            if connectors:
+                self._update_mesh_display_with_connectors(connectors)
+                self.update_status(f"成功生成 {len(connectors)} 个线网格Connector")
+            else:
+                self.log_warning("未生成任何Connector，请检查参数设置")
+        except Exception as e:
+            import traceback
+            error_msg = f"生成线网格时出错: {str(e)}"
+            self.log_error(error_msg)
+            traceback.print_exc()
 
     def _update_mesh_display_with_connectors(self, connectors):
         """更新网格显示以显示Connector"""
         if not hasattr(self, 'mesh_display') or not self.mesh_display:
+            self.log_warning("网格显示对象不存在，无法显示生成的线网格")
             return
 
-        for conn in connectors:
-            if hasattr(conn, 'front_list') and conn.front_list:
-                for front in conn.front_list:
-                    if hasattr(front, 'node_elem1') and front.node_elem1:
-                        node1 = front.node_elem1
-                        if hasattr(node1, 'coords'):
-                            x, y, z = node1.coords if len(node1.coords) == 3 else (*node1.coords, 0.0)
-                            self.mesh_display.add_node(x, y, z)
+        self.log_info(f"开始更新网格显示，共 {len(connectors)} 个Connector")
 
-                    if hasattr(front, 'node_elem2') and front.node_elem2:
-                        node2 = front.node_elem2
-                        if hasattr(node2, 'coords'):
-                            x, y, z = node2.coords if len(node2.coords) == 3 else (*node2.coords, 0.0)
-                            self.mesh_display.add_node(x, y, z)
+        try:
+            import vtk
 
-        self.mesh_display.render()
+            points = vtk.vtkPoints()
+            lines = vtk.vtkCellArray()
+            point_map = {}
+            point_count = 0
+            line_count = 0
+
+            for conn_idx, conn in enumerate(connectors):
+                self.log_info(f"处理 Connector {conn_idx}: part_name={conn.part_name}, curve_name={conn.curve_name}")
+                
+                if hasattr(conn, 'front_list') and conn.front_list:
+                    self.log_info(f"Connector {conn_idx} 有 {len(conn.front_list)} 个 Front")
+                    
+                    for front_idx, front in enumerate(fronts := conn.front_list):
+                        self.log_info(f"处理 Front {front_idx}: type={type(front).__name__}")
+                        
+                        node1_coords = None
+                        node2_coords = None
+
+                        if hasattr(front, 'node_elems') and len(front.node_elems) >= 2:
+                            node1 = front.node_elems[0]
+                            node2 = front.node_elems[1]
+                            
+                            self.log_info(f"Front {front_idx} 的节点类型: node1={type(node1).__name__}, node2={type(node2).__name__}")
+                            
+                            if hasattr(node1, 'coords'):
+                                coords = node1.coords if len(node1.coords) == 3 else (*node1.coords, 0.0)
+                                node1_coords = tuple(coords)
+                                self.log_info(f"node1 坐标: {node1_coords}")
+
+                            if hasattr(node2, 'coords'):
+                                coords = node2.coords if len(node2.coords) == 3 else (*node2.coords, 0.0)
+                                node2_coords = tuple(coords)
+                                self.log_info(f"node2 坐标: {node2_coords}")
+
+                        if node1_coords and node2_coords:
+                            for coords in [node1_coords, node2_coords]:
+                                if coords not in point_map:
+                                    points.InsertNextPoint(*coords)
+                                    point_map[coords] = point_count
+                                    point_count += 1
+
+                            line = vtk.vtkLine()
+                            line.GetPointIds().SetId(0, point_map[node1_coords])
+                            line.GetPointIds().SetId(1, point_map[node2_coords])
+                            lines.InsertNextCell(line)
+                            line_count += 1
+                        else:
+                            self.log_warning(f"Front {front_idx} 缺少节点坐标: node1={node1_coords}, node2={node2_coords}")
+
+            if line_count > 0:
+                polydata = vtk.vtkPolyData()
+                polydata.SetPoints(points)
+                polydata.SetLines(lines)
+
+                mapper = vtk.vtkPolyDataMapper()
+                mapper.SetInputData(polydata)
+
+                actor = vtk.vtkActor()
+                actor.SetMapper(mapper)
+                actor.GetProperty().SetColor(1.0, 0.0, 0.0)
+                actor.GetProperty().SetLineWidth(2.0)
+
+                self.mesh_display.renderer.AddActor(actor)
+                self.mesh_display.render_window.Render()
+
+                self.log_info(f"网格显示更新完成: 添加了 {point_count} 个节点和 {line_count} 条边")
+            else:
+                self.log_warning("没有可显示的边，请检查Connector数据")
+        except Exception as e:
+            import traceback
+            error_msg = f"显示线网格时出错: {str(e)}"
+            self.log_error(error_msg)
+            traceback.print_exc()
 
     def on_geometry_import_progress(self, message, progress):
         """几何导入进度更新回调"""

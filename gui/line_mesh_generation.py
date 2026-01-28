@@ -395,10 +395,10 @@ def extract_edge_info_from_geometry(geometry_obj) -> List[Dict]:
             curve = BRep_Tool.Curve(edge)
             if curve:
                 from OCC.Core.GProp import GProp_GProps
-                from OCC.Core.BRepGProp import brepgprop_Length
+                from OCC.Core.BRepGProp import brepgprop
                 
                 gprop = GProp_GProps()
-                brepgprop_Length(edge, gprop)
+                brepgprop.LinearProperties(edge, gprop)
                 length = gprop.Mass()
                 
                 # 获取端点
