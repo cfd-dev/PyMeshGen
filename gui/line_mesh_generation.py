@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from data_structure.basic_elements import NodeElement, NodeElementALM, Connector, Part
 from data_structure.front2d import Front
 from utils.geom_toolkit import calculate_distance
-from utils.message import error as log_error
+from utils.message import error, info, warning, debug
 
 
 @dataclass
@@ -203,7 +203,7 @@ def discretize_line(
             return points
             
         except Exception as e:
-            print(f"曲线离散化失败，使用线性插值: {e}")
+            warning(f"曲线离散化失败，使用线性插值: {e}")
             # 如果曲线离散化失败，回退到线性插值
             start = np.array(start_point)
             end = np.array(end_point)
@@ -215,7 +215,7 @@ def discretize_line(
             
             return points
     else:
-        log_error("无法进行离散化：未提供几何曲线对象")
+        error("无法进行离散化：未提供几何曲线对象")
         return []
 
 
@@ -286,25 +286,22 @@ def create_connector_from_edge(
     """
     start_point = edge_info['start_point']
     end_point = edge_info['end_point']
-    curve = edge_info.get('curve')  # 获取几何曲线对象
+    curve = edge_info.get('curve')
     
-    # 调试：检查 curve 的类型
-    print(f"create_connector_from_edge: curve 类型 = {type(curve)}, curve = {curve}")
+    debug(f"create_connector_from_edge: curve 类型 = {type(curve)}")
     
-    # 检查 curve 是否是有效的几何曲线对象
     valid_curve = False
     if curve is not None:
         try:
-            # 尝试调用 FirstParameter 方法
             if hasattr(curve, 'FirstParameter'):
                 valid_curve = True
-                print(f"curve 是有效的几何曲线对象")
+                debug("curve 是有效的几何曲线对象")
             else:
-                print(f"curve 不是有效的几何曲线对象，没有 FirstParameter 方法")
+                warning("curve 没有 FirstParameter 方法，将使用线性插值")
         except Exception as e:
-            print(f"检查 curve 类型时出错: {e}")
+            error(f"检查 curve 类型时出错: {e}")
     
-    # 离散化线段（传递几何曲线，将点投影到曲线上）
+    # 离散化线段
     points = discretize_line(start_point, end_point, params, curve=curve if valid_curve else None)
     
     # 创建Front列表
@@ -575,7 +572,7 @@ def extract_edge_info_from_geometry(geometry_obj) -> List[Dict]:
                         'name': f"edge_{idx}"
                     }
                     edges_info.append(edge_info)
-                    print(f"提取边 {idx}: 起点 {vertices[0]}, 终点 {vertices[-1]}, 长度 {length}")
+                    info(f"提取边 {idx}: 起点 {vertices[0]}, 终点 {vertices[-1]}, 长度 {length:.4f}")
                     idx += 1
             
             explorer.Next()
