@@ -349,6 +349,107 @@ def generate_line_mesh(
     return connectors, parts
 
 
+def convert_connectors_to_unstructured_grid(
+    connectors: List[Connector],
+    grid_dimension: int = 2
+) -> 'Unstructured_Grid':
+    """
+    将Connector列表转换为Unstructured_Grid对象
+    
+    Args:
+        connectors: Connector列表
+        grid_dimension: 网格维度（2或3）
+        
+    Returns:
+        Unstructured_Grid对象
+    """
+    from data_structure.unstructured_grid import Unstructured_Grid, GenericCell
+    from data_structure.basic_elements import NodeElement
+    
+    # 收集所有节点
+    node_map = {}
+    node_coords = []
+    node_idx = 0
+    
+    for conn in connectors:
+        if hasattr(conn, 'front_list') and conn.front_list:
+            for front in conn.front_list:
+                if hasattr(front, 'node_elems') and len(front.node_elems) >= 2:
+                    for node_elem in front.node_elems:
+                        if hasattr(node_elem, 'coords'):
+                            coords = tuple(node_elem.coords)
+                            if coords not in node_map:
+                                node_map[coords] = node_idx
+                                node_coords.append(list(coords))
+                                node_idx += 1
+    
+    # 创建边界节点
+    boundary_nodes = []
+    for idx, coords in enumerate(node_coords):
+        boundary_nodes.append(NodeElement(coords, idx, bc_type="wall"))
+    
+    # 创建线段单元（使用GenericCell）
+    cell_container = []
+    cell_idx = 0
+    
+    for conn in connectors:
+        if hasattr(conn, 'front_list') and conn.front_list:
+            for front in conn.front_list:
+                if hasattr(front, 'node_elems') and len(front.node_elems) >= 2:
+                    node1 = front.node_elems[0]
+                    node2 = front.node_elems[1]
+                    
+                    if hasattr(node1, 'coords') and hasattr(node2, 'coords'):
+                        coords1 = tuple(node1.coords)
+                        coords2 = tuple(node2.coords)
+                        
+                        if coords1 in node_map and coords2 in node_map:
+                            node_id1 = node_map[coords1]
+                            node_id2 = node_map[coords2]
+                            
+                            # 创建线段单元（使用GenericCell，只保存节点索引）
+                            line_segment = GenericCell(
+                                node_ids=[node_id1, node_id2],
+                                part_name=conn.part_name,
+                                idx=cell_idx
+                            )
+                            cell_container.append(line_segment)
+                            cell_idx += 1
+    
+    # 创建Unstructured_Grid
+    grid = Unstructured_Grid(
+        cell_container=cell_container,
+        node_coords=node_coords,
+        boundary_nodes=boundary_nodes,
+        grid_dimension=grid_dimension,
+        mesh_type="line_mesh"
+    )
+    
+    # 设置部件信息
+    parts_info = {}
+    for conn in connectors:
+        if conn.part_name not in parts_info:
+            parts_info[conn.part_name] = {
+                'part_name': conn.part_name,
+                'connectors': []
+            }
+        parts_info[conn.part_name]['connectors'].append(conn.curve_name)
+    
+    grid.parts_info = parts_info
+    
+    # 设置边界信息
+    boundary_info = {}
+    for conn in connectors:
+        if conn.part_name not in boundary_info:
+            boundary_info[conn.part_name] = {
+                'bc_type': 'wall',
+                'faces': []
+            }
+    grid.boundary_info = boundary_info
+    
+    return grid
+
+
 def get_all_fronts_from_parts(parts: List[Part]) -> List[Front]:
     """
     从Part列表获取所有Front

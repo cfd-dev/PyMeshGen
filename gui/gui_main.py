@@ -1028,7 +1028,7 @@ class PyMeshGenGUI(QMainWindow):
 
     def _on_line_mesh_generation_requested(self, params):
         """处理线网格生成请求"""
-        from gui.line_mesh_generation import generate_line_mesh, LineMeshParams
+        from gui.line_mesh_generation import generate_line_mesh, convert_connectors_to_unstructured_grid, LineMeshParams
 
         if not params.get('edges'):
             self.log_warning("未选择几何线，请先拾取几何线")
@@ -1138,7 +1138,12 @@ class PyMeshGenGUI(QMainWindow):
             self.log_info(f"线网格生成完成: connectors={len(connectors) if connectors else 0}, parts={len(parts) if parts else 0}")
 
             if connectors:
-                self._update_mesh_display_with_connectors(connectors)
+                # 转换为Unstructured_Grid
+                unstr_grid = convert_connectors_to_unstructured_grid(connectors, grid_dimension=2)
+                self.log_info(f"Unstructured_Grid创建成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
+
+                # 更新网格显示
+                self._update_mesh_display_with_unstructured_grid(unstr_grid)
                 self.update_status(f"成功生成 {len(connectors)} 个线网格Connector")
             else:
                 self.log_warning("未生成任何Connector，请检查参数设置")
@@ -1148,85 +1153,23 @@ class PyMeshGenGUI(QMainWindow):
             self.log_error(error_msg)
             traceback.print_exc()
 
-    def _update_mesh_display_with_connectors(self, connectors):
-        """更新网格显示以显示Connector"""
+    def _update_mesh_display_with_unstructured_grid(self, unstr_grid):
+        """使用Unstructured_Grid更新网格显示"""
         if not hasattr(self, 'mesh_display') or not self.mesh_display:
             self.log_warning("网格显示对象不存在，无法显示生成的线网格")
             return
 
-        self.log_info(f"开始更新网格显示，共 {len(connectors)} 个Connector")
-
         try:
-            import vtk
-
-            points = vtk.vtkPoints()
-            lines = vtk.vtkCellArray()
-            point_map = {}
-            point_count = 0
-            line_count = 0
-
-            for conn_idx, conn in enumerate(connectors):
-                self.log_info(f"处理 Connector {conn_idx}: part_name={conn.part_name}, curve_name={conn.curve_name}")
-                
-                if hasattr(conn, 'front_list') and conn.front_list:
-                    self.log_info(f"Connector {conn_idx} 有 {len(conn.front_list)} 个 Front")
-                    
-                    for front_idx, front in enumerate(fronts := conn.front_list):
-                        self.log_info(f"处理 Front {front_idx}: type={type(front).__name__}")
-                        
-                        node1_coords = None
-                        node2_coords = None
-
-                        if hasattr(front, 'node_elems') and len(front.node_elems) >= 2:
-                            node1 = front.node_elems[0]
-                            node2 = front.node_elems[1]
-                            
-                            self.log_info(f"Front {front_idx} 的节点类型: node1={type(node1).__name__}, node2={type(node2).__name__}")
-                            
-                            if hasattr(node1, 'coords'):
-                                coords = node1.coords if len(node1.coords) == 3 else (*node1.coords, 0.0)
-                                node1_coords = tuple(coords)
-                                self.log_info(f"node1 坐标: {node1_coords}")
-
-                            if hasattr(node2, 'coords'):
-                                coords = node2.coords if len(node2.coords) == 3 else (*node2.coords, 0.0)
-                                node2_coords = tuple(coords)
-                                self.log_info(f"node2 坐标: {node2_coords}")
-
-                        if node1_coords and node2_coords:
-                            for coords in [node1_coords, node2_coords]:
-                                if coords not in point_map:
-                                    points.InsertNextPoint(*coords)
-                                    point_map[coords] = point_count
-                                    point_count += 1
-
-                            line = vtk.vtkLine()
-                            line.GetPointIds().SetId(0, point_map[node1_coords])
-                            line.GetPointIds().SetId(1, point_map[node2_coords])
-                            lines.InsertNextCell(line)
-                            line_count += 1
-                        else:
-                            self.log_warning(f"Front {front_idx} 缺少节点坐标: node1={node1_coords}, node2={node2_coords}")
-
-            if line_count > 0:
-                polydata = vtk.vtkPolyData()
-                polydata.SetPoints(points)
-                polydata.SetLines(lines)
-
-                mapper = vtk.vtkPolyDataMapper()
-                mapper.SetInputData(polydata)
-
-                actor = vtk.vtkActor()
-                actor.SetMapper(mapper)
-                actor.GetProperty().SetColor(1.0, 0.0, 0.0)
-                actor.GetProperty().SetLineWidth(2.0)
-
-                self.mesh_display.renderer.AddActor(actor)
-                self.mesh_display.render_window.Render()
-
-                self.log_info(f"网格显示更新完成: 添加了 {point_count} 个节点和 {line_count} 条边")
+            # 设置mesh_data
+            self.mesh_display.mesh_data = unstr_grid
+            
+            # 显示网格
+            success = self.mesh_display.display_mesh(render_immediately=True)
+            
+            if success:
+                self.log_info(f"线网格显示成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
             else:
-                self.log_warning("没有可显示的边，请检查Connector数据")
+                self.log_warning("线网格显示失败")
         except Exception as e:
             import traceback
             error_msg = f"显示线网格时出错: {str(e)}"
