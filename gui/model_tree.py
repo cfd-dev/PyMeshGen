@@ -435,20 +435,24 @@ class ModelTreeWidget:
         self._clear_mesh_elements()
         self._extract_mesh_elements(mesh_data)
 
-    def load_parts(self, parts_data=None):
+    def load_parts(self, parts_data=None, merge=False):
         """
         加载部件信息到树中
 
         Args:
             parts_data: 部件数据对象（可选，如果不提供则从mesh_data中提取）
+            merge: 是否合并现有部件而不是覆盖（默认为False，即覆盖）
         """
         if parts_data is not None:
             self.parts_data = parts_data
         elif self.mesh_data is not None:
             self.parts_data = self.mesh_data
 
-        self._clear_parts_elements()
-        self._extract_parts_elements(self.parts_data)
+        if merge:
+            self._merge_parts_elements(self.parts_data)
+        else:
+            self._clear_parts_elements()
+            self._extract_parts_elements(self.parts_data)
 
     def _clear_geometry_elements(self):
         """清除几何元素"""
@@ -939,6 +943,139 @@ class ModelTreeWidget:
             part_count = 1
 
         parts_item.setText(1, str(part_count))
+
+        self.tree.blockSignals(False)
+
+    def _merge_parts_elements(self, parts_data):
+        """
+        合并部件信息到树中（不覆盖现有部件）
+
+        Args:
+            parts_data: 部件数据对象
+        """
+        parts_item = self.tree.topLevelItem(2)
+        if parts_item is None:
+            return
+
+        if parts_data is None:
+            return
+
+        # 获取现有部件名称集合
+        existing_parts = set()
+        for i in range(parts_item.childCount()):
+            child = parts_item.child(i)
+            existing_parts.add(child.text(0))
+
+        self.tree.blockSignals(True)
+
+        # 处理字典类型的数据
+        if isinstance(parts_data, dict) and 'parts_info' in parts_data:
+            parts_info = parts_data['parts_info']
+            if isinstance(parts_info, list):
+                for part_info in parts_info:
+                    part_name = part_info.get('part_name', f'部件_{parts_item.childCount()}')
+                    
+                    # 只添加不存在的部件
+                    if part_name not in existing_parts:
+                        bc_type = part_info.get('bc_type', '')
+                        checked = bc_type != 'interior'
+
+                        part_item = QTreeWidgetItem(parts_item)
+                        part_item.setText(0, part_name)
+                        part_item.setText(1, "")
+                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                        part_item.setData(0, Qt.UserRole, ("parts", part_info, parts_item.childCount()))
+
+                        if bc_type:
+                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                        existing_parts.add(part_name)
+            elif isinstance(parts_info, dict):
+                for part_name, part_data in parts_info.items():
+                    if part_name not in PARTS_INFO_RESERVED_KEYS and part_name not in existing_parts:
+                        bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                        checked = bc_type != 'interior'
+
+                        part_item = QTreeWidgetItem(parts_item)
+                        part_item.setText(0, part_name)
+                        part_item.setText(1, "")
+                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                        part_item.setData(0, Qt.UserRole, ("parts", part_data, parts_item.childCount()))
+
+                        if bc_type:
+                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                        existing_parts.add(part_name)
+        elif isinstance(parts_data, dict):
+            for part_name, part_data in parts_data.items():
+                if part_name not in PARTS_INFO_RESERVED_KEYS and part_name not in existing_parts:
+                    bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                    checked = bc_type != 'interior'
+
+                    part_item = QTreeWidgetItem(parts_item)
+                    part_item.setText(0, part_name)
+                    part_item.setText(1, "")
+                    part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    part_item.setData(0, Qt.UserRole, ("parts", part_data, parts_item.childCount()))
+
+                    if bc_type:
+                        part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                    existing_parts.add(part_name)
+        elif hasattr(parts_data, 'parts_info') and parts_data.parts_info:
+            if isinstance(parts_data.parts_info, list):
+                for part_info in parts_data.parts_info:
+                    part_name = part_info.get('part_name', f'部件_{parts_item.childCount()}')
+                    
+                    # 只添加不存在的部件
+                    if part_name not in existing_parts:
+                        bc_type = part_info.get('bc_type', '')
+                        checked = bc_type != 'interior'
+
+                        part_item = QTreeWidgetItem(parts_item)
+                        part_item.setText(0, part_name)
+                        part_item.setText(1, "")
+                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                        part_item.setData(0, Qt.UserRole, ("parts", part_info, parts_item.childCount()))
+
+                        if bc_type:
+                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                        existing_parts.add(part_name)
+            elif isinstance(parts_data.parts_info, dict):
+                for part_name, part_data in parts_data.parts_info.items():
+                    if part_name not in PARTS_INFO_RESERVED_KEYS and part_name not in existing_parts:
+                        bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                        checked = bc_type != 'interior'
+
+                        part_item = QTreeWidgetItem(parts_item)
+                        part_item.setText(0, part_name)
+                        part_item.setText(1, "")
+                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                        part_item.setData(0, Qt.UserRole, ("parts", part_data, parts_item.childCount()))
+
+                        if bc_type:
+                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                        existing_parts.add(part_name)
+        elif hasattr(parts_data, 'boundary_info') and parts_data.boundary_info:
+            for part_name, part_data in parts_data.boundary_info.items():
+                if part_name not in existing_parts:
+                    bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                    checked = bc_type != 'interior'
+
+                    part_item = QTreeWidgetItem(parts_item)
+                    part_item.setText(0, part_name)
+                    part_item.setText(1, "")
+                    part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    part_item.setData(0, Qt.UserRole, ("parts", part_data, parts_item.childCount()))
+
+                    if bc_type:
+                        part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                    existing_parts.add(part_name)
+
+        parts_item.setText(1, str(parts_item.childCount()))
 
         self.tree.blockSignals(False)
 

@@ -1169,10 +1169,10 @@ class PyMeshGenGUI(QMainWindow):
             if success:
                 self.log_info(f"线网格显示成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
                 
-                # 更新模型树
+                # 更新模型树（合并部件，不覆盖现有部件）
                 if hasattr(self, 'model_tree_widget'):
                     self.model_tree_widget.load_mesh(unstr_grid, mesh_name="线网格")
-                    self.model_tree_widget.load_parts(unstr_grid)
+                    self.model_tree_widget.load_parts(unstr_grid, merge=True)
             else:
                 self.log_warning("线网格显示失败")
         except Exception as e:
