@@ -1204,15 +1204,21 @@ class PyMeshGenGUI(QMainWindow):
         )
 
         try:
-            connectors, parts = generate_line_mesh(edges_info, line_mesh_params)
+            # 计算起始索引（基于之前已有的 connectors 数量）
+            start_idx = len(self.line_connectors) if self.line_connectors else 0
+            
+            connectors, parts = generate_line_mesh(edges_info, line_mesh_params, start_idx=start_idx)
             self.log_info(f"线网格生成完成: connectors={len(connectors) if connectors else 0}, parts={len(parts) if parts else 0}")
 
-            # 保存connectors和parts，供后续网格生成使用
-            self.line_connectors = connectors
-            self.log_info(f"已保存线网格数据: {len(connectors)} connectors")
+            # 保存connectors和parts，供后续网格生成使用（累积而非覆盖）
+            if self.line_connectors is None:
+                self.line_connectors = connectors
+            else:
+                self.line_connectors.extend(connectors)
+            self.log_info(f"已保存线网格数据: {len(self.line_connectors)} connectors")
 
             if connectors:
-                # 转换为Unstructured_Grid
+                # 转换为Unstructured_Grid（只转换新生成的 connectors）
                 unstr_grid = convert_connectors_to_unstructured_grid(connectors, grid_dimension=2)
                 self.log_info(f"Unstructured_Grid创建成功: 节点数={unstr_grid.num_nodes}, 单元数={unstr_grid.num_cells}")
 

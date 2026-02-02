@@ -358,7 +358,8 @@ def create_part_from_connectors(
 
 def generate_line_mesh(
     edges_info: List[Dict],
-    params: LineMeshParams
+    params: LineMeshParams,
+    start_idx: int = 0
 ) -> Tuple[List[Connector], List[Part]]:
     """
     生成线网格
@@ -366,6 +367,7 @@ def generate_line_mesh(
     Args:
         edges_info: 边信息列表
         params: 线网格生成参数
+        start_idx: 起始索引（用于多次生成时避免重复命名）
         
     Returns:
         (Connector列表, Part列表)
@@ -381,7 +383,7 @@ def generate_line_mesh(
             growth_rate=params.growth_rate,
             tanh_factor=params.tanh_factor,
             bc_type=params.bc_type,
-            part_name=f"{params.part_name}_{idx}"
+            part_name=params.part_name
         )
         
         connector = create_connector_from_edge(edge_info, edge_params)

@@ -313,7 +313,7 @@ class RegionCreationDialog(QDialog):
         self.btn_create.setEnabled(is_closed)
         
     def check_region_closed(self):
-        """检查是否形成封闭区域"""
+        """检查是否形成封闭区域（支持多连通域）"""
         if len(self.selected_connectors) < 1:
             return False
         
@@ -359,45 +359,80 @@ class RegionCreationDialog(QDialog):
             if not (has_start and has_end):
                 return False
         
-        # 如果只有一个Connector，检查起点和终点是否重合
-        if len(self.selected_connectors) == 1:
-            start, end, _ = endpoints[0]
-            return start == end
-        
-        # 如果有多个Connector，检查是否能形成闭环
-        # 从第一个Connector的起点开始，沿着连接关系遍历
-        tolerance = 1e-6
+        # 将 Connector 分组为多个连通分量（每个连通分量是一个独立的闭环）
         visited_connectors = set()
+        connected_components = []
         
-        # 找到第一个Connector的起点
-        current_point, next_point, current_conn_idx = endpoints[0]
-        visited_connectors.add(current_conn_idx)
-        
-        # 沿着连接关系遍历所有Connector
-        for _ in range(len(self.selected_connectors)):
-            # 在当前终点处找到下一个Connector
-            found_next = False
-            for conn_type, conn_idx in point_connections.get(next_point, []):
-                if conn_idx not in visited_connectors and conn_type == 'start':
-                    # 找到下一个Connector
-                    for start, end, idx in endpoints:
-                        if idx == conn_idx:
-                            current_point = start
-                            next_point = end
-                            visited_connectors.add(conn_idx)
-                            found_next = True
-                            break
+        for conn_idx in range(len(self.selected_connectors)):
+            if conn_idx in visited_connectors:
+                continue
+            
+            # 找到一个未访问的 Connector，开始遍历
+            component = []
+            current_conn_idx = conn_idx
+            
+            # 找到当前 Connector 的起点和终点
+            start, end, _ = endpoints[current_conn_idx]
+            current_point = start
+            visited_connectors.add(current_conn_idx)
+            component.append(current_conn_idx)
+            
+            # 沿着连接关系遍历，直到回到起点
+            while True:
+                # 在当前点找到下一个 Connector
+                found_next = False
+                for conn_type, next_conn_idx in point_connections.get(current_point, []):
+                    if next_conn_idx not in visited_connectors and conn_type == 'end':
+                        # 找到下一个 Connector
+                        for s, e, idx in endpoints:
+                            if idx == next_conn_idx:
+                                current_point = e
+                                visited_connectors.add(next_conn_idx)
+                                component.append(next_conn_idx)
+                                found_next = True
+                                break
+                        break
+                
+                if not found_next:
+                    # 没有找到下一个 Connector，说明遍历完成
+                    break
+                
+                # 检查是否回到起点
+                if current_point == start:
+                    # 形成闭环
                     break
             
-            if not found_next:
-                # 没有找到下一个Connector
-                break
+            connected_components.append(component)
         
-        # 检查是否所有Connector都被访问，并且最后一个Connector的终点回到第一个Connector的起点
-        first_start = endpoints[0][0]
-        last_end = next_point
+        # 检查每个连通分量是否都是封闭的
+        for component in connected_components:
+            if len(component) == 1:
+                # 单个 Connector，检查起点和终点是否重合
+                start, end, _ = endpoints[component[0]]
+                if start != end:
+                    return False
+            else:
+                # 多个 Connector，检查是否能形成闭环
+                # 从第一个 Connector 的起点开始
+                start, _, _ = endpoints[component[0]]
+                current_point = start
+                
+                # 遍历所有 Connector
+                for conn_idx in component:
+                    s, e, _ = endpoints[conn_idx]
+                    if s == current_point:
+                        current_point = e
+                    elif e == current_point:
+                        current_point = s
+                    else:
+                        return False
+                
+                # 检查是否回到起点
+                if current_point != start:
+                    return False
         
-        return len(visited_connectors) == len(self.selected_connectors) and first_start == last_end
+        # 所有连通分量都是封闭的
+        return True
         
     def on_preview_clicked(self):
         """预览区域"""
