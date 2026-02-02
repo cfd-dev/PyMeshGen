@@ -81,6 +81,10 @@ def generate_mesh(parameters, mesh_data=None, connectors=None, parts=None, gui_i
         info("使用直接传入的parts参数，直接提取front_list")
         from data_structure.basic_elements import Part
         if isinstance(parts, list) and len(parts) > 0:
+            # 将传入的parts添加到parameters.part_params中，供adlayers2使用
+            parameters.part_params = parts
+            info(f"已将 {len(parts)} 个部件添加到parameters.part_params")
+            
             front_heap = []
             front_idx = 0
             for part in parts:

@@ -207,17 +207,24 @@ class MeshOperations:
                 QMessageBox.warning(self.gui, "警告", "网格生成任务正在进行中，请稍候...")
                 return
 
-            if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:
-                QMessageBox.warning(self.gui, "警告", "请先导入网格文件")
-                self.gui.log_info("未导入网格文件，无法生成网格")
-                self.gui.update_status("未导入网格文件")
+            # 检查是否有有效的输入数据
+            has_region_data = hasattr(self.gui, 'region_part') and self.gui.region_part
+            has_line_mesh_data = hasattr(self.gui, 'line_connectors') and self.gui.line_connectors
+            has_imported_mesh = hasattr(self.gui, 'current_mesh') and self.gui.current_mesh
+            
+            if not has_region_data and not has_line_mesh_data and not has_imported_mesh:
+                QMessageBox.warning(self.gui, "警告", "请先创建区域、生成线网格或导入网格文件")
+                self.gui.log_info("未找到有效的输入数据，无法生成网格")
+                self.gui.update_status("未找到有效的输入数据")
                 return
 
-            if not hasattr(self.gui, 'parts_params') or not self.gui.parts_params:
-                QMessageBox.warning(self.gui, "警告", "请先配置部件参数")
-                self.gui.log_info("未配置部件参数，无法生成网格")
-                self.gui.update_status("未配置部件参数")
-                return
+            # 只有在非区域数据的情况下才检查parts_params
+            if not has_region_data and not has_line_mesh_data:
+                if not hasattr(self.gui, 'parts_params') or not self.gui.parts_params:
+                    QMessageBox.warning(self.gui, "警告", "请先配置部件参数")
+                    self.gui.log_info("未配置部件参数，无法生成网格")
+                    self.gui.update_status("未配置部件参数")
+                    return
 
             input_file = ""
 
@@ -230,41 +237,45 @@ class MeshOperations:
             if input_file:
                 input_file = os.path.abspath(input_file)
 
-            has_mesh_data = False
-            if isinstance(self.gui.current_mesh, dict):
-                has_mesh_data = 'node_coords' in self.gui.current_mesh and 'cells' in self.gui.current_mesh
-            elif hasattr(self.gui, 'current_mesh') and hasattr(self.gui.current_mesh, 'node_coords') and hasattr(self.gui.current_mesh, 'cells'):
-                has_mesh_data = True
+            # 只有在非区域数据和非线网格数据的情况下才检查mesh_data和parts_info
+            if not has_region_data and not has_line_mesh_data:
+                has_mesh_data = False
+                if isinstance(self.gui.current_mesh, dict):
+                    has_mesh_data = 'node_coords' in self.gui.current_mesh and 'cells' in self.gui.current_mesh
+                elif hasattr(self.gui, 'current_mesh') and hasattr(self.gui.current_mesh, 'node_coords') and hasattr(self.gui.current_mesh, 'cells'):
+                    has_mesh_data = True
 
-            has_parts_info = hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info
+                has_parts_info = hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info
 
-            if not has_mesh_data and not has_parts_info:
-                QMessageBox.warning(self.gui, "警告", "无法获取有效的输入网格数据或部件信息")
-                self.gui.log_info("无法获取有效的输入网格数据或部件信息")
-                self.gui.update_status("无法获取有效的输入网格数据或部件信息")
-                return
+                if not has_mesh_data and not has_parts_info:
+                    QMessageBox.warning(self.gui, "警告", "无法获取有效的输入网格数据或部件信息")
+                    self.gui.log_info("无法获取有效的输入网格数据或部件信息")
+                    self.gui.update_status("无法获取有效的输入网格数据或部件信息")
+                    return
 
             config_data = {
                 "debug_level": self.gui.params.debug_level if hasattr(self.gui, 'params') and self.gui.params else 0,
                 "output_file": self.gui.params.output_file if hasattr(self.gui, 'params') and self.gui.params else ["./out/mesh.vtk"],
                 "viz_enabled": False,
-                "parts": self.gui.parts_params,
+                "parts": self.gui.parts_params if not has_region_data else [],  # 区域数据时不使用parts_params
                 "mesh_type": self.gui.params.mesh_type if hasattr(self.gui, 'params') and self.gui.params else 1,
                 "auto_output": self.gui.params.auto_output if hasattr(self.gui, 'params') and self.gui.params else True
             }
 
-            if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info and not self.gui.parts_params:
-                for part_name in self.gui.cas_parts_info.keys():
-                    config_data["parts"].append({
-                        "part_name": part_name,
-                        "max_size": 1e6,
-                        "PRISM_SWITCH": "off",
-                        "first_height": 0.01,
-                        "growth_rate": 1.2,
-                        "max_layers": 5,
-                        "full_layers": 5,
-                        "multi_direction": False
-                    })
+            # 只有在非区域数据的情况下才处理cas_parts_info
+            if not has_region_data and not has_line_mesh_data:
+                if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info and not self.gui.parts_params:
+                    for part_name in self.gui.cas_parts_info.keys():
+                        config_data["parts"].append({
+                            "part_name": part_name,
+                            "max_size": 1e6,
+                            "PRISM_SWITCH": "off",
+                            "first_height": 0.01,
+                            "growth_rate": 1.2,
+                            "max_layers": 5,
+                            "full_layers": 5,
+                            "multi_direction": False
+                        })
 
             config_data["input_file"] = input_file if input_file else ""
 
