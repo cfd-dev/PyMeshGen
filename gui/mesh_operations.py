@@ -299,11 +299,10 @@ class MeshOperations:
                 connectors = None
                 parts = None
                 
-                if hasattr(self.gui, 'region_connector') and hasattr(self.gui, 'region_part'):
-                    # 使用区域数据
-                    connectors = [self.gui.region_connector]
+                if hasattr(self.gui, 'region_part') and self.gui.region_part:
+                    # 使用区域数据 - 直接传递包含多个Connector的Part
                     parts = [self.gui.region_part]
-                    self.gui.log_info(f"使用区域数据: {len(connectors)} connectors, {len(parts)} parts")
+                    self.gui.log_info(f"使用区域数据: {len(parts)} parts, {len(self.gui.region_part.connectors)} connectors")
                 elif hasattr(self.gui, 'line_connectors') and self.gui.line_connectors:
                     # 使用线网格数据
                     connectors = self.gui.line_connectors

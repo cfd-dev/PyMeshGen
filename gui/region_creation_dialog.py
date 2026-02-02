@@ -490,16 +490,16 @@ class RegionCreationDialog(QDialog):
             QMessageBox.warning(self, "警告", "请确保选择的Connector形成封闭区域！")
             return
         
-        # 合并所有Connector的front_list
-        merged_front_list = []
+        # 不再合并Connector，直接传递多个Connector
+        # 但需要处理Connector的方向翻转
         for conn in self.selected_connectors:
             is_flipped = self.connector_directions.get(id(conn), False)
             
             if is_flipped:
                 # 翻转front_list顺序
-                reversed_fronts = conn.front_list[::-1]
-                for front in reversed_fronts:
-                    # 翻转front的节点顺序
+                conn.front_list = conn.front_list[::-1]
+                # 翻转每个front的节点顺序
+                for front in conn.front_list:
                     front.node_elems = [front.node_elems[1], front.node_elems[0]]
                     # 重新计算front的方向和法向量
                     node1, node2 = front.node_elems[0].coords, front.node_elems[1].coords
@@ -507,16 +507,13 @@ class RegionCreationDialog(QDialog):
                     front.center = [(a + b) / 2 for a, b in zip(node1, node2)]
                     front.direction = [(b - a) / front.length for a, b in zip(node1, node2)]
                     front.normal = [-front.direction[1], front.direction[0]]
-                    merged_front_list.append(front)
-            else:
-                merged_front_list.extend(conn.front_list)
         
-        # 创建区域数据
+        # 创建区域数据 - 直接传递多个Connector
         region_data = {
             'connectors': self.selected_connectors,
-            'front_list': merged_front_list,
             'directions': self.connector_directions.copy(),
-            'total_fronts': len(merged_front_list)
+            'total_connectors': len(self.selected_connectors),
+            'total_fronts': sum(len(conn.front_list) for conn in self.selected_connectors)
         }
         
         self.region_created.emit(region_data)
