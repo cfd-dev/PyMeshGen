@@ -92,7 +92,7 @@ class PartParamsDialog(QDialog):
         
         # 第一层高度
         self.first_height_spin = QDoubleSpinBox()
-        self.first_height_spin.setRange(1e-12, 1e3)
+        self.first_height_spin.setRange(1e-20, 1e20)
         self.first_height_spin.setDecimals(6)
         self.first_height_spin.setSingleStep(0.001)
         self.first_height_spin.setSpecialValueText("自动")
@@ -121,15 +121,18 @@ class PartParamsDialog(QDialog):
         self.full_layers_spin = QSpinBox()
         self.full_layers_spin.setRange(1, 100)
         self.full_layers_spin.setSingleStep(1)
+        self.full_layers_spin.setValue(1)
         # 设置白色背景
         self.full_layers_spin.setStyleSheet("background-color: white;")
         params_layout.addRow("完整层数:", self.full_layers_spin)
         
         # 多方向
         self.multi_direction_check = QCheckBox()
+        self.multi_direction_check.setChecked(False)
+        self.multi_direction_check.setEnabled(False)
         # 设置白色背景
         # self.multi_direction_check.setStyleSheet("background-color: white;")
-        params_layout.addRow("多方向:", self.multi_direction_check)
+        params_layout.addRow("多方向 (暂不支持):", self.multi_direction_check)
         
         main_layout.addWidget(params_group)
         

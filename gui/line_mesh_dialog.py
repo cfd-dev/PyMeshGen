@@ -422,7 +422,6 @@ class LineMeshGenerationDialog(QDialog):
         if not params['edges']:
             QMessageBox.warning(self, "警告", "请先选择几何线")
             return
-        self.accept()
         self.generation_requested.emit(params)
         
     def update_status(self, message):
