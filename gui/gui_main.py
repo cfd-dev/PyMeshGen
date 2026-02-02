@@ -36,7 +36,7 @@ for dir_path in SUB_DIRS:
 # Import modules after setting up paths
 from gui.gui_base import (
     StatusBar, InfoOutput, DialogBase,
-    Splitter, PartListWidget
+    Splitter
 )
 from gui.model_tree import ModelTreeWidget
 from gui.ribbon_widget import RibbonWidget

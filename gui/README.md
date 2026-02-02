@@ -90,8 +90,6 @@ gui/
 - `StatusBar`：状态栏
 - `InfoOutput`：信息输出窗口
 - `DialogBase`：对话框基类
-- `ConfigDialog`：配置编辑对话框
-- `PartListWidget`：部件列表组件
 
 #### ribbon_widget.py
 

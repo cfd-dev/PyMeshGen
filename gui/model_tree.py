@@ -852,23 +852,6 @@ class ModelTreeWidget:
                     part_count += 1
             elif isinstance(parts_info, dict):
                 for part_name, part_data in parts_info.items():
-                    if part_name not in PARTS_INFO_RESERVED_KEYS:
-                        bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
-                        checked = bc_type != 'interior'
-
-                        part_item = QTreeWidgetItem(parts_item)
-                        part_item.setText(0, part_name)
-                        part_item.setText(1, "")
-                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                        part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
-
-                        if bc_type:
-                            part_item.setToolTip(0, f"边界条件: {bc_type}")
-
-                        part_count += 1
-        elif isinstance(parts_data, dict):
-            for part_name, part_data in parts_data.items():
-                if part_name not in PARTS_INFO_RESERVED_KEYS:
                     bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
                     checked = bc_type != 'interior'
 
@@ -882,6 +865,21 @@ class ModelTreeWidget:
                         part_item.setToolTip(0, f"边界条件: {bc_type}")
 
                     part_count += 1
+        elif isinstance(parts_data, dict):
+            for part_name, part_data in parts_data.items():
+                bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                checked = bc_type != 'interior'
+
+                part_item = QTreeWidgetItem(parts_item)
+                part_item.setText(0, part_name)
+                part_item.setText(1, "")
+                part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
+
+                if bc_type:
+                    part_item.setToolTip(0, f"边界条件: {bc_type}")
+
+                part_count += 1
         elif hasattr(parts_data, 'parts_info') and parts_data.parts_info:
             if isinstance(parts_data.parts_info, list):
                 for part_info in parts_data.parts_info:
@@ -901,20 +899,19 @@ class ModelTreeWidget:
                     part_count += 1
             elif isinstance(parts_data.parts_info, dict):
                 for part_name, part_data in parts_data.parts_info.items():
-                    if part_name not in PARTS_INFO_RESERVED_KEYS:
-                        bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
-                        checked = bc_type != 'interior'
+                    bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
+                    checked = bc_type != 'interior'
 
-                        part_item = QTreeWidgetItem(parts_item)
-                        part_item.setText(0, part_name)
-                        part_item.setText(1, "")
-                        part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
-                        part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
+                    part_item = QTreeWidgetItem(parts_item)
+                    part_item.setText(0, part_name)
+                    part_item.setText(1, "")
+                    part_item.setCheckState(0, Qt.Checked if checked else Qt.Unchecked)
+                    part_item.setData(0, Qt.UserRole, ("parts", part_data, part_count))
 
-                        if bc_type:
-                            part_item.setToolTip(0, f"边界条件: {bc_type}")
+                    if bc_type:
+                        part_item.setToolTip(0, f"边界条件: {bc_type}")
 
-                        part_count += 1
+                    part_count += 1
         elif hasattr(parts_data, 'boundary_info') and parts_data.boundary_info:
             for part_name, part_data in parts_data.boundary_info.items():
                 bc_type = part_data.get('bc_type', '') if isinstance(part_data, dict) else ''
@@ -1183,6 +1180,9 @@ class ModelTreeWidget:
                 add_elements_action = QAction("添加元素到部件", self.tree)
                 add_elements_action.triggered.connect(lambda: self._open_add_elements_dialog(item))
                 menu.addAction(add_elements_action)
+                delete_part_action = QAction("删除部件", self.tree)
+                delete_part_action.triggered.connect(lambda: self._delete_part(item))
+                menu.addAction(delete_part_action)
 
         if not menu.isEmpty():
             menu.exec_(self.tree.mapToGlobal(position))
@@ -1427,6 +1427,16 @@ class ModelTreeWidget:
             return
         part_name = part_item.text(0)
         handler = self._get_parent_handler("edit_mesh_params_for_part")
+        if handler:
+            handler(part_name)
+
+    def _delete_part(self, part_item):
+        """删除部件"""
+        element_data = part_item.data(0, Qt.UserRole)
+        if not (isinstance(element_data, tuple) and len(element_data) >= 2):
+            return
+        part_name = part_item.text(0)
+        handler = self._get_parent_handler("remove_part")
         if handler:
             handler(part_name)
 

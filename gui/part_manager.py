@@ -23,9 +23,117 @@ class PartManager:
         else:
             QMessageBox.warning(self.gui, "警告", "模型树组件未初始化")
 
-    def remove_part(self):
-        """删除部件"""
-        QMessageBox.information(self.gui, "提示", "删除部件功能暂未实现，请使用右键菜单删除部件")
+    def remove_part(self, part_name=None):
+        """删除部件
+        
+        Args:
+            part_name: 要删除的部件名称，如果为None则从部件列表获取当前选中的部件
+        """
+        # 如果没有提供部件名称，则从部件列表获取当前选中的部件
+        if part_name is None:
+            if hasattr(self.gui, 'parts_list_widget'):
+                part_name = self.gui.parts_list_widget.get_selected_part_name()
+            else:
+                QMessageBox.warning(self.gui, "警告", "部件列表组件未初始化")
+                return
+
+        if not part_name:
+            QMessageBox.warning(self.gui, "警告", "请先选择要删除的部件")
+            return
+
+        # 确认删除
+        reply = QMessageBox.question(
+            self.gui,
+            "确认删除",
+            f"确定要删除部件 '{part_name}' 吗？\n\n删除后，该部件中的所有元素将被移回默认部件。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.No:
+            self.gui.log_info("已取消删除部件")
+            self.gui.update_status("已取消删除部件")
+            return
+
+        # 检查部件是否存在
+        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+            QMessageBox.warning(self.gui, "警告", "未找到部件信息")
+            return
+
+        if part_name not in self.gui.cas_parts_info:
+            QMessageBox.warning(self.gui, "警告", f"未找到部件 '{part_name}'")
+            return
+
+        # 获取要删除的部件数据
+        part_to_delete = self.gui.cas_parts_info[part_name]
+
+        # 确保DefaultPart存在，如果不存在则创建
+        if 'DefaultPart' not in self.gui.cas_parts_info:
+            self.gui.cas_parts_info['DefaultPart'] = {
+                'type': 'default',
+                'bc_type': 'wall',
+                'geometry_elements': {'vertices': [], 'edges': [], 'faces': [], 'bodies': []},
+                'mesh_elements': {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
+            }
+            self.gui.log_info("已创建默认部件 DefaultPart")
+
+            # 在部件列表中添加 DefaultPart（如果部件列表存在）
+            if hasattr(self.gui, 'parts_list_widget'):
+                # 检查 DefaultPart 是否已经在部件列表中
+                parts_list = self.gui.parts_list_widget.parts_list
+                default_part_exists = False
+                for i in range(parts_list.count()):
+                    item = parts_list.item(i)
+                    if item and item.text() == 'DefaultPart':
+                        default_part_exists = True
+                        break
+
+                # 如果不存在，则添加
+                if not default_part_exists:
+                    self.gui.parts_list_widget.add_part_with_checkbox('DefaultPart', True)
+
+        # 将元素移回DefaultPart
+        default_part = self.gui.cas_parts_info['DefaultPart']
+
+        # 移回几何元素
+        if 'geometry_elements' in part_to_delete:
+            if 'geometry_elements' not in default_part:
+                default_part['geometry_elements'] = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
+            self._merge_elements(default_part['geometry_elements'], part_to_delete['geometry_elements'])
+
+        # 移回网格元素
+        if 'mesh_elements' in part_to_delete:
+            if 'mesh_elements' not in default_part:
+                default_part['mesh_elements'] = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
+            self._merge_elements(default_part['mesh_elements'], part_to_delete['mesh_elements'])
+
+        self.gui.log_info(f"已将部件 '{part_name}' 的元素移回默认部件")
+
+        # 从部件信息中删除该部件
+        del self.gui.cas_parts_info[part_name]
+
+        # 从部件参数中删除该部件（如果存在）
+        if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
+            self.gui.parts_params = [p for p in self.gui.parts_params if p.get('part_name') != part_name]
+
+        # 从部件列表中删除该部件
+        if hasattr(self.gui, 'parts_list_widget'):
+            parts_list = self.gui.parts_list_widget.parts_list
+            for i in range(parts_list.count()):
+                item = parts_list.item(i)
+                if item and item.text() == part_name:
+                    parts_list.takeItem(i)
+                    break
+
+        # 更新模型树
+        if hasattr(self.gui, 'model_tree_widget'):
+            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+
+        # 刷新显示
+        self.refresh_display_all_parts()
+
+        self.gui.log_info(f"已成功删除部件: {part_name}")
+        self.gui.update_status(f"部件已删除: {part_name}")
 
     def edit_part(self):
         """编辑部件属性"""
@@ -160,6 +268,24 @@ class PartManager:
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
 
+        # 更新部件列表（部件列表组件）
+        if hasattr(self.gui, 'parts_list_widget'):
+            parts_list = self.gui.parts_list_widget.parts_list
+
+            # 获取当前部件列表中的所有部件名称
+            existing_parts = set()
+            for i in range(parts_list.count()):
+                item = parts_list.item(i)
+                if item:
+                    existing_parts.add(item.text())
+
+            # 获取需要显示的部件（包括DefaultPart）
+            if isinstance(self.gui.cas_parts_info, dict):
+                for part_name in self.gui.cas_parts_info.keys():
+                    if part_name not in existing_parts:
+                        self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
+                        existing_parts.add(part_name)
+
     def update_parts_list_from_cas(self, parts_info=None, update_status=True):
         """从CAS数据更新部件列表"""
         if parts_info is not None:
@@ -177,6 +303,24 @@ class PartManager:
                 self.gui.update_status("部件列表已从CAS更新")
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
+
+        # 更新部件列表（部件列表组件）
+        if hasattr(self.gui, 'parts_list_widget'):
+            parts_list = self.gui.parts_list_widget.parts_list
+
+            # 获取当前部件列表中的所有部件名称
+            existing_parts = set()
+            for i in range(parts_list.count()):
+                item = parts_list.item(i)
+                if item:
+                    existing_parts.add(item.text())
+
+            # 获取需要显示的部件（包括DefaultPart）
+            if isinstance(self.gui.cas_parts_info, dict):
+                for part_name in self.gui.cas_parts_info.keys():
+                    if part_name not in existing_parts:
+                        self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
+                        existing_parts.add(part_name)
 
     def update_parts_list_from_generated_mesh(self, generated_mesh):
         """从生成的网格更新部件列表"""
