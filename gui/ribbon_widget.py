@@ -191,23 +191,23 @@ class RibbonWidget(QWidget):
             alignment=Qt.AlignLeft
         )
 
-        file_group = RibbonGroup("")
-        self.buttons['file']['new'] = file_group.add_large_button("新建工程", tooltip="新建工程 (Ctrl+N)")
-        self.buttons['file']['open'] = file_group.add_large_button("打开工程", tooltip="打开工程 (Ctrl+O)")
-        self.buttons['file']['save'] = file_group.add_large_button("保存工程", tooltip="保存工程 (Ctrl+S)")
+        file_group = RibbonGroup("Project")
+        self.buttons['file']['new'] = file_group.add_large_button("新建工程", icon=get_icon('document-new'), tooltip="新建工程 (Ctrl+N)")
+        self.buttons['file']['open'] = file_group.add_large_button("打开工程", icon=get_icon('document-open'), tooltip="打开工程 (Ctrl+O)")
+        self.buttons['file']['save'] = file_group.add_large_button("保存工程", icon=get_icon('document-save'), tooltip="保存工程 (Ctrl+S)")
         layout.addWidget(file_group)
 
-        geometry_group = RibbonGroup("")
-        self.buttons['file']['import_geometry'] = geometry_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
-        self.buttons['file']['export_geometry'] = geometry_group.add_large_button("导出几何", tooltip="导出几何文件 (IGES/STEP/STL等)")
+        geometry_group = RibbonGroup("Geometry")
+        self.buttons['file']['import_geometry'] = geometry_group.add_large_button("导入几何", icon=get_icon('import'), tooltip="导入几何文件 (IGES/STEP/STL等)")
+        self.buttons['file']['export_geometry'] = geometry_group.add_large_button("导出几何", icon=get_icon('export'), tooltip="导出几何文件 (IGES/STEP/STL等)")
         layout.addWidget(geometry_group)
 
-        io_group = RibbonGroup("")
-        self.buttons['file']['import'] = io_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
-        self.buttons['file']['export'] = io_group.add_large_button("导出网格", tooltip="导出网格 (Ctrl+E)")
+        io_group = RibbonGroup("Mesh")
+        self.buttons['file']['import'] = io_group.add_large_button("导入网格", icon=get_icon('import'), tooltip="导入网格 (Ctrl+I)")
+        self.buttons['file']['export'] = io_group.add_large_button("导出网格", icon=get_icon('export'), tooltip="导出网格 (Ctrl+E)")
         layout.addWidget(io_group)
 
-        dimension_group = RibbonGroup("")
+        dimension_group = RibbonGroup("Dimension")
         self.buttons['file']['mesh_dimension'] = dimension_group.add_large_button("网格维度", icon=get_icon('mesh-dimension'), tooltip="设置网格维度")
         layout.addWidget(dimension_group)
 
@@ -226,13 +226,13 @@ class RibbonWidget(QWidget):
         )
 
         view_group = RibbonGroup("")
-        self.buttons['view']['reset'] = view_group.add_large_button("重置", tooltip="重置视图 (R键)")
-        self.buttons['view']['fit'] = view_group.add_large_button("适应", tooltip="适应视图 (F键)")
+        self.buttons['view']['reset'] = view_group.add_large_button("重置", icon=get_icon('view-refresh'), tooltip="重置视图 (R键)")
+        self.buttons['view']['fit'] = view_group.add_large_button("适应", icon=get_icon('zoom-fit-best'), tooltip="适应视图 (F键)")
         layout.addWidget(view_group)
 
         zoom_group = RibbonGroup("")
-        self.buttons['view']['zoom_in'] = zoom_group.add_large_button("放大", tooltip="放大视图 (+键)")
-        self.buttons['view']['zoom_out'] = zoom_group.add_large_button("缩小", tooltip="缩小视图 (-键)")
+        self.buttons['view']['zoom_in'] = zoom_group.add_large_button("放大", icon=get_icon('zoom-in'), tooltip="放大视图 (+键)")
+        self.buttons['view']['zoom_out'] = zoom_group.add_large_button("缩小", icon=get_icon('zoom-out'), tooltip="缩小视图 (-键)")
         layout.addWidget(zoom_group)
 
         camera_group = RibbonGroup("")
@@ -262,9 +262,9 @@ class RibbonWidget(QWidget):
         layout.addWidget(camera_group)
 
         display_group = RibbonGroup("")
-        self.buttons['view']['surface'] = display_group.add_small_button("实体", tooltip="实体模式 (1键)")
-        self.buttons['view']['wireframe'] = display_group.add_small_button("线框", tooltip="线框模式 (2键)")
-        self.buttons['view']['surface-wireframe'] = display_group.add_small_button("实体+线框", tooltip="实体+线框模式 (3键)")
+        self.buttons['view']['surface'] = display_group.add_small_button("实体", icon=get_icon('surface'), tooltip="实体模式 (1键)")
+        self.buttons['view']['wireframe'] = display_group.add_small_button("线框", icon=get_icon('wireframe'), tooltip="线框模式 (2键)")
+        self.buttons['view']['surface-wireframe'] = display_group.add_small_button("实体+线框", icon=get_icon('surface-wireframe'), tooltip="实体+线框模式 (3键)")
         
         display_group.add_button_column([
             self.buttons['view']['surface'],
@@ -294,13 +294,13 @@ class RibbonWidget(QWidget):
         )
 
         param_group = RibbonGroup("")
-        self.buttons['config']['params'] = param_group.add_large_button("全局参数", tooltip="编辑全局参数")
-        self.buttons['config']['mesh_params'] = param_group.add_large_button("部件参数", tooltip="编辑部件参数")
+        self.buttons['config']['params'] = param_group.add_large_button("全局参数", icon=get_icon('configure'), tooltip="编辑全局参数")
+        self.buttons['config']['mesh_params'] = param_group.add_large_button("部件参数", icon=get_icon('part-params'), tooltip="编辑部件参数")
         layout.addWidget(param_group)
 
         config_group = RibbonGroup("")
-        self.buttons['config']['import_config'] = config_group.add_large_button("导入配置", tooltip="导入配置")
-        self.buttons['config']['export_config'] = config_group.add_large_button("导出配置", tooltip="导出配置")
+        self.buttons['config']['import_config'] = config_group.add_large_button("导入配置", icon=get_icon('config-import'), tooltip="导入配置")
+        self.buttons['config']['export_config'] = config_group.add_large_button("导出配置", icon=get_icon('config-export'), tooltip="导出配置")
         layout.addWidget(config_group)
 
         layout.addStretch(1)
@@ -318,20 +318,20 @@ class RibbonWidget(QWidget):
         )
 
         gen_group = RibbonGroup("")
-        self.buttons['mesh']['generate'] = gen_group.add_large_button("生成", tooltip="生成网格 (F5)")
+        self.buttons['mesh']['generate'] = gen_group.add_large_button("生成", icon=get_icon('mesh-generate'), tooltip="生成网格 (F5)")
         self.buttons['mesh']['display'] = gen_group.add_large_button("显示", tooltip="显示网格 (F6)")
-        self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", tooltip="清空网格")
+        self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", icon=get_icon('edit-clear'), tooltip="清空网格")
         layout.addWidget(gen_group)
 
         quality_group = RibbonGroup("")
-        self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", tooltip="检查网格质量")
-        self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", tooltip="平滑网格")
-        self.buttons['mesh']['optimize'] = quality_group.add_large_button("优化", tooltip="优化网格")
+        self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", icon=get_icon('mesh-quality'), tooltip="检查网格质量")
+        self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", icon=get_icon('mesh-smooth'), tooltip="平滑网格")
+        self.buttons['mesh']['optimize'] = quality_group.add_large_button("优化", icon=get_icon('mesh-optimize'), tooltip="优化网格")
         layout.addWidget(quality_group)
 
         analysis_group = RibbonGroup("")
-        self.buttons['mesh']['statistics'] = analysis_group.add_large_button("统计", tooltip="网格统计")
-        self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", tooltip="导出报告")
+        self.buttons['mesh']['statistics'] = analysis_group.add_large_button("统计", icon=get_icon('statistics'), tooltip="网格统计")
+        self.buttons['mesh']['report'] = analysis_group.add_large_button("报告", icon=get_icon('report'), tooltip="导出报告")
         layout.addWidget(analysis_group)
 
         layout.addStretch(1)
@@ -349,18 +349,18 @@ class RibbonWidget(QWidget):
         )
 
         geometry_io_group = RibbonGroup("几何输入输出")
-        self.buttons['geometry']['import_geometry'] = geometry_io_group.add_large_button("导入几何", tooltip="导入几何文件 (IGES/STEP/STL等)")
-        self.buttons['geometry']['export_geometry'] = geometry_io_group.add_large_button("导出几何", tooltip="导出几何文件 (IGES/STEP/STL等)")
+        self.buttons['geometry']['import_geometry'] = geometry_io_group.add_large_button("导入几何", icon=get_icon('import'), tooltip="导入几何文件 (IGES/STEP/STL等)")
+        self.buttons['geometry']['export_geometry'] = geometry_io_group.add_large_button("导出几何", icon=get_icon('export'), tooltip="导出几何文件 (IGES/STEP/STL等)")
         layout.addWidget(geometry_io_group)
         
 
         geometry_group = RibbonGroup("几何操作")
-        self.buttons['geometry']['create_geometry'] = geometry_group.add_large_button("创建几何", tooltip="创建点/线/圆弧/曲线")
-        self.buttons['geometry']['delete_geometry'] = geometry_group.add_large_button("删除几何", tooltip="删除选中的几何元素")
+        self.buttons['geometry']['create_geometry'] = geometry_group.add_large_button("创建几何", icon=get_icon('geom-create'), tooltip="创建点/线/圆弧/曲线")
+        self.buttons['geometry']['delete_geometry'] = geometry_group.add_large_button("删除几何", icon=get_icon('edit-delete'), tooltip="删除选中的几何元素")
         layout.addWidget(geometry_group)
 
         boundary_extract_group = RibbonGroup("边界网格提取")
-        self.buttons['geometry']['import'] = boundary_extract_group.add_large_button("导入网格", tooltip="导入网格 (Ctrl+I)")
+        self.buttons['geometry']['import'] = boundary_extract_group.add_large_button("导入网格", icon=get_icon('import'), tooltip="导入网格 (Ctrl+I)")
         self.buttons['geometry']['extract_boundary'] = boundary_extract_group.add_large_button("提取边界", icon=get_icon('extract_boundary'), tooltip="提取边界网格及部件信息")
         layout.addWidget(boundary_extract_group)
 
@@ -387,14 +387,14 @@ class RibbonWidget(QWidget):
         )
 
         doc_group = RibbonGroup("")
-        self.buttons['help']['manual'] = doc_group.add_large_button("手册", tooltip="用户手册")
-        self.buttons['help']['quick_start'] = doc_group.add_large_button("入门", tooltip="快速入门")
+        self.buttons['help']['manual'] = doc_group.add_large_button("手册", icon=get_icon('help-contents'), tooltip="用户手册")
+        self.buttons['help']['quick_start'] = doc_group.add_large_button("入门", icon=get_icon('help-about'), tooltip="快速入门")
         layout.addWidget(doc_group)
 
         support_group = RibbonGroup("")
-        self.buttons['help']['shortcuts'] = support_group.add_large_button("快捷键", tooltip="快捷键")
-        self.buttons['help']['updates'] = support_group.add_large_button("更新", tooltip="检查更新")
-        self.buttons['help']['about'] = support_group.add_large_button("关于", tooltip="关于")
+        self.buttons['help']['shortcuts'] = support_group.add_large_button("快捷键", icon=get_icon('help-keyboard-shortcuts'), tooltip="快捷键")
+        self.buttons['help']['updates'] = support_group.add_large_button("更新", icon=get_icon('view-refresh'), tooltip="检查更新")
+        self.buttons['help']['about'] = support_group.add_large_button("关于", icon=get_icon('help-about'), tooltip="关于")
         layout.addWidget(support_group)
 
         layout.addStretch(1)

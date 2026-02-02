@@ -5,8 +5,8 @@ Provides optimized icons for all GUI functions with consistent styling
 
 import os
 import numpy as np
-from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QBrush
-from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QBrush, QPolygon
+from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtWidgets import QStyle, QApplication
 
 
@@ -52,10 +52,10 @@ class IconManager:
             'document-new': QStyle.SP_FileIcon,
             'document-open': QStyle.SP_DirOpenIcon,
             'document-save': QStyle.SP_DialogSaveButton,
-            'document-import': QStyle.SP_ArrowUp,
-            'document-export': QStyle.SP_ArrowDown,
-            'import': QStyle.SP_ArrowUp,
-            'export': QStyle.SP_ArrowDown,
+            'document-import': QStyle.SP_ArrowDown,
+            'document-export': QStyle.SP_ArrowUp,
+            'import': QStyle.SP_ArrowDown,
+            'export': QStyle.SP_ArrowUp,
             
             # View operations
             'zoom-fit-best': QStyle.SP_ComputerIcon,
@@ -71,7 +71,7 @@ class IconManager:
             'run': QStyle.SP_MediaPlay,
             
             # Configuration and settings
-            'configure': QStyle.SP_ToolBarHorizontalExtensionButton,
+            'configure': QStyle.SP_FileDialogDetailedView,
             'document-properties': QStyle.SP_FileDialogDetailedView,
             
             # Help operations
@@ -107,10 +107,6 @@ class IconManager:
         primary_color = QColor(self.color_scheme['primary'])
         secondary_color = QColor(self.color_scheme['secondary'])
         accent_color = QColor(self.color_scheme['accent'])
-        
-        # Import required classes
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
 
         # Draw different icons based on icon_name
         if icon_name in ['mesh-generate', 'generate-mesh', 'mesh_generate', 'mesh-generate']:
@@ -202,7 +198,7 @@ class IconManager:
         pen = QPen(color, 2)
         painter.setPen(pen)
         
-        # Draw a grid pattern
+        # Draw a simple grid pattern (4x4)
         cell_size = size // 4
         for i in range(5):
             # Horizontal lines
@@ -210,24 +206,27 @@ class IconManager:
             # Vertical lines
             painter.drawLine(i * cell_size, 0, i * cell_size, size)
         
-        # Draw play button in center
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
+        # Draw small triangles in some cells to represent mesh elements
         painter.setBrush(color)
-        points = [
-            (size//2 - 5, size//2 - 8),
-            (size//2 + 7, size//2),
-            (size//2 - 5, size//2 + 8)
-        ]
-        # Convert list of tuples to QPolygon
-        qpoints = [QPoint(int(x), int(y)) for x, y in points]
-        qpolygon = QPolygon(qpoints)
-        painter.drawPolygon(qpolygon)
+        painter.setPen(Qt.NoPen)
+        
+        # Draw a few triangles in the grid
+        triangle_size = cell_size - 2
+        # Top-left triangle
+        painter.drawPolygon(QPolygon([
+            QPoint(2, 2),
+            QPoint(2 + triangle_size, 2),
+            QPoint(2, 2 + triangle_size)
+        ]))
+        # Bottom-right triangle
+        painter.drawPolygon(QPolygon([
+            QPoint(size - 2, size - 2),
+            QPoint(size - 2 - triangle_size, size - 2),
+            QPoint(size - 2, size - 2 - triangle_size)
+        ]))
     
     def _draw_mesh_quality_icon(self, painter, size, color):
         """Draw mesh quality icon"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
         pen = QPen(color, 2)
         painter.setPen(pen)
 
@@ -253,47 +252,93 @@ class IconManager:
         painter.drawLine(size//2, size//2 + 4, size//2 + 6, size//2 - 2)
     
     def _draw_mesh_smooth_icon(self, painter, size, color):
-        """Draw mesh smoothing icon"""
+        """Draw mesh smoothing icon - showing jagged to smooth transition"""
         pen = QPen(color, 2)
         painter.setPen(pen)
         
-        # Draw wavy line representing smoothing
-        center_y = size // 2
-        amplitude = size // 6
+        # Draw jagged line on left (before smoothing)
+        pen.setColor(QColor('#CCCCCC'))
+        painter.setPen(pen)
+        jagged_points = [
+            (4, size // 2),
+            (8, size // 2 - 6),
+            (12, size // 2 + 4),
+            (16, size // 2 - 3),
+            (20, size // 2 + 5),
+            (24, size // 2 - 2)
+        ]
+        for i in range(len(jagged_points) - 1):
+            painter.drawLine(jagged_points[i][0], jagged_points[i][1], 
+                           jagged_points[i+1][0], jagged_points[i+1][1])
         
-        # Draw a smooth sine wave
-        points = []
-        for x in range(0, size, 2):
-            y = center_y + amplitude * 0.7 * (x / size) * (size - x) / size  # Parabolic curve
-            points.append((x, int(y)))
+        # Draw arrow pointing right
+        pen.setColor(color)
+        painter.setPen(pen)
+        painter.setBrush(color)
+        arrow_x = size // 2
+        arrow_y = size // 2
+        painter.drawLine(arrow_x - 4, arrow_y, arrow_x + 4, arrow_y)
+        painter.drawPolygon(QPolygon([
+            QPoint(arrow_x + 4, arrow_y),
+            QPoint(arrow_x, arrow_y - 3),
+            QPoint(arrow_x, arrow_y + 3)
+        ]))
         
-        for i in range(len(points) - 1):
-            painter.drawLine(points[i][0], points[i][1], points[i+1][0], points[i+1][1])
+        # Draw smooth curve on right (after smoothing)
+        pen.setColor(color)
+        painter.setPen(pen)
+        smooth_points = []
+        start_x = arrow_x + 8
+        for i in range(8):
+            x = start_x + i * 3
+            y = size // 2 + int(4 * np.sin(i * 0.5))
+            smooth_points.append((x, y))
+        
+        for i in range(len(smooth_points) - 1):
+            painter.drawLine(smooth_points[i][0], smooth_points[i][1], 
+                           smooth_points[i+1][0], smooth_points[i+1][1])
     
     def _draw_mesh_optimize_icon(self, painter, size, color):
-        """Draw mesh optimization icon"""
+        """Draw mesh optimization icon - gear with upward arrow"""
         pen = QPen(color, 2)
         painter.setPen(pen)
-        
-        # Draw an upward arrow with optimization symbol
-        # Arrow shaft
-        painter.drawLine(size//2, size - 5, size//2, 10)
-        # Arrow head
-        painter.drawLine(size//2, 10, size//2 - 5, 18)
-        painter.drawLine(size//2, 10, size//2 + 5, 18)
-        
-        # Draw optimization symbol (gear)
         painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(size//2 - 8, size//2 + 5, 16, 16)
+        
+        center_x, center_y = size // 2, size // 2
+        radius = size // 3
+        
+        # Draw outer gear circle
+        painter.drawEllipse(center_x - radius, center_y - radius, radius * 2, radius * 2)
         
         # Draw gear teeth
         painter.setBrush(color)
-        for i in range(6):
+        for i in range(8):
             painter.save()
-            painter.translate(size//2, size//2 + 5)
-            painter.rotate(i * 60)
-            painter.drawRect(-2, -10, 4, 4)  # Small rectangle as gear tooth
+            painter.translate(center_x, center_y)
+            painter.rotate(i * 45)
+            painter.drawRect(-2, -radius + 2, 4, 5)
             painter.restore()
+        
+        # Draw inner circle
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(center_x - radius // 3, center_y - radius // 3, 
+                          radius * 2 // 3, radius * 2 // 3)
+        
+        # Draw upward arrow in center
+        painter.setPen(QPen(color, 2))
+        painter.setBrush(color)
+        arrow_top = center_y - radius // 3 + 2
+        arrow_bottom = center_y + radius // 3 - 2
+        
+        # Arrow shaft
+        painter.drawLine(center_x, arrow_bottom, center_x, arrow_top + 3)
+        
+        # Arrow head
+        painter.drawPolygon(QPolygon([
+            QPoint(center_x, arrow_top),
+            QPoint(center_x - 4, arrow_top + 5),
+            QPoint(center_x + 4, arrow_top + 5)
+        ]))
 
     def _draw_mesh_dimension_icon(self, painter, size, color):
         """Draw mesh dimension icon"""
@@ -364,10 +409,11 @@ class IconManager:
         painter.drawRect(5, size//2, size - 10, size//2 - 5)
         painter.drawRect(10, size//2 - 10, size - 20, 10)
         
-        # Draw export arrow (upward arrow)
-        painter.drawLine(size - 10, size - 10, size - 10, size//2 + 5)
-        painter.drawLine(size - 10, size//2 + 5, size - 15, size//2 + 10)
-        painter.drawLine(size - 10, size//2 + 5, size - 5, size//2 + 10)
+        # Draw export arrow (arrow pointing outward from folder to the right)
+        folder_center_y = size//2 + (size//2 - 5)//2
+        painter.drawLine(size - 20, folder_center_y, size - 6, folder_center_y)
+        painter.drawLine(size - 6, folder_center_y, size - 10, folder_center_y - 4)
+        painter.drawLine(size - 6, folder_center_y, size - 10, folder_center_y + 4)
     
     def _draw_boundary_condition_icon(self, painter, size, color):
         """Draw boundary condition icon"""
@@ -391,9 +437,6 @@ class IconManager:
     
     def _draw_extract_boundary_icon(self, painter, size, color):
         """Draw extract boundary icon"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         # Draw a simple mesh (two triangles)
         pen = QPen(QColor('#CCCCCC'), 1)
         painter.setPen(pen)
@@ -485,9 +528,6 @@ class IconManager:
         center_y = size // 2
         
         # Draw horizontal arrow pointing right
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         # Arrow shaft
         painter.drawLine(6, center_y, size - 6, center_y)
         
@@ -516,9 +556,6 @@ class IconManager:
         center_y = size // 2
         
         # Draw horizontal arrow pointing left
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         # Arrow shaft
         painter.drawLine(size - 6, center_y, 6, center_y)
         
@@ -546,9 +583,6 @@ class IconManager:
         center_y = size // 2
         
         # Draw vertical arrow pointing up
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         # Arrow shaft
         painter.drawLine(center_x, size - 6, center_x, 6)
         
@@ -576,9 +610,6 @@ class IconManager:
         center_y = size // 2
         
         # Draw vertical arrow pointing down
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         # Arrow shaft
         painter.drawLine(center_x, 6, center_x, size - 6)
         
@@ -642,9 +673,6 @@ class IconManager:
         cube_size = size // 3
         
         # Draw isometric cube with filled faces
-        from PyQt5.QtGui import QPolygon, QColor
-        from PyQt5.QtCore import QPoint
-        
         # Draw top face (lighter)
         top_color = QColor(color)
         top_color.setAlpha(180)
@@ -701,9 +729,6 @@ class IconManager:
         cube_size = size // 3
         
         # Draw filled isometric cube
-        from PyQt5.QtGui import QPolygon, QColor
-        from PyQt5.QtCore import QPoint
-        
         # Draw top face (lighter)
         top_color = QColor(color)
         top_color.setAlpha(200)
@@ -748,9 +773,6 @@ class IconManager:
     
     def _draw_wireframe_icon(self, painter, size, color):
         """Draw wireframe mode icon - outlined 3D cube"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-
         pen = QPen(color, 2)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
@@ -804,9 +826,6 @@ class IconManager:
         cube_size = size // 3
         
         # Draw filled isometric cube with strong edge lines
-        from PyQt5.QtGui import QPolygon, QColor
-        from PyQt5.QtCore import QPoint
-        
         # Draw top face (lighter)
         top_color = QColor(color)
         top_color.setAlpha(180)
@@ -914,8 +933,6 @@ class IconManager:
 
     def _draw_geometry_polyline_icon(self, painter, size, color):
         """Draw polyline icon"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
         painter.setPen(QPen(color, 2))
         points = [
             QPoint(6, size - 8),
@@ -932,8 +949,6 @@ class IconManager:
 
     def _draw_geometry_polygon_icon(self, painter, size, color):
         """Draw polygon icon"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
         painter.setPen(QPen(color, 2))
         points = [
             QPoint(size // 2, 6),
@@ -951,8 +966,6 @@ class IconManager:
 
     def _draw_geometry_box_icon(self, painter, size, color):
         """Draw box icon"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
         painter.setPen(QPen(color, 2))
         center_x = size // 2
         center_y = size // 2
@@ -993,9 +1006,6 @@ class IconManager:
     
     def _draw_create_region_icon(self, painter, size, color):
         """Draw create region icon - polygon with arrows showing direction"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         painter.setPen(QPen(color, 2))
         
         # Draw a closed polygon (hexagon)
@@ -1049,9 +1059,6 @@ class IconManager:
     
     def _draw_zoom_in_icon(self, painter, size, color):
         """Draw zoom in icon - magnifying glass with plus sign"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         pen = QPen(color, 2)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
@@ -1075,9 +1082,6 @@ class IconManager:
     
     def _draw_zoom_out_icon(self, painter, size, color):
         """Draw zoom out icon - magnifying glass with minus sign"""
-        from PyQt5.QtGui import QPolygon
-        from PyQt5.QtCore import QPoint
-        
         pen = QPen(color, 2)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
