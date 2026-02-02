@@ -46,11 +46,10 @@ class MeshGenerationSignals(QObject):
 class MeshGenerationThread(QThread):
     """网格生成工作线程类"""
 
-    def __init__(self, params, mesh_data=None, connectors=None, parts=None, gui_instance=None):
+    def __init__(self, params, mesh_data=None, parts=None, gui_instance=None):
         super().__init__()
         self.params = params
         self.mesh_data = mesh_data
-        self.connectors = connectors
         self.parts = parts
         self.gui_instance = gui_instance
         self.signals = MeshGenerationSignals()
@@ -72,11 +71,10 @@ class MeshGenerationThread(QThread):
             # 发送初始进度
             self.signals.progress.emit(5, "准备开始网格生成...")
 
-            # 执行网格生成，优先传递connectors或parts
+            # 执行网格生成，传递parts参数
             result_mesh = generate_mesh(
                 self.params, 
                 mesh_data=self.mesh_data,
-                connectors=self.connectors,
                 parts=self.parts,
                 gui_instance=gui_adapter
             )

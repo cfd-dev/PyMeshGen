@@ -227,15 +227,24 @@ def calculate_distance2(p1, p2):
 
 def triangle_area(p1, p2, p3):
     """计算三角形面积（支持2D/3D点）"""
+    # 确定维度（使用所有点中的最大维度）
+    max_dim = max(len(p1), len(p2), len(p3))
+    is_3d = max_dim > 2
+    
     # 向量叉积法计算面积
+    # 确保每个点都有足够的元素
+    p1_z = p1[2] if len(p1) > 2 else 0
+    p2_z = p2[2] if len(p2) > 2 else 0
+    p3_z = p3[2] if len(p3) > 2 else 0
+    
     v1 = (
-        [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-        if len(p1) > 2
+        [p2[0] - p1[0], p2[1] - p1[1], p2_z - p1_z]
+        if is_3d
         else [p2[0] - p1[0], p2[1] - p1[1], 0]
     )
     v2 = (
-        [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-        if len(p1) > 2
+        [p3[0] - p1[0], p3[1] - p1[1], p3_z - p1_z]
+        if is_3d
         else [p3[0] - p1[0], p3[1] - p1[1], 0]
     )
     cross = (
@@ -248,10 +257,16 @@ def triangle_area(p1, p2, p3):
 
 def tetrahedron_volume(p1, p2, p3, p4):
     """计算四面体体积（支持3D点）"""
+    # 确保每个点都有足够的元素
+    p1_z = p1[2] if len(p1) > 2 else 0
+    p2_z = p2[2] if len(p2) > 2 else 0
+    p3_z = p3[2] if len(p3) > 2 else 0
+    p4_z = p4[2] if len(p4) > 2 else 0
+    
     # 向量法计算体积
-    v1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]]
-    v2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]]
-    v3 = [p4[0] - p1[0], p4[1] - p1[1], p4[2] - p1[2]]
+    v1 = [p2[0] - p1[0], p2[1] - p1[1], p2_z - p1_z]
+    v2 = [p3[0] - p1[0], p3[1] - p1[1], p3_z - p1_z]
+    v3 = [p4[0] - p1[0], p4[1] - p1[1], p4_z - p1_z]
     
     # 计算三重标量积（行列式）
     det = (

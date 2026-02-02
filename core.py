@@ -25,20 +25,18 @@ from adfront2.adfront2_hybrid import Adfront2Hybrid
 from optimize.optimize import optimize_hybrid_grid
 
 
-def generate_mesh(parameters, mesh_data=None, connectors=None, parts=None, gui_instance=None):
+def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     """核心网格生成函数
 
     调用底层算法生成网格，支持多种调用方式：
     1. 通过parameters参数传递配置文件路径，从文件中读取网格数据
     2. 直接通过mesh_data参数传递网格数据
-    3. 直接通过connectors参数传递Connector列表，直接使用connector中的front_list
-    4. 直接通过parts参数传递Part列表，直接使用part中的front_list
+    3. 直接通过parts参数传递Part列表，直接使用part中的front_list
 
     Args:
         parameters: Parameters对象，包含网格生成的配置参数
         mesh_data: 可选，直接传入的网格数据对象，可以是Unstructured_Grid对象、字典或其他类型
-        connectors: 可选，直接传入的Connector列表，优先级高于mesh_data
-        parts: 可选，直接传入的Part列表，优先级高于connectors
+        parts: 可选，直接传入的Part列表，优先级高于mesh_data
         gui_instance: 可选，GUI实例，用于在网格生成过程中输出信息和显示中间结果
 
     Returns:
@@ -97,29 +95,12 @@ def generate_mesh(parameters, mesh_data=None, connectors=None, parts=None, gui_i
             heapq.heapify(front_heap)
             info(f"从parts中提取了 {len(front_heap)} 个阵面")
     
-    # 优先级2: 直接使用connectors参数中的front_list
-    elif connectors is not None:
-        info("使用直接传入的connectors参数，直接提取front_list")
-        from data_structure.basic_elements import Connector
-        if isinstance(connectors, list) and len(connectors) > 0:
-            front_heap = []
-            front_idx = 0
-            for conn in connectors:
-                if hasattr(conn, 'front_list'):
-                    for front in conn.front_list:
-                        front.idx = front_idx
-                        front_idx += 1
-                        front_heap.append(front)
-            import heapq
-            heapq.heapify(front_heap)
-            info(f"从connectors中提取了 {len(front_heap)} 个阵面")
-    
-    # 优先级3: 使用直接传入的网格数据
+    # 优先级2: 使用直接传入的网格数据
     elif mesh_data is not None:
         info("使用直接传入的网格数据")
         from utils.data_converter import convert_to_internal_mesh_format
         input_grid = convert_to_internal_mesh_format(mesh_data)
-    # 优先级4: 尝试从参数中获取文件路径
+    # 优先级3: 尝试从参数中获取文件路径
     elif parameters.input_file and isinstance(parameters.input_file, str) and os.path.exists(parameters.input_file):
         # 真实文件路径，正常解析
         input_grid = parse_fluent_msh(parameters.input_file)

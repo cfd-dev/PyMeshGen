@@ -523,6 +523,20 @@ def drl_smoothing(mesh_data,
         mesh_data.cyclic_node2node()
     
     boundary_nodes = set(mesh_data.boundary_nodes_list) if hasattr(mesh_data, 'boundary_nodes_list') else set()
+    
+    # 确保所有节点维度一致
+    dims = [len(coord) for coord in mesh_data.node_coords]
+    max_dim = max(dims) if dims else 2
+    is_3d = max_dim > 2
+    
+    # 如果有不一致的维度，将2D节点转换为3D（添加z=0）
+    if is_3d and any(dim < 3 for dim in dims):
+        mesh_data.node_coords = [
+            list(coord) + [0] if len(coord) < 3 else list(coord)
+            for coord in mesh_data.node_coords
+        ]
+        info(f"检测到混合2D/3D节点，已统一为3D（z=0）")
+    
     node_coords = np.array(mesh_data.node_coords, dtype=float)
     
     for iteration in range(iterations):

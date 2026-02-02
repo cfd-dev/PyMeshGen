@@ -764,6 +764,21 @@ def laplacian_smooth(unstr_grid, num_iter=10):
     timer = TimeSpan("开始进行laplacian优化...")
 
     node_coords = unstr_grid.node_coords
+    
+    # 确保所有节点维度一致
+    # 检查所有节点的维度
+    dims = [len(coord) for coord in node_coords]
+    max_dim = max(dims) if dims else 2
+    is_3d = max_dim > 2
+    
+    # 如果有不一致的维度，将2D节点转换为3D（添加z=0）
+    if is_3d and any(dim < 3 for dim in dims):
+        node_coords = [
+            list(coord) + [0] if len(coord) < 3 else list(coord)
+            for coord in node_coords
+        ]
+        info(f"检测到混合2D/3D节点，已统一为3D（z=0）")
+    
     # 将键改为节点索引
     neighbors = {node_ids: set() for node_ids in range(len(node_coords))}
 

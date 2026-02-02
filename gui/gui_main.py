@@ -175,7 +175,6 @@ class PyMeshGenGUI(QMainWindow):
         self.original_node_coords = None      # 原始节点坐标
         self.parts_params = []                # 部件参数列表
         self.line_connectors = None           # 线网格生成的connectors列表
-        self.line_parts = None                # 线网格生成的parts列表
         self.region_data = None               # 区域数据
         self.region_part = None               # 区域Part（包含多个Connector）
         self.direction_actors = []            # 方向箭头actor列表
@@ -1082,6 +1081,7 @@ class PyMeshGenGUI(QMainWindow):
         )
         region_part = Part("region", region_part_params, region_data['connectors'])
         region_part.init_part_front_list()
+        region_part.sync_connector_params()
         
         # 保存到GUI实例
         self.region_part = region_part
@@ -1209,8 +1209,7 @@ class PyMeshGenGUI(QMainWindow):
 
             # 保存connectors和parts，供后续网格生成使用
             self.line_connectors = connectors
-            self.line_parts = parts
-            self.log_info(f"已保存线网格数据: {len(connectors)} connectors, {len(parts)} parts")
+            self.log_info(f"已保存线网格数据: {len(connectors)} connectors")
 
             if connectors:
                 # 转换为Unstructured_Grid
@@ -1981,7 +1980,6 @@ class PyMeshGenGUI(QMainWindow):
         """清空网格"""
         self.current_mesh = None
         self.line_connectors = None
-        self.line_parts = None
         self._apply_mesh_dimension(GLOBAL_MESH_DIMENSION, update_mesh=False)
         if hasattr(self, 'mesh_display'):
             self.mesh_display.clear()

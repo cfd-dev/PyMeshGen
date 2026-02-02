@@ -307,11 +307,19 @@ def create_connector_from_edge(
     # 创建Front列表
     fronts = create_fronts_from_points(points, params.bc_type, params.part_name)
     
+    # 创建Connector参数
+    from data_structure.parameters import MeshParameters
+    connector_params = MeshParameters(
+        part_name=params.part_name,
+        max_size=1e6,
+        PRISM_SWITCH="off"
+    )
+    
     # 创建Connector
     connector = Connector(
         part_name=params.part_name,
         curve_name=edge_info.get('name', 'default'),
-        param=None,
+        param=connector_params,
         cad_obj=edge_info
     )
     connector.front_list = fronts
@@ -343,6 +351,7 @@ def create_part_from_connectors(
     
     part = Part(part_name, part_params, connectors)
     part.init_part_front_list()
+    part.sync_connector_params()
     
     return part
 

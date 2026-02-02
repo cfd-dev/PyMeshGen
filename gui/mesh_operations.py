@@ -307,23 +307,75 @@ class MeshOperations:
                 from gui.mesh_generation_thread import MeshGenerationThread
                 
                 # 优先使用区域数据（如果存在）
-                connectors = None
                 parts = None
                 
                 if hasattr(self.gui, 'region_part') and self.gui.region_part:
                     # 使用区域数据 - 直接传递包含多个Connector的Part
                     parts = [self.gui.region_part]
                     self.gui.log_info(f"使用区域数据: {len(parts)} parts, {len(self.gui.region_part.connectors)} connectors")
+                    
+                    # 如果用户设置了部件参数，更新区域Part的参数
+                    if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
+                        for part_param_dict in self.gui.parts_params:
+                            if part_param_dict.get('part_name') == 'region':
+                                from data_structure.parameters import MeshParameters
+                                updated_part_params = MeshParameters(
+                                    part_name=part_param_dict.get('part_name', 'region'),
+                                    max_size=part_param_dict.get('max_size', 1e6),
+                                    PRISM_SWITCH=part_param_dict.get('PRISM_SWITCH', 'off'),
+                                    first_height=part_param_dict.get('first_height', 0.01),
+                                    growth_rate=part_param_dict.get('growth_rate', 1.2),
+                                    max_layers=part_param_dict.get('max_layers', 5),
+                                    full_layers=part_param_dict.get('full_layers', 5),
+                                    multi_direction=part_param_dict.get('multi_direction', False)
+                                )
+                                self.gui.region_part.part_params = updated_part_params
+                                self.gui.region_part.sync_connector_params()
+                                self.gui.log_info(f"已更新区域Part参数")
+                                break
+                                
                 elif hasattr(self.gui, 'line_connectors') and self.gui.line_connectors:
-                    # 使用线网格数据
+                    # 使用线网格数据 - 从connectors创建parts
                     connectors = self.gui.line_connectors
-                    parts = self.gui.line_parts if hasattr(self.gui, 'line_parts') else None
-                    self.gui.log_info(f"使用线网格数据: {len(connectors)} connectors, {len(parts) if parts else 0} parts")
+                    # 从connectors创建parts
+                    from gui.line_mesh_generation import create_part_from_connectors
+                    # 按部件名称分组
+                    part_dict = {}
+                    for conn in connectors:
+                        if conn.part_name not in part_dict:
+                            part_dict[conn.part_name] = []
+                        part_dict[conn.part_name].append(conn)
+                    # 创建parts
+                    parts = []
+                    for part_name, conn_list in part_dict.items():
+                        part = create_part_from_connectors(part_name, conn_list)
+                        parts.append(part)
+                    self.gui.log_info(f"使用线网格数据: {len(connectors)} connectors, {len(parts)} parts")
+                    
+                    # 如果用户设置了部件参数，更新Part的参数
+                    if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
+                        from data_structure.parameters import MeshParameters
+                        for part in parts:
+                            for part_param_dict in self.gui.parts_params:
+                                if part_param_dict.get('part_name') == part.part_name:
+                                    updated_part_params = MeshParameters(
+                                        part_name=part_param_dict.get('part_name', part.part_name),
+                                        max_size=part_param_dict.get('max_size', 1e6),
+                                        PRISM_SWITCH=part_param_dict.get('PRISM_SWITCH', 'off'),
+                                        first_height=part_param_dict.get('first_height', 0.01),
+                                        growth_rate=part_param_dict.get('growth_rate', 1.2),
+                                        max_layers=part_param_dict.get('max_layers', 5),
+                                        full_layers=part_param_dict.get('full_layers', 5),
+                                        multi_direction=part_param_dict.get('multi_direction', False)
+                                    )
+                                    part.part_params = updated_part_params
+                                    part.sync_connector_params()
+                                    self.gui.log_info(f"已更新Part {part.part_name} 参数")
+                                    break
                 
                 self.gui.mesh_generation_thread = MeshGenerationThread(
                     params, 
                     self.gui.current_mesh, 
-                    connectors=connectors,
                     parts=parts,
                     gui_instance=self.gui
                 )

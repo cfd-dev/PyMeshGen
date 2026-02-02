@@ -1124,6 +1124,11 @@ class Part:
         for conn in self.connectors:
             self.front_list.extend(conn.front_list)
     
+    def sync_connector_params(self):
+        """同步部件参数到所有Connector"""
+        for conn in self.connectors:
+            conn.param = self.part_params
+    
     def get_properties(self):
         """获取部件属性，用于在属性面板中显示"""
         properties = {}
