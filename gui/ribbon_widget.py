@@ -323,10 +323,6 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['clear'] = gen_group.add_large_button("清空", tooltip="清空网格")
         layout.addWidget(gen_group)
 
-        region_group = RibbonGroup("")
-        self.buttons['mesh']['create_region'] = region_group.add_large_button("创建区域", tooltip="创建区域 - 选择多条Connector形成封闭区域")
-        layout.addWidget(region_group)
-
         quality_group = RibbonGroup("")
         self.buttons['mesh']['quality'] = quality_group.add_large_button("质量", tooltip="检查网格质量")
         self.buttons['mesh']['smooth'] = quality_group.add_large_button("平滑", tooltip="平滑网格")
@@ -371,6 +367,10 @@ class RibbonWidget(QWidget):
         line_mesh_group = RibbonGroup("线网格生成")
         self.buttons['geometry']['line_mesh'] = line_mesh_group.add_large_button("线网格", icon=get_icon('line-mesh-generate'), tooltip="生成线网格 (Ctrl+L)")
         layout.addWidget(line_mesh_group)
+
+        region_group = RibbonGroup("区域创建")
+        self.buttons['geometry']['create_region'] = region_group.add_large_button("创建区域", icon=get_icon('create-region'), tooltip="创建区域 - 选择多条Connector形成封闭区域")
+        layout.addWidget(region_group)
 
         layout.addStretch(1)
 
@@ -441,6 +441,7 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))
         self.buttons['geometry']['delete_geometry'].clicked.connect(_wrap(main_window.open_geometry_delete_dialog, "删除几何"))
         self.buttons['geometry']['line_mesh'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
+        self.buttons['geometry']['create_region'].clicked.connect(_wrap(main_window.open_create_region_dialog, "打开创建区域对话框"))
 
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))
@@ -469,7 +470,6 @@ class RibbonWidget(QWidget):
         self.buttons['mesh']['generate'].clicked.connect(_wrap(main_window.mesh_operations.generate_mesh, "开始生成网格"))
         self.buttons['mesh']['display'].clicked.connect(_wrap(main_window.display_mesh, "显示网格"))
         self.buttons['mesh']['clear'].clicked.connect(_wrap(main_window.clear_mesh, "清空网格"))
-        self.buttons['mesh']['create_region'].clicked.connect(_wrap(main_window.open_create_region_dialog, "打开创建区域对话框"))
         self.buttons['mesh']['quality'].clicked.connect(_wrap(main_window.mesh_operations.check_mesh_quality, "检查网格质量"))
         self.buttons['mesh']['smooth'].clicked.connect(_wrap(main_window.mesh_operations.smooth_mesh, "平滑网格"))
         self.buttons['mesh']['optimize'].clicked.connect(_wrap(main_window.mesh_operations.optimize_mesh, "优化网格"))

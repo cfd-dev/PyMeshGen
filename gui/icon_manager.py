@@ -59,8 +59,8 @@ class IconManager:
             
             # View operations
             'zoom-fit-best': QStyle.SP_ComputerIcon,
-            'zoom-in': QStyle.SP_ArrowUp,
-            'zoom-out': QStyle.SP_ArrowDown,
+            'zoom-in': None,  # 使用自定义图标
+            'zoom-out': None,  # 使用自定义图标
             'view-refresh': QStyle.SP_BrowserReload,
             'view-fullscreen': QStyle.SP_TitleBarMaxButton,
             
@@ -84,7 +84,9 @@ class IconManager:
         if icon_name in icon_map:
             app = QApplication.instance()
             if app:
-                return app.style().standardIcon(icon_map[icon_name])
+                icon_value = icon_map[icon_name]
+                if icon_value is not None:
+                    return app.style().standardIcon(icon_value)
         
         return QIcon()  # Return empty icon if not found
     
@@ -183,6 +185,10 @@ class IconManager:
             self._draw_line_mesh_icon(painter, size, primary_color)
         elif icon_name in ['create-region', 'create_region']:
             self._draw_create_region_icon(painter, size, secondary_color)
+        elif icon_name == 'zoom-in':
+            self._draw_zoom_in_icon(painter, size, primary_color)
+        elif icon_name == 'zoom-out':
+            self._draw_zoom_out_icon(painter, size, primary_color)
         else:
             # Default fallback: draw a generic icon
             self._draw_generic_icon(painter, size, primary_color)
@@ -1040,6 +1046,57 @@ class IconManager:
                            int(mid_y - dy * arrow_size + dx * arrow_size * 0.5))
                 ]
                 painter.drawPolygon(QPolygon(arrow_points))
+    
+    def _draw_zoom_in_icon(self, painter, size, color):
+        """Draw zoom in icon - magnifying glass with plus sign"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        
+        # Draw magnifying glass circle
+        center_x, center_y = size // 2, size // 2
+        radius = size // 3
+        painter.drawEllipse(center_x - radius, center_y - radius, radius * 2, radius * 2)
+        
+        # Draw magnifying glass handle
+        handle_start_x = center_x + radius * 0.707
+        handle_start_y = center_y + radius * 0.707
+        handle_end_x = center_x + radius * 1.414
+        handle_end_y = center_y + radius * 1.414
+        painter.drawLine(int(handle_start_x), int(handle_start_y), int(handle_end_x), int(handle_end_y))
+        
+        # Draw plus sign inside the glass
+        plus_size = radius // 2
+        painter.drawLine(center_x - plus_size, center_y, center_x + plus_size, center_y)  # Horizontal
+        painter.drawLine(center_x, center_y - plus_size, center_x, center_y + plus_size)  # Vertical
+    
+    def _draw_zoom_out_icon(self, painter, size, color):
+        """Draw zoom out icon - magnifying glass with minus sign"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        pen = QPen(color, 2)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        
+        # Draw magnifying glass circle
+        center_x, center_y = size // 2, size // 2
+        radius = size // 3
+        painter.drawEllipse(center_x - radius, center_y - radius, radius * 2, radius * 2)
+        
+        # Draw magnifying glass handle
+        handle_start_x = center_x + radius * 0.707
+        handle_start_y = center_y + radius * 0.707
+        handle_end_x = center_x + radius * 1.414
+        handle_end_y = center_y + radius * 1.414
+        painter.drawLine(int(handle_start_x), int(handle_start_y), int(handle_end_x), int(handle_end_y))
+        
+        # Draw minus sign inside the glass
+        minus_size = radius // 2
+        painter.drawLine(center_x - minus_size, center_y, center_x + minus_size, center_y)  # Horizontal
     
     def _draw_generic_icon(self, painter, size, color):
         """Draw a generic icon as fallback"""
