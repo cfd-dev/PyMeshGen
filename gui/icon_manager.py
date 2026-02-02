@@ -4,6 +4,7 @@ Provides optimized icons for all GUI functions with consistent styling
 """
 
 import os
+import numpy as np
 from PyQt5.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QBrush
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QStyle, QApplication
@@ -180,6 +181,8 @@ class IconManager:
             self._draw_geometry_cylinder_icon(painter, size, accent_color)
         elif icon_name in ['line-mesh-generate', 'line_mesh_generate', 'line-discretize']:
             self._draw_line_mesh_icon(painter, size, primary_color)
+        elif icon_name in ['create-region', 'create_region']:
+            self._draw_create_region_icon(painter, size, secondary_color)
         else:
             # Default fallback: draw a generic icon
             self._draw_generic_icon(painter, size, primary_color)
@@ -981,6 +984,62 @@ class IconManager:
         painter.drawArc(*bottom_rect, 0, 180 * 16)
         painter.drawLine(6, 6 + size // 6, 6, size - size // 6 - 6)
         painter.drawLine(size - 6, 6 + size // 6, size - 6, size - size // 6 - 6)
+    
+    def _draw_create_region_icon(self, painter, size, color):
+        """Draw create region icon - polygon with arrows showing direction"""
+        from PyQt5.QtGui import QPolygon
+        from PyQt5.QtCore import QPoint
+        
+        painter.setPen(QPen(color, 2))
+        
+        # Draw a closed polygon (hexagon)
+        center_x, center_y = size // 2, size // 2
+        radius = size // 3
+        
+        points = []
+        for i in range(6):
+            angle = i * 60 - 30  # Start from -30 degrees
+            x = center_x + radius * 0.866 * np.cos(np.radians(angle))
+            y = center_y + radius * 0.866 * np.sin(np.radians(angle))
+            points.append((int(x), int(y)))
+        
+        # Draw polygon edges
+        for i in range(len(points)):
+            next_i = (i + 1) % len(points)
+            painter.drawLine(points[i][0], points[i][1], points[next_i][0], points[next_i][1])
+        
+        # Draw direction arrows on edges
+        arrow_color = QColor(color)
+        painter.setPen(QPen(arrow_color, 2))
+        painter.setBrush(arrow_color)
+        
+        # Draw arrows on every other edge
+        for i in range(0, len(points), 2):
+            next_i = (i + 1) % len(points)
+            
+            # Calculate edge midpoint
+            mid_x = (points[i][0] + points[next_i][0]) // 2
+            mid_y = (points[i][1] + points[next_i][1]) // 2
+            
+            # Calculate edge direction
+            dx = points[next_i][0] - points[i][0]
+            dy = points[next_i][1] - points[i][1]
+            edge_length = np.sqrt(dx*dx + dy*dy)
+            
+            if edge_length > 0:
+                dx /= edge_length
+                dy /= edge_length
+                
+                # Draw small arrow at midpoint
+                arrow_size = 4
+                arrow_points = [
+                    QPoint(mid_x, mid_y),
+                    QPoint(int(mid_x - dx * arrow_size + dy * arrow_size * 0.5), 
+                           int(mid_y - dy * arrow_size - dx * arrow_size * 0.5)),
+                    QPoint(int(mid_x - dx * arrow_size - dy * arrow_size * 0.5), 
+                           int(mid_y - dy * arrow_size + dx * arrow_size * 0.5))
+                ]
+                painter.drawPolygon(QPolygon(arrow_points))
     
     def _draw_generic_icon(self, painter, size, color):
         """Draw a generic icon as fallback"""

@@ -295,11 +295,19 @@ class MeshOperations:
 
                 from gui.mesh_generation_thread import MeshGenerationThread
                 
-                # 优先使用线网格生成的connectors和parts
-                connectors = self.gui.line_connectors if hasattr(self.gui, 'line_connectors') else None
-                parts = self.gui.line_parts if hasattr(self.gui, 'line_parts') else None
+                # 优先使用区域数据（如果存在）
+                connectors = None
+                parts = None
                 
-                if connectors:
+                if hasattr(self.gui, 'region_connector') and hasattr(self.gui, 'region_part'):
+                    # 使用区域数据
+                    connectors = [self.gui.region_connector]
+                    parts = [self.gui.region_part]
+                    self.gui.log_info(f"使用区域数据: {len(connectors)} connectors, {len(parts)} parts")
+                elif hasattr(self.gui, 'line_connectors') and self.gui.line_connectors:
+                    # 使用线网格数据
+                    connectors = self.gui.line_connectors
+                    parts = self.gui.line_parts if hasattr(self.gui, 'line_parts') else None
                     self.gui.log_info(f"使用线网格数据: {len(connectors)} connectors, {len(parts) if parts else 0} parts")
                 
                 self.gui.mesh_generation_thread = MeshGenerationThread(

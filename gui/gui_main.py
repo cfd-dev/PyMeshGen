@@ -176,6 +176,10 @@ class PyMeshGenGUI(QMainWindow):
         self.parts_params = []                # 部件参数列表
         self.line_connectors = None           # 线网格生成的connectors列表
         self.line_parts = None                # 线网格生成的parts列表
+        self.region_data = None               # 区域数据
+        self.region_connector = None          # 区域Connector
+        self.region_part = None               # 区域Part
+        self.direction_actors = []            # 方向箭头actor列表
         self.render_mode = "surface"           # 渲染模式（surface：表面渲染）
         self.show_boundary = True             # 是否显示边界
         self.mesh_generation_thread = None    # 网格生成的线程实例
@@ -627,6 +631,22 @@ class PyMeshGenGUI(QMainWindow):
                 if hasattr(self, 'current_geometry'):
                     self.current_geometry = None
 
+                # 清空区域相关数据
+                if hasattr(self, 'region_data'):
+                    self.region_data = None
+                if hasattr(self, 'region_connector'):
+                    self.region_connector = None
+                if hasattr(self, 'region_part'):
+                    self.region_part = None
+                if hasattr(self, 'direction_actors'):
+                    for actor in self.direction_actors:
+                        if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
+                            try:
+                                self.mesh_display.renderer.RemoveActor(actor)
+                            except:
+                                pass
+                    self.direction_actors = []
+
                 # 清空网格显示区域
                 if hasattr(self, 'mesh_display'):
                     self.mesh_display.clear()
@@ -1028,6 +1048,60 @@ class PyMeshGenGUI(QMainWindow):
         dialog.generation_requested.connect(self._on_line_mesh_generation_requested)
         self._line_mesh_dialog = dialog
         dialog.show()
+
+    def open_create_region_dialog(self):
+        """打开创建区域对话框"""
+        from gui.region_creation_dialog import RegionCreationDialog
+        existing_dialog = getattr(self, "_region_creation_dialog", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+        dialog = RegionCreationDialog(self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda: setattr(self, "_region_creation_dialog", None))
+        dialog.region_created.connect(self._on_region_created)
+        self._region_creation_dialog = dialog
+        dialog.show()
+
+    def _on_region_created(self, region_data):
+        """处理区域创建完成"""
+        self.log_info(f"区域创建成功！包含 {region_data['total_fronts']} 个Front")
+        self.update_status("区域创建成功")
+        
+        # 将区域数据保存到GUI实例中，供网格生成使用
+        self.region_data = region_data
+        
+        # 将合并后的front_list传递给底层算法
+        # 这里可以添加将front_list传递给网格生成器的逻辑
+        # 例如，可以创建一个新的Connector或Part来包含这个区域
+        from data_structure.basic_elements import Connector, Part
+        from data_structure.parameters import MeshParameters
+        
+        # 创建一个新的Connector来包含合并后的front_list
+        region_connector = Connector(
+            part_name="region",
+            curve_name="region_boundary",
+            param=None,
+            cad_obj=None
+        )
+        region_connector.front_list = region_data['front_list']
+        
+        # 创建一个新的Part
+        region_part_params = MeshParameters(
+            part_name="region",
+            max_size=0.1,
+            PRISM_SWITCH="off"
+        )
+        region_part = Part("region", region_part_params, [region_connector])
+        region_part.init_part_front_list()
+        
+        # 保存到GUI实例
+        self.region_connector = region_connector
+        self.region_part = region_part
+        
+        self.log_info(f"已创建区域Connector，包含 {len(region_connector.front_list)} 个Front")
+        self.log_info(f"已创建区域Part，可用于网格生成")
 
     def _on_line_mesh_generation_requested(self, params):
         """处理线网格生成请求"""
