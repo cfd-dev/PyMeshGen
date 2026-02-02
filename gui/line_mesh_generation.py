@@ -28,6 +28,31 @@ class LineMeshParams:
     part_name: str = "default_line"
 
 
+def _normalize_bc_type(bc_type: str) -> str:
+    if bc_type is None:
+        return "unspecified"
+
+    text = str(bc_type).strip()
+    lower_text = text.lower()
+
+    if "wall" in lower_text or "壁面" in text:
+        return "wall"
+    if "inflow" in lower_text or "inlet" in lower_text or "进流" in text:
+        return "inflow"
+    if "outflow" in lower_text or "outlet" in lower_text or "出流" in text:
+        return "outflow"
+    if "symmetry" in lower_text or "对称" in text:
+        return "symmetry"
+    if "periodic" in lower_text or "周期" in text:
+        return "periodic"
+    if "interior" in lower_text or "内部" in text:
+        return "interior"
+    if lower_text in ("none", "无"):
+        return "unspecified"
+
+    return lower_text if lower_text else "unspecified"
+
+
 def generate_discretization_params(
     start_point: Tuple[float, float, float],
     end_point: Tuple[float, float, float],
@@ -305,14 +330,19 @@ def create_connector_from_edge(
     points = discretize_line(start_point, end_point, params, curve=curve if valid_curve else None)
     
     # 创建Front列表
-    fronts = create_fronts_from_points(points, params.bc_type, params.part_name)
+    normalized_bc_type = _normalize_bc_type(params.bc_type)
+    fronts = create_fronts_from_points(points, normalized_bc_type, params.part_name)
     
     # 创建Connector参数
     from data_structure.parameters import MeshParameters
+    
+    # 根据 bc_type 设置 PRISM_SWITCH
+    prism_switch = "wall" if normalized_bc_type == "wall" else "off"
+    
     connector_params = MeshParameters(
         part_name=params.part_name,
         max_size=1e6,
-        PRISM_SWITCH="off"
+        PRISM_SWITCH=prism_switch
     )
     
     # 创建Connector
@@ -343,11 +373,19 @@ def create_part_from_connectors(
     """
     from data_structure.parameters import MeshParameters
     
-    part_params = MeshParameters(
-        part_name=part_name,
-        max_size=0.1,
-        PRISM_SWITCH="off"
-    )
+    # 从第一个 Connector 获取参数作为基础
+    if connectors and connectors[0].param:
+        part_params = MeshParameters(
+            part_name=part_name,
+            max_size=connectors[0].param.max_size if hasattr(connectors[0].param, 'max_size') else 0.1,
+            PRISM_SWITCH=connectors[0].param.PRISM_SWITCH if hasattr(connectors[0].param, 'PRISM_SWITCH') else "off"
+        )
+    else:
+        part_params = MeshParameters(
+            part_name=part_name,
+            max_size=0.1,
+            PRISM_SWITCH="off"
+        )
     
     part = Part(part_name, part_params, connectors)
     part.init_part_front_list()
@@ -373,6 +411,7 @@ def generate_line_mesh(
         (Connector列表, Part列表)
     """
     connectors = []
+    normalized_bc_type = _normalize_bc_type(params.bc_type)
     
     for idx, edge_info in enumerate(edges_info):
         edge_params = LineMeshParams(
@@ -382,7 +421,7 @@ def generate_line_mesh(
             end_size=params.end_size,
             growth_rate=params.growth_rate,
             tanh_factor=params.tanh_factor,
-            bc_type=params.bc_type,
+            bc_type=normalized_bc_type,
             part_name=params.part_name
         )
         
@@ -490,6 +529,15 @@ def convert_connectors_to_unstructured_grid(
                 'part_name': conn.part_name,
                 'connectors': []
             }
+            # 添加部件参数信息
+            if hasattr(conn, 'param') and conn.param:
+                parts_info[conn.part_name]['PRISM_SWITCH'] = conn.param.PRISM_SWITCH if hasattr(conn.param, 'PRISM_SWITCH') else 'off'
+                parts_info[conn.part_name]['max_size'] = conn.param.max_size if hasattr(conn.param, 'max_size') else 1e6
+                parts_info[conn.part_name]['first_height'] = conn.param.first_height if hasattr(conn.param, 'first_height') else 0.01
+                parts_info[conn.part_name]['growth_rate'] = conn.param.growth_rate if hasattr(conn.param, 'growth_rate') else 1.2
+                parts_info[conn.part_name]['max_layers'] = conn.param.max_layers if hasattr(conn.param, 'max_layers') else 5
+                parts_info[conn.part_name]['full_layers'] = conn.param.full_layers if hasattr(conn.param, 'full_layers') else 5
+                parts_info[conn.part_name]['multi_direction'] = conn.param.multi_direction if hasattr(conn.param, 'multi_direction') else False
         parts_info[conn.part_name]['connectors'].append(conn.curve_name)
     
     grid.parts_info = parts_info

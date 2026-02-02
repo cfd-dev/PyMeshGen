@@ -448,7 +448,7 @@ class RegionCreationDialog(QDialog):
         else:
             self.gui.direction_actors = []
         
-        # 显示方向箭头
+        # 显示方向向量箭头 - 在每个 Front 上都显示
         import vtk
         for conn in self.selected_connectors:
             if not conn.front_list:
@@ -456,66 +456,101 @@ class RegionCreationDialog(QDialog):
             
             is_flipped = self.connector_directions.get(id(conn), False)
             
+            # 根据是否翻转来决定颜色
             if is_flipped:
-                start_node = conn.front_list[-1].node_elems[1]
-                end_node = conn.front_list[0].node_elems[0]
+                arrow_color = (1, 0, 0)  # 红色表示反向
             else:
-                start_node = conn.front_list[0].node_elems[0]
-                end_node = conn.front_list[-1].node_elems[1]
+                arrow_color = (0, 1, 0)  # 绿色表示正向
             
-            # 创建方向箭头
-            arrow_source = vtk.vtkArrowSource()
-            arrow_source.SetShaftRadius(0.02)
-            arrow_source.SetTipRadius(0.05)
-            arrow_source.SetTipLength(0.3)
-            arrow_source.Update()
-            
-            # 计算变换
-            start_point = start_node.coords
-            end_point = end_node.coords
-            
-            direction = np.array(end_point) - np.array(start_point)
-            length = np.linalg.norm(direction)
-            
-            if length < 1e-10:
-                continue
-            
-            direction = direction / length
-            
-            # 创建变换
-            transform = vtk.vtkTransform()
-            transform.Translate(start_point[0], start_point[1], start_point[2])
-            transform.Scale(length, length, length)
-            
-            # 计算旋转矩阵
-            z_axis = np.array([0, 0, 1])
-            if np.allclose(direction, z_axis):
-                pass
-            elif np.allclose(direction, -z_axis):
-                transform.RotateWXYZ(180, 1, 0, 0)
-            else:
-                rotation_axis = np.cross(z_axis, direction)
-                rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
-                angle = np.degrees(np.arccos(np.dot(z_axis, direction)))
-                transform.RotateWXYZ(angle, rotation_axis[0], rotation_axis[1], rotation_axis[2])
-            
-            # 应用变换
-            transform_filter = vtk.vtkTransformPolyDataFilter()
-            transform_filter.SetTransform(transform)
-            transform_filter.SetInputConnection(arrow_source.GetOutputPort())
-            transform_filter.Update()
-            
-            # 创建mapper和actor
-            mapper = vtk.vtkPolyDataMapper()
-            mapper.SetInputConnection(transform_filter.GetOutputPort())
-            
-            actor = vtk.vtkActor()
-            actor.SetMapper(mapper)
-            actor.GetProperty().SetColor(1, 0, 0)
-            actor.GetProperty().SetOpacity(0.8)
-            
-            self.gui.mesh_display.renderer.AddActor(actor)
-            self.gui.direction_actors.append(actor)
+            # 在每个 Front 上都显示方向向量箭头
+            for front in conn.front_list:
+                # 获取方向向量（法向量）
+                direction_vec = front.normal
+                
+                # 确保方向向量是三维的
+                if len(direction_vec) == 2:
+                    direction_vec = [direction_vec[0], direction_vec[1], 0.0]
+                
+                # 如果被翻转，方向向量取反
+                if is_flipped:
+                    direction_vec = [-direction_vec[0], -direction_vec[1], -direction_vec[2]]
+                
+                # 从 Front 中点开始绘制方向向量
+                node1 = front.node_elems[0].coords
+                node2 = front.node_elems[1].coords
+                start_point = [(a + b) / 2 for a, b in zip(node1, node2)]
+                
+                # 确保中心点是三维的
+                if len(start_point) == 2:
+                    start_point = [start_point[0], start_point[1], 0.0]
+                
+                # 箭头长度为 Front 长度的一半
+                arrow_length = front.length * 0.5
+                
+                # 计算箭头终点
+                end_point = [
+                    start_point[0] + direction_vec[0] * arrow_length,
+                    start_point[1] + direction_vec[1] * arrow_length,
+                    start_point[2] + direction_vec[2] * arrow_length
+                ]
+                
+                # 创建方向箭头
+                arrow_source = vtk.vtkArrowSource()
+                arrow_source.SetShaftRadius(0.03)
+                arrow_source.SetTipRadius(0.08)
+                arrow_source.SetTipLength(0.35)
+                arrow_source.Update()
+                
+                # VTK 箭头默认方向是 (1, 0, 0)，需要旋转到实际方向
+                # 计算从 X 轴到目标方向的旋转
+                x_axis = np.array([1, 0, 0])
+                target_direction = np.array(direction_vec)
+                
+                # 确保目标方向是单位向量
+                target_norm = np.linalg.norm(target_direction)
+                if target_norm < 1e-10:
+                    continue
+                target_direction = target_direction / target_norm
+                
+                # 创建变换
+                transform = vtk.vtkTransform()
+                transform.PostMultiply()
+                
+                # 先缩放到目标长度
+                transform.Scale(arrow_length, arrow_length, arrow_length)
+                
+                # 再旋转箭头方向
+                if np.allclose(target_direction, x_axis):
+                    pass
+                elif np.allclose(target_direction, -x_axis):
+                    transform.RotateWXYZ(180, 0, 0, 1)
+                else:
+                    # 计算旋转轴和角度
+                    rotation_axis = np.cross(x_axis, target_direction)
+                    rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
+                    angle = np.degrees(np.arccos(np.clip(np.dot(x_axis, target_direction), -1.0, 1.0)))
+                    transform.RotateWXYZ(angle, rotation_axis[0], rotation_axis[1], rotation_axis[2])
+                
+                # 最后平移到起点（避免被缩放放大）
+                transform.Translate(start_point[0], start_point[1], start_point[2])
+                
+                # 应用变换
+                transform_filter = vtk.vtkTransformPolyDataFilter()
+                transform_filter.SetTransform(transform)
+                transform_filter.SetInputConnection(arrow_source.GetOutputPort())
+                transform_filter.Update()
+                
+                # 创建mapper和actor
+                mapper = vtk.vtkPolyDataMapper()
+                mapper.SetInputConnection(transform_filter.GetOutputPort())
+                
+                actor = vtk.vtkActor()
+                actor.SetMapper(mapper)
+                actor.GetProperty().SetColor(arrow_color[0], arrow_color[1], arrow_color[2])
+                actor.GetProperty().SetOpacity(0.9)
+                
+                self.gui.mesh_display.renderer.AddActor(actor)
+                self.gui.direction_actors.append(actor)
         
         self.gui.mesh_display.render_window.Render()
         

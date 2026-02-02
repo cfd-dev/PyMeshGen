@@ -1210,6 +1210,27 @@ class PyMeshGenGUI(QMainWindow):
             connectors, parts = generate_line_mesh(edges_info, line_mesh_params, start_idx=start_idx)
             self.log_info(f"线网格生成完成: connectors={len(connectors) if connectors else 0}, parts={len(parts) if parts else 0}")
 
+            # 从 parts_params 中获取部件参数并应用到 Connector
+            if hasattr(self, 'parts_params') and self.parts_params:
+                for conn in connectors:
+                    part_name = conn.part_name
+                    for part_param in self.parts_params:
+                        if part_param.get('part_name') == part_name:
+                            # 更新 Connector 的参数
+                            from data_structure.parameters import MeshParameters
+                            conn.param = MeshParameters(
+                                part_name=part_name,
+                                max_size=part_param.get('max_size', 0.1),
+                                PRISM_SWITCH=part_param.get('PRISM_SWITCH', 'off'),
+                                first_height=part_param.get('first_height', 0.1),
+                                growth_rate=part_param.get('growth_rate', 1.2),
+                                max_layers=part_param.get('max_layers', 3),
+                                full_layers=part_param.get('full_layers', 0),
+                                multi_direction=part_param.get('multi_direction', False)
+                            )
+                            self.log_info(f"已应用部件参数到 {part_name}: PRISM_SWITCH={conn.param.PRISM_SWITCH}")
+                            break
+
             # 保存connectors和parts，供后续网格生成使用（累积而非覆盖）
             if self.line_connectors is None:
                 self.line_connectors = connectors

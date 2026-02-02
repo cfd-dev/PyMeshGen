@@ -58,12 +58,18 @@ class Front:
 
         self.direction = [
             (b - a) / self.length for a, b in zip(node1, node2)
-        ]  # 单位方向向量
+        ]  # 单位方向向量（切向量）
 
-        self.normal = [
-            -self.direction[1],
-            self.direction[0],
-        ]  # 单位法向量
+        # 计算单位法向量
+        # 在二维情况下，法向量 = (-dy, dx)
+        # 在三维情况下，需要知道线段所在的平面
+        # 默认假设线段在 xy 平面内（z=0）
+        if len(node1) >= 3 and len(node2) >= 3:
+            # 三维情况：默认假设在 xy 平面内
+            self.normal = [-self.direction[1], self.direction[0], 0.0]
+        else:
+            # 二维情况
+            self.normal = [-self.direction[1], self.direction[0]]
 
         # 计算边界框
         min_x = min(node1[0], node2[0])  # 最小x坐标
