@@ -895,6 +895,8 @@ class Adlayers2:
 
             thetam = 0  # 局部步长因子计算中的夹角
             cross = np.cross(normal1, normal2)
+            if isinstance(cross, np.ndarray):
+                cross = cross[2] if cross.size >= 3 else cross.item()
             if cross < -1e-6:  # 凸角
                 node_elem.convex_flag = True
                 node_elem.concav_flag = False
