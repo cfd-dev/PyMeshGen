@@ -504,15 +504,23 @@ class MeshDisplayArea:
                 return
 
             bc_colors = {
-                "wall": (1.0, 0.0, 0.0),
-                "pressure-inlet": (0.0, 1.0, 0.0),
-                "pressure-outlet": (0.0, 0.0, 1.0),
-                "symmetry": (1.0, 1.0, 0.0),
-                "pressure-far-field": (0.0, 1.0, 1.0),
-                "velocity-inlet": (1.0, 0.0, 1.0),
-                "interface": (1.0, 0.5, 0.0),
-                "outflow": (0.0, 1.0, 1.0),
-                "unspecified": (0.5, 0.5, 0.5),
+                "BCWall": (1.0, 0.0, 0.0),
+                "BCWallInviscid": (1.0, 0.4, 0.4),
+                "BCWallViscous": (0.9, 0.0, 0.0),
+                "BCWallViscousHeatFlux": (0.8, 0.0, 0.0),
+                "BCWallViscousIsothermal": (0.7, 0.0, 0.0),
+                "BCInflow": (0.0, 1.0, 0.0),
+                "BCInflowSubsonic": (0.0, 0.9, 0.0),
+                "BCInflowSupersonic": (0.0, 0.8, 0.0),
+                "BCOutflow": (0.0, 0.0, 1.0),
+                "BCOutflowSubsonic": (0.0, 0.0, 0.9),
+                "BCOutflowSupersonic": (0.0, 0.0, 0.8),
+                "BCSymmetryPlane": (1.0, 1.0, 0.0),
+                "BCSymmetryPolar": (1.0, 0.9, 0.0),
+                "BCFarfield": (0.0, 1.0, 1.0),
+                "BCGeneral": (1.0, 0.5, 0.0),
+                "BCTypeNull": (0.5, 0.5, 0.5),
+                "BCTypeUserDefined": (0.4, 0.4, 0.4),
             }
 
             for zone_name, zone_data in boundary_info.items():

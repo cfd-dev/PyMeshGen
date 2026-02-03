@@ -10,6 +10,7 @@ from typing import List, Tuple, Dict, Optional
 from dataclasses import dataclass
 
 from data_structure.basic_elements import NodeElement, NodeElementALM, Connector, Part
+from data_structure.cgns_types import CGNSBCType, CGNSBCTypeName
 from data_structure.front2d import Front
 from utils.geom_toolkit import calculate_distance
 from utils.message import error, info, warning, debug
@@ -24,33 +25,60 @@ class LineMeshParams:
     end_size: float = 0.2
     growth_rate: float = 1.2
     tanh_factor: float = 2.0
-    bc_type: str = "wall"
+    bc_type: str = "BCWall"
     part_name: str = "default_line"
+
+_CGNS_BC_NAME_MAP = {
+    name.lower(): name for name in CGNSBCTypeName.TYPE_NAMES.values()
+}
+_CGNS_BC_NULL = CGNSBCTypeName.get_name(CGNSBCType.BC_TYPE_NULL)
+_CGNS_BC_USER = CGNSBCTypeName.get_name(CGNSBCType.BC_TYPE_USER_DEFINED)
+_CGNS_BC_WALL = CGNSBCTypeName.get_name(CGNSBCType.BC_WALL)
+_CGNS_BC_INFLOW = CGNSBCTypeName.get_name(CGNSBCType.BC_INFLOW)
+_CGNS_BC_OUTFLOW = CGNSBCTypeName.get_name(CGNSBCType.BC_OUTFLOW)
+_CGNS_BC_SYMMETRY = CGNSBCTypeName.get_name(CGNSBCType.BC_SYMMETRY_PLANE)
+_CGNS_BC_GENERAL = CGNSBCTypeName.get_name(CGNSBCType.BC_GENERAL)
 
 
 def _normalize_bc_type(bc_type: str) -> str:
     if bc_type is None:
-        return "unspecified"
+        return _CGNS_BC_NULL
+
+    if isinstance(bc_type, CGNSBCType):
+        return CGNSBCTypeName.get_name(bc_type)
 
     text = str(bc_type).strip()
+    if not text:
+        return _CGNS_BC_NULL
     lower_text = text.lower()
 
+    if lower_text in _CGNS_BC_NAME_MAP:
+        return _CGNS_BC_NAME_MAP[lower_text]
     if "wall" in lower_text or "壁面" in text:
-        return "wall"
+        return _CGNS_BC_WALL
     if "inflow" in lower_text or "inlet" in lower_text or "进流" in text:
-        return "inflow"
+        return _CGNS_BC_INFLOW
     if "outflow" in lower_text or "outlet" in lower_text or "出流" in text:
-        return "outflow"
+        return _CGNS_BC_OUTFLOW
     if "symmetry" in lower_text or "对称" in text:
-        return "symmetry"
+        return _CGNS_BC_SYMMETRY
     if "periodic" in lower_text or "周期" in text:
-        return "periodic"
+        return _CGNS_BC_GENERAL
     if "interior" in lower_text or "内部" in text:
-        return "interior"
+        return _CGNS_BC_NULL
     if lower_text in ("none", "无"):
-        return "unspecified"
+        return _CGNS_BC_NULL
 
-    return lower_text if lower_text else "unspecified"
+    return _CGNS_BC_USER
+
+
+def _is_wall_bc_type(bc_type: str) -> bool:
+    if bc_type is None:
+        return False
+    text = str(bc_type)
+    if text == "wall":
+        return True
+    return text.startswith("BCWall")
 
 
 def generate_discretization_params(
@@ -337,7 +365,7 @@ def create_connector_from_edge(
     from data_structure.parameters import MeshParameters
     
     # 根据 bc_type 设置 PRISM_SWITCH
-    prism_switch = "wall" if normalized_bc_type == "wall" else "off"
+    prism_switch = "wall" if _is_wall_bc_type(normalized_bc_type) else "off"
     
     connector_params = MeshParameters(
         part_name=params.part_name,
@@ -481,8 +509,9 @@ def convert_connectors_to_unstructured_grid(
     
     # 创建边界节点
     boundary_nodes = []
+    default_bc_type = _normalize_bc_type(connectors[0].front_list[0].bc_type) if connectors and connectors[0].front_list else _CGNS_BC_NULL
     for idx, coords in enumerate(node_coords):
-        boundary_nodes.append(NodeElement(coords, idx, bc_type="wall"))
+        boundary_nodes.append(NodeElement(coords, idx, bc_type=default_bc_type))
     
     # 创建线段单元（使用GenericCell）
     cell_container = []
@@ -546,8 +575,9 @@ def convert_connectors_to_unstructured_grid(
     boundary_info = {}
     for conn in connectors:
         if conn.part_name not in boundary_info:
+            front_bc_type = _normalize_bc_type(conn.front_list[0].bc_type) if conn.front_list else _CGNS_BC_NULL
             boundary_info[conn.part_name] = {
-                'bc_type': 'wall',
+                'bc_type': front_bc_type,
                 'faces': []
             }
     grid.boundary_info = boundary_info

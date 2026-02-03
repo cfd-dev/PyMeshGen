@@ -448,8 +448,25 @@ class RegionCreationDialog(QDialog):
         else:
             self.gui.direction_actors = []
         
-        # 显示方向向量箭头 - 在每个 Front 上都显示
+        # 显示方向向量箭头 - 限制总数量
         import vtk
+        all_fronts = []
+        for conn in self.selected_connectors:
+            if conn.front_list:
+                all_fronts.extend(conn.front_list)
+        if not all_fronts:
+            return
+        max_arrows = 50
+        step = max(1, int(len(all_fronts) / max_arrows))
+        front_indices = set(range(0, len(all_fronts), step))
+
+        bbox_min = np.min([front.center for front in all_fronts], axis=0)
+        bbox_max = np.max([front.center for front in all_fronts], axis=0)
+        bbox_size = np.linalg.norm(bbox_max - bbox_min)
+        arrow_length = bbox_size / 20.0 if bbox_size > 0 else 0.0
+        arrow_length = max(arrow_length, 1e-6)
+
+        front_index = 0
         for conn in self.selected_connectors:
             if not conn.front_list:
                 continue
@@ -464,6 +481,10 @@ class RegionCreationDialog(QDialog):
             
             # 在每个 Front 上都显示方向向量箭头
             for front in conn.front_list:
+                if front_index not in front_indices:
+                    front_index += 1
+                    continue
+                front_index += 1
                 # 获取方向向量（法向量）
                 direction_vec = front.normal
                 
@@ -483,9 +504,6 @@ class RegionCreationDialog(QDialog):
                 # 确保中心点是三维的
                 if len(start_point) == 2:
                     start_point = [start_point[0], start_point[1], 0.0]
-                
-                # 箭头长度为 Front 长度的一半
-                arrow_length = front.length * 0.5
                 
                 # 计算箭头终点
                 end_point = [
@@ -603,3 +621,12 @@ class RegionCreationDialog(QDialog):
             self.gui.direction_actors = []
             self.gui.mesh_display.render_window.Render()
         super().closeEvent(event)
+
+    def accept(self):
+        """关闭对话框前清除方向显示"""
+        if hasattr(self.gui, 'direction_actors'):
+            for actor in self.gui.direction_actors:
+                self.gui.mesh_display.renderer.RemoveActor(actor)
+            self.gui.direction_actors = []
+            self.gui.mesh_display.render_window.Render()
+        super().accept()

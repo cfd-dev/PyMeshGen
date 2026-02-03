@@ -740,10 +740,9 @@ class LineMeshGenerationDialog(QDialog):
         
         bc_layout.addWidget(QLabel("边界类型:"), 0, 0)
         self.combo_bc_type = QComboBox()
-        self.combo_bc_type.addItems([
-            "无", "壁面(wall)", "进流(inflow)", "出流(outflow)",
-            "对称(symmetry)", "周期(periodic)", "内部(interior)"
-        ])
+        from data_structure.cgns_types import CGNSBCTypeName
+        self.combo_bc_type.addItems(list(CGNSBCTypeName.TYPE_NAMES.values()))
+        self.combo_bc_type.setCurrentText("BCWall")
         bc_layout.addWidget(self.combo_bc_type, 0, 1)
         
         bc_layout.addWidget(QLabel("部件名称:"), 1, 0)
