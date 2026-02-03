@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (QStatusBar, QToolBar,
                              QLabel, QTextEdit, QScrollArea, QTabWidget, QToolButton,
                              QDockWidget, QSizePolicy)
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QPalette
 
 
 class StatusBar:
@@ -156,8 +156,19 @@ class InfoOutput:
         # 检查消息是否已经包含时间戳格式 [HH:MM:SS] [LEVEL]
         timestamp_pattern = r'^\[\d{1,2}:\d{1,2}:\d{1,2}\] \[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\]'
         if re.match(timestamp_pattern, message):
-            # 如果消息已经包含时间戳和级别，直接添加
-            self.info_text.append(message)
+            # 如果消息已经包含时间戳和级别，按级别设置颜色
+            level = re.match(timestamp_pattern, message).group(1)
+            color_map = {
+                'WARNING': '#FFA500',
+                'ERROR': '#FF0000',
+                'DEBUG': '#808080',
+                'VERBOSE': '#A0A0A0'
+            }
+            color = color_map.get(level)
+            if color:
+                self.info_text.append(f'<span style="color: {color};">{message}</span>')
+            else:
+                self._append_plain_text(message)
         else:
             # 如果消息没有时间戳，添加当前时间戳
             timestamp = time.strftime("%H:%M:%S")
@@ -181,18 +192,24 @@ class InfoOutput:
                 
                 if color:
                     formatted_message = f'<span style="color: {color};">[{timestamp}] [{level}] {clean_message}</span>'
+                    self.info_text.append(formatted_message)
                 else:
                     formatted_message = f"[{timestamp}] [{level}] {clean_message}"
-                self.info_text.append(formatted_message)
+                    self._append_plain_text(formatted_message)
             else:
                 # 消息没有级别信息，使用INFO级别
                 formatted_message = f"[{timestamp}] [INFO] {message}"
-                self.info_text.append(formatted_message)
+                self._append_plain_text(formatted_message)
+
+    def _append_plain_text(self, message):
+        default_color = self.info_text.palette().color(QPalette.Text)
+        self.info_text.setTextColor(default_color)
+        self.info_text.append(message)
     
     def log_info(self, message):
         """记录信息"""
         timestamp = time.strftime("%H:%M:%S")
-        self.info_text.append(f"[{timestamp}] [INFO] {message}")
+        self._append_plain_text(f"[{timestamp}] [INFO] {message}")
 
     def log_error(self, message):
         """记录错误"""
