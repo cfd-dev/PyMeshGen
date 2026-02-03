@@ -45,7 +45,7 @@ from gui.mesh_display import MeshDisplayArea
 from gui.ui_utils import UIStyles, PARTS_INFO_RESERVED_KEYS
 from gui.view_controller import ViewController
 from gui.mesh_operations import MeshOperations
-from gui.part_manager import PartManager
+from gui.parts_panel_manager import PartManager
 from gui.config_manager import ConfigManager
 from gui.geometry_operations import GeometryOperations
 from gui.help_module import HelpModule
