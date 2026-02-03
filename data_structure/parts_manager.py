@@ -47,7 +47,7 @@ class PartData(dict):
         mesh_elements = data.get("mesh_elements")
         part_params = data.get("part_params")
         extra = {k: v for k, v in data.items() if k not in ("geometry_elements", "mesh_elements", "part_params")}
-        extra.setdefault("part_name", part_name)
+        extra.pop("part_name", None)
         return cls(part_name, geometry_elements=geometry_elements, mesh_elements=mesh_elements, part_params=part_params, **extra)
 
     def ensure_defaults(self):
