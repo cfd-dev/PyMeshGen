@@ -96,6 +96,12 @@ class Parameters:
     def load_cofig(self):
         """加载配置文件"""
         config = self.open_config_file()
+        self.load_config_data(config)
+
+    def load_config_data(self, config):
+        """从配置字典中加载参数"""
+        if config is None:
+            raise ValueError("配置内容为空")
 
         # 必要字段校验
         self.check_main_fields(config)
@@ -119,6 +125,25 @@ class Parameters:
                 self._create_part_params(merged_params)
             else:
                 self._create_part_params(part)
+
+    @classmethod
+    def from_config_dict(cls, config):
+        """直接从配置字典创建Parameters实例"""
+        params = cls.__new__(cls)
+        params.get_param_from = "FROM_CONFIG_DICT"
+        params.config_file = []
+        params.json_file = None
+        params.case_file = None
+        params.debug_level = 0
+        params.part_params = []
+        params.input_file = []
+        params.output_file = []
+        params.mesh_type = 1
+        params.viz_enabled = False
+        params.auto_output = True
+        params.load_config_data(config)
+        set_debug_level(params.debug_level)
+        return params
 
     def update_part_params_from_mesh(self, mesh_data):
         """根据导入的网格数据更新部件参数，如果网格数据中的部件不在配置中，则添加默认参数"""

@@ -8,8 +8,6 @@
 
 import os
 import sys
-import json
-import tempfile
 import time
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -287,16 +285,12 @@ class MeshOperations:
                 else:
                     config_data["output_file"] = os.path.abspath(config_data["output_file"])
 
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
-                json.dump(config_data, temp_file, indent=2)
-                temp_file_path = temp_file.name
-
             try:
                 self.gui.log_info("正在构建网格生成参数...")
                 self.gui.update_status("正在构建网格生成参数...")
 
                 from data_structure.parameters import Parameters
-                params = Parameters("FROM_CASE_JSON", temp_file_path)
+                params = Parameters.from_config_dict(config_data)
 
                 self.gui.progress_dialog = QProgressDialog("正在生成网格...", "取消", 0, 100, self.gui)
                 self.gui.progress_dialog.setWindowTitle("网格生成进度")
