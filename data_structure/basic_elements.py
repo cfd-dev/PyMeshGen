@@ -943,6 +943,7 @@ class Connector:
         self.param = param  # 面网格生成参数
         self.front_list = []  # 曲线网格
         self.matching_boundary = None  # connector需要匹配的对象
+        self.is_match = False  # connector是否作为match边界
 
     @property
     def start_point(self):

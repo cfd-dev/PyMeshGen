@@ -862,8 +862,8 @@ def bind_edges_to_connectors(shape: TopoDS_Shape, parts: List) -> None:
                 if edge_idx < len(edges_info):
                     edge_info = edges_info[edge_idx]
                     
-                    # 根据connector的参数进行离散化
-                    max_size = connector.param.max_size
+                    # 根据部件参数进行离散化
+                    max_size = part.part_params.max_size
                     
                     # 离散化边
                     discretized_points = discretize_edge_by_size(edge_info, max_size)
@@ -961,7 +961,7 @@ def bind_edges_by_curve_name(shape: TopoDS_Shape, parts: List, edge_curve_mappin
             for connector in part.connectors:
                 if connector.curve_name == curve_name:
                     # 根据connector的参数进行离散化
-                    max_size = connector.param.max_size
+                    max_size = part.part_params.max_size
                     
                     # 离散化边
                     discretized_points = discretize_edge_by_size(edge_info, max_size)

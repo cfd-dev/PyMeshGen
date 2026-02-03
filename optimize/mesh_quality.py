@@ -34,16 +34,20 @@ def triangle_shape_quality(p1, p2, p3):
     quality = 4.0 * sqrt(3.0) * area / denominator if denominator != 0 else 0
     upper_limit = 1.0
     lower_limit = 0.0
+    tolerance = 1e-12
     # 新增异常检测
     if (
         isnan(quality)
         or isinf(quality)
         or quality < lower_limit
-        or quality > upper_limit
+        or quality > upper_limit + tolerance
     ):
         raise ValueError(
             f"三角形质量计算异常：quality={quality}，节点坐标：{p1}, {p2}, {p3}"
         )
+
+    if quality > upper_limit:
+        quality = upper_limit
 
     return quality
 

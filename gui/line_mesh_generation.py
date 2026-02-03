@@ -398,19 +398,11 @@ def create_part_from_connectors(
     """
     from data_structure.parameters import MeshParameters
     
-    # 从第一个 Connector 获取参数作为基础
-    if connectors and connectors[0].param:
-        part_params = MeshParameters(
-            part_name=part_name,
-            max_size=connectors[0].param.max_size if hasattr(connectors[0].param, 'max_size') else 0.1,
-            PRISM_SWITCH=connectors[0].param.PRISM_SWITCH if hasattr(connectors[0].param, 'PRISM_SWITCH') else "off"
-        )
-    else:
-        part_params = MeshParameters(
-            part_name=part_name,
-            max_size=0.1,
-            PRISM_SWITCH="off"
-        )
+    part_params = MeshParameters(
+        part_name=part_name,
+        max_size=0.1,
+        PRISM_SWITCH="off"
+    )
     
     part = Part(part_name, part_params, connectors)
     part.init_part_front_list()
@@ -556,14 +548,15 @@ def convert_connectors_to_unstructured_grid(
                 'connectors': []
             }
             # 添加部件参数信息
-            if hasattr(conn, 'param') and conn.param:
-                parts_info[conn.part_name]['PRISM_SWITCH'] = conn.param.PRISM_SWITCH if hasattr(conn.param, 'PRISM_SWITCH') else 'off'
-                parts_info[conn.part_name]['max_size'] = conn.param.max_size if hasattr(conn.param, 'max_size') else 1e6
-                parts_info[conn.part_name]['first_height'] = conn.param.first_height if hasattr(conn.param, 'first_height') else 0.01
-                parts_info[conn.part_name]['growth_rate'] = conn.param.growth_rate if hasattr(conn.param, 'growth_rate') else 1.2
-                parts_info[conn.part_name]['max_layers'] = conn.param.max_layers if hasattr(conn.param, 'max_layers') else 5
-                parts_info[conn.part_name]['full_layers'] = conn.param.full_layers if hasattr(conn.param, 'full_layers') else 5
-                parts_info[conn.part_name]['multi_direction'] = conn.param.multi_direction if hasattr(conn.param, 'multi_direction') else False
+            part_param = getattr(conn, 'param', None)
+            if part_param:
+                parts_info[conn.part_name]['PRISM_SWITCH'] = part_param.PRISM_SWITCH if hasattr(part_param, 'PRISM_SWITCH') else 'off'
+                parts_info[conn.part_name]['max_size'] = part_param.max_size if hasattr(part_param, 'max_size') else 1e6
+                parts_info[conn.part_name]['first_height'] = part_param.first_height if hasattr(part_param, 'first_height') else 0.01
+                parts_info[conn.part_name]['growth_rate'] = part_param.growth_rate if hasattr(part_param, 'growth_rate') else 1.2
+                parts_info[conn.part_name]['max_layers'] = part_param.max_layers if hasattr(part_param, 'max_layers') else 5
+                parts_info[conn.part_name]['full_layers'] = part_param.full_layers if hasattr(part_param, 'full_layers') else 5
+                parts_info[conn.part_name]['multi_direction'] = part_param.multi_direction if hasattr(part_param, 'multi_direction') else False
         parts_info[conn.part_name]['connectors'].append(conn.curve_name)
     
     grid.parts_info = parts_info

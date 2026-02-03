@@ -86,7 +86,7 @@ class Adlayers2:
         """检查是否存在match边界"""
         for part in self.part_params:
             for conn in part.connectors:
-                if conn.param.PRISM_SWITCH == "match":
+                if getattr(conn, "is_match", False):
                     return True
         return False
 
@@ -109,7 +109,7 @@ class Adlayers2:
 
         for part in self.part_params:
             for conn in part.connectors:
-                if conn.param.PRISM_SWITCH == "match":
+                if getattr(conn, "is_match", False):
                     conn.rediscretize_conn_to_match_wall(matched_wall_part)
                     # conn的阵面列表发生变化，重新初始化part的阵面列表
                     part.init_part_front_list()

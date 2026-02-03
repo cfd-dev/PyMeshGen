@@ -46,7 +46,8 @@ class ConfigManager:
                 if connector.curve_name == "default":
                     continue
                 curve_config = {"curve_name": connector.curve_name}
-                curve_config.update(self._mesh_params_to_dict(connector.param))
+                if getattr(connector, "is_match", False):
+                    curve_config["PRISM_SWITCH"] = "match"
                 curves.append(curve_config)
 
         part_config["curves"] = curves

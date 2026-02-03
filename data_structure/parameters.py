@@ -207,28 +207,13 @@ class Parameters:
 
         if "curves" in params:
             for curve in params["curves"]:
-                # 对于每个curve，优先使用自己的参数，如果自己没有定义参数，则使用部件参数
-                curve_param = MeshParameters(
+                connector = Connector(
                     part_name=params["part_name"],
-                    max_size=curve.get("max_size", part_param.max_size),
-                    PRISM_SWITCH=curve.get("PRISM_SWITCH", part_param.PRISM_SWITCH),
-                    first_height=curve.get("first_height", part_param.first_height),
-                    growth_rate=curve.get("growth_rate", part_param.growth_rate),
-                    growth_method=curve.get("growth_method", part_param.growth_method),
-                    max_layers=curve.get("max_layers", part_param.max_layers),
-                    full_layers=curve.get("full_layers", part_param.full_layers),
-                    multi_direction=curve.get(
-                        "multi_direction", part_param.multi_direction
-                    ),
+                    curve_name=curve.get("curve_name"),
+                    param=part_param,
                 )
-
-                connectors.append(
-                    Connector(
-                        part_name=params["part_name"],
-                        curve_name=curve.get("curve_name"),
-                        param=curve_param,
-                    )
-                )
+                connector.is_match = curve.get("PRISM_SWITCH") == "match"
+                connectors.append(connector)
 
         # 对于每个part自动创建一个other线对象（connector），
         # 用于收集未明确定义参数的曲线，或者不存在curve定义的情况
