@@ -269,7 +269,7 @@ class TestConnectorBinding(unittest.TestCase):
 
             self.assertEqual(len(front.center), 3, "Front中心应有3个坐标")
             self.assertEqual(len(front.direction), 3, "Front方向应有3个坐标")
-            self.assertEqual(len(front.normal), 2, "Front法向应有2个坐标（2D）")
+            self.assertEqual(len(front.normal), 3, "Front法向应有3个坐标")
 
             direction_norm = np.linalg.norm(front.direction)
             normal_norm = np.linalg.norm(front.normal)
