@@ -337,22 +337,22 @@ class PartManager:
                         self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
                         existing_parts.add(part_name)
 
-    def update_parts_list_from_cas(self, parts_info=None, update_status=True):
-        """从CAS数据更新部件列表"""
+    def update_parts_list(self, parts_info=None, update_status=True):
+        """更新部件列表"""
         if parts_info is not None:
             self._set_parts_info(parts_info)
 
         if parts_info is None:
             parts_info = self._get_parts_info()
             if parts_info is None:
-                self.gui.log_info("没有CAS部件数据")
+                self.gui.log_info("没有部件数据")
                 return
 
         if hasattr(self.gui, 'model_tree_widget'):
             self.gui.model_tree_widget.load_parts(parts_info)
-            self.gui.log_info(f"已从CAS更新部件列表，共 {len(parts_info)} 个部件")
+            self.gui.log_info(f"已更新部件列表，共 {len(parts_info)} 个部件")
             if update_status:
-                self.gui.update_status("部件列表已从CAS更新")
+                self.gui.update_status("部件列表已更新")
         else:
             self.gui.log_info("模型树组件未初始化，无法更新部件列表")
 
@@ -445,7 +445,7 @@ class PartManager:
                             updated_parts_info[part_name] = part_data
 
             if updated_parts_info:
-                self.update_parts_list_from_cas(parts_info=updated_parts_info, update_status=False)
+                self.update_parts_list(parts_info=updated_parts_info, update_status=False)
                 self.gui.log_info(f"已更新部件列表，检测到 {len(updated_parts_info)} 个部件: {list(updated_parts_info.keys())}")
 
                 self.refresh_display_all_parts()

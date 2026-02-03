@@ -1234,7 +1234,7 @@ class MeshOperations:
                         if hasattr(self.gui, 'model_tree_widget'):
                             self.gui.model_tree_widget.load_mesh(self.gui.current_mesh)
 
-                        self.gui.part_manager.update_parts_list_from_cas(parts_info=new_parts_info, update_status=False)
+                        self.gui.part_manager.update_parts_list(parts_info=new_parts_info, update_status=False)
                         
                         self.gui.part_manager.refresh_display_all_parts()
 
