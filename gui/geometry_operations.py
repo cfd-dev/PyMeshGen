@@ -437,10 +437,11 @@ class GeometryOperations:
 
         if hasattr(self.gui, 'model_tree_widget') and stats.get('num_vertices', 0) == 0 and stats.get('num_edges', 0) == 0 and stats.get('num_faces', 0) == 0 and stats.get('num_solids', 0) == 0:
             self.gui.model_tree_widget.load_geometry(None, "几何")
-            if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info and 'DefaultPart' in self.gui.cas_parts_info:
-                del self.gui.cas_parts_info['DefaultPart']
+            parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
+            if parts_info and 'DefaultPart' in parts_info:
+                del parts_info['DefaultPart']
                 if hasattr(self.gui, 'model_tree_widget'):
-                    self.gui.model_tree_widget.load_parts({'parts_info': self.gui.cas_parts_info})
+                    self.gui.model_tree_widget.load_parts({'parts_info': parts_info})
                 self.gui.log_info("已清除 DefaultPart")
 
         self.gui.log_info("已删除选中几何元素")

@@ -161,6 +161,8 @@ class ConfigManager:
                 self.gui.parts_params = []
                 for part_param in self.gui.params.part_params:
                     self.gui.parts_params.append(self._part_to_config(part_param))
+                if hasattr(self.gui, '_sync_part_params_to_parts'):
+                    self.gui._sync_part_params_to_parts()
 
                 if hasattr(self.gui, 'part_list_widget'):
                     self.gui.part_list_widget.clear()

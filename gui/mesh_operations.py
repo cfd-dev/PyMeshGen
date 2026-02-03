@@ -245,7 +245,8 @@ class MeshOperations:
                 elif hasattr(self.gui, 'current_mesh') and hasattr(self.gui.current_mesh, 'node_coords') and hasattr(self.gui.current_mesh, 'cells'):
                     has_mesh_data = True
 
-                has_parts_info = hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info
+                parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
+                has_parts_info = bool(parts_info)
 
                 if not has_mesh_data and not has_parts_info:
                     QMessageBox.warning(self.gui, "警告", "无法获取有效的输入网格数据或部件信息")
@@ -262,10 +263,11 @@ class MeshOperations:
                 "auto_output": self.gui.params.auto_output if hasattr(self.gui, 'params') and self.gui.params else True
             }
 
-            # 只有在非区域数据的情况下才处理cas_parts_info
+            # 只有在非区域数据的情况下才处理部件信息
             if not has_region_data and not has_line_mesh_data:
-                if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info and not self.gui.parts_params:
-                    for part_name in self.gui.cas_parts_info.keys():
+                parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
+                if parts_info and not self.gui.parts_params:
+                    for part_name in parts_info.keys():
                         config_data["parts"].append({
                             "part_name": part_name,
                             "max_size": 1e6,
@@ -1105,6 +1107,7 @@ class MeshOperations:
 
             has_boundary_info = False
             boundary_info = {}
+            parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
 
             if hasattr(self.gui.current_mesh, 'boundary_nodes') and self.gui.current_mesh.boundary_nodes:
                 has_boundary_info = True
@@ -1113,9 +1116,9 @@ class MeshOperations:
             if hasattr(self.gui.current_mesh, 'parts_info') and self.gui.current_mesh.parts_info:
                 has_boundary_info = True
                 boundary_info['parts_info'] = self.gui.current_mesh.parts_info
-            elif hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
+            elif parts_info:
                 has_boundary_info = True
-                boundary_info['parts_info'] = self.gui.cas_parts_info
+                boundary_info['parts_info'] = parts_info
             else:
                 if hasattr(self.gui.current_mesh, 'boundary_nodes') and self.gui.current_mesh.boundary_nodes:
                     extracted_parts = self.gui._extract_parts_from_boundary_nodes(self.gui.current_mesh.boundary_nodes)
@@ -1221,7 +1224,8 @@ class MeshOperations:
                         self.gui.current_mesh.parts_info = new_parts_info
                         self.gui.current_mesh.boundary_info = new_parts_info
 
-                        self.gui.cas_parts_info = new_parts_info
+                        if hasattr(self.gui, '_set_parts_info'):
+                            self.gui._set_parts_info(new_parts_info)
                         
                         self.gui.original_node_coords = self.gui.current_mesh.node_coords
 
@@ -1256,7 +1260,8 @@ class MeshOperations:
         try:
             from PyQt5.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem, QPushButton, QLabel, QComboBox, QMessageBox, QHeaderView
 
-            if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+            parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
+            if not parts_info:
                 QMessageBox.warning(self.gui, "警告", "请先导入网格文件以获取部件列表")
                 self.gui.log_info("未检测到导入的网格数据，无法设置边界条件")
                 self.gui.update_status("未检测到导入的网格数据")
@@ -1277,7 +1282,7 @@ class MeshOperations:
             bc_types = ["wall", "inlet", "outlet", "symmetry", "interior", "pressure_inlet", "pressure_outlet", "velocity_inlet"]
 
             parts_list = []
-            for part_name, part_data in self.gui.cas_parts_info.items():
+            for part_name, part_data in parts_info.items():
                 if part_name not in PARTS_INFO_RESERVED_KEYS:
                     bc_type = part_data.get('bc_type', 'wall')
                     bc_value = part_data.get('bc_value', '')
@@ -1320,10 +1325,10 @@ class MeshOperations:
                     bc_value = table.item(row, 2).text()
                     description = table.item(row, 3).text()
 
-                    if part_name in self.gui.cas_parts_info:
-                        self.gui.cas_parts_info[part_name]['bc_type'] = bc_type
-                        self.gui.cas_parts_info[part_name]['bc_value'] = bc_value
-                        self.gui.cas_parts_info[part_name]['description'] = description
+                    if part_name in parts_info:
+                        parts_info[part_name]['bc_type'] = bc_type
+                        parts_info[part_name]['bc_value'] = bc_value
+                        parts_info[part_name]['description'] = description
 
                 self.gui.log_info(f"已更新 {len(parts_list)} 个部件的边界条件")
                 self.gui.update_status("边界条件已更新")

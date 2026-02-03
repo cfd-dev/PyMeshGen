@@ -51,6 +51,7 @@ from gui.geometry_operations import GeometryOperations
 from gui.help_module import HelpModule
 from gui.ui_helpers import UIHelpers
 from data_structure.parameters import Parameters
+from data_structure.parts_manager import GlobalPartsManager, PartData
 
 
 def _register_qt_metatypes():
@@ -172,6 +173,7 @@ class PyMeshGenGUI(QMainWindow):
         self.current_mesh = None              # 当前生成的网格对象
         self.mesh_dimension = GLOBAL_MESH_DIMENSION  # 当前网格维度
         self.cas_parts_info = None            # CAS文件的部件信息
+        self.global_parts_manager = None      # 全局部件管理对象
         self.original_node_coords = None      # 原始节点坐标
         self.parts_params = []                # 部件参数列表
         self.line_connectors = None           # 线网格生成的connectors列表
@@ -545,6 +547,8 @@ class PyMeshGenGUI(QMainWindow):
                 # 清空部件参数
                 if hasattr(self, 'parts_params'):
                     self.parts_params = []
+                    if hasattr(self, '_sync_part_params_to_parts'):
+                        self._sync_part_params_to_parts()
 
                 # 清空部件列表显示
                 if hasattr(self, 'part_list_widget'):
@@ -572,6 +576,10 @@ class PyMeshGenGUI(QMainWindow):
                 # 重置相关属性
                 if hasattr(self, 'cas_parts_info'):
                     self.cas_parts_info = None
+                if hasattr(self, 'global_parts_manager'):
+                    self.global_parts_manager = None
+                if hasattr(self, 'global_parts_manager'):
+                    self.global_parts_manager = None
 
                 if hasattr(self, 'original_node_coords'):
                     self.original_node_coords = None
@@ -940,10 +948,11 @@ class PyMeshGenGUI(QMainWindow):
                         self._merge_parts_info(mesh_data.parts_info)
                         self.log_info(f"已保留网格文件中的部件信息，共 {len(mesh_data.parts_info)} 个部件")
                     # 如果没有预设部件，自动创建Default部件
-                    elif not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+                    elif not self._get_parts_info():
                         self._create_default_part_for_mesh(mesh_data)
-                    if hasattr(self, 'model_tree_widget') and hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                        self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+                    parts_info = self._get_parts_info()
+                    if hasattr(self, 'model_tree_widget') and parts_info:
+                        self.model_tree_widget.load_parts({'parts_info': parts_info})
                     QTimer.singleShot(0, step3_refresh_display)
                 
                 def step3_refresh_display():
@@ -1277,8 +1286,9 @@ class PyMeshGenGUI(QMainWindow):
                         self.log_info(f"已合并线网格部件信息，共 {len(unstr_grid.parts_info)} 个部件")
                     
                     # 更新模型树显示
-                    if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                        self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+                    parts_info = self._get_parts_info()
+                    if parts_info:
+                        self.model_tree_widget.load_parts({'parts_info': parts_info})
             else:
                 self.log_warning("线网格显示失败")
         except Exception as e:
@@ -1450,11 +1460,11 @@ class PyMeshGenGUI(QMainWindow):
             if hasattr(self, 'model_tree_widget'):
                 self.model_tree_widget.load_geometry(shape, os.path.basename(file_path))
 
-                if hasattr(self, 'cas_parts_info'):
-                    # self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}, 内容: {self.cas_parts_info}")
-                    self.log_info(f"导入几何前cas_parts_info状态: {type(self.cas_parts_info)}")
+                parts_info = self._get_parts_info()
+                if parts_info:
+                    self.log_info(f"导入几何前部件信息状态: {type(parts_info)}")
                 else:
-                    self.log_info(f"导入几何前cas_parts_info不存在")
+                    self.log_info(f"导入几何前部件信息不存在")
 
                 if not self._has_geometry_parts_info():
                     self.log_info("开始创建Default部件...")
@@ -1546,9 +1556,33 @@ class PyMeshGenGUI(QMainWindow):
             self.update_status("几何显示创建失败")
 
     def _ensure_cas_parts_info(self):
-        """确保cas_parts_info已初始化"""
-        if not hasattr(self, 'cas_parts_info') or self.cas_parts_info is None:
-            self.cas_parts_info = {}
+        """确保全局部件管理对象已初始化"""
+        if not hasattr(self, 'global_parts_manager') or self.global_parts_manager is None:
+            self.global_parts_manager = GlobalPartsManager()
+        if not hasattr(self, 'cas_parts_info'):
+            self.cas_parts_info = None
+
+    def _get_parts_info(self):
+        """获取统一部件信息字典"""
+        self._ensure_cas_parts_info()
+        return self.global_parts_manager
+
+    def _set_parts_info(self, parts_info):
+        """设置统一部件信息"""
+        self._ensure_cas_parts_info()
+        if isinstance(parts_info, GlobalPartsManager):
+            self.global_parts_manager = parts_info
+        else:
+            self.global_parts_manager = GlobalPartsManager.from_cas_parts_info(parts_info)
+        if self.parts_params:
+            self.global_parts_manager.apply_part_params(self.parts_params)
+        self.cas_parts_info = None
+
+    def _sync_part_params_to_parts(self):
+        """同步部件参数到全局部件管理对象"""
+        self._ensure_cas_parts_info()
+        if self.parts_params:
+            self.global_parts_manager.apply_part_params(self.parts_params)
 
     def _merge_parts_info(self, parts_info):
         """合并部件信息，保留已有几何元素"""
@@ -1567,8 +1601,9 @@ class PyMeshGenGUI(QMainWindow):
                     part_name = part_data.get('part_name', f'部件_{idx}')
                     parts_iter.append((part_name, part_data))
 
+        parts_manager = self._get_parts_info()
         for part_name, part_data in parts_iter:
-            existing_part = self.cas_parts_info.get(part_name)
+            existing_part = parts_manager.get(part_name)
             if isinstance(existing_part, dict):
                 for key, value in part_data.items():
                     if key == 'geometry_elements' and existing_part.get('geometry_elements'):
@@ -1578,27 +1613,31 @@ class PyMeshGenGUI(QMainWindow):
                     else:
                         existing_part[key] = value
                 existing_part.setdefault('part_name', part_name)
-                self.cas_parts_info[part_name] = existing_part
+                parts_manager[part_name] = existing_part
             else:
                 part_copy = part_data.copy()
                 part_copy.setdefault('part_name', part_name)
-                self.cas_parts_info[part_name] = part_copy
+                parts_manager[part_name] = part_copy
+
+        if self.parts_params:
+            parts_manager.apply_part_params(self.parts_params)
 
     def _has_geometry_parts_info(self):
         """检查是否已有几何部件信息"""
-        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             return False
 
-        if isinstance(self.cas_parts_info, dict):
-            for part_data in self.cas_parts_info.values():
+        if isinstance(parts_info, dict):
+            for part_data in parts_info.values():
                 if isinstance(part_data, dict):
                     geometry_elements = part_data.get('geometry_elements') or {}
                     if any(geometry_elements.values()):
                         return True
             return False
 
-        if isinstance(self.cas_parts_info, list):
-            for part_data in self.cas_parts_info:
+        if isinstance(parts_info, list):
+            for part_data in parts_info:
                 if isinstance(part_data, dict):
                     geometry_elements = part_data.get('geometry_elements') or {}
                     if any(geometry_elements.values()):
@@ -1610,8 +1649,9 @@ class PyMeshGenGUI(QMainWindow):
     def _register_default_part(self, part_name, element_key, elements, counts, log_message):
         """注册默认部件并更新模型树显示"""
         self._ensure_cas_parts_info()
+        parts_info = self._get_parts_info()
 
-        existing_part = self.cas_parts_info.get(part_name) if isinstance(self.cas_parts_info, dict) else None
+        existing_part = parts_info.get(part_name) if isinstance(parts_info, dict) else None
         if isinstance(existing_part, dict):
             part_info = existing_part
             part_info.setdefault('part_name', part_name)
@@ -1619,17 +1659,15 @@ class PyMeshGenGUI(QMainWindow):
             part_info[element_key] = elements
             part_info.update(counts)
         else:
-            part_info = {
-                'part_name': part_name,
-                'bc_type': '',
-                element_key: elements
-            }
+            part_info = PartData(part_name)
+            part_info.setdefault('bc_type', '')
+            part_info[element_key] = elements
             part_info.update(counts)
 
-        self.cas_parts_info[part_name] = part_info
+        parts_info[part_name] = part_info
 
         if hasattr(self, 'model_tree_widget'):
-            self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+            self.model_tree_widget.load_parts({'parts_info': parts_info})
 
         self.log_info(log_message)
 
@@ -1903,7 +1941,8 @@ class PyMeshGenGUI(QMainWindow):
 
     def _rebuild_parts_for_geometry(self, old_shape, new_shape, removed_shapes):
         """根据删除结果重建部件几何索引映射"""
-        if not hasattr(self, 'cas_parts_info') or not self.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             return
 
         if new_shape is None or (hasattr(new_shape, 'IsNull') and new_shape.IsNull()):
@@ -1958,8 +1997,8 @@ class PyMeshGenGUI(QMainWindow):
                 updated.append(new_idx)
             return sorted(set(updated))
 
-        if isinstance(self.cas_parts_info, dict):
-            for part_name, part_data in self.cas_parts_info.items():
+        if isinstance(parts_info, dict):
+            for part_name, part_data in parts_info.items():
                 if not isinstance(part_data, dict):
                     continue
                 geometry_elements = part_data.get('geometry_elements') or {}
@@ -1974,9 +2013,9 @@ class PyMeshGenGUI(QMainWindow):
         else:
             return
 
-        if self.cas_parts_info:
+        if parts_info:
             has_geometry = False
-            for part_data in self.cas_parts_info.values():
+            for part_data in parts_info.values():
                 if isinstance(part_data, dict):
                     geometry_elements = part_data.get('geometry_elements') or {}
                     if any(geometry_elements.values()):
@@ -1986,7 +2025,7 @@ class PyMeshGenGUI(QMainWindow):
                 self._create_default_part_for_geometry(new_shape, getattr(self, 'current_geometry_stats', {}))
 
         if hasattr(self, 'model_tree_widget'):
-            self.model_tree_widget.load_parts({'parts_info': self.cas_parts_info})
+            self.model_tree_widget.load_parts({'parts_info': parts_info})
 
     def on_geometry_import_failed(self, error_message):
         """几何导入失败回调"""
@@ -2033,11 +2072,12 @@ class PyMeshGenGUI(QMainWindow):
         # 如果有3D显示区域，执行操作
         if hasattr(self, 'mesh_display'):
             try:
-                # First try with cas_parts_info if available
-                if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                    success = display_method(actual_part_name, parts_info=self.cas_parts_info)
+                # First try with parts_info if available
+                parts_info = self._get_parts_info()
+                if parts_info:
+                    success = display_method(actual_part_name, parts_info=parts_info)
                 else:
-                    # If cas_parts_info is not available, try with no parts_info to let the display method handle fallbacks
+                    # If parts_info is not available, try with no parts_info to let the display method handle fallbacks
                     success = display_method(actual_part_name, parts_info=None)
 
                 if success:
@@ -2046,8 +2086,9 @@ class PyMeshGenGUI(QMainWindow):
                     self.log_error(f"{operation_name.split(' ')[0]}部件失败: {actual_part_name}")
                     # If operation fails, try to highlight the part instead as a fallback
                     self.log_info(f"尝试高亮部件作为备选方案: {actual_part_name}")
-                    if hasattr(self, 'cas_parts_info') and self.cas_parts_info:
-                        self.mesh_display.highlight_part(actual_part_name, highlight=True, parts_info=self.cas_parts_info)
+                    parts_info = self._get_parts_info()
+                    if parts_info:
+                        self.mesh_display.highlight_part(actual_part_name, highlight=True, parts_info=parts_info)
                     else:
                         self.mesh_display.highlight_part(actual_part_name, highlight=True)
             except Exception as e:

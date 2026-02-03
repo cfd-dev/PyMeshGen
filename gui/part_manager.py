@@ -9,6 +9,19 @@ class PartManager:
 
     def __init__(self, gui):
         self.gui = gui
+    
+    def _get_parts_info(self):
+        if hasattr(self.gui, '_get_parts_info'):
+            return self.gui._get_parts_info()
+        if not hasattr(self.gui, 'cas_parts_info') or self.gui.cas_parts_info is None:
+            self.gui.cas_parts_info = {}
+        return self.gui.cas_parts_info
+
+    def _set_parts_info(self, parts_info):
+        if hasattr(self.gui, '_set_parts_info'):
+            self.gui._set_parts_info(parts_info)
+            return
+        self.gui.cas_parts_info = parts_info
 
     def add_part(self):
         """添加部件"""
@@ -29,7 +42,6 @@ class PartManager:
         Args:
             part_name: 要删除的部件名称，如果为None则从部件列表获取当前选中的部件
         """
-        # FIXME 删除部件后，元素被移动到默认部件，但是无法通过勾选默认部件实现显示和隐藏
         # 如果没有提供部件名称，则从部件列表获取当前选中的部件
         if part_name is None:
             if hasattr(self.gui, 'parts_list_widget'):
@@ -57,20 +69,21 @@ class PartManager:
             return
 
         # 检查部件是否存在
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             QMessageBox.warning(self.gui, "警告", "未找到部件信息")
             return
 
-        if part_name not in self.gui.cas_parts_info:
+        if part_name not in parts_info:
             QMessageBox.warning(self.gui, "警告", f"未找到部件 '{part_name}'")
             return
 
         # 获取要删除的部件数据
-        part_to_delete = self.gui.cas_parts_info[part_name]
+        part_to_delete = parts_info[part_name]
 
         # 确保DefaultPart存在，如果不存在则创建
-        if 'DefaultPart' not in self.gui.cas_parts_info:
-            self.gui.cas_parts_info['DefaultPart'] = {
+        if 'DefaultPart' not in parts_info:
+            parts_info['DefaultPart'] = {
                 'type': 'default',
                 'bc_type': 'wall',
                 'part_name': 'DefaultPart',
@@ -95,7 +108,7 @@ class PartManager:
                     self.gui.parts_list_widget.add_part_with_checkbox('DefaultPart', True)
 
         # 将元素移回DefaultPart
-        default_part = self.gui.cas_parts_info['DefaultPart']
+        default_part = parts_info['DefaultPart']
 
         # 移回几何元素
         if 'geometry_elements' in part_to_delete:
@@ -132,10 +145,10 @@ class PartManager:
         self.gui.log_info(f"已将部件 '{part_name}' 的元素移回默认部件")
 
         # 从部件信息中删除该部件
-        del self.gui.cas_parts_info[part_name]
+        del parts_info[part_name]
 
         # 更新 DefaultPart 计数
-        default_part = self.gui.cas_parts_info.get('DefaultPart')
+        default_part = parts_info.get('DefaultPart')
         if isinstance(default_part, dict):
             if 'faces' in default_part:
                 default_part['face_count'] = len(default_part['faces'])
@@ -158,7 +171,7 @@ class PartManager:
 
         # 更新模型树
         if hasattr(self.gui, 'model_tree_widget'):
-            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+            self.gui.model_tree_widget.load_parts(parts_info)
 
         # 刷新显示
         self.refresh_display_all_parts()
@@ -176,7 +189,8 @@ class PartManager:
         from gui.part_params_dialog import PartParamsDialog
         
         # 检查是否有导入的网格数据
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             QMessageBox.warning(self.gui, "警告", "请先导入网格文件以获取部件列表")
             self.gui.log_info("未检测到导入的网格数据，无法设置部件参数")
             self.gui.update_status("未检测到导入的网格数据")
@@ -187,10 +201,10 @@ class PartManager:
         
         # 获取当前部件名称列表
         current_part_names = []
-        if isinstance(self.gui.cas_parts_info, dict):
-            current_part_names = list(self.gui.cas_parts_info.keys())
-        elif isinstance(self.gui.cas_parts_info, list):
-            current_part_names = [part_info.get('part_name', f'部件{self.gui.cas_parts_info.index(part_info)}') for part_info in self.gui.cas_parts_info]
+        if isinstance(parts_info, dict):
+            current_part_names = list(parts_info.keys())
+        elif isinstance(parts_info, list):
+            current_part_names = [part_info.get('part_name', f'部件{parts_info.index(part_info)}') for part_info in parts_info]
         
         # 创建已保存参数的映射字典，按部件名称索引
         saved_params_map = {}
@@ -225,6 +239,8 @@ class PartManager:
         if dialog.exec_() == QDialog.Accepted:
             # 获取设置后的参数
             self.gui.parts_params = dialog.get_parts_params()
+            if hasattr(self.gui, '_sync_part_params_to_parts'):
+                self.gui._sync_part_params_to_parts()
             self.gui.log_info(f"已更新部件参数，共 {len(self.gui.parts_params)} 个部件")
             self.gui.update_status("部件参数已更新")
         else:
@@ -236,17 +252,18 @@ class PartManager:
         from PyQt5.QtWidgets import QDialog
         from gui.part_params_dialog import PartParamsDialog
 
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             QMessageBox.warning(self.gui, "警告", "请先导入网格文件以获取部件列表")
             self.gui.log_info("未检测到导入的网格数据，无法设置部件参数")
             self.gui.update_status("未检测到导入的网格数据")
             return
 
         current_part_names = []
-        if isinstance(self.gui.cas_parts_info, dict):
-            current_part_names = list(self.gui.cas_parts_info.keys())
-        elif isinstance(self.gui.cas_parts_info, list):
-            current_part_names = [part_info.get('part_name', f'部件{self.gui.cas_parts_info.index(part_info)}') for part_info in self.gui.cas_parts_info]
+        if isinstance(parts_info, dict):
+            current_part_names = list(parts_info.keys())
+        elif isinstance(parts_info, list):
+            current_part_names = [part_info.get('part_name', f'部件{parts_info.index(part_info)}') for part_info in parts_info]
 
         if part_name not in current_part_names:
             self.gui.log_info(f"未找到部件: {part_name}")
@@ -279,6 +296,8 @@ class PartManager:
         dialog = PartParamsDialog(self.gui, parts=parts_params, current_part=current_index)
         if dialog.exec_() == QDialog.Accepted:
             self.gui.parts_params = dialog.get_parts_params()
+            if hasattr(self.gui, '_sync_part_params_to_parts'):
+                self.gui._sync_part_params_to_parts()
             self.gui.log_info(f"已更新部件参数，共 {len(self.gui.parts_params)} 个部件")
             self.gui.update_status("部件参数已更新")
         else:
@@ -287,12 +306,13 @@ class PartManager:
 
     def update_parts_list(self, update_status=True):
         """更新部件列表"""
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             self.gui.log_info("没有部件信息需要更新")
             return
 
         if hasattr(self.gui, 'model_tree_widget'):
-            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+            self.gui.model_tree_widget.load_parts(parts_info)
             self.gui.log_info("部件列表已更新")
             if update_status:
                 self.gui.update_status("部件列表已更新")
@@ -311,8 +331,8 @@ class PartManager:
                     existing_parts.add(item.text())
 
             # 获取需要显示的部件（包括DefaultPart）
-            if isinstance(self.gui.cas_parts_info, dict):
-                for part_name in self.gui.cas_parts_info.keys():
+            if isinstance(parts_info, dict):
+                for part_name in parts_info.keys():
                     if part_name not in existing_parts:
                         self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
                         existing_parts.add(part_name)
@@ -320,16 +340,17 @@ class PartManager:
     def update_parts_list_from_cas(self, parts_info=None, update_status=True):
         """从CAS数据更新部件列表"""
         if parts_info is not None:
-            self.gui.cas_parts_info = parts_info
+            self._set_parts_info(parts_info)
 
         if parts_info is None:
-            if not hasattr(self.gui, 'cas_parts_info') or self.gui.cas_parts_info is None:
+            parts_info = self._get_parts_info()
+            if parts_info is None:
                 self.gui.log_info("没有CAS部件数据")
                 return
 
         if hasattr(self.gui, 'model_tree_widget'):
-            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
-            self.gui.log_info(f"已从CAS更新部件列表，共 {len(self.gui.cas_parts_info)} 个部件")
+            self.gui.model_tree_widget.load_parts(parts_info)
+            self.gui.log_info(f"已从CAS更新部件列表，共 {len(parts_info)} 个部件")
             if update_status:
                 self.gui.update_status("部件列表已从CAS更新")
         else:
@@ -347,8 +368,8 @@ class PartManager:
                     existing_parts.add(item.text())
 
             # 获取需要显示的部件（包括DefaultPart）
-            if isinstance(self.gui.cas_parts_info, dict):
-                for part_name in self.gui.cas_parts_info.keys():
+            if isinstance(parts_info, dict):
+                for part_name in parts_info.keys():
                     if part_name not in existing_parts:
                         self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
                         existing_parts.add(part_name)
@@ -372,17 +393,18 @@ class PartManager:
                 if node_mapping:
                     self.gui.log_info(f"已创建节点索引映射，映射了 {len(node_mapping)} 个节点")
 
-            if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
+            parts_info = self._get_parts_info()
+            if parts_info:
                 if node_mapping:
                     mapped_parts_info = self.gui._map_parts_info_to_new_mesh(
-                        self.gui.cas_parts_info,
+                        parts_info,
                         node_mapping
                     )
                     for part_name, part_data in mapped_parts_info.items():
                         if part_name not in PARTS_INFO_RESERVED_KEYS:
                             updated_parts_info[part_name] = part_data
                 else:
-                    for part_name, part_data in self.gui.cas_parts_info.items():
+                    for part_name, part_data in parts_info.items():
                         if part_name not in PARTS_INFO_RESERVED_KEYS:
                             updated_parts_info[part_name] = part_data
 
@@ -442,8 +464,9 @@ class PartManager:
         if hasattr(self.gui, 'props_text'):
             info_text = f"选中部件: {part_name}\n"
 
-            if hasattr(self.gui, 'cas_parts_info') and part_name in self.gui.cas_parts_info:
-                part_data = self.gui.cas_parts_info[part_name]
+            parts_info = self._get_parts_info()
+            if parts_info and part_name in parts_info:
+                part_data = parts_info[part_name]
                 if isinstance(part_data, dict):
                     bc_type = part_data.get('bc_type', '未知')
                     info_text += f"边界条件: {bc_type}\n"
@@ -501,7 +524,8 @@ class PartManager:
 
         if hasattr(self.gui, 'mesh_display') and self.gui.mesh_display:
             if is_visible:
-                self.gui.mesh_display.display_part(part_name, parts_info=self.gui.cas_parts_info)
+                parts_info = self._get_parts_info()
+                self.gui.mesh_display.display_part(part_name, parts_info=parts_info)
                 self.gui.log_info(f"显示部件: {part_name}")
             else:
                 self.refresh_display_all_parts()
@@ -526,8 +550,7 @@ class PartManager:
         else:
             part_name = part_info_or_name
 
-        if not hasattr(self.gui, 'cas_parts_info'):
-            self.gui.cas_parts_info = {}
+        parts_info = self._get_parts_info()
 
         if not skip_geometry_check:
             if not hasattr(self.gui, 'current_geometry') or not self.gui.current_geometry:
@@ -549,8 +572,8 @@ class PartManager:
         if mesh_elements is None:
             mesh_elements = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
 
-        if 'DefaultPart' in self.gui.cas_parts_info:
-            default_part = self.gui.cas_parts_info['DefaultPart']
+        if 'DefaultPart' in parts_info:
+            default_part = parts_info['DefaultPart']
 
             if 'mesh_elements' in default_part:
                 default_mesh_elements = default_part['mesh_elements']
@@ -601,13 +624,13 @@ class PartManager:
                                 'nodes': list(cell) if hasattr(cell, '__iter__') else [cell]
                             })
 
-        self.gui.cas_parts_info[part_name] = converted_part_info
+        parts_info[part_name] = converted_part_info
 
         if hasattr(self.gui, 'parts_list_widget'):
             self.gui.parts_list_widget.add_part_with_checkbox(part_name, True)
 
         if hasattr(self.gui, 'model_tree_widget'):
-            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+            self.gui.model_tree_widget.load_parts(parts_info)
 
         self.gui.log_info(f"已创建部件: {part_name}")
         self.gui.update_status(f"部件已创建: {part_name}")
@@ -621,11 +644,12 @@ class PartManager:
         part_name = part_info.get('part_name')
         if not part_name:
             return
-        if not hasattr(self.gui, 'cas_parts_info') or not self.gui.cas_parts_info:
+        parts_info = self._get_parts_info()
+        if not parts_info:
             self.gui.log_info("未找到部件信息，无法添加元素")
             self.gui.update_status("未找到部件信息")
             return
-        if part_name not in self.gui.cas_parts_info:
+        if part_name not in parts_info:
             self.gui.log_info(f"未找到部件 {part_name}")
             self.gui.update_status("未找到部件")
             return
@@ -637,24 +661,24 @@ class PartManager:
             self.gui.update_status("未选择任何元素")
             return
 
-        target_part = self.gui.cas_parts_info.get(part_name, {})
+        target_part = parts_info.get(part_name, {})
         target_part.setdefault('geometry_elements', {'vertices': [], 'edges': [], 'faces': [], 'bodies': []})
         target_part.setdefault('mesh_elements', {'vertices': [], 'edges': [], 'faces': [], 'bodies': []})
 
         self._merge_elements(target_part['geometry_elements'], geometry_elements)
         self._merge_elements(target_part['mesh_elements'], mesh_elements)
 
-        if 'DefaultPart' in self.gui.cas_parts_info:
-            default_part = self.gui.cas_parts_info['DefaultPart']
+        if 'DefaultPart' in parts_info:
+            default_part = parts_info['DefaultPart']
             if 'mesh_elements' in default_part:
                 self._remove_elements(default_part['mesh_elements'], mesh_elements)
             if 'geometry_elements' in default_part:
                 self._remove_elements(default_part['geometry_elements'], geometry_elements)
 
-        self.gui.cas_parts_info[part_name] = target_part
+        parts_info[part_name] = target_part
 
         if hasattr(self.gui, 'model_tree_widget'):
-            self.gui.model_tree_widget.load_parts(self.gui.cas_parts_info)
+            self.gui.model_tree_widget.load_parts(parts_info)
 
         self.gui.log_info(f"已向部件 {part_name} 添加元素")
         self.gui.update_status(f"部件已更新: {part_name}")
@@ -702,8 +726,9 @@ class PartManager:
         # Display only visible parts - 批量处理以提高性能
         if mesh_visible and parts_visible and visible_parts:
             # 批量显示所有部件，只渲染一次
+            parts_info = self._get_parts_info()
             for part_name in visible_parts:
-                self.gui.mesh_display.display_part(part_name, parts_info=self.gui.cas_parts_info, render_immediately=False)
+                self.gui.mesh_display.display_part(part_name, parts_info=parts_info, render_immediately=False)
 
             # 批量渲染一次，而不是每个部件都渲染
             self.gui.mesh_display.render_window.Render()
@@ -835,11 +860,12 @@ class PartManager:
         if not visible_parts:
             return False
 
-        if not hasattr(self.gui, 'cas_parts_info') or not isinstance(self.gui.cas_parts_info, dict):
+        parts_info = self._get_parts_info()
+        if not isinstance(parts_info, dict):
             return True
 
         for part_name in visible_parts:
-            part_data = self.gui.cas_parts_info.get(part_name)
+            part_data = parts_info.get(part_name)
             if isinstance(part_data, dict) and 'geometry_elements' in part_data:
                 return True
 
@@ -976,8 +1002,9 @@ class PartManager:
         # 根据可见部件过滤元素索引
         allowed_indices = None
         part_geometry_elements = {}
-        if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
-            for part_name, part_data in self.gui.cas_parts_info.items():
+        parts_info = self._get_parts_info()
+        if parts_info:
+            for part_name, part_data in parts_info.items():
                 if isinstance(part_data, dict) and 'geometry_elements' in part_data:
                     part_geometry_elements[part_name] = part_data['geometry_elements']
 
@@ -1145,8 +1172,9 @@ class PartManager:
 
         # 检查是否存在部件几何元素映射
         part_geometry_elements = {}
-        if hasattr(self.gui, 'cas_parts_info') and self.gui.cas_parts_info:
-            for part_name, part_data in self.gui.cas_parts_info.items():
+        parts_info = self._get_parts_info()
+        if parts_info:
+            for part_name, part_data in parts_info.items():
                 if isinstance(part_data, dict) and 'geometry_elements' in part_data:
                     part_geometry_elements[part_name] = part_data['geometry_elements']
 
