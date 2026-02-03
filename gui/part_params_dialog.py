@@ -8,10 +8,10 @@
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout,
     QComboBox, QDoubleSpinBox, QSpinBox, QCheckBox,
-    QPushButton, QGroupBox, QLabel, QWidget
+    QPushButton, QGroupBox, QLabel, QWidget, QLineEdit
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QDoubleValidator
 
 from .ui_utils import UIStyles
 
@@ -91,14 +91,10 @@ class PartParamsDialog(QDialog):
         params_layout.addRow("棱柱层开关:", self.prism_switch_combo)
         
         # 第一层高度
-        self.first_height_spin = QDoubleSpinBox()
-        self.first_height_spin.setRange(1e-20, 1e20)
-        self.first_height_spin.setDecimals(6)
-        self.first_height_spin.setSingleStep(0.001)
-        self.first_height_spin.setSpecialValueText("自动")
-        # 设置白色背景
-        self.first_height_spin.setStyleSheet("background-color: white;")
-        params_layout.addRow("第一层高度:", self.first_height_spin)
+        self.first_height_edit = QLineEdit()
+        self.first_height_edit.setPlaceholderText("支持科学计数法，如 1e-5")
+        self.first_height_edit.setStyleSheet("background-color: white;")
+        params_layout.addRow("第一层高度:", self.first_height_edit)
         
         # 增长率
         self.growth_rate_spin = QDoubleSpinBox()
@@ -178,18 +174,31 @@ class PartParamsDialog(QDialog):
         if prism_index >= 0:
             self.prism_switch_combo.setCurrentIndex(prism_index)
         
-        self.first_height_spin.setValue(current_part["first_height"])
+        # 设置第一层高度 - 使用科学计数法格式
+        first_height = current_part["first_height"]
+        if isinstance(first_height, (int, float)):
+            self.first_height_edit.setText(f"{first_height:.6e}")
+        else:
+            self.first_height_edit.setText(str(first_height))
         self.growth_rate_spin.setValue(current_part["growth_rate"])
         self.max_layers_spin.setValue(current_part["max_layers"])
         self.full_layers_spin.setValue(current_part["full_layers"])
         self.multi_direction_check.setChecked(current_part["multi_direction"])
+    
+    def _parse_scientific_notation(self, text):
+        """解析科学计数法格式的文本"""
+        try:
+            value = float(text)
+            return value
+        except ValueError:
+            return 0.01
     
     def _save_current_params(self):
         """保存当前部件的参数"""
         current_part = self.parts[self.current_part_index]
         current_part["max_size"] = self.max_size_spin.value()
         current_part["PRISM_SWITCH"] = self.prism_switch_combo.currentText()
-        current_part["first_height"] = self.first_height_spin.value()
+        current_part["first_height"] = self._parse_scientific_notation(self.first_height_edit.text())
         current_part["growth_rate"] = self.growth_rate_spin.value()
         current_part["max_layers"] = self.max_layers_spin.value()
         current_part["full_layers"] = self.full_layers_spin.value()

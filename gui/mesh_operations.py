@@ -367,6 +367,7 @@ class MeshOperations:
                                     part.part_params = updated_part_params
                                     part.sync_connector_params()
                                     self.gui.log_info(f"已更新Part {part.part_name} 参数")
+                                    self.gui.log_info(f"线网格部件 {part.part_name} PRISM_SWITCH={part.part_params.PRISM_SWITCH}")
                                     break
                 
                 self.gui.mesh_generation_thread = MeshGenerationThread(
