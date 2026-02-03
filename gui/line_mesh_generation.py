@@ -364,13 +364,10 @@ def create_connector_from_edge(
     # 创建Connector参数
     from data_structure.parameters import MeshParameters
     
-    # 根据 bc_type 设置 PRISM_SWITCH
-    prism_switch = "wall" if _is_wall_bc_type(normalized_bc_type) else "off"
-    
     connector_params = MeshParameters(
         part_name=params.part_name,
         max_size=1e6,
-        PRISM_SWITCH=prism_switch
+        PRISM_SWITCH="off"
     )
     
     # 创建Connector
