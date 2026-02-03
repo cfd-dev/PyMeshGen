@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QBrush
+import math
 import numpy as np
 
 
@@ -27,6 +28,9 @@ class RegionCreationDialog(QDialog):
         self.gui = parent
         self.selected_connectors = []
         self.connector_directions = {}
+        self._preview_arrow_pixel_length = None
+        self._preview_arrow_anchor = None
+        self._arrow_camera_observer_id = None
         self.setup_ui()
         
     def setup_ui(self):
@@ -441,12 +445,8 @@ class RegionCreationDialog(QDialog):
             return
         
         # 清除之前的方向显示
-        if hasattr(self.gui, 'direction_actors'):
-            for actor in self.gui.direction_actors:
-                self.gui.mesh_display.renderer.RemoveActor(actor)
-            self.gui.direction_actors = []
-        else:
-            self.gui.direction_actors = []
+        self._clear_direction_actors()
+        self.gui.direction_actors = []
         
         # 显示方向向量箭头 - 限制总数量
         import vtk
@@ -465,6 +465,13 @@ class RegionCreationDialog(QDialog):
         bbox_size = np.linalg.norm(bbox_max - bbox_min)
         arrow_length = bbox_size / 20.0 if bbox_size > 0 else 0.0
         arrow_length = max(arrow_length, 1e-6)
+        self._preview_arrow_anchor = (bbox_min + bbox_max) / 2.0
+        pixel_to_world = self._get_pixel_to_world_scale(self._preview_arrow_anchor)
+        if pixel_to_world > 0:
+            self._preview_arrow_pixel_length = arrow_length / pixel_to_world
+        else:
+            self._preview_arrow_pixel_length = None
+        arrow_scale = self._get_arrow_scale()
 
         front_index = 0
         for conn in self.selected_connectors:
@@ -505,13 +512,6 @@ class RegionCreationDialog(QDialog):
                 if len(start_point) == 2:
                     start_point = [start_point[0], start_point[1], 0.0]
                 
-                # 计算箭头终点
-                end_point = [
-                    start_point[0] + direction_vec[0] * arrow_length,
-                    start_point[1] + direction_vec[1] * arrow_length,
-                    start_point[2] + direction_vec[2] * arrow_length
-                ]
-                
                 # 创建方向箭头
                 arrow_source = vtk.vtkArrowSource()
                 arrow_source.SetShaftRadius(0.03)
@@ -530,12 +530,9 @@ class RegionCreationDialog(QDialog):
                     continue
                 target_direction = target_direction / target_norm
                 
-                # 创建变换
+                # 创建变换（仅旋转，平移与缩放由actor处理）
                 transform = vtk.vtkTransform()
                 transform.PostMultiply()
-                
-                # 先缩放到目标长度
-                transform.Scale(arrow_length, arrow_length, arrow_length)
                 
                 # 再旋转箭头方向
                 if np.allclose(target_direction, x_axis):
@@ -548,9 +545,6 @@ class RegionCreationDialog(QDialog):
                     rotation_axis = rotation_axis / np.linalg.norm(rotation_axis)
                     angle = np.degrees(np.arccos(np.clip(np.dot(x_axis, target_direction), -1.0, 1.0)))
                     transform.RotateWXYZ(angle, rotation_axis[0], rotation_axis[1], rotation_axis[2])
-                
-                # 最后平移到起点（避免被缩放放大）
-                transform.Translate(start_point[0], start_point[1], start_point[2])
                 
                 # 应用变换
                 transform_filter = vtk.vtkTransformPolyDataFilter()
@@ -566,10 +560,13 @@ class RegionCreationDialog(QDialog):
                 actor.SetMapper(mapper)
                 actor.GetProperty().SetColor(arrow_color[0], arrow_color[1], arrow_color[2])
                 actor.GetProperty().SetOpacity(0.9)
+                actor.SetPosition(start_point[0], start_point[1], start_point[2])
+                actor.SetScale(arrow_scale)
                 
                 self.gui.mesh_display.renderer.AddActor(actor)
                 self.gui.direction_actors.append(actor)
         
+        self._attach_arrow_observer()
         self.gui.mesh_display.render_window.Render()
         
     def on_create_clicked(self):
@@ -615,18 +612,91 @@ class RegionCreationDialog(QDialog):
     def closeEvent(self, event):
         """关闭事件"""
         # 清除方向显示
+        self._clear_direction_actors()
         if hasattr(self.gui, 'direction_actors'):
-            for actor in self.gui.direction_actors:
-                self.gui.mesh_display.renderer.RemoveActor(actor)
             self.gui.direction_actors = []
             self.gui.mesh_display.render_window.Render()
         super().closeEvent(event)
 
     def accept(self):
         """关闭对话框前清除方向显示"""
+        self._clear_direction_actors()
         if hasattr(self.gui, 'direction_actors'):
-            for actor in self.gui.direction_actors:
-                self.gui.mesh_display.renderer.RemoveActor(actor)
             self.gui.direction_actors = []
             self.gui.mesh_display.render_window.Render()
         super().accept()
+
+    def reject(self):
+        """取消时清除方向显示"""
+        self._clear_direction_actors()
+        if hasattr(self.gui, 'direction_actors'):
+            self.gui.direction_actors = []
+            self.gui.mesh_display.render_window.Render()
+        super().reject()
+
+    def _clear_direction_actors(self):
+        if hasattr(self.gui, 'direction_actors'):
+            for actor in self.gui.direction_actors:
+                self.gui.mesh_display.renderer.RemoveActor(actor)
+        self._detach_arrow_observer()
+        self._preview_arrow_pixel_length = None
+        self._preview_arrow_anchor = None
+
+    def _get_pixel_to_world_scale(self, world_point):
+        renderer = getattr(self.gui, 'mesh_display', None).renderer if hasattr(self.gui, 'mesh_display') else None
+        if renderer is None or world_point is None:
+            return 0.01
+        camera = renderer.GetActiveCamera()
+        if camera is None:
+            return 0.01
+        try:
+            focal_point = camera.GetFocalPoint()
+            camera_pos = camera.GetPosition()
+            distance = math.sqrt(
+                (focal_point[0] - camera_pos[0]) ** 2 +
+                (focal_point[1] - camera_pos[1]) ** 2 +
+                (focal_point[2] - camera_pos[2]) ** 2
+            )
+            view_angle = camera.GetViewAngle()
+            viewport_height = renderer.GetSize()[1]
+            if viewport_height > 0 and view_angle > 0:
+                world_height = 2 * distance * math.tan(math.radians(view_angle / 2))
+                pixels_per_unit = viewport_height / world_height if world_height > 0 else 100
+                return 1.0 / pixels_per_unit if pixels_per_unit > 0 else 0.01
+            return 0.01
+        except Exception:
+            return 0.01
+
+    def _get_arrow_scale(self):
+        if self._preview_arrow_pixel_length is None or self._preview_arrow_anchor is None:
+            return 1.0
+        pixel_to_world = self._get_pixel_to_world_scale(self._preview_arrow_anchor)
+        if pixel_to_world <= 0:
+            return 1.0
+        return max(self._preview_arrow_pixel_length * pixel_to_world, 1e-6)
+
+    def _attach_arrow_observer(self):
+        renderer = getattr(self.gui, 'mesh_display', None).renderer if hasattr(self.gui, 'mesh_display') else None
+        if renderer is None:
+            return
+        camera = renderer.GetActiveCamera()
+        if camera is None or self._arrow_camera_observer_id is not None:
+            return
+        self._arrow_camera_observer_id = camera.AddObserver("ModifiedEvent", self._on_camera_modified)
+
+    def _detach_arrow_observer(self):
+        renderer = getattr(self.gui, 'mesh_display', None).renderer if hasattr(self.gui, 'mesh_display') else None
+        if renderer is None:
+            return
+        camera = renderer.GetActiveCamera()
+        if camera is None or self._arrow_camera_observer_id is None:
+            return
+        camera.RemoveObserver(self._arrow_camera_observer_id)
+        self._arrow_camera_observer_id = None
+
+    def _on_camera_modified(self, caller, event):
+        if not hasattr(self.gui, 'direction_actors') or not self.gui.direction_actors:
+            return
+        arrow_scale = self._get_arrow_scale()
+        for actor in self.gui.direction_actors:
+            actor.SetScale(arrow_scale)
