@@ -206,7 +206,7 @@ class MeshOperations:
                 return
 
             # 检查是否有有效的输入数据
-            has_region_data = hasattr(self.gui, 'region_part') and self.gui.region_part
+            has_region_data = hasattr(self.gui, 'region_data') and self.gui.region_data
             has_line_mesh_data = hasattr(self.gui, 'line_connectors') and self.gui.line_connectors
             has_imported_mesh = hasattr(self.gui, 'current_mesh') and self.gui.current_mesh
             
@@ -216,7 +216,7 @@ class MeshOperations:
                 self.gui.update_status("未找到有效的输入数据")
                 return
 
-            # 只有在非区域数据的情况下才检查parts_params
+            # 只有在非区域数据和非线网格数据的情况下才检查parts_params
             if not has_region_data and not has_line_mesh_data:
                 if not hasattr(self.gui, 'parts_params') or not self.gui.parts_params:
                     QMessageBox.warning(self.gui, "警告", "请先配置部件参数")
@@ -256,12 +256,12 @@ class MeshOperations:
                 "debug_level": self.gui.params.debug_level if hasattr(self.gui, 'params') and self.gui.params else 0,
                 "output_file": self.gui.params.output_file if hasattr(self.gui, 'params') and self.gui.params else ["./out/mesh.vtk"],
                 "viz_enabled": False,
-                "parts": self.gui.parts_params if not has_region_data else [],  # 区域数据时不使用parts_params
+                "parts": self.gui.parts_params or [],
                 "mesh_type": self.gui.params.mesh_type if hasattr(self.gui, 'params') and self.gui.params else 1,
                 "auto_output": self.gui.params.auto_output if hasattr(self.gui, 'params') and self.gui.params else True
             }
 
-            # 只有在非区域数据的情况下才处理部件信息
+            # 只有在非区域数据和非线网格数据的情况下才处理部件信息
             if not has_region_data and not has_line_mesh_data:
                 parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
                 if parts_info and not self.gui.parts_params:
@@ -305,30 +305,36 @@ class MeshOperations:
                 # 优先使用区域数据（如果存在）
                 parts = None
                 
-                if hasattr(self.gui, 'region_part') and self.gui.region_part:
-                    # 使用区域数据 - 直接传递包含多个Connector的Part
-                    parts = [self.gui.region_part]
-                    self.gui.log_info(f"使用区域数据: {len(parts)} parts, {len(self.gui.region_part.connectors)} connectors")
-                    
-                    # 如果用户设置了部件参数，更新区域Part的参数
-                    if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
-                        for part_param_dict in self.gui.parts_params:
-                            if part_param_dict.get('part_name') == 'region':
-                                from data_structure.parameters import MeshParameters
-                                updated_part_params = MeshParameters(
-                                    part_name=part_param_dict.get('part_name', 'region'),
-                                    max_size=part_param_dict.get('max_size', 1e6),
-                                    PRISM_SWITCH=part_param_dict.get('PRISM_SWITCH', 'off'),
-                                    first_height=part_param_dict.get('first_height', 0.01),
-                                    growth_rate=part_param_dict.get('growth_rate', 1.2),
-                                    max_layers=part_param_dict.get('max_layers', 5),
-                                    full_layers=part_param_dict.get('full_layers', 5),
-                                    multi_direction=part_param_dict.get('multi_direction', False)
-                                )
-                                self.gui.region_part.part_params = updated_part_params
-                                self.gui.region_part.sync_connector_params()
-                                self.gui.log_info(f"已更新区域Part参数")
-                                break
+                if hasattr(self.gui, 'region_data') and self.gui.region_data:
+                    connectors = self.gui.region_data.get('connectors') or []
+                    parts = []
+                    if connectors:
+                        from gui.line_mesh_generation import create_part_from_connectors
+                        part_dict = {}
+                        for conn in connectors:
+                            part_dict.setdefault(conn.part_name, []).append(conn)
+                        for part_name, conn_list in part_dict.items():
+                            part = create_part_from_connectors(part_name, conn_list)
+                            parts.append(part)
+                        self.gui.log_info(f"使用区域数据: {len(connectors)} connectors, {len(parts)} parts")
+                        if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
+                            from data_structure.parameters import MeshParameters
+                            for part in parts:
+                                for part_param_dict in self.gui.parts_params:
+                                    if part_param_dict.get('part_name') == part.part_name:
+                                        updated_part_params = MeshParameters(
+                                            part_name=part_param_dict.get('part_name', part.part_name),
+                                            max_size=part_param_dict.get('max_size', 1e6),
+                                            PRISM_SWITCH=part_param_dict.get('PRISM_SWITCH', 'off'),
+                                            first_height=part_param_dict.get('first_height', 0.01),
+                                            growth_rate=part_param_dict.get('growth_rate', 1.2),
+                                            max_layers=part_param_dict.get('max_layers', 5),
+                                            full_layers=part_param_dict.get('full_layers', 5),
+                                            multi_direction=part_param_dict.get('multi_direction', False)
+                                        )
+                                        part.part_params = updated_part_params
+                                        part.sync_connector_params()
+                                        break
                                 
                 elif hasattr(self.gui, 'line_connectors') and self.gui.line_connectors:
                     # 使用线网格数据 - 从connectors创建parts

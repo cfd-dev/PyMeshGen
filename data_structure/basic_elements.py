@@ -198,7 +198,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
     ):
         super().__init__(coords, idx, part_name=part_name, bc_type=bc_type)  # 调用父类构造函数，正确传递参数
 
-        self.marching_direction = []  # 节点推进方向
+        self.marching_direction = (0.0, 0.0, 0.0)  # 节点推进方向
         self.marching_distance = 0.0  # 节点处的推进距离
         self.angle = 0.0  # 节点的角度
         self.convex_flag = False

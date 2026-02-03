@@ -178,7 +178,7 @@ class PyMeshGenGUI(QMainWindow):
         self.parts_params = []                # 部件参数列表
         self.line_connectors = None           # 线网格生成的connectors列表
         self.region_data = None               # 区域数据
-        self.region_part = None               # 区域Part（包含多个Connector）
+        self.region_parts = None              # 区域Part列表（包含多个Connector）
         self.direction_actors = []            # 方向箭头actor列表
         self.render_mode = "surface"           # 渲染模式（surface：表面渲染）
         self.show_boundary = True             # 是否显示边界
@@ -640,8 +640,8 @@ class PyMeshGenGUI(QMainWindow):
                 # 清空区域相关数据
                 if hasattr(self, 'region_data'):
                     self.region_data = None
-                if hasattr(self, 'region_part'):
-                    self.region_part = None
+                if hasattr(self, 'region_parts'):
+                    self.region_parts = None
                 if hasattr(self, 'direction_actors'):
                     for actor in self.direction_actors:
                         if hasattr(self, 'mesh_display') and hasattr(self.mesh_display, 'renderer'):
@@ -1077,26 +1077,9 @@ class PyMeshGenGUI(QMainWindow):
         # 将区域数据保存到GUI实例中，供网格生成使用
         self.region_data = region_data
         
-        # 直接传递多个Connector，不合并
-        # 创建一个新的Part来包含这些Connector
-        from data_structure.basic_elements import Part
-        from data_structure.parameters import MeshParameters
-        
-        # 创建一个新的Part，包含所有选中的Connector
-        region_part_params = MeshParameters(
-            part_name="region",
-            max_size=0.1,
-            PRISM_SWITCH="off"
-        )
-        region_part = Part("region", region_part_params, region_data['connectors'])
-        region_part.init_part_front_list()
-        region_part.sync_connector_params()
-        
-        # 保存到GUI实例
-        self.region_part = region_part
-        
-        self.log_info(f"已创建区域Part，包含 {len(region_data['connectors'])} 个Connector")
-        self.log_info(f"区域Part可用于网格生成")
+        # 不再创建独立region部件，区域仅作为网格生成的选择结果
+        self.region_parts = None
+        self.log_info(f"区域数据已保存，包含 {len(region_data['connectors'])} 个Connector")
 
     def _on_line_mesh_generation_requested(self, params):
         """处理线网格生成请求"""
@@ -1564,24 +1547,6 @@ class PyMeshGenGUI(QMainWindow):
         self._ensure_cas_parts_info()
         if self.parts_params:
             self.global_parts_manager.apply_part_params(self.parts_params)
-            if hasattr(self, 'region_part') and self.region_part:
-                for part_param_dict in self.parts_params:
-                    if part_param_dict.get('part_name') == 'region':
-                        from data_structure.parameters import MeshParameters
-                        updated_part_params = MeshParameters(
-                            part_name=part_param_dict.get('part_name', 'region'),
-                            max_size=part_param_dict.get('max_size', 1e6),
-                            PRISM_SWITCH=part_param_dict.get('PRISM_SWITCH', 'off'),
-                            first_height=part_param_dict.get('first_height', 0.01),
-                            growth_rate=part_param_dict.get('growth_rate', 1.2),
-                            max_layers=part_param_dict.get('max_layers', 5),
-                            full_layers=part_param_dict.get('full_layers', 5),
-                            multi_direction=part_param_dict.get('multi_direction', False)
-                        )
-                        self.region_part.part_params = updated_part_params
-                        self.region_part.sync_connector_params()
-                        self.log_info("已同步区域Part参数")
-                        break
 
     def _merge_parts_info(self, parts_info):
         """合并部件信息，保留已有几何元素"""
