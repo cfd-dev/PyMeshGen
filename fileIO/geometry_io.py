@@ -169,6 +169,9 @@ def _detect_step_unit(filename: str) -> Tuple[str, bool]:
     if reader.ReadFile(filename) != IFSelect_RetDone:
         return "mm", False
 
+    if not hasattr(reader, "Transfer"):
+        return "mm", False
+
     app = XCAFApp_Application.GetApplication()
     doc = TDocStd_Document("pythonocc-doc")
     app.NewDocument("MDTV-XCAF", doc)
