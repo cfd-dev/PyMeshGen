@@ -29,6 +29,7 @@ class PartManager:
         Args:
             part_name: 要删除的部件名称，如果为None则从部件列表获取当前选中的部件
         """
+        # FIXME 删除部件后，元素被移动到默认部件，但是无法通过勾选默认部件实现显示和隐藏
         # 如果没有提供部件名称，则从部件列表获取当前选中的部件
         if part_name is None:
             if hasattr(self.gui, 'parts_list_widget'):
@@ -72,6 +73,7 @@ class PartManager:
             self.gui.cas_parts_info['DefaultPart'] = {
                 'type': 'default',
                 'bc_type': 'wall',
+                'part_name': 'DefaultPart',
                 'geometry_elements': {'vertices': [], 'edges': [], 'faces': [], 'bodies': []},
                 'mesh_elements': {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
             }
@@ -107,10 +109,39 @@ class PartManager:
                 default_part['mesh_elements'] = {'vertices': [], 'edges': [], 'faces': [], 'bodies': []}
             self._merge_elements(default_part['mesh_elements'], part_to_delete['mesh_elements'])
 
+        # 移回网格面/节点（用于显示与计数）
+        if 'faces' in part_to_delete:
+            default_part.setdefault('faces', [])
+            existing_faces = {tuple(face.get('nodes', [])) for face in default_part['faces'] if isinstance(face, dict)}
+            for face in part_to_delete['faces']:
+                if isinstance(face, dict):
+                    key = tuple(face.get('nodes', []))
+                    if key in existing_faces:
+                        continue
+                    existing_faces.add(key)
+                default_part['faces'].append(face)
+        if 'nodes' in part_to_delete:
+            default_part.setdefault('nodes', [])
+            existing_nodes = set(default_part['nodes'])
+            for node in part_to_delete['nodes']:
+                if node in existing_nodes:
+                    continue
+                existing_nodes.add(node)
+                default_part['nodes'].append(node)
+
         self.gui.log_info(f"已将部件 '{part_name}' 的元素移回默认部件")
 
         # 从部件信息中删除该部件
         del self.gui.cas_parts_info[part_name]
+
+        # 更新 DefaultPart 计数
+        default_part = self.gui.cas_parts_info.get('DefaultPart')
+        if isinstance(default_part, dict):
+            if 'faces' in default_part:
+                default_part['face_count'] = len(default_part['faces'])
+                default_part['num_faces'] = len(default_part['faces'])
+            if 'nodes' in default_part:
+                default_part['node_count'] = len(default_part['nodes'])
 
         # 从部件参数中删除该部件（如果存在）
         if hasattr(self.gui, 'parts_params') and self.gui.parts_params:
@@ -473,7 +504,7 @@ class PartManager:
                 self.gui.mesh_display.display_part(part_name, parts_info=self.gui.cas_parts_info)
                 self.gui.log_info(f"显示部件: {part_name}")
             else:
-                self.gui.mesh_display.hide_part(part_name)
+                self.refresh_display_all_parts()
                 self.gui.log_info(f"隐藏部件: {part_name}")
 
         self.gui.update_status(f"部件可见性已改变: {part_name}")

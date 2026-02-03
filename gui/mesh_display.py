@@ -1386,7 +1386,8 @@ class MeshDisplayArea:
                         # 检查是否有 mesh_elements 或 geometry_elements（用于 DefaultPart）
                         if 'mesh_elements' in part_data:
                             mesh_elements = part_data['mesh_elements']
-                            if 'faces' in mesh_elements:
+                            face_indices = mesh_elements.get('faces') or []
+                            if face_indices:
                                 # mesh_elements['faces'] 包含的是面索引列表
                                 # 需要转换为面数据格式
                                 if isinstance(self.mesh_data, dict):
@@ -1395,7 +1396,9 @@ class MeshDisplayArea:
                                     cells = self.mesh_data.cells
                                 else:
                                     cells = []
-                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in face_indices]
+                            else:
+                                part_faces = part_data.get('faces', [])
                         elif 'geometry_elements' in part_data:
                             # 几何元素暂时不显示
                             part_faces = []
@@ -1408,14 +1411,17 @@ class MeshDisplayArea:
                                 part_data = parts_info[key]
                                 if 'mesh_elements' in part_data:
                                     mesh_elements = part_data['mesh_elements']
-                                    if 'faces' in mesh_elements:
+                                    face_indices = mesh_elements.get('faces') or []
+                                    if face_indices:
                                         if isinstance(self.mesh_data, dict):
                                             cells = self.mesh_data.get('cells', [])
                                         elif hasattr(self.mesh_data, 'cells'):
                                             cells = self.mesh_data.cells
                                         else:
                                             cells = []
-                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in face_indices]
+                                    else:
+                                        part_faces = parts_info[key].get('faces', [])
                                 elif 'geometry_elements' in part_data:
                                     part_faces = []
                                 else:
@@ -1430,9 +1436,12 @@ class MeshDisplayArea:
                         part_data = parts_info[actual_part_name]
                         if 'mesh_elements' in part_data:
                             mesh_elements = part_data['mesh_elements']
-                            if 'faces' in mesh_elements:
+                            face_indices = mesh_elements.get('faces') or []
+                            if face_indices:
                                 cells = self.mesh_data.get('cells', [])
-                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in face_indices]
+                            else:
+                                part_faces = parts_info[actual_part_name].get('faces', [])
                         elif 'geometry_elements' in part_data:
                             part_faces = []
                         else:
@@ -1444,9 +1453,12 @@ class MeshDisplayArea:
                                 part_data = parts_info[key]
                                 if 'mesh_elements' in part_data:
                                     mesh_elements = part_data['mesh_elements']
-                                    if 'faces' in mesh_elements:
+                                    face_indices = mesh_elements.get('faces') or []
+                                    if face_indices:
                                         cells = self.mesh_data.get('cells', [])
-                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in mesh_elements['faces']]
+                                        part_faces = [{'nodes': cells[i] if i < len(cells) else []} for i in face_indices]
+                                    else:
+                                        part_faces = parts_info[key].get('faces', [])
                                 elif 'geometry_elements' in part_data:
                                     part_faces = []
                                 else:
