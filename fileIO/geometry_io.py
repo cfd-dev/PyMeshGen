@@ -1017,13 +1017,13 @@ def export_step_file(shape: TopoDS_Shape, filename: str) -> bool:
         bool: 导出是否成功
     """
     try:
-        from OCC.Core.STEPControl import STEPControl_Writer
+        from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
         from OCC.Core.IFSelect import IFSelect_RetDone
     except ImportError:
         raise ImportError("无法导入STEP模块，请确保已安装pythonocc-core")
     
     step_writer = STEPControl_Writer()
-    step_writer.Transfer(shape, 1)
+    step_writer.Transfer(shape, STEPControl_AsIs)
     status = step_writer.Write(filename)
     
     return status == IFSelect_RetDone
