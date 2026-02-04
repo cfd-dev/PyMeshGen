@@ -12,5 +12,5 @@ __pycache__/
 neural/GNN_ALM/sample_grids/validation
 temp*
 meshes
-.*
+.env
 backup*

@@ -451,6 +451,9 @@ class ViewController:
     def set_render_mode(self, mode):
         """设置渲染模式"""
         self.gui.render_mode = mode
+        if getattr(self.gui, 'display_mode', 'full') == "elements":
+            if hasattr(self.gui, "part_manager") and hasattr(self.gui.part_manager, "on_display_mode_changed"):
+                self.gui.part_manager.on_display_mode_changed("elements")
         if hasattr(self.gui, 'mesh_display'):
             self.gui.mesh_display.set_render_mode(mode)
 
