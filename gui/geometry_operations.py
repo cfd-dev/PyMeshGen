@@ -342,8 +342,9 @@ class GeometryOperations:
 
         try:
             from OCC.Core.TopExp import TopExp_Explorer
-            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID
+            from OCC.Core.TopAbs import TopAbs_VERTEX, TopAbs_EDGE, TopAbs_FACE, TopAbs_SOLID, TopAbs_WIRE
             from OCC.Core.BRepTools import BRepTools_ReShape
+            from OCC.Core.TopoDS import topods
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"删除几何失败: {str(e)}")
             self.gui.log_error(f"删除几何失败: {str(e)}")
@@ -374,6 +375,32 @@ class GeometryOperations:
                             break
                     except Exception:
                         continue
+                explorer.Next()
+
+        removed_edges = set(remove_map.keys())
+        if element_map.get("edges"):
+            explorer = TopExp_Explorer(self.gui.current_geometry, TopAbs_WIRE)
+            while explorer.More():
+                wire_shape = explorer.Current()
+                try:
+                    wire = topods.Wire(wire_shape)
+                except Exception:
+                    explorer.Next()
+                    continue
+                wire_edge_explorer = TopExp_Explorer(wire, TopAbs_EDGE)
+                has_edge = False
+                has_remaining = False
+                while wire_edge_explorer.More():
+                    edge = wire_edge_explorer.Current()
+                    if edge in removed_edges:
+                        has_edge = True
+                    else:
+                        has_remaining = True
+                    if has_edge and has_remaining:
+                        break
+                    wire_edge_explorer.Next()
+                if has_edge and not has_remaining:
+                    remove_map[wire_shape] = True
                 explorer.Next()
 
         if not remove_map:
