@@ -1870,7 +1870,9 @@ class PyMeshGenGUI(QMainWindow):
             self._geometry_delete_elements_cache[key].discard(element_obj)
 
     def _on_delete_geometry_confirm(self):
-        self._delete_geometry_from_pick()
+        success = self._delete_geometry_from_pick()
+        if success:
+            self._stop_delete_geometry_mode()
 
     def _on_delete_geometry_cancel(self):
         self._stop_delete_geometry_mode()
