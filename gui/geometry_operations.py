@@ -155,13 +155,13 @@ class GeometryOperations:
 
         center_pnt = gp_Pnt(*center)
         axis = gp_Ax2(center_pnt, gp_Dir(0, 0, 1))
+        circle = gp_Circ(axis, radius)
         if abs(end_angle - start_angle) >= 360.0:
-            circle = gp_Circ(axis, radius)
             shape = BRepBuilderAPI_MakeEdge(GC_MakeCircle(circle).Value()).Edge()
         else:
             start_rad = start_angle * 3.141592653589793 / 180.0
             end_rad = end_angle * 3.141592653589793 / 180.0
-            arc = GC_MakeArcOfCircle(axis, radius, start_rad, end_rad, True).Value()
+            arc = GC_MakeArcOfCircle(circle, start_rad, end_rad, True).Value()
             shape = BRepBuilderAPI_MakeEdge(arc).Edge()
 
         self._merge_geometry(shape, mode_label="circle")
@@ -278,6 +278,15 @@ class GeometryOperations:
             from OCC.Core.gp import gp_Pnt
         except Exception as e:
             QMessageBox.critical(self.gui, "错误", f"几何创建失败: {str(e)}")
+            return False
+        if corner1 is None or corner2 is None:
+            QMessageBox.warning(self.gui, "警告", "长方体需要两个不同的角点")
+            return False
+        dx = abs(corner1[0] - corner2[0])
+        dy = abs(corner1[1] - corner2[1])
+        dz = abs(corner1[2] - corner2[2])
+        if dx <= 0 or dy <= 0 or dz <= 0:
+            QMessageBox.warning(self.gui, "警告", "长方体三方向长度必须为正数")
             return False
         p1 = gp_Pnt(*corner1)
         p2 = gp_Pnt(*corner2)
