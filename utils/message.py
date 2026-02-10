@@ -6,6 +6,14 @@ DEBUG_LEVEL_VERBOSE = 2
 # 默认调试级别
 current_debug_level = DEBUG_LEVEL_INFO
 
+_LEVEL_THRESHOLDS = {
+    "INFO": DEBUG_LEVEL_INFO,
+    "WARNING": DEBUG_LEVEL_INFO,
+    "ERROR": DEBUG_LEVEL_INFO,
+    "DEBUG": DEBUG_LEVEL_DEBUG,
+    "VERBOSE": DEBUG_LEVEL_VERBOSE,
+}
+
 # GUI实例引用
 _gui_instance = None
 
@@ -31,12 +39,7 @@ def set_debug_level(level):
 
 
 def _output_message(prefix, message):
-    """
-    内部函数，用于输出带前缀的消息。
-
-    :param prefix: 消息前缀
-    :param message: 消息内容
-    """
+    """内部函数，用于输出带前缀的消息。"""
     formatted_message = f"[{prefix}] {message}"
     
     # 如果有GUI实例，同时输出到GUI信息窗口
@@ -47,51 +50,31 @@ def _output_message(prefix, message):
     print(formatted_message)
 
 
-def info(message):
-    """
-    输出信息级别的消息。
+def _log(level, message):
+    if current_debug_level >= _LEVEL_THRESHOLDS[level]:
+        _output_message(level, message)
 
-    :param message: 要输出的消息
-    """
-    if current_debug_level >= DEBUG_LEVEL_INFO:
-        _output_message("INFO", message)
+
+def info(message):
+    """输出信息级别的消息。"""
+    _log("INFO", message)
 
 
 def error(message):
-    """
-    输出错误级别的消息。
-
-    :param message: 要输出的消息
-    """
-    if current_debug_level >= DEBUG_LEVEL_INFO:
-        _output_message("ERROR", message)
+    """输出错误级别的消息。"""
+    _log("ERROR", message)
 
 
 def warning(message):
-    """
-    输出警告级别的消息。
-
-    :param message: 要输出的消息
-    """
-    if current_debug_level >= DEBUG_LEVEL_INFO:
-        _output_message("WARNING", message)
+    """输出警告级别的消息。"""
+    _log("WARNING", message)
 
 
 def debug(message):
-    """
-    输出调试级别的消息。
-
-    :param message: 要输出的消息
-    """
-    if current_debug_level >= DEBUG_LEVEL_DEBUG:
-        _output_message("DEBUG", message)
+    """输出调试级别的消息。"""
+    _log("DEBUG", message)
 
 
 def verbose(message):
-    """
-    输出详细级别的消息。
-
-    :param message: 要输出的消息
-    """
-    if current_debug_level >= DEBUG_LEVEL_VERBOSE:
-        _output_message("VERBOSE", message)
+    """输出详细级别的消息。"""
+    _log("VERBOSE", message)

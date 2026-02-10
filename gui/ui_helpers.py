@@ -7,27 +7,27 @@ class UIHelpers:
     def log_info(self, message):
         """记录信息日志"""
         if hasattr(self.gui, 'info_output'):
-            self.gui.info_output.log_info(message)
+            self.gui.info_output.append_info_output(f"[INFO] {message}")
 
     def log_error(self, message):
         """记录错误日志"""
         if hasattr(self.gui, 'info_output'):
-            self.gui.info_output.log_error(message)
+            self.gui.info_output.append_info_output(f"[ERROR] {message}")
 
     def log_warning(self, message):
         """记录警告日志"""
         if hasattr(self.gui, 'info_output'):
-            self.gui.info_output.log_warning(message)
+            self.gui.info_output.append_info_output(f"[WARNING] {message}")
 
     def log_debug(self, message):
         """记录调试日志"""
         if hasattr(self.gui, 'info_output'):
-            self.gui.info_output.log_debug(message)
+            self.gui.info_output.append_info_output(f"[DEBUG] {message}")
 
     def log_verbose(self, message):
         """记录详细日志"""
         if hasattr(self.gui, 'info_output'):
-            self.gui.info_output.log_verbose(message)
+            self.gui.info_output.append_info_output(f"[VERBOSE] {message}")
 
     def update_status(self, message):
         """更新状态栏信息"""

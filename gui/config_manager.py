@@ -278,7 +278,7 @@ class ConfigManager:
                 
                 # 创建默认配置
                 default_config = {
-                    "debug_level": new_params["debug_level"],
+                    "debug_level": 0,
                     "input_file": [],
                     "output_file": new_params["output_file"],
                     "viz_enabled": False,

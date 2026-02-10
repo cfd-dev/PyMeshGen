@@ -123,7 +123,16 @@ class StatusBar:
 
 class InfoOutput:
     """信息输出窗口类"""
-    
+
+    _COLOR_MAP = {
+        "WARNING": "#FFA500",
+        "ERROR": "#FF0000",
+        "DEBUG": "#808080",
+        "VERBOSE": "#A0A0A0",
+    }
+
+    _LEVEL_PATTERN = r"^(?:\[\d{1,2}:\d{1,2}:\d{1,2}\] )?\[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\] "
+
     def __init__(self, parent=None):
         self.parent = parent
         self.create_info_output_area()
@@ -153,53 +162,21 @@ class InfoOutput:
         """添加信息到输出窗口，确保格式统一：[timestamp] [LEVEL] message"""
         import re
 
-        # 检查消息是否已经包含时间戳格式 [HH:MM:SS] [LEVEL]
-        timestamp_pattern = r'^\[\d{1,2}:\d{1,2}:\d{1,2}\] \[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\]'
-        if re.match(timestamp_pattern, message):
-            # 如果消息已经包含时间戳和级别，按级别设置颜色
-            level = re.match(timestamp_pattern, message).group(1)
-            color_map = {
-                'WARNING': '#FFA500',
-                'ERROR': '#FF0000',
-                'DEBUG': '#808080',
-                'VERBOSE': '#A0A0A0'
-            }
-            color = color_map.get(level)
-            if color:
-                self.info_text.append(f'<span style="color: {color};">{message}</span>')
-            else:
-                self._append_plain_text(message)
+        match = re.match(self._LEVEL_PATTERN, message)
+        if match:
+            level = match.group(1)
+            clean_message = message[len(match.group(0)):]
         else:
-            # 如果消息没有时间戳，添加当前时间戳
-            timestamp = time.strftime("%H:%M:%S")
-            # 尝试从消息中提取可能的级别信息（允许已有时间戳的前缀）
-            level_pattern = r'^(?:\[\d{1,2}:\d{1,2}:\d{1,2}\] )?\[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\] '
-            match = re.match(level_pattern, message)
-            if match:
-                # 消息以 [LEVEL] 开头，添加时间戳
-                level = match.group(1)
-                clean_message = message[len(match.group(0)):]  # Remove matched part [timestamp][LEVEL]
-                
-                # 根据级别应用颜色
-                color_map = {
-                    'INFO': None,
-                    'WARNING': '#FFA500',
-                    'ERROR': '#FF0000',
-                    'DEBUG': '#808080',
-                    'VERBOSE': '#A0A0A0'
-                }
-                color = color_map.get(level)
-                
-                if color:
-                    formatted_message = f'<span style="color: {color};">[{timestamp}] [{level}] {clean_message}</span>'
-                    self.info_text.append(formatted_message)
-                else:
-                    formatted_message = f"[{timestamp}] [{level}] {clean_message}"
-                    self._append_plain_text(formatted_message)
-            else:
-                # 消息没有级别信息，使用INFO级别
-                formatted_message = f"[{timestamp}] [INFO] {message}"
-                self._append_plain_text(formatted_message)
+            level = "INFO"
+            clean_message = message
+
+        timestamp = time.strftime("%H:%M:%S")
+        color = self._COLOR_MAP.get(level)
+        formatted_message = f"[{timestamp}] [{level}] {clean_message}"
+        if color:
+            self.info_text.append(f'<span style="color: {color};">{formatted_message}</span>')
+        else:
+            self._append_plain_text(formatted_message)
 
     def _append_plain_text(self, message):
         default_color = self.info_text.palette().color(QPalette.Text)
@@ -208,28 +185,23 @@ class InfoOutput:
     
     def log_info(self, message):
         """记录信息"""
-        timestamp = time.strftime("%H:%M:%S")
-        self._append_plain_text(f"[{timestamp}] [INFO] {message}")
+        self.append_info_output(f"[INFO] {message}")
 
     def log_error(self, message):
         """记录错误"""
-        timestamp = time.strftime("%H:%M:%S")
-        self.info_text.append(f'<span style="color: #FF0000;">[{timestamp}] [ERROR] {message}</span>')
+        self.append_info_output(f"[ERROR] {message}")
 
     def log_warning(self, message):
         """记录警告"""
-        timestamp = time.strftime("%H:%M:%S")
-        self.info_text.append(f'<span style="color: #FFA500;">[{timestamp}] [WARNING] {message}</span>')
+        self.append_info_output(f"[WARNING] {message}")
 
     def log_debug(self, message):
         """记录调试信息"""
-        timestamp = time.strftime("%H:%M:%S")
-        self.info_text.append(f'<span style="color: #808080;">[{timestamp}] [DEBUG] {message}</span>')
+        self.append_info_output(f"[DEBUG] {message}")
 
     def log_verbose(self, message):
         """记录详细信息"""
-        timestamp = time.strftime("%H:%M:%S")
-        self.info_text.append(f'<span style="color: #A0A0A0;">[{timestamp}] [VERBOSE] {message}</span>')
+        self.append_info_output(f"[VERBOSE] {message}")
 
     def clear_info_output(self):
         """清除信息输出"""
