@@ -130,7 +130,7 @@ class GlobalParamsDialog(QDialog):
         self._on_auto_output_toggled(Qt.Checked if auto_output else Qt.Unchecked)
         
         # 2. 信息输出等级设置
-        verbosity = self.params.get("debug_level", 1)
+        verbosity = self.params.get("debug_level", 0)
         self.verbosity_combo.setCurrentIndex(verbosity)
         
         # 3. 网格类型设置

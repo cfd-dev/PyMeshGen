@@ -1,6 +1,6 @@
 # PyMeshGen [![License](https://img.shields.io/badge/License-GPLv2+-brightgreen.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 
-![Mesh Example](./docs/images/demo_mesh.png)
+![Mesh Example](./docs/images/demo_mesh_gui.png)
 
 ## Project Overview
 An open-source Python-based unstructured Mesh Generator(PyMeshGen) for CFD/FEA analysis, providing basic 2D mesh generation tools and study platform of widely used algorithms.
