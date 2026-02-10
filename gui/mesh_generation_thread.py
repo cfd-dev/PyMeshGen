@@ -125,11 +125,11 @@ class GUIAdapter:
 
     def append_info_output(self, message):
         """添加信息输出"""
-        self.signals.log.emit(message)
+        self.signals.log.emit(f"[INFO] {message}")
 
     def log_info(self, message):
         """记录信息"""
-        self.signals.log.emit(message)
+        self.signals.log.emit(f"[INFO] {message}")
 
     def log_error(self, message):
         """记录错误"""

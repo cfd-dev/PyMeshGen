@@ -412,6 +412,7 @@ class MeshOperations:
 
     def _on_mesh_progress(self, progress, description):
         """处理网格生成进度更新"""
+        from utils.message import gui_progress
         if self.gui.progress_dialog:
             self.gui.progress_dialog.setValue(progress)
             self.gui.progress_dialog.setLabelText(description)
@@ -484,8 +485,9 @@ class MeshOperations:
 
     def _on_mesh_log(self, message):
         """处理网格生成日志"""
+        from utils.message import gui_log
         if message.startswith(('[INFO]', '[ERROR]', '[WARNING]', '[DEBUG]', '[VERBOSE]')):
-            self.gui.info_output.append_info_output(message)
+            gui_log(self.gui, message)
         else:
             self.gui.log_info(message)
 
@@ -523,15 +525,11 @@ class MeshOperations:
                     quality_stats += f"  平均质量值: {quality_avg:.4f}\n"
                     quality_stats += f"  总单元数: {len(quality_values)}"
 
-                    if hasattr(self.gui, 'info_output'):
-                        self.gui.info_output.append_info_output(quality_stats)
-                    else:
-                        self.gui.log_info(quality_stats)
+                    from utils.message import gui_log
+                    gui_log(self.gui, quality_stats)
                 else:
-                    if hasattr(self.gui, 'info_output'):
-                        self.gui.info_output.append_info_output("质量统计信息: 无质量数据")
-                    else:
-                        self.gui.log_info("质量统计信息: 无质量数据")
+                    from utils.message import gui_log
+                    gui_log(self.gui, "质量统计信息: 无质量数据")
 
                 if skewness_values:
                     skewness_min = min(skewness_values)
@@ -544,15 +542,11 @@ class MeshOperations:
                     skewness_stats += f"  平均偏斜度: {skewness_avg:.4f}\n"
                     skewness_stats += f"  总单元数: {len(skewness_values)}"
 
-                    if hasattr(self.gui, 'info_output'):
-                        self.gui.info_output.append_info_output(skewness_stats)
-                    else:
-                        self.gui.log_info(skewness_stats)
+                    from utils.message import gui_log
+                    gui_log(self.gui, skewness_stats)
                 else:
-                    if hasattr(self.gui, 'info_output'):
-                        self.gui.info_output.append_info_output("偏斜度统计信息: 无偏斜度数据")
-                    else:
-                        self.gui.log_info("偏斜度统计信息: 无偏斜度数据")
+                    from utils.message import gui_log
+                    gui_log(self.gui, "偏斜度统计信息: 无偏斜度数据")
 
                 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
                 from matplotlib.figure import Figure

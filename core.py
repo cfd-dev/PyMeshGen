@@ -18,7 +18,7 @@ from visualization.mesh_visualization import Visualization
 from data_structure.parameters import Parameters
 from optimize.optimize import edge_swap, laplacian_smooth
 from utils.timer import TimeSpan
-from utils.message import info
+from utils.message import info, gui_log, gui_progress
 
 # 混合网格生成相关导入
 from adfront2.adfront2_hybrid import Adfront2Hybrid
@@ -47,14 +47,6 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
         from utils.message import set_gui_instance
         set_gui_instance(gui_instance)
 
-    def _gui_log(message):
-        if gui_instance:
-            gui_instance.append_info_output(message)
-
-    def _gui_progress(step):
-        if gui_instance and hasattr(gui_instance, '_update_progress'):
-            gui_instance._update_progress(step)
-
     # 开始计时
     global_timer = TimeSpan("PyMeshGen开始运行...")
 
@@ -69,12 +61,12 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     # 输出信息到GUI
     if gui_instance:
         mesh_type_str = "三角形/四边形混合网格" if parameters.mesh_type == 3 else "三角形网格"
-        _gui_log(f"开始生成{mesh_type_str}...")
-        _gui_progress(0)  # 初始化参数
+        gui_log(gui_instance, f"开始生成{mesh_type_str}...")
+        gui_progress(gui_instance, 0)  # 初始化参数
 
     # 读入边界网格
-    _gui_log("开始读取输入网格数据...")
-    _gui_progress(1)  # 开始读取输入网格数据
+    gui_log(gui_instance, "开始读取输入网格数据...")
+    gui_progress(gui_instance, 1)  # 开始读取输入网格数据
 
     input_grid = None
     front_heap = None
@@ -136,23 +128,23 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
             
         visual_obj.plot_mesh(input_grid, boundary_only=True)
         
-        _gui_log(f"已读取输入网格文件: {parameters.input_file}")
+        gui_log(gui_instance, f"已读取输入网格文件: {parameters.input_file}")
 
         # 构造初始阵面
-        _gui_log("开始构造初始阵面...")
-        _gui_progress(2)  # 开始构造初始阵面
+        gui_log(gui_instance, "开始构造初始阵面...")
+        gui_progress(gui_instance, 2)  # 开始构造初始阵面
 
         front_heap = construct_initial_front(input_grid)
         
-        _gui_log("初始阵面构造完成")
+        gui_log(gui_instance, "初始阵面构造完成")
     elif front_heap is not None:
         # front_heap已经从parts或connectors中提取
-        _gui_log("直接使用parts/connectors中的front_list，跳过构造初始阵面")
-        _gui_progress(2)  # 跳过构造初始阵面
+        gui_log(gui_instance, "直接使用parts/connectors中的front_list，跳过构造初始阵面")
+        gui_progress(gui_instance, 2)  # 跳过构造初始阵面
 
     # 计算网格尺寸场
-    _gui_log("开始计算网格尺寸场...")
-    _gui_progress(3)  # 开始计算网格尺寸场
+    gui_log(gui_instance, "开始计算网格尺寸场...")
+    gui_progress(gui_instance, 3)  # 开始计算网格尺寸场
 
     sizing_system = QuadtreeSizing(
         initial_front=front_heap,
@@ -163,12 +155,12 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     )
     # sizing_system.draw_bgmesh()
     
-    _gui_log("网格尺寸场计算完成")
+    gui_log(gui_instance, "网格尺寸场计算完成")
 
     unstr_grid_list = []
     # 推进生成边界层网格
-    _gui_log("开始生成边界层网格...")
-    _gui_progress(4)  # 开始生成边界层网格
+    gui_log(gui_instance, "开始生成边界层网格...")
+    gui_progress(gui_instance, 4)  # 开始生成边界层网格
 
     adlayers = Adlayers2(
         boundary_front=front_heap,
@@ -179,11 +171,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     boundary_grid, front_heap = adlayers.generate_elements()
     unstr_grid_list.append(boundary_grid)
     
-    _gui_log("边界层网格生成完成")
+    gui_log(gui_instance, "边界层网格生成完成")
 
     # 推进生成网格
-    _gui_log("开始推进生成网格...")
-    _gui_progress(5)  # 开始推进生成网格
+    gui_log(gui_instance, "开始推进生成网格...")
+    gui_progress(gui_instance, 5)  # 开始推进生成网格
 
     # 根据网格类型选择不同的生成算法
     if parameters.mesh_type == 3:  # 三角形/四边形混合网格
@@ -205,11 +197,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
         )
         triangular_grid = adfront2.generate_elements()
     
-    _gui_log("网格生成完成")
+    gui_log(gui_instance, "网格生成完成")
 
     # 网格质量优化
-    _gui_log("开始优化网格质量...")
-    _gui_progress(6)  # 开始优化网格质量
+    gui_log(gui_instance, "开始优化网格质量...")
+    gui_progress(gui_instance, 6)  # 开始优化网格质量
 
     triangular_grid = edge_swap(triangular_grid)
     
@@ -223,11 +215,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
         triangular_grid = laplacian_smooth(triangular_grid, 3)
         unstr_grid_list.append(triangular_grid)
     
-    _gui_log("网格质量优化完成")
+    gui_log(gui_instance, "网格质量优化完成")
 
     # 合并各向同性网格和边界层网格
-    _gui_log("开始合并网格...")
-    _gui_progress(7)  # 开始合并网格
+    gui_log(gui_instance, "开始合并网格...")
+    gui_progress(gui_instance, 7)  # 开始合并网格
 
     global_unstr_grid = unstr_grid_list[0]
 
@@ -238,7 +230,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     for unstr_grid in unstr_grid_list[1:]:
         global_unstr_grid.merge(unstr_grid)
     
-    _gui_log("网格合并完成")
+    gui_log(gui_instance, "网格合并完成")
 
     # 可视化
     global_unstr_grid.visualize_unstr_grid_2d(visual_obj)
@@ -251,7 +243,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     global_unstr_grid.summary(gui_instance)
     # global_unstr_grid.quality_histogram(gui_instance.ax if gui_instance else None)
     
-    _gui_log("网格信息输出完成")
+    gui_log(gui_instance, "网格信息输出完成")
 
     # 输出网格文件
     # 对于非GUI运行，默认要输出网格
@@ -270,17 +262,17 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
             if not output_path:
                 output_path = ["./out/mesh.vtk"]
         
-        _gui_log("开始保存网格文件...")
-        _gui_progress(8)  # 开始保存网格文件
+        gui_log(gui_instance, "开始保存网格文件...")
+        gui_progress(gui_instance, 8)  # 开始保存网格文件
 
         global_unstr_grid.save_to_vtkfile(output_path)
         
-        _gui_log(f"网格文件已保存至: {output_path}")
+        gui_log(gui_instance, f"网格文件已保存至: {output_path}")
         else:
             # 非GUI运行时，输出到控制台
             print(f"网格文件已保存至: {output_path}")
     else:
-        _gui_log("自动输出网格已禁用，未保存网格文件")
+        gui_log(gui_instance, "自动输出网格已禁用，未保存网格文件")
 
     # 保留原始部件信息以便后续修改部件参数
     if gui_instance:
@@ -293,7 +285,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     global_timer.show_to_console("程序运行正常退出.")
 
     # 输出信息到GUI
-    _gui_log("程序运行正常退出")
+    gui_log(gui_instance, "程序运行正常退出")
 
     # 重置消息系统中的GUI实例，避免影响后续操作
     if gui_instance:

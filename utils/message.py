@@ -28,6 +28,16 @@ def set_gui_instance(gui_instance):
     _gui_instance = gui_instance
 
 
+def gui_log(gui_instance, message):
+    if gui_instance:
+        gui_instance.append_info_output(message)
+
+
+def gui_progress(gui_instance, step):
+    if gui_instance and hasattr(gui_instance, "_update_progress"):
+        gui_instance._update_progress(step)
+
+
 def set_debug_level(level):
     """
     设置当前的调试级别。

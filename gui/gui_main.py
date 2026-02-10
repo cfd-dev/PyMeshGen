@@ -2098,8 +2098,8 @@ class PyMeshGenGUI(QMainWindow):
 
     def append_info_output(self, message):
         """添加信息到输出窗口，供 utils.message 模块调用"""
-        if hasattr(self, 'info_output'):
-            self.info_output.append_info_output(message)
+        from utils.message import gui_log
+        gui_log(self, message)
 
     def update_status(self, message):
         """更新状态栏信息"""
