@@ -251,6 +251,7 @@ class Parameters:
         self.mesh_type = config.get("mesh_type", self.mesh_type)
         self.viz_enabled = config.get("viz_enabled", self.viz_enabled)
         self.auto_output = config.get("auto_output", self.auto_output)
+        set_debug_level(self.debug_level)
 
         # 保存原始的部件参数以便后续处理
         original_part_params = {part.part_name: part for part in self.part_params}

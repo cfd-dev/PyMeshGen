@@ -55,7 +55,7 @@ class GlobalParamsDialog(QDialog):
         self.verbosity_combo = QComboBox()
         # 设置白色背景
         self.verbosity_combo.setStyleSheet("background-color: white;")
-        self.verbosity_combo.addItems(["0 (静默)", "1 (基本信息)", "2 (详细信息)"])
+        self.verbosity_combo.addItems(["0 (基本信息)", "1 (调试信息)", "2 (详细信息)"])
         verbosity_layout.addWidget(self.verbosity_combo)
         verbosity_layout.addStretch()
         verbosity_group.setLayout(verbosity_layout)

@@ -484,7 +484,7 @@ class MeshOperations:
 
     def _on_mesh_log(self, message):
         """处理网格生成日志"""
-        if message.startswith('[INFO]') or message.startswith('[ERROR]') or message.startswith('[WARNING]'):
+        if message.startswith(('[INFO]', '[ERROR]', '[WARNING]', '[DEBUG]', '[VERBOSE]')):
             self.gui.info_output.append_info_output(message)
         else:
             self.gui.log_info(message)

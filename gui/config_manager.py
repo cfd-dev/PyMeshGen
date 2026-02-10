@@ -2,6 +2,7 @@ import json
 import os
 import pickle
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
+from utils.message import set_debug_level
 
 
 class ConfigManager:
@@ -248,7 +249,18 @@ class ConfigManager:
             # 从部件参数中获取全局最大尺寸（如果有）
             if hasattr(self.gui.params, 'part_params') and self.gui.params.part_params:
                 # 假设第一个部件的max_size作为全局尺寸
-                current_params["global_max_size"] = self.gui.params.part_params[0].param.max_size
+                first_part = self.gui.params.part_params[0]
+                if hasattr(first_part, "part_params") and hasattr(first_part.part_params, "max_size"):
+                    current_params["global_max_size"] = first_part.part_params.max_size
+                elif hasattr(first_part, "param") and hasattr(first_part.param, "max_size"):
+                    current_params["global_max_size"] = first_part.param.max_size
+                elif isinstance(first_part, dict):
+                    if "max_size" in first_part:
+                        current_params["global_max_size"] = first_part["max_size"]
+                    else:
+                        part_params = first_part.get("part_params") or {}
+                        if isinstance(part_params, dict) and "max_size" in part_params:
+                            current_params["global_max_size"] = part_params["max_size"]
         
         # 创建并显示对话框
         dialog = GlobalParamsDialog(self.gui, current_params)
@@ -288,6 +300,7 @@ class ConfigManager:
             
             # 更新全局参数实例
             self.gui.params.debug_level = new_params["debug_level"]
+            set_debug_level(new_params["debug_level"])
             self.gui.params.output_file = new_params["output_file"]
             self.gui.params.mesh_type = new_params["mesh_type"]
             self.gui.params.auto_output = new_params["auto_output"]
@@ -295,7 +308,15 @@ class ConfigManager:
             # 更新所有部件的最大尺寸为全局尺寸
             if hasattr(self.gui.params, 'part_params') and self.gui.params.part_params:
                 for part in self.gui.params.part_params:
-                    part.param.max_size = new_params["global_max_size"]
+                    if hasattr(part, "part_params") and hasattr(part.part_params, "max_size"):
+                        part.part_params.max_size = new_params["global_max_size"]
+                    elif hasattr(part, "param") and hasattr(part.param, "max_size"):
+                        part.param.max_size = new_params["global_max_size"]
+                    elif isinstance(part, dict):
+                        if "part_params" in part and isinstance(part["part_params"], dict):
+                            part["part_params"]["max_size"] = new_params["global_max_size"]
+                        else:
+                            part["max_size"] = new_params["global_max_size"]
             
             self.gui.log_info(
                 f"全局参数已更新: 自动输出={new_params['auto_output']}, "

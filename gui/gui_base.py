@@ -172,13 +172,13 @@ class InfoOutput:
         else:
             # 如果消息没有时间戳，添加当前时间戳
             timestamp = time.strftime("%H:%M:%S")
-            # 尝试从消息中提取可能的级别信息
-            level_pattern = r'^\[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\] '
+            # 尝试从消息中提取可能的级别信息（允许已有时间戳的前缀）
+            level_pattern = r'^(?:\[\d{1,2}:\d{1,2}:\d{1,2}\] )?\[(INFO|WARNING|ERROR|DEBUG|VERBOSE)\] '
             match = re.match(level_pattern, message)
             if match:
                 # 消息以 [LEVEL] 开头，添加时间戳
                 level = match.group(1)
-                clean_message = message[len(match.group(0)):]  # Remove matched part [LEVEL]
+                clean_message = message[len(match.group(0)):]  # Remove matched part [timestamp][LEVEL]
                 
                 # 根据级别应用颜色
                 color_map = {
