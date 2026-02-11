@@ -411,8 +411,9 @@ class Unstructured_Grid:
         mesh_summary += f"  Number of Faces: {self.num_faces}\n"
 
         print(mesh_summary.rstrip())  # Print to console
-        if gui_instance and hasattr(gui_instance, 'log_info'):
-            gui_instance.log_info(mesh_summary.rstrip())  # Output to GUI
+        if gui_instance:
+            from utils.message import gui_info
+            gui_info(gui_instance, mesh_summary.rstrip())  # Output to GUI
 
         # 计算所有单元的质量
         self.refresh_cell_metrics()
@@ -446,13 +447,15 @@ class Unstructured_Grid:
                 quality_stats += f"  Min Volume: {min(volume_values):.4e}\n"
 
             print(quality_stats.rstrip())  # Print to console
-            if gui_instance and hasattr(gui_instance, 'log_info'):
-                gui_instance.log_info(quality_stats.rstrip())  # Output to GUI
+            if gui_instance:
+                from utils.message import gui_info
+                gui_info(gui_instance, quality_stats.rstrip())  # Output to GUI
         else:
             no_data_msg = "Quality Statistics:\n  No quality or skewness data available\n"
             print(no_data_msg.rstrip())  # Print to console
-            if gui_instance and hasattr(gui_instance, 'log_info'):
-                gui_instance.log_info(no_data_msg.rstrip())  # Output to GUI
+            if gui_instance:
+                from utils.message import gui_info
+                gui_info(gui_instance, no_data_msg.rstrip())  # Output to GUI
 
     def quality_histogram(self, ax=None):
         """绘制质量直方图。"""

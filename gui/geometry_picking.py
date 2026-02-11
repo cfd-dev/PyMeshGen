@@ -566,11 +566,11 @@ class GeometryPickingHelper:
                     self.gui.status_bar.update_status(status_msg)
                 except Exception:
                     pass
-            if hasattr(self.gui, "info_output") and hasattr(self.gui.info_output, "log_info"):
-                try:
-                    self.gui.info_output.log_info(status_msg)
-                except Exception:
-                    pass
+            try:
+                from utils.message import gui_info
+                gui_info(self.gui, status_msg)
+            except Exception:
+                pass
         
         if self._on_confirm:
             try:

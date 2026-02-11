@@ -29,13 +29,33 @@ def set_gui_instance(gui_instance):
 
 
 def gui_log(gui_instance, message):
-    if gui_instance:
-        gui_instance.append_info_output(message)
+    if gui_instance and hasattr(gui_instance, "info_output"):
+        gui_instance.info_output.append_info_output(message)
 
 
 def gui_progress(gui_instance, step):
     if gui_instance and hasattr(gui_instance, "_update_progress"):
         gui_instance._update_progress(step)
+
+
+def gui_info(gui_instance, message):
+    gui_log(gui_instance, format_message("INFO", message))
+
+
+def gui_warning(gui_instance, message):
+    gui_log(gui_instance, format_message("WARNING", message))
+
+
+def gui_error(gui_instance, message):
+    gui_log(gui_instance, format_message("ERROR", message))
+
+
+def gui_debug(gui_instance, message):
+    gui_log(gui_instance, format_message("DEBUG", message))
+
+
+def gui_verbose(gui_instance, message):
+    gui_log(gui_instance, format_message("VERBOSE", message))
 
 
 def set_debug_level(level):
@@ -50,7 +70,7 @@ def set_debug_level(level):
 
 def _output_message(prefix, message):
     """内部函数，用于输出带前缀的消息。"""
-    formatted_message = f"[{prefix}] {message}"
+    formatted_message = format_message(prefix, message)
     
     # 如果有GUI实例，同时输出到GUI信息窗口
     if _gui_instance is not None:
@@ -63,6 +83,10 @@ def _output_message(prefix, message):
 def _log(level, message):
     if current_debug_level >= _LEVEL_THRESHOLDS[level]:
         _output_message(level, message)
+
+
+def format_message(level, message):
+    return f"[{level}] {message}"
 
 
 def info(message):

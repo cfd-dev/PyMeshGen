@@ -408,8 +408,8 @@ class RibbonWidget(QWidget):
         # 小工具：安全记录信息到 InfoOutput 中（如果存在）
         def _log(message):
             try:
-                if hasattr(main_window, 'info_output') and hasattr(main_window.info_output, 'log_info'):
-                    main_window.info_output.log_info(message)
+                from utils.message import gui_info
+                gui_info(main_window, message)
             except Exception:
                 pass
 

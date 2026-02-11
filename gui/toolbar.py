@@ -166,8 +166,9 @@ class ViewToolbar(QToolBar):
             elif hasattr(self.window(), 'info_output'):
                 main_win = self.window()
 
-            if main_win and hasattr(main_win, 'info_output') and hasattr(main_win.info_output, 'log_info'):
-                main_win.info_output.log_info(f"显示模式切换为 {friendly}")
+            if main_win:
+                from utils.message import gui_info
+                gui_info(main_win, f"显示模式切换为 {friendly}")
         except Exception:
             # 不抛出异常以避免影响原有功能
             pass
@@ -227,8 +228,9 @@ class ViewToolbar(QToolBar):
             elif hasattr(self.window(), 'info_output'):
                 main_win = self.window()
 
-            if main_win and hasattr(main_win, 'info_output') and hasattr(main_win.info_output, 'log_info'):
-                main_win.info_output.log_info(f"视图切换为 {friendly}")
+            if main_win:
+                from utils.message import gui_info
+                gui_info(main_win, f"视图切换为 {friendly}")
         except Exception:
             # 忽略日志错误，确保不影响主逻辑
             pass

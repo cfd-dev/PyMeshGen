@@ -49,7 +49,6 @@ from gui.parts_panel_manager import PartManager
 from gui.config_manager import ConfigManager
 from gui.geometry_operations import GeometryOperations
 from gui.help_module import HelpModule
-from gui.ui_helpers import UIHelpers
 from data_structure.parameters import Parameters
 from data_structure.parts_manager import GlobalPartsManager, PartData
 
@@ -160,7 +159,6 @@ class PyMeshGenGUI(QMainWindow):
         self.config_manager = ConfigManager(self)
         self.geometry_operations = GeometryOperations(self)
         self.help_module = HelpModule(self)
-        self.ui_helpers = UIHelpers(self)
 
     def _initialize_data(self):
         """初始化数据
@@ -2078,23 +2076,28 @@ class PyMeshGenGUI(QMainWindow):
 
     def log_info(self, message):
         """记录信息日志"""
-        self.ui_helpers.log_info(message)
+        from utils.message import gui_info
+        gui_info(self, message)
 
     def log_error(self, message):
         """记录错误日志"""
-        self.ui_helpers.log_error(message)
+        from utils.message import gui_error
+        gui_error(self, message)
 
     def log_warning(self, message):
         """记录警告日志"""
-        self.ui_helpers.log_warning(message)
+        from utils.message import gui_warning
+        gui_warning(self, message)
 
     def log_debug(self, message):
         """记录调试日志"""
-        self.ui_helpers.log_debug(message)
+        from utils.message import gui_debug
+        gui_debug(self, message)
 
     def log_verbose(self, message):
         """记录详细日志"""
-        self.ui_helpers.log_verbose(message)
+        from utils.message import gui_verbose
+        gui_verbose(self, message)
 
     def append_info_output(self, message):
         """添加信息到输出窗口，供 utils.message 模块调用"""
@@ -2103,7 +2106,8 @@ class PyMeshGenGUI(QMainWindow):
 
     def update_status(self, message):
         """更新状态栏信息"""
-        self.ui_helpers.update_status(message)
+        if hasattr(self, 'status_bar'):
+            self.status_bar.update_status(message)
 
     def reset_config(self):
         """重置配置"""

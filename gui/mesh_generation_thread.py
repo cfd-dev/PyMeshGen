@@ -125,27 +125,32 @@ class GUIAdapter:
 
     def append_info_output(self, message):
         """添加信息输出"""
-        self.signals.log.emit(f"[INFO] {message}")
+        self.signals.log.emit(message)
 
     def log_info(self, message):
         """记录信息"""
-        self.signals.log.emit(f"[INFO] {message}")
+        from utils.message import format_message
+        self.signals.log.emit(format_message("INFO", message))
 
     def log_error(self, message):
         """记录错误"""
-        self.signals.log.emit(f"[ERROR] {message}")
+        from utils.message import format_message
+        self.signals.log.emit(format_message("ERROR", message))
 
     def log_warning(self, message):
         """记录警告"""
-        self.signals.log.emit(f"[WARNING] {message}")
+        from utils.message import format_message
+        self.signals.log.emit(format_message("WARNING", message))
 
     def log_debug(self, message):
         """记录调试信息"""
-        self.signals.log.emit(f"[DEBUG] {message}")
+        from utils.message import format_message
+        self.signals.log.emit(format_message("DEBUG", message))
 
     def log_verbose(self, message):
         """记录详细信息"""
-        self.signals.log.emit(f"[VERBOSE] {message}")
+        from utils.message import format_message
+        self.signals.log.emit(format_message("VERBOSE", message))
 
     def update_status(self, message):
         """更新状态"""

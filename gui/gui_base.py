@@ -185,23 +185,28 @@ class InfoOutput:
     
     def log_info(self, message):
         """记录信息"""
-        self.append_info_output(f"[INFO] {message}")
+        from utils.message import gui_info
+        gui_info(self.parent, message)
 
     def log_error(self, message):
         """记录错误"""
-        self.append_info_output(f"[ERROR] {message}")
+        from utils.message import gui_error
+        gui_error(self.parent, message)
 
     def log_warning(self, message):
         """记录警告"""
-        self.append_info_output(f"[WARNING] {message}")
+        from utils.message import gui_warning
+        gui_warning(self.parent, message)
 
     def log_debug(self, message):
         """记录调试信息"""
-        self.append_info_output(f"[DEBUG] {message}")
+        from utils.message import gui_debug
+        gui_debug(self.parent, message)
 
     def log_verbose(self, message):
         """记录详细信息"""
-        self.append_info_output(f"[VERBOSE] {message}")
+        from utils.message import gui_verbose
+        gui_verbose(self.parent, message)
 
     def clear_info_output(self):
         """清除信息输出"""
