@@ -29,8 +29,11 @@ def set_gui_instance(gui_instance):
 
 
 def gui_log(gui_instance, message):
-    if gui_instance and hasattr(gui_instance, "info_output"):
-        gui_instance.info_output.append_info_output(message)
+    if gui_instance:
+        if hasattr(gui_instance, "info_output") and hasattr(gui_instance.info_output, "append_info_output"):
+            gui_instance.info_output.append_info_output(message)
+        elif hasattr(gui_instance, "append_info_output"):
+            gui_instance.append_info_output(message)
 
 
 def gui_progress(gui_instance, step):

@@ -2013,6 +2013,8 @@ class PyMeshGenGUI(QMainWindow):
         self._apply_mesh_dimension(GLOBAL_MESH_DIMENSION, update_mesh=False)
         if hasattr(self, 'mesh_display'):
             self.mesh_display.clear()
+        if hasattr(self, 'model_tree_widget'):
+            self.model_tree_widget.clear_mesh()
         self.log_info("已清空网格")
         self.update_status("已清空网格")
 

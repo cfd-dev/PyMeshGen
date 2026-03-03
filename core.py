@@ -267,7 +267,8 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
         global_unstr_grid.save_to_vtkfile(output_path)
         
-        gui_log(gui_instance, f"网格文件已保存至: {output_path}")
+        if gui_instance:
+            gui_log(gui_instance, f"网格文件已保存至: {output_path}")
         else:
             # 非GUI运行时，输出到控制台
             print(f"网格文件已保存至: {output_path}")

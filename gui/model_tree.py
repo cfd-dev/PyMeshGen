@@ -1629,6 +1629,28 @@ class ModelTreeWidget:
                     element_type_item.setCheckState(0, Qt.Checked if visible else Qt.Unchecked)
                     return
 
+    def clear_mesh(self):
+        """清空网格数据和部件信息，保留几何"""
+        self.mesh_data = None
+        self.parts_data = None
+        mesh_item = self.tree.topLevelItem(1)
+        if mesh_item is None:
+            return
+        
+        self.tree.blockSignals(True)
+        for i in range(mesh_item.childCount()):
+            category_item = mesh_item.child(i)
+            category_item.setText(1, "0")
+            while category_item.childCount() > 0:
+                category_item.removeChild(category_item.child(0))
+        
+        parts_item = self.tree.topLevelItem(2)
+        if parts_item:
+            while parts_item.childCount() > 0:
+                parts_item.removeChild(parts_item.child(0))
+            parts_item.setText(1, "0")
+        self.tree.blockSignals(False)
+
     def clear(self):
         """清空树"""
         self.geometry_name = "几何"
