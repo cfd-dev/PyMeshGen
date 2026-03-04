@@ -182,31 +182,6 @@ class InfoOutput:
         default_color = self.info_text.palette().color(QPalette.Text)
         self.info_text.setTextColor(default_color)
         self.info_text.append(message)
-    
-    def log_info(self, message):
-        """记录信息"""
-        from utils.message import gui_info
-        gui_info(self.parent, message)
-
-    def log_error(self, message):
-        """记录错误"""
-        from utils.message import gui_error
-        gui_error(self.parent, message)
-
-    def log_warning(self, message):
-        """记录警告"""
-        from utils.message import gui_warning
-        gui_warning(self.parent, message)
-
-    def log_debug(self, message):
-        """记录调试信息"""
-        from utils.message import gui_debug
-        gui_debug(self.parent, message)
-
-    def log_verbose(self, message):
-        """记录详细信息"""
-        from utils.message import gui_verbose
-        gui_verbose(self.parent, message)
 
     def clear_info_output(self):
         """清除信息输出"""

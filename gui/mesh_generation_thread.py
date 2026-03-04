@@ -112,8 +112,8 @@ class GUIAdapter:
         self.signals = signals
         self._is_running = is_running_flag
         self._current_step = 0
-        self.ax = None  # 添加ax属性，设置为None以避免core.py中的可视化调用
-        self.canvas = None  # 添加canvas属性
+        self.ax = None
+        self.canvas = None
         self._progress_steps = PROGRESS_STEPS
 
     def _update_progress(self, step_index):
@@ -127,37 +127,10 @@ class GUIAdapter:
         """添加信息输出"""
         self.signals.log.emit(message)
 
-    def log_info(self, message):
-        """记录信息"""
-        from utils.message import format_message
-        self.signals.log.emit(format_message("INFO", message))
-
-    def log_error(self, message):
-        """记录错误"""
-        from utils.message import format_message
-        self.signals.log.emit(format_message("ERROR", message))
-
-    def log_warning(self, message):
-        """记录警告"""
-        from utils.message import format_message
-        self.signals.log.emit(format_message("WARNING", message))
-
-    def log_debug(self, message):
-        """记录调试信息"""
-        from utils.message import format_message
-        self.signals.log.emit(format_message("DEBUG", message))
-
-    def log_verbose(self, message):
-        """记录详细信息"""
-        from utils.message import format_message
-        self.signals.log.emit(format_message("VERBOSE", message))
-
     def update_status(self, message):
         """更新状态"""
         self.signals.log.emit(message)
 
-    # 添加其他可能的GUI方法
     def __getattr__(self, name):
         """处理未定义的属性访问"""
-        # 返回一个空函数，避免AttributeError
         return lambda *args, **kwargs: None
