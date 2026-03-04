@@ -23,9 +23,10 @@ class Front:
         "hash",
         "node_ids",
         "early_stop_flag",
+        "layer_count",
     ]
 
-    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0):
+    def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0, layer_count=0):
         if not is_node_element(node_elem1) or not is_node_element(
             node_elem2
         ):
@@ -38,6 +39,7 @@ class Front:
 
         self.priority = False  # 优先推进标记
         self.early_stop_flag = False  # 提前停止标志
+        self.layer_count = layer_count  # 阵面实际推进层数
         self.al = al  # 候选点搜索范围系数
         self.center = None  # 阵面中心坐标
         self.length = None  # 阵面长度

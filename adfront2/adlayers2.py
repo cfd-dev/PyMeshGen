@@ -550,6 +550,13 @@ class Adlayers2:
                 num_old_prism_cap += 1
                 continue
 
+            # 检查相邻阵面的层数差，若超过 1 则当前阵面早停
+            if self._check_neighbor_layer_difference(front):
+                front.early_stop_flag = True
+                new_prism_cap_list.append(front)
+                verbose(f"阵面{front.node_ids}因相邻阵面层数差>1 而早停，当前层数：{front.layer_count}")
+                continue
+
             (
                 new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
                 alm_front,  # 新阵面Front对象，prism-cap，2-3
@@ -589,6 +596,12 @@ class Adlayers2:
             self.update_front_list_globally(
                 check_fronts, new_interior_list, new_prism_cap_list
             )
+            
+            # 更新新阵面的层数（当前阵面层数 +1）
+            new_layer_count = front.layer_count + 1
+            alm_front.layer_count = new_layer_count
+            new_front1.layer_count = new_layer_count
+            new_front2.layer_count = new_layer_count
 
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
@@ -597,6 +610,29 @@ class Adlayers2:
         # 更新part阵面列表
         self.current_part.front_list = new_prism_cap_list + new_interior_list
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
+
+    def _check_neighbor_layer_difference(self, front):
+        """检查相邻阵面的层数差，若超过 1 则返回 True（需要早停）"""
+        max_layer_diff = 1  # 最大允许层数差
+        
+        # 获取当前阵面节点的相邻阵面
+        neighbor_layers = set()
+        for node in front.node_elems:
+            for neighbor_front in node.node2front:
+                if neighbor_front.hash != front.hash:
+                    neighbor_layers.add(neighbor_front.layer_count)
+        
+        # 如果没有相邻阵面，不需要检查
+        if not neighbor_layers:
+            return False
+        
+        # 检查层数差
+        current_layer = front.layer_count
+        for neighbor_layer in neighbor_layers:
+            if abs(current_layer - neighbor_layer) > max_layer_diff:
+                return True
+        
+        return False
 
     def is_wall_front(self, front):
         return front.bc_type == "wall" or front.bc_type == "prism-cap"
