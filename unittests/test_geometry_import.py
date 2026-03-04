@@ -46,15 +46,13 @@ except ImportError:
     VTK_AVAILABLE = False
 
 
+@unittest.skipIf(not GEOMETRY_IMPORT_AVAILABLE, "几何导入模块不可用，请确保已安装 pythonocc-core 或 OCP")
 class TestGeometryImport(unittest.TestCase):
     """几何文件导入功能测试类"""
 
     @classmethod
     def setUpClass(cls):
         """测试类的准备工作"""
-        if not GEOMETRY_IMPORT_AVAILABLE:
-            cls.skipTest("几何导入模块不可用，请确保已安装pythonocc-core或OCP")
-
         # 查找测试文件
         cls.test_files = {
             'step': [],
@@ -62,7 +60,7 @@ class TestGeometryImport(unittest.TestCase):
             'stl': []
         }
 
-        # 搜索examples/cad目录下的几何文件
+        # 搜索 examples/cad 目录下的几何文件
         meshes_dir = os.path.join(current_dir, "examples", "cad")
         if os.path.exists(meshes_dir):
             for file in os.listdir(meshes_dir):
@@ -303,15 +301,13 @@ class TestGeometryImport(unittest.TestCase):
                 self.fail(f"提取边时发生错误: {str(e)}")
 
 
+@unittest.skipIf(not GEOMETRY_IMPORT_AVAILABLE or not VTK_AVAILABLE, "几何导入模块或 VTK 不可用")
 class TestOCCToVTK(unittest.TestCase):
-    """OCC Shape到VTK转换测试类"""
+    """OCC Shape 到 VTK 转换测试类"""
 
     @classmethod
     def setUpClass(cls):
         """测试类的准备工作"""
-        if not GEOMETRY_IMPORT_AVAILABLE or not VTK_AVAILABLE:
-            cls.skipTest("几何导入模块或VTK不可用")
-
         # 查找测试文件
         cls.test_files = []
         meshes_dir = os.path.join(current_dir, "examples", "cad")
@@ -324,7 +320,7 @@ class TestOCCToVTK(unittest.TestCase):
                        file.endswith('.stl'):
                         cls.test_files.append(file_path)
 
-        # 只使用前3个文件进行测试
+        # 只使用前 3 个文件进行测试
         cls.test_files = cls.test_files[:3]
 
     def setUp(self):

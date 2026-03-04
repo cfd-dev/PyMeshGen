@@ -685,7 +685,7 @@ class Adlayers2:
 
             if len(node_elem.node2front) < 2:
                 verbose(
-                    f"节点{node_elem.idx}在当前part中只有1个相邻阵面，通常为match point，不计算推进方向！"
+                    f"节点{node_elem.idx}在当前 part 中只有 1 个相邻阵面，通常为 match point，不计算推进方向！"
                 )
                 continue
 
@@ -697,31 +697,35 @@ class Adlayers2:
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # TODO: 应对节点只有一侧有流向阵面(prism-cap)，另一侧是法向阵面(interior)的情况
-            if front1.bc_type == "interior":
-                # 处理方案1：将流向阵面法向作为推进方向
-                node_elem.marching_direction = tuple(normal2)
-                continue
-                # 处理方案2：将法向阵面的方向向量作为normal1
-                # normal1 = np.array(front2.direction)
-                # 处理方案3：将法向阵面的方向作为推进方向
-                # node_elem.marching_direction = tuple(front1.direction)
-                # continue
-            elif front2.bc_type == "interior":
-                # 处理方案1：将流向阵面法向作为推进方向
-                node_elem.marching_direction = tuple(normal1)
-                continue
-                # 处理方案2：将法向阵面的方向向量作为normal1
-                # normal2 = np.array(front1.direction)
-                # 处理方案3：将法向阵面的方向作为推进方向
-                # node_elem.marching_direction = tuple(front2.direction)
+            # 处理节点只有一侧有流向阵面 (prism-cap)，另一侧是法向阵面 (interior) 的情况
+            if front1.bc_type == "interior" and front2.bc_type not in ("interior", "match"):
+                # interior 阵面不使用其法向，只使用流向阵面的法向
+                # 如果 interior 阵面有方向向量，则使用该方向
+                if hasattr(front1, 'direction') and front1.direction is not None:
+                    normal1 = np.array(front1.direction)
+                else:
+                    # 使用流向阵面的法向作为推进方向
+                    node_elem.marching_direction = tuple(normal2)
+                    continue
+            elif front2.bc_type == "interior" and front1.bc_type not in ("interior", "match"):
+                # interior 阵面不使用其法向，只使用流向阵面的法向
+                if hasattr(front2, 'direction') and front2.direction is not None:
+                    normal2 = np.array(front2.direction)
+                else:
+                    # 使用流向阵面的法向作为推进方向
+                    node_elem.marching_direction = tuple(normal1)
+                    continue
 
             # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0
             norm = np.linalg.norm(avg_direction)
-            avg_direction /= norm
-
-            new_direction = avg_direction if norm > 1e-6 else normal1
+            
+            if norm > 1e-6:
+                avg_direction /= norm
+                new_direction = avg_direction
+            else:
+                # 如果平均方向接近零，说明两个法向相反，使用第一个法向
+                new_direction = normal1
 
             # 加权光滑
             w1 = self.relax_factor
@@ -736,15 +740,17 @@ class Adlayers2:
                 old_direction = new_direction.copy()
 
                 new_direction = (1 - w1) * old_direction + w1 * (
-                    wf1 * normal1 + +wf2 * normal2
+                    wf1 * normal1 + wf2 * normal2
                 )
-                new_direction /= np.linalg.norm(new_direction)
+                norm = np.linalg.norm(new_direction)
+                if norm > 1e-10:
+                    new_direction /= norm
 
-                # 计算法向与相邻面的夹角及其与平均夹角的偏差df
+                # 计算法向与相邻面的夹角及其与平均夹角的偏差 df
                 dot_product1 = np.dot(new_direction, normal1)
                 dot_product2 = np.dot(new_direction, normal2)
-                angle1 = np.arccos(np.clip(dot_product1, -1.0, 1.0))  # 添加数值裁剪
-                angle2 = np.arccos(np.clip(dot_product2, -1.0, 1.0))  # 添加数值裁剪
+                angle1 = np.arccos(np.clip(dot_product1, -1.0, 1.0))
+                angle2 = np.arccos(np.clip(dot_product2, -1.0, 1.0))
 
                 avg_angle = (angle1 + angle2) / 2
 
@@ -767,37 +773,94 @@ class Adlayers2:
         verbose("计算节点初始推进方向..., Done.\n")
 
     def laplacian_smooth_normals(self):
-        """拉普拉斯平滑节点推进方向"""
-        # FIXME: 边界层推进方向不够光滑，待检查debug
+        """拉普拉斯平滑节点推进方向 - 修复版本"""
         verbose("节点推进方向光滑....")
+        
+        # 第一次遍历：收集所有节点的初始方向
+        initial_directions = {}
         for node_elem in self.front_node_list:
-            if node_elem.matching_boundary:
-                node_elem.marching_direction = (
-                    node_elem.matching_boundary.marching_vector
-                )
-                continue
+            initial_directions[node_elem.idx] = np.array(node_elem.marching_direction)
+        
+        # 进行多次光滑迭代
+        for iteration in range(self.smooth_iterions):
+            verbose(f"  光滑迭代 {iteration + 1}/{self.smooth_iterions}...")
+            
+            new_directions = {}
+            
+            for node_elem in self.front_node_list:
+                # 边界匹配节点保持原始方向
+                if node_elem.matching_boundary:
+                    new_directions[node_elem.idx] = np.array(
+                        node_elem.matching_boundary.marching_vector
+                    )
+                    continue
 
-            num_neighbors = len(node_elem.node2node)
-            if num_neighbors < 2:
-                verbose(
-                    f"节点{node_elem.idx}在当前part中只有1个相邻节点，通常为match point，不进行拉普拉斯平滑！"
-                )
-                continue
+                num_neighbors = len(node_elem.node2node)
+                if num_neighbors < 2:
+                    # 相邻节点不足，保持初始方向
+                    new_directions[node_elem.idx] = initial_directions[node_elem.idx]
+                    continue
 
-            iteration = 0
-            while iteration < self.smooth_iterions:
-                summation = np.zeros_like(np.array(node_elem.marching_direction))
+                # 计算加权平均方向
+                current_dir = np.array(node_elem.marching_direction)
+                # 根据当前方向的维度初始化 summation
+                summation = np.zeros_like(current_dir)
+                total_weight = 0.0
+                
+                current_pos = np.array(node_elem.coords)
+                
                 for neighbor in node_elem.node2node:
-                    summation += np.array(neighbor.marching_direction)
-
-                new_direction = (1 - self.relax_factor) * np.array(
-                    node_elem.marching_direction
-                ) + self.relax_factor / num_neighbors * summation
-
-                node_elem.marching_direction = tuple(
-                    new_direction / np.linalg.norm(new_direction)
-                )
-                iteration += 1
+                    neighbor_dir = np.array(neighbor.marching_direction)
+                    
+                    # 确保维度一致
+                    if len(neighbor_dir) != len(current_dir):
+                        # 如果维度不一致，跳过该邻居
+                        continue
+                    
+                    # 计算几何权重：基于距离和角度差异
+                    neighbor_pos = np.array(neighbor.coords)
+                    distance = np.linalg.norm(current_pos - neighbor_pos)
+                    
+                    # 避免除零
+                    if distance < 1e-10:
+                        distance = 1e-10
+                    
+                    # 距离权重：距离越近影响越大
+                    distance_weight = 1.0 / distance
+                    
+                    # 角度权重：方向差异越小影响越大
+                    dot_product = np.dot(current_dir, neighbor_dir)
+                    dot_product = np.clip(dot_product, -1.0, 1.0)
+                    angle = np.arccos(dot_product)
+                    
+                    # 角度权重：使用高斯函数，角度差异越小权重越大
+                    angle_weight = np.exp(-angle * angle / (2 * 0.5 * 0.5))
+                    
+                    # 综合权重
+                    weight = distance_weight * angle_weight
+                    
+                    summation += weight * neighbor_dir
+                    total_weight += weight
+                
+                if total_weight > 1e-10:
+                    # 计算新的推进方向
+                    new_direction = (1 - self.relax_factor) * current_dir + \
+                                   self.relax_factor * (summation / total_weight)
+                    
+                    # 归一化
+                    norm = np.linalg.norm(new_direction)
+                    if norm > 1e-10:
+                        new_direction /= norm
+                    
+                    new_directions[node_elem.idx] = new_direction
+                else:
+                    new_directions[node_elem.idx] = initial_directions[node_elem.idx]
+            
+            # 更新所有节点的方向
+            for node_elem in self.front_node_list:
+                if node_elem.idx in new_directions:
+                    node_elem.marching_direction = tuple(new_directions[node_elem.idx])
+                    initial_directions[node_elem.idx] = new_directions[node_elem.idx]
 
         verbose("节点推进方向光滑..., Done.\n")
 
