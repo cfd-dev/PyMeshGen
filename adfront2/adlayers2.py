@@ -614,24 +614,25 @@ class Adlayers2:
     def _check_neighbor_layer_difference(self, front):
         """检查相邻阵面的层数差，若超过 1 则返回 True（需要早停）"""
         max_layer_diff = 1  # 最大允许层数差
-        
+
         # 获取当前阵面节点的相邻阵面
         neighbor_layers = set()
         for node in front.node_elems:
             for neighbor_front in node.node2front:
                 if neighbor_front.hash != front.hash:
                     neighbor_layers.add(neighbor_front.layer_count)
-        
+
         # 如果没有相邻阵面，不需要检查
         if not neighbor_layers:
             return False
-        
+
         # 检查层数差
         current_layer = front.layer_count
         for neighbor_layer in neighbor_layers:
             if abs(current_layer - neighbor_layer) > max_layer_diff:
+                debug(f"阵面{front.node_ids}层数差检查：当前层={current_layer}, 相邻层={neighbor_layer}, 差值={abs(current_layer - neighbor_layer)}")
                 return True
-        
+
         return False
 
     def is_wall_front(self, front):
@@ -926,6 +927,9 @@ class Adlayers2:
 
                     # 为方便对节点进行遍历，收集所有节点
                     self.front_node_list.append(front.node_elems[i])
+                    
+                    # 清空节点的 node2front 列表，以便重新构建
+                    front.node_elems[i].node2front = []
                 else:
                     # 处理过的节点，直接取hash值对应的NodeElementALM对象
                     front.node_elems[i] = node_dict[node_elem.hash]
