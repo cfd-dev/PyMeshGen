@@ -535,9 +535,9 @@ class Adlayers2:
     def advancing_fronts(self):
         timer = TimeSpan("逐个阵面推进生成单元...")
 
-        new_interior_list = []  # 新增的边界层法向面，设置为interior
-        new_prism_cap_list = []  # 新增的边界层流向面，设置为prism-cap
-        num_old_prism_cap = 0  # 当前层early stop的prism-cap数量
+        new_interior_list = []  # 新增的边界层法向面，设置为 interior
+        new_prism_cap_list = []  # 新增的边界层流向面，设置为 prism-cap
+        num_old_prism_cap = 0  # 当前层 early stop 的 prism-cap 数量
 
         # 逐个阵面进行推进
         for front in self.current_part.front_list:
@@ -550,20 +550,20 @@ class Adlayers2:
                 num_old_prism_cap += 1
                 continue
 
-            # 检查相邻阵面的层数差，若超过 1 则当前阵面早停
+            # 检查相邻阵面的层数差，若超过 2 则当前阵面早停
             if self._check_neighbor_layer_difference(front):
                 front.early_stop_flag = True
                 new_prism_cap_list.append(front)
-                verbose(f"阵面{front.node_ids}因相邻阵面层数差>1 而早停，当前层数：{front.layer_count}")
+                verbose(f"[早停] 阵面{front.node_ids}因相邻阵面层数差>2 而早停，当前层数：{front.layer_count}")
                 continue
 
             (
-                new_cell,  # 新单元Quadrilateral对象，0-1-3-2 顺序
-                alm_front,  # 新阵面Front对象，prism-cap，2-3
-                new_front1,  # 新阵面Front对象，interior，0-2
-                new_front2,  # 新阵面Front对象，interior，3-1
-                new_node_generated,  # 新节点NodeElementALM对象，若新生成则为NodeElementALM对象，否则为None
-                new_cell_nodes,  # 新单元节点NodeElementALM对象列表，包含新节点和旧节点
+                new_cell,  # 新单元 Quadrilateral 对象，0-1-3-2 顺序
+                alm_front,  # 新阵面 Front 对象，prism-cap，2-3
+                new_front1,  # 新阵面 Front 对象，interior，0-2
+                new_front2,  # 新阵面 Front 对象，interior，3-1
+                new_node_generated,  # 新节点 NodeElementALM 对象，若新生成则为 NodeElementALM 对象，否则为 None
+                new_cell_nodes,  # 新单元节点 NodeElementALM 对象列表，包含新节点和旧节点
             ) = self.create_new_cell_and_front(front)
 
             # 单元质量、层数、长宽比等早停条件检查
@@ -572,7 +572,7 @@ class Adlayers2:
                 new_prism_cap_list.append(front)
                 continue
 
-            # 邻近检查，检查3个阵面附近是否有其他阵面，若有，则对当前阵面进行早停
+            # 邻近检查，检查 3 个阵面附近是否有其他阵面，若有，则对当前阵面进行早停
             check_fronts = [alm_front, new_front1, new_front2]
             if self.proximity_checker(front, check_fronts):
                 front.early_stop_flag = True
@@ -581,7 +581,7 @@ class Adlayers2:
 
             # 若没有早停，则更新节点、单元和阵面列表
             # 更新节点：检查新节点是否生成，若生成，则加入到节点列表中
-            # 注意corresponding_node也要在此更新，而不是在其他地方更新
+            # 注意 corresponding_node 也要在此更新，而不是在其他地方更新
             for i in range(2):
                 if new_node_generated[i] is not None:
                     front.node_elems[i].corresponding_node = new_node_generated[i]
@@ -591,46 +591,110 @@ class Adlayers2:
             # 更新单元
             self.cell_container.append(new_cell)
             self.num_cells += 1
+            
+            # 更新新阵面的层数（当前阵面层数 +1）
+            # 注意：必须在 update_front_list_globally 之前设置层数
+            # 否则空间索引中的新阵面层数会是错误的默认值
+            new_layer_count = front.layer_count + 1
+            alm_front.layer_count = new_layer_count
+            new_front1.layer_count = new_layer_count
+            new_front2.layer_count = new_layer_count
+            debug(f"[层数更新] 阵面{front.node_ids} (层{front.layer_count}) -> 新阵面 (层{new_layer_count})")
+
+            # 实时更新节点的 node2front，确保后续阵面能正确检测相邻关系
+            for node in alm_front.node_elems:
+                node.node2front.append(alm_front)
+            for node in new_front1.node_elems:
+                node.node2front.append(new_front1)
+            for node in new_front2.node_elems:
+                node.node2front.append(new_front2)
 
             # 更新阵面列表
             self.update_front_list_globally(
                 check_fronts, new_interior_list, new_prism_cap_list
             )
-            
-            # 更新新阵面的层数（当前阵面层数 +1）
-            new_layer_count = front.layer_count + 1
-            alm_front.layer_count = new_layer_count
-            new_front1.layer_count = new_layer_count
-            new_front2.layer_count = new_layer_count
 
         timer.show_to_console("逐个阵面推进生成单元..., Done.")
 
-        # 下一层需要推进的prism-cap的数量
+        # 下一层需要推进的 prism-cap 的数量
         self.num_prism_cap = len(new_prism_cap_list) - num_old_prism_cap
-        # 更新part阵面列表
+        # 更新 part 阵面列表
         self.current_part.front_list = new_prism_cap_list + new_interior_list
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
 
     def _check_neighbor_layer_difference(self, front):
-        """检查相邻阵面的层数差，若超过 1 则返回 True（需要早停）"""
-        max_layer_diff = 1  # 最大允许层数差
+        """检查相邻 prism_cap 阵面的层数差，若超过 2 则返回 True（需要早停）
+        
+        相邻 prism_cap 的定义：两个 prism_cap 可以通过任意数量的 interior 阵面链相连。
+        使用 BFS 算法搜索所有可达的 prism_cap。
+        
+        Args:
+            front: 当前待检查的阵面（prism_cap 类型）
+        """
+        max_layer_diff = 2  # 最大允许层数差
 
-        # 获取当前阵面节点的相邻阵面
-        neighbor_layers = set()
+        neighbor_prism_caps = set()  # 存储相邻 prism_cap 的 hash 值
+        neighbor_layers = set()  # 存储相邻 prism_cap 的层数
+        neighbor_fronts_info = []
+        
+        visited_nodes = set()  # 已访问的节点 hash
+        queue = []  # BFS 队列
+        
+        # 从当前 prism_cap 的两个节点开始 BFS
         for node in front.node_elems:
-            for neighbor_front in node.node2front:
-                if neighbor_front.hash != front.hash:
-                    neighbor_layers.add(neighbor_front.layer_count)
-
-        # 如果没有相邻阵面，不需要检查
-        if not neighbor_layers:
+            visited_nodes.add(node.hash)
+            queue.append(node)
+        
+        # BFS 搜索所有通过 interior 阵面相连的节点
+        while queue:
+            current_node = queue.pop(0)
+            
+            # 遍历当前节点所属的所有阵面
+            for neighbor_front in current_node.node2front:
+                # 跳过自身阵面
+                if neighbor_front.hash == front.hash:
+                    continue
+                
+                # 只通过 interior 阵面传播
+                if neighbor_front.bc_type != "interior":
+                    continue
+                
+                # 找到这个 interior 阵面的另一个节点
+                other_node = None
+                for n in neighbor_front.node_elems:
+                    if n.hash != current_node.hash:
+                        other_node = n
+                        break
+                
+                if other_node is None:
+                    continue
+                
+                # 检查另一个节点是否属于其他 prism_cap
+                for other_front in other_node.node2front:
+                    if other_front.bc_type == "prism-cap" and other_front.hash != front.hash:
+                        # 找到相邻的 prism_cap（不排除当前层新生成的）
+                        if other_front.hash not in neighbor_prism_caps:
+                            neighbor_prism_caps.add(other_front.hash)
+                            neighbor_layers.add(other_front.layer_count)
+                            neighbor_fronts_info.append((other_front.node_ids, other_front.layer_count))
+                
+                # 继续通过 interior 阵面传播
+                if other_node.hash not in visited_nodes:
+                    visited_nodes.add(other_node.hash)
+                    queue.append(other_node)
+        
+        # 如果没有相邻的 prism_cap，不需要检查
+        if not neighbor_prism_caps:
+            debug(f"[层数差检查] 阵面{front.node_ids} (层={front.layer_count}): 无相邻prism_cap阵面")
             return False
 
         # 检查层数差
         current_layer = front.layer_count
+        debug(f"[层数差检查] 阵面{front.node_ids} (层={current_layer}): 相邻prism_cap阵面信息={neighbor_fronts_info}")
+        
         for neighbor_layer in neighbor_layers:
             if abs(current_layer - neighbor_layer) > max_layer_diff:
-                debug(f"阵面{front.node_ids}层数差检查：当前层={current_layer}, 相邻层={neighbor_layer}, 差值={abs(current_layer - neighbor_layer)}")
+                debug(f"[层数差检查] 阵面{front.node_ids} 层数差超限：当前层={current_layer}, 相邻层={neighbor_layer}, 差值={abs(current_layer - neighbor_layer)}")
                 return True
 
         return False
