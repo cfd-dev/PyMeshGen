@@ -173,8 +173,9 @@ def PyMeshGen_mixed(parameters=None):
     
     # 输出信息到GUI
     gui_log(_global_gui_instance, f"网格文件已保存至: {parameters.output_file}")
-        
-        # 将优化后的网格对象设置到GUI实例中
+
+    # 将优化后的网格对象设置到GUI实例中
+    if _global_gui_instance:
         _global_gui_instance.mesh_data = global_unstr_grid
 
     # 结束计时

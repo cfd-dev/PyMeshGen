@@ -1,5 +1,5 @@
 {
-    "debug_level": 0,
+    "debug_level": 1,
     "input_file": "./config/input/quad_quad.cas",
     "output_file": "./out/quad_quad.vtk",
     "viz_enabled": true,
@@ -11,7 +11,7 @@
             "first_height": 0.1,
             "max_layers": 5,
             "full_layers": 5,
-            "multi_direction": false
+            "multi_direction": true
         },
         {
             "part_name": "wall",
@@ -20,7 +20,7 @@
             "first_height": 0.5,
             "max_layers": 5,
             "full_layers": 5,
-            "multi_direction": false
+            "multi_direction": true
         }
     ]
 }
