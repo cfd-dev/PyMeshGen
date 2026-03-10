@@ -2,7 +2,7 @@
     "debug_level": 1,
     "input_file": "./config/input/naca0012-tri-coarse.cas",
     "output_file": "./out/naca0012.vtk",
-    "viz_enabled": true,
+    "viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield",
@@ -18,8 +18,8 @@
             "max_size": 2.0,
             "PRISM_SWITCH": "wall",
             "first_height": 0.001,
-            "max_layers": 30,
-            "full_layers": 5,
+            "max_layers": 1,
+            "full_layers": 1,
             "multi_direction": true
         }
     ]

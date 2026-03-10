@@ -200,6 +200,8 @@ class Adlayers2:
 
         self.construct_unstr_grid()
 
+        self.debug_save()
+
         # self.draw_prism_cap()
 
         return self.unstr_grid, self.all_boundary_fronts
