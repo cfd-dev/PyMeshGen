@@ -237,15 +237,18 @@ class Adlayers2:
         info(
             f"第{part_index+1}/{num_parts}个部件[{self.current_part.part_name}]：第{self.ilayer + 1}层推进中..."
         )
+        start_cell_idx = self.num_cells
 
         # 阶段1：基础几何与方向
         self.prepare_geometry_info()
+        self.log_multi_direction_debug_summary()
         # 阶段2：多方向流程（初始化→方向光滑→步长缩放）
         self.apply_multi_direction_workflow()
         # 阶段3：步长计算与推进
         self.visualize_point_normals()
         self.calculate_marching_distance()
         self.advancing_fronts()
+        self.log_first_layer_cell_summary(start_cell_idx)
         self.show_progress()
 
     def debug_save(self):
@@ -333,45 +336,75 @@ class Adlayers2:
             debug(f"[虚拟阵面跳过] 阵面{front.node_ids}无多方向管理器，跳过推进")
             return True
 
-        virtual_node = node2 if is_virt2 else node1
-        real_convex_node = self.multi_direction_manager._get_node_by_idx(
-            virtual_node.real_point_idx
-        )
-        if real_convex_node is None:
-            debug(f"[虚拟阵面跳过] 无法找到真实凸点{virtual_node.real_point_idx}")
+        # 对零长度虚拟阵面仍按“四边形推进→有效点去重”处理：
+        # cell = unique([ValidPoint(node1), ValidPoint(node2), node2_new, node1_new], stable)
+        node1_new = self._get_or_create_corresponding_node(node1)
+        node2_new = self._get_or_create_corresponding_node(node2)
+
+        if points_equal(node1_new.coords, node2_new.coords, 1e-12):
+            debug(f"[虚拟阵面跳过] 阵面{front.node_ids}推进后新点重合，跳过")
             return True
 
-        real_new_node = self._get_or_create_corresponding_node(real_convex_node)
-        virt_new_node = self._get_or_create_corresponding_node(virtual_node)
+        node1_real = self.multi_direction_manager.get_real_point(node1)
+        node2_real = self.multi_direction_manager.get_real_point(node2)
+        if node1_real is None:
+            node1_real = node1
+        if node2_real is None:
+            node2_real = node2
 
-        tri_cell = Triangle(
-            real_convex_node,
-            virt_new_node,
-            real_new_node,
-            part_name="interior-blayers",
-            idx=self.num_cells,
-        )
-        tri_cell.layer = self.ilayer + 1
-        self.cell_container.append(tri_cell)
+        ordered_nodes = [node1_real, node2_real, node2_new, node1_new]
+        cell_nodes = []
+        seen = set()
+        for node in ordered_nodes:
+            if node.idx in seen:
+                continue
+            seen.add(node.idx)
+            cell_nodes.append(node)
+
+        if len(cell_nodes) == 4:
+            new_cell = Quadrilateral(
+                cell_nodes[0],
+                cell_nodes[1],
+                cell_nodes[2],
+                cell_nodes[3],
+                part_name="interior-blayers",
+                idx=self.num_cells,
+            )
+        elif len(cell_nodes) == 3:
+            new_cell = Triangle(
+                cell_nodes[0],
+                cell_nodes[1],
+                cell_nodes[2],
+                part_name="interior-blayers",
+                idx=self.num_cells,
+            )
+        else:
+            warning(
+                f"[虚拟阵面跳过] 阵面{front.node_ids}有效点不足3个，无法构成单元"
+            )
+            return True
+
+        new_cell.layer = self.ilayer + 1
+        self.cell_container.append(new_cell)
         self.num_cells += 1
 
         virtual_alm_front = Front(
-            real_new_node,
-            virt_new_node,
+            node1_new,
+            node2_new,
             -1,
             "prism-cap",
             self.current_part.part_name,
         )
         virtual_new_front1 = Front(
-            real_convex_node,
-            real_new_node,
+            node1,
+            node1_new,
             -1,
             "interior",
             self.current_part.part_name,
         )
         virtual_new_front2 = Front(
-            virt_new_node,
-            virtual_node,
+            node2_new,
+            node2,
             -1,
             "interior",
             self.current_part.part_name,
@@ -385,7 +418,7 @@ class Adlayers2:
         )
 
         debug(
-            f"[虚拟阵面推进] 创建三角形并更新阵面拓扑: {real_convex_node.idx}, {virt_new_node.idx}, {real_new_node.idx}"
+            f"[虚拟阵面推进] 阵面{front.node_ids}创建{type(new_cell).__name__}并更新拓扑"
         )
         return True
 
@@ -428,6 +461,11 @@ class Adlayers2:
                         idx=temp_num_nodes,
                         bc_type="interior",
                     )
+                    # 串线追踪：特殊点从自身起链，其余节点继承已有起点
+                    if node_elem.sp_line_start is not None:
+                        new_node_elem.sp_line_start = node_elem.sp_line_start
+                    elif node_elem.convex_flag or getattr(node_elem, "is_virtual_point", False):
+                        new_node_elem.sp_line_start = node_elem
                     temp_num_nodes += 1
                     new_node_generated[i] = new_node_elem
 
@@ -1198,6 +1236,85 @@ class Adlayers2:
             smooth_iterations=self.smooth_iterions,
             relax_factor=self.relax_factor,
         )
+        if self.ilayer == 0:
+            info(
+                f"[多方向调试] 首层初始化后虚拟点数量: "
+                f"{len(self.multi_direction_manager.virtual_points)}"
+            )
+
+    def log_multi_direction_debug_summary(self):
+        """输出首层多方向关键调试信息"""
+        if not self.multi_direction or self.ilayer != 0:
+            return
+
+        wall_front_count = sum(
+            1 for front in self.current_part.front_list if front.bc_type == "wall"
+        )
+        prism_cap_count = sum(
+            1 for front in self.current_part.front_list if front.bc_type == "prism-cap"
+        )
+        convex_nodes = [node for node in self.front_node_list if node.convex_flag]
+        multi_nodes = [node for node in convex_nodes if node.num_multi_direction > 1]
+
+        direction_hist = {}
+        for node in multi_nodes:
+            direction_hist[node.num_multi_direction] = (
+                direction_hist.get(node.num_multi_direction, 0) + 1
+            )
+
+        info(
+            f"[多方向调试] 物面线段数量: wall={wall_front_count}, prism-cap={prism_cap_count}"
+        )
+        info(
+            f"[多方向调试] 凸角节点数量: {len(convex_nodes)}, "
+            f"多方向节点数量: {len(multi_nodes)}"
+        )
+
+        if direction_hist:
+            hist_text = ", ".join(
+                [f"{k}方向:{v}个" for k, v in sorted(direction_hist.items())]
+            )
+            info(f"[多方向调试] 多方向数量分布: {hist_text}")
+        else:
+            info("[多方向调试] 多方向数量分布: 无")
+
+        if multi_nodes:
+            details = ", ".join(
+                [
+                    f"id={node.idx},角度={node.angle:.2f}°,方向数={node.num_multi_direction}"
+                    for node in sorted(multi_nodes, key=lambda n: n.angle, reverse=True)
+                ]
+            )
+            info(f"[多方向调试] 凸角角度详情: {details}")
+
+    def log_first_layer_cell_summary(self, start_cell_idx):
+        """输出首层新增单元数量和类型"""
+        if self.ilayer != 0:
+            return
+
+        tri_count = 0
+        quad_count = 0
+        other_count = 0
+        for cell_idx in range(start_cell_idx, self.num_cells):
+            if isinstance(self.cell_container, dict):
+                cell = self.cell_container.get(cell_idx)
+            else:
+                if cell_idx >= len(self.cell_container):
+                    continue
+                cell = self.cell_container[cell_idx]
+            if cell is None:
+                continue
+            if isinstance(cell, Triangle):
+                tri_count += 1
+            elif isinstance(cell, Quadrilateral):
+                quad_count += 1
+            else:
+                other_count += 1
+
+        info(
+            f"[首层统计] 新增单元总数: {self.num_cells - start_cell_idx}, "
+            f"四边形: {quad_count}, 三角形: {tri_count}, 其他: {other_count}"
+        )
 
     def reconstruct_node2front(self):
         self.front_node_list = []
@@ -1304,14 +1421,17 @@ class Adlayers2:
 
             # 计算多方向推进数量和局部步长因子
             if self.multi_direction and node_elem.convex_flag and self.ilayer == 0:
-                node_elem.num_multi_direction = (
+                num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )
-                # 确保 num_multi_direction 至少为 2
-                node_elem.num_multi_direction = max(2, node_elem.num_multi_direction)
-                
-                debug(f"[凸角检测] 节点{node_elem.idx} 角度={node_elem.angle:.1f}° 多方向数量={node_elem.num_multi_direction}")
-                
+                # 仅对明显凸角启用多方向；平滑曲线小角度维持单方向
+                node_elem.num_multi_direction = max(1, num_multi_direction)
+
+                debug(
+                    f"[凸角检测] 节点{node_elem.idx} 角度={node_elem.angle:.1f}° "
+                    f"多方向数量={node_elem.num_multi_direction}"
+                )
+
                 if node_elem.num_multi_direction > 1:
                     delta = np.radians(node_elem.angle) / (
                         node_elem.num_multi_direction - 1
@@ -1330,10 +1450,13 @@ class Adlayers2:
                         )
                         rotated_vector = np.dot(rotation_matrix, initial_vectors)
                         node_elem.marching_direction.append(tuple(rotated_vector))
-                    
-                    debug(f"[多方向] 节点{node_elem.idx} 方向数量={len(node_elem.marching_direction)}")
-    
-                node_elem.local_step_factor = 1.0
+
+                    debug(
+                        f"[多方向] 节点{node_elem.idx} 方向数量={len(node_elem.marching_direction)}"
+                    )
+                    node_elem.local_step_factor = 1.0
+                else:
+                    node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
             else:
                 node_elem.num_multi_direction = 1
                 # 第二层及以后，凸点不再分裂多方向，方向退化为单一向量

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from utils.geom_toolkit import (
     is_left2d,
     calculate_distance2,
+    points_equal,
 )
 from optimize.mesh_quality import triangle_shape_quality
 from data_structure.front2d import Front
@@ -186,8 +187,12 @@ class Adfront2:
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形...")
+        min_front_length = 1e-10
         while self.front_list:
             self.base_front = heapq.heappop(self.front_list)
+
+            if getattr(self.base_front, "length", 0.0) <= min_front_length:
+                continue
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
@@ -198,6 +203,9 @@ class Adfront2:
             self.debug_draw()
 
             self.select_point()
+
+            if self.pselected is None:
+                continue
 
             self.update_data()
 
@@ -308,8 +316,29 @@ class Adfront2:
         if self.pselected is None:
             return
 
+        p0 = self.base_front.node_elems[0]
+        p1 = self.base_front.node_elems[1]
+        if (
+            points_equal(self.pselected.coords, p0.coords, 1e-10)
+            or points_equal(self.pselected.coords, p1.coords, 1e-10)
+        ):
+            warning(f"阵面{self.base_front.node_ids}选点与端点重合，跳过该推进步。")
+            return
+
         # 更新节点
         self.update_nodes()
+
+        new_cell = Triangle(
+            self.base_front.node_elems[0],
+            self.base_front.node_elems[1],
+            self.pselected,
+            part_name='interior-triangle',
+            idx=self.num_cells,
+        )
+        # 退化单元直接跳过，避免污染后续质量统计
+        if triangle_shape_quality(new_cell.p1, new_cell.p2, new_cell.p3) <= 1e-12:
+            warning(f"阵面{self.base_front.node_ids}生成退化三角形，跳过该推进步。")
+            return
 
         # 更新阵面
         new_front1 = Front(
@@ -329,15 +358,6 @@ class Adfront2:
 
         self.update_fronts([new_front1, new_front2])
         heapq.heapify(self.front_list)  # 重新堆化
-
-        # 更新单元
-        new_cell = Triangle(
-            self.base_front.node_elems[0],
-            self.base_front.node_elems[1],
-            self.pselected,
-            part_name='interior-triangle',  # 直接设置部件名称
-            idx=self.num_cells,
-        )
 
         self.update_cells(new_cell)
 
@@ -367,17 +387,36 @@ class Adfront2:
         # 按质量降序排序（质量高的在前）
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        self.pselected = None
+        def _pick_candidate(left_p0, left_p1):
+            for _, node_elem in scored_candidates:
+                if (
+                    points_equal(node_elem.coords, self.base_front.node_elems[0].coords, 1e-10)
+                    or points_equal(node_elem.coords, self.base_front.node_elems[1].coords, 1e-10)
+                ):
+                    continue
+                if not is_left2d(left_p0, left_p1, node_elem.coords):
+                    continue
+                if self.is_cross(node_elem):
+                    continue
+                return node_elem
+            return None
+
+        self.pselected = _pick_candidate(p0, p1)
         self.best_flag = False
-        for quality, node_elem in scored_candidates:
-            if not is_left2d(p0, p1, node_elem.coords):
-                continue
 
-            if self.is_cross(node_elem):
-                continue
-
-            self.pselected = node_elem
-            break
+        # 若当前阵面方向反了，尝试翻转后再选点
+        if self.pselected is None:
+            reversed_selected = _pick_candidate(p1, p0)
+            if reversed_selected is not None:
+                self.base_front.node_elems[0], self.base_front.node_elems[1] = (
+                    self.base_front.node_elems[1],
+                    self.base_front.node_elems[0],
+                )
+                self.base_front.node_ids[0], self.base_front.node_ids[1] = (
+                    self.base_front.node_ids[1],
+                    self.base_front.node_ids[0],
+                )
+                self.pselected = reversed_selected
 
         self.best_flag = self.pselected == self.pbest
 
@@ -386,12 +425,10 @@ class Adfront2:
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
             self.base_front.al *= 1.2
+            if self.base_front.al > 20:
+                warning(f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面。")
+                return None
             heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
-            # self.debug_level = 1
-
-        if self.base_front.al > 20:
-            # 异常退出
-            raise Exception("基准阵面搜索半径超过20，可能存在问题")
 
         return self.pselected
 
