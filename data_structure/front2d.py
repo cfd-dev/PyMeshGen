@@ -1,5 +1,6 @@
 import heapq
 import matplotlib.pyplot as plt
+import numpy as np
 
 from utils.geom_toolkit import calculate_distance
 from data_structure.basic_elements import NodeElement, NodeElementALM, is_node_element
@@ -53,25 +54,48 @@ class Front:
         node1 = node_elem1.coords
         node2 = node_elem2.coords
         self.length = calculate_distance(node1, node2)  # 长度
-        if self.length < 1e-12:
+        
+        # 对于多方向推进中的虚拟阵面，允许节点坐标重合
+        # 虚拟阵面连接真实凸点和虚拟点，或两个虚拟点，它们坐标相同但节点对象不同
+        is_multi_direction_front = (
+            bc_type == "prism-cap" and 
+            (getattr(node_elem1, "is_virtual_point", False) or getattr(node_elem2, "is_virtual_point", False))
+        )
+        
+        if self.length < 1e-12 and not is_multi_direction_front:
             raise ValueError("node1 和 node2 不能重合")
 
         self.center = [(a + b) / 2 for a, b in zip(node1, node2)]  # 中心坐标
 
-        self.direction = [
-            (b - a) / self.length for a, b in zip(node1, node2)
-        ]  # 单位方向向量（切向量）
-
-        # 计算单位法向量
-        # 在二维情况下，法向量 = (-dy, dx)
-        # 在三维情况下，需要知道线段所在的平面
-        # 默认假设线段在 xy 平面内（z=0）
-        if len(node1) >= 3 and len(node2) >= 3:
-            # 三维情况：默认假设在 xy 平面内
-            self.normal = [-self.direction[1], self.direction[0], 0.0]
+        # 对于虚拟阵面（长度为0），设置默认的方向向量和法向量
+        if self.length < 1e-12 and is_multi_direction_front:
+            # 虚拟阵面的方向向量：使用虚拟点的推进方向
+            virtual_node = node_elem2 if getattr(node_elem2, "is_virtual_point", False) else node_elem1
+            if hasattr(virtual_node, 'marching_direction'):
+                direction = np.array(virtual_node.marching_direction)
+                # 法向量：方向向量旋转90度
+                normal = np.array([-direction[1], direction[0]])
+                self.direction = direction.tolist()
+                self.normal = normal.tolist()
+            else:
+                # 如果没有推进方向，使用默认值
+                self.direction = [1.0, 0.0]
+                self.normal = [0.0, 1.0]
         else:
-            # 二维情况
-            self.normal = [-self.direction[1], self.direction[0]]
+            self.direction = [
+                (b - a) / self.length for a, b in zip(node1, node2)
+            ]  # 单位方向向量（切向量）
+
+            # 计算单位法向量
+            # 在二维情况下，法向量 = (-dy, dx)
+            # 在三维情况下，需要知道线段所在的平面
+            # 默认假设线段在 xy 平面内（z=0）
+            if len(node1) >= 3 and len(node2) >= 3:
+                # 三维情况：默认假设在 xy 平面内
+                self.normal = [-self.direction[1], self.direction[0], 0.0]
+            else:
+                # 二维情况
+                self.normal = [-self.direction[1], self.direction[0]]
 
         # 计算边界框
         min_x = min(node1[0], node2[0])  # 最小x坐标

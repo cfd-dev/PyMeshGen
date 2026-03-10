@@ -12,6 +12,7 @@ from utils.geom_toolkit import (
 from data_structure.basic_elements import (
     NodeElement,
     NodeElementALM,
+    Triangle,
     Quadrilateral,
 )
 from data_structure.unstructured_grid import Unstructured_Grid
@@ -26,6 +27,7 @@ from data_structure.rtree_space import (
     add_elems_to_space_index_with_cartesian_grid,
     get_candidate_elements,
 )
+from adfront2.multi_direction import MultiDirectionManager
 
 
 class Adlayers2:
@@ -71,6 +73,9 @@ class Adlayers2:
         self.node_coords = []  # 节点坐标
         self.boundary_nodes = []  # 边界节点
         self.all_boundary_fronts = []  # 所有边界阵面
+        
+        # 多方向推进管理器
+        self.multi_direction_manager = None
 
         self.init_parts_and_connectors_fronts()
         self.initialize_match_boundary()
@@ -174,6 +179,11 @@ class Adlayers2:
             info(f"开始生成{part.part_name}的边界层网格...\n")
 
             self.ilayer = 0
+
+            # 初始化多方向管理器
+            if self.multi_direction:
+                self.multi_direction_manager = MultiDirectionManager(self)
+
             while self.ilayer < self.max_layers and self.num_prism_cap > 0:
 
                 info(
@@ -182,7 +192,24 @@ class Adlayers2:
 
                 self.prepare_geometry_info()
 
+                # 多方向初始化（仅第一层）
+                if self.ilayer == 0 and self.multi_direction:
+                    self.multi_direction_manager.initialize_multi_direction(
+                        self.front_node_list, self.ilayer
+                    )
+
                 self.visualize_point_normals()
+
+                # 多方向步长缩放和方向光滑
+                if self.multi_direction:
+                    self.multi_direction_manager.smooth_advancing_direction(
+                        self.front_node_list,
+                        smooth_iterations=self.smooth_iterions,
+                        relax_factor=self.relax_factor
+                    )
+                    self.multi_direction_manager.calculate_step_scale_coeff(
+                        self.front_node_list, self.ilayer
+                    )
 
                 self.calculate_marching_distance()
 
@@ -195,6 +222,10 @@ class Adlayers2:
                 )
 
                 self.ilayer += 1
+
+        # 后处理：消除虚拟点
+        if self.multi_direction and self.multi_direction_manager:
+            self.multi_direction_manager.post_process()
 
         self.construct_unstr_grid()
 
@@ -237,6 +268,23 @@ class Adlayers2:
 
     def create_new_cell_and_front(self, front):
         # 逐个节点进行推进，此时生成的均为临时的，只有确定有效后才会加入到真实数据中
+        def _effective_direction(node):
+            direction = node.marching_direction
+            if isinstance(direction, list):
+                if len(direction) == 0:
+                    return np.zeros(2)
+                first = direction[0]
+                if isinstance(first, (list, tuple, np.ndarray)):
+                    vec = np.array(first, dtype=float)
+                else:
+                    vec = np.array(direction, dtype=float)
+            else:
+                vec = np.array(direction, dtype=float)
+
+            if vec.ndim > 1:
+                vec = vec[0]
+            return vec
+
         new_cell_nodes = front.node_elems.copy()
         new_node_generated = [None, None]  # 记录新节点是否生成
         temp_num_nodes = self.num_nodes  # 记录当前节点数量
@@ -245,7 +293,7 @@ class Adlayers2:
                 # 推进生成一个新点
                 new_node = (
                     np.array(node_elem.coords)
-                    + np.array(node_elem.marching_direction)
+                    + _effective_direction(node_elem)
                     * node_elem.marching_distance
                 )
 
@@ -313,6 +361,7 @@ class Adlayers2:
             part_name="interior-blayers",
             idx=self.num_cells,
         )
+        new_cell.layer = self.ilayer + 1
 
         return (
             new_cell,
@@ -378,6 +427,15 @@ class Adlayers2:
                 if any(id in candidate.node_ids for id in new_front.node_ids):
                     continue
 
+                # 若candidate与new_front共坐标点（虚拟点与真实点重合），则跳过
+                shared_coords = any(
+                    points_equal(n1.coords, n2.coords, 1e-8)
+                    for n1 in new_front.node_elems
+                    for n2 in candidate.node_elems
+                )
+                if shared_coords:
+                    continue
+
                 # 若candidate是在front推进方向的反方向，则跳过
                 A = front.node_elems[0].coords
                 B = front.node_elems[1].coords
@@ -417,6 +475,15 @@ class Adlayers2:
             for candidate in candidates:
                 # 若candidate与new_front共点，则跳过
                 if any(id in candidate.node_ids for id in new_front.node_ids):
+                    continue
+
+                # 若candidate与new_front共坐标点（虚拟点与真实点重合），则跳过
+                shared_coords = any(
+                    points_equal(n1.coords, n2.coords, 1e-8)
+                    for n1 in new_front.node_elems
+                    for n2 in candidate.node_elems
+                )
+                if shared_coords:
                     continue
 
                 # 若candidate是在front推进方向的反方向，则跳过
@@ -549,6 +616,117 @@ class Adlayers2:
                 new_prism_cap_list.append(front)  # 未推进的阵面仍然加入到新阵面列表中
                 num_old_prism_cap += 1
                 continue
+            
+            # 处理虚拟阵面（多方向推进中的虚拟点和真实凸点连接）
+            # 虚拟阵面长度为0，需要特殊处理
+            if front.length < 1e-12:
+                # 检查是否为虚拟阵面
+                node1, node2 = front.node_elems
+                is_virt1 = getattr(node1, 'is_virtual_point', False)
+                is_virt2 = getattr(node2, 'is_virtual_point', False)
+                
+                if is_virt1 or is_virt2:
+                    # 虚拟阵面推进：同时推进真实凸点和虚拟点
+                    virtual_node = node2 if is_virt2 else node1
+                    
+                    # 获取真实凸点
+                    real_convex_node = self.multi_direction_manager._get_node_by_idx(virtual_node.real_point_idx)
+                    
+                    if real_convex_node is None:
+                        debug(f"[虚拟阵面跳过] 无法找到真实凸点{virtual_node.real_point_idx}")
+                        continue
+                    
+                    # 复用已生成的新点，若缺失则补建（保证索引连续且唯一）
+                    real_new_node = real_convex_node.corresponding_node
+                    if real_new_node is None:
+                        real_new_coords = np.array(real_convex_node.coords) + np.array(
+                            real_convex_node.marching_direction
+                        ) * real_convex_node.marching_distance
+                        real_new_node = NodeElementALM(
+                            coords=real_new_coords.tolist(),
+                            idx=self.num_nodes,
+                            bc_type="interior",
+                        )
+                        real_new_node.sp_line_start = real_convex_node
+                        self.node_coords.append(real_new_coords.tolist())
+                        self.num_nodes += 1
+                        real_convex_node.corresponding_node = real_new_node
+
+                    virt_new_node = virtual_node.corresponding_node
+                    if virt_new_node is None:
+                        virt_new_coords = np.array(virtual_node.coords) + np.array(
+                            virtual_node.marching_direction
+                        ) * virtual_node.marching_distance
+                        virt_new_node = NodeElementALM(
+                            coords=virt_new_coords.tolist(),
+                            idx=self.num_nodes,
+                            bc_type="interior",
+                        )
+                        virt_new_node.sp_line_start = virtual_node
+                        self.node_coords.append(virt_new_coords.tolist())
+                        self.num_nodes += 1
+                        virtual_node.corresponding_node = virt_new_node
+
+                    # 虚拟阵面应形成三角形，避免生成退化四边形
+                    tri_cell = Triangle(
+                        real_convex_node,
+                        virt_new_node,
+                        real_new_node,
+                        part_name="interior-blayers",
+                        idx=self.num_cells,
+                    )
+                    tri_cell.layer = self.ilayer + 1
+                    self.cell_container.append(tri_cell)
+                    self.num_cells += 1
+
+                    # 为下一层构造完整阵面拓扑（prism-cap + 两侧interior）
+                    virtual_alm_front = Front(
+                        real_new_node,
+                        virt_new_node,
+                        -1,
+                        "prism-cap",
+                        self.current_part.part_name,
+                    )
+                    virtual_new_front1 = Front(
+                        real_convex_node,
+                        real_new_node,
+                        -1,
+                        "interior",
+                        self.current_part.part_name,
+                    )
+                    virtual_new_front2 = Front(
+                        virt_new_node,
+                        virtual_node,
+                        -1,
+                        "interior",
+                        self.current_part.part_name,
+                    )
+
+                    new_layer_count = front.layer_count + 1
+                    virtual_alm_front.layer_count = new_layer_count
+                    virtual_new_front1.layer_count = new_layer_count
+                    virtual_new_front2.layer_count = new_layer_count
+
+                    for node in virtual_alm_front.node_elems:
+                        node.node2front.append(virtual_alm_front)
+                    for node in virtual_new_front1.node_elems:
+                        node.node2front.append(virtual_new_front1)
+                    for node in virtual_new_front2.node_elems:
+                        node.node2front.append(virtual_new_front2)
+
+                    self.update_front_list_globally(
+                        [virtual_alm_front, virtual_new_front1, virtual_new_front2],
+                        new_interior_list,
+                        new_prism_cap_list,
+                    )
+
+                    debug(
+                        f"[虚拟阵面推进] 创建三角形并更新阵面拓扑: {real_convex_node.idx}, {virt_new_node.idx}, {real_new_node.idx}"
+                    )
+                    continue
+                else:
+                    debug(f"[虚拟阵面跳过] 阵面{front.node_ids}长度为0且非虚拟阵面，跳过推进")
+                    continue
 
             # 检查相邻阵面的层数差，若超过 2 则当前阵面早停
             if self._check_neighbor_layer_difference(front):
@@ -718,25 +896,37 @@ class Adlayers2:
 
         for front in self.current_part.front_list:
             for node in front.node_elems:
+                # 多方向推进：步长缩放已由 calculate_step_scale_coeff 处理
+                if self.multi_direction:
+                    node.marching_distance = self.current_step_size * node.local_step_factor
+                    continue
+
                 node.marching_distance = self.current_step_size
-                # 如果只有一个相邻wall阵面，则不考虑推进方向倾斜的影响
+                # 如果只有一个相邻wall阵面
+                # 不考虑推进方向倾斜的影响
                 if len(node.node2front) < 2:
                     continue
-
+                
+                # 虚拟点需要特殊处理
+                if getattr(node, 'is_virtual_point', False):
+                    continue
+                
                 front1, front2 = node.node2front[:2]
-                # 如果相邻阵面中只有一个wall阵面，则不考虑推进方向倾斜的影响
+                # 如果相邻阵面中只有一个wall阵面
+                # 不考虑推进方向倾斜的影响
                 if not (self.is_wall_front(front1) and self.is_wall_front(front2)):
                     continue
-
+                
                 # 节点推进方向与阵面法向的夹角, 节点推进方向投影到面法向
                 proj1 = np.dot(node.marching_direction, front1.normal)
                 proj2 = np.dot(node.marching_direction, front2.normal)
 
+                
                 if proj1 * proj2 < 0:
                     warning(
                         f"node{node.idx}推进方向与相邻阵面法向夹角大于90°，可能出现质量差单元！"
                     )
-
+                
                 # 节点推进距离
                 node.marching_distance = (
                     self.current_step_size
@@ -790,8 +980,8 @@ class Adlayers2:
                 )
                 continue
 
-            # 对于凸角点，在此不计算，也不光滑
-            if len(node_elem.marching_direction) > 1:
+            # 对于第一层凸角多方向点，在此不计算，也不光滑
+            if isinstance(node_elem.marching_direction, list) and len(node_elem.marching_direction) > 1:
                 continue
 
             front1, front2 = node_elem.node2front[:2]
@@ -903,56 +1093,81 @@ class Adlayers2:
                     continue
 
                 # 计算加权平均方向
-                current_dir = np.array(node_elem.marching_direction)
+                current_dir_raw = node_elem.marching_direction
+                if isinstance(current_dir_raw, list):
+                    if len(current_dir_raw) > 0:
+                        current_dir = np.array(current_dir_raw[0], dtype=float)
+                    else:
+                        continue
+                else:
+                    current_dir = np.array(current_dir_raw, dtype=float)
+                
+                # 确保 current_dir 是一维的
+                if current_dir.ndim > 1:
+                    current_dir = current_dir.flatten()
+                
                 # 根据当前方向的维度初始化 summation
                 summation = np.zeros_like(current_dir)
                 total_weight = 0.0
-                
+
                 current_pos = np.array(node_elem.coords)
-                
+
                 for neighbor in node_elem.node2node:
-                    neighbor_dir = np.array(neighbor.marching_direction)
+                    neighbor_dir_raw = neighbor.marching_direction
+                    
+                    # 处理 marching_direction 是列表的情况（多方向）
+                    if isinstance(neighbor_dir_raw, list):
+                        if len(neighbor_dir_raw) > 0:
+                            # 取第一个方向
+                            neighbor_dir = np.array(neighbor_dir_raw[0], dtype=float)
+                        else:
+                            continue
+                    else:
+                        neighbor_dir = np.array(neighbor_dir_raw, dtype=float)
                     
                     # 确保维度一致
+                    if neighbor_dir.ndim > 1:
+                        neighbor_dir = neighbor_dir.flatten()
+                    
                     if len(neighbor_dir) != len(current_dir):
                         # 如果维度不一致，跳过该邻居
                         continue
-                    
+
                     # 计算几何权重：基于距离和角度差异
                     neighbor_pos = np.array(neighbor.coords)
-                    distance = np.linalg.norm(current_pos - neighbor_pos)
-                    
+                    distance = float(np.linalg.norm(current_pos - neighbor_pos))
+
                     # 避免除零
                     if distance < 1e-10:
                         distance = 1e-10
-                    
+
                     # 距离权重：距离越近影响越大
                     distance_weight = 1.0 / distance
-                    
+
                     # 角度权重：方向差异越小影响越大
-                    dot_product = np.dot(current_dir, neighbor_dir)
+                    dot_product = float(np.dot(current_dir, neighbor_dir))
                     dot_product = np.clip(dot_product, -1.0, 1.0)
-                    angle = np.arccos(dot_product)
-                    
+                    angle = float(np.arccos(dot_product))
+
                     # 角度权重：使用高斯函数，角度差异越小权重越大
-                    angle_weight = np.exp(-angle * angle / (2 * 0.5 * 0.5))
-                    
+                    angle_weight = float(np.exp(-angle * angle / (2 * 0.5 * 0.5)))
+
                     # 综合权重
                     weight = distance_weight * angle_weight
-                    
+
                     summation += weight * neighbor_dir
                     total_weight += weight
-                
+
                 if total_weight > 1e-10:
                     # 计算新的推进方向
                     new_direction = (1 - self.relax_factor) * current_dir + \
                                    self.relax_factor * (summation / total_weight)
-                    
+
                     # 归一化
                     norm = np.linalg.norm(new_direction)
                     if norm > 1e-10:
                         new_direction /= norm
-                    
+
                     new_directions[node_elem.idx] = new_direction
                 else:
                     new_directions[node_elem.idx] = initial_directions[node_elem.idx]
@@ -960,7 +1175,16 @@ class Adlayers2:
             # 更新所有节点的方向
             for node_elem in self.front_node_list:
                 if node_elem.idx in new_directions:
-                    node_elem.marching_direction = tuple(new_directions[node_elem.idx])
+                    # 对于凸点且需要多方向推进的节点，保持其方向列表不变
+                    if node_elem.convex_flag and node_elem.num_multi_direction > 1:
+                        # 凸点保持多方向列表，只更新第一个方向
+                        if isinstance(node_elem.marching_direction, list):
+                            node_elem.marching_direction[0] = tuple(new_directions[node_elem.idx])
+                        else:
+                            # 如果已经被转换成tuple，重新构造列表
+                            node_elem.marching_direction = [tuple(new_directions[node_elem.idx])]
+                    else:
+                        node_elem.marching_direction = tuple(new_directions[node_elem.idx])
                     initial_directions[node_elem.idx] = new_directions[node_elem.idx]
 
         verbose("节点推进方向光滑..., Done.\n")
@@ -1077,30 +1301,50 @@ class Adlayers2:
                 node_elem.concav_flag = False
 
             # 计算多方向推进数量和局部步长因子
-            if self.multi_direction and node_elem.convex_flag:
+            if self.multi_direction and node_elem.convex_flag and self.ilayer == 0:
                 node_elem.num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )
-                delta = np.radians(node_elem.angle) / (
-                    node_elem.num_multi_direction - 1
-                )
-                initial_vectors = normal1
-
-                for i in range(node_elem.num_multi_direction):
-                    angle = -i * delta
-                    rotation_matrix = np.array(
-                        [
-                            [np.cos(angle), -np.sin(angle)],
-                            [np.sin(angle), np.cos(angle)],
-                        ]
+                # 确保 num_multi_direction 至少为 2
+                node_elem.num_multi_direction = max(2, node_elem.num_multi_direction)
+                
+                debug(f"[凸角检测] 节点{node_elem.idx} 角度={node_elem.angle:.1f}° 多方向数量={node_elem.num_multi_direction}")
+                
+                if node_elem.num_multi_direction > 1:
+                    delta = np.radians(node_elem.angle) / (
+                        node_elem.num_multi_direction - 1
                     )
-                    rotated_vector = np.dot(rotation_matrix, initial_vectors)
-                    node_elem.marching_direction.append(tuple(rotated_vector))
-
+                    initial_vectors = normal1
+    
+                    # 将 marching_direction 设置为列表
+                    node_elem.marching_direction = []
+                    for i in range(node_elem.num_multi_direction):
+                        angle = -i * delta
+                        rotation_matrix = np.array(
+                            [
+                                [np.cos(angle), -np.sin(angle)],
+                                [np.sin(angle), np.cos(angle)],
+                            ]
+                        )
+                        rotated_vector = np.dot(rotation_matrix, initial_vectors)
+                        node_elem.marching_direction.append(tuple(rotated_vector))
+                    
+                    debug(f"[多方向] 节点{node_elem.idx} 方向数量={len(node_elem.marching_direction)}")
+    
                 node_elem.local_step_factor = 1.0
             else:
                 node_elem.num_multi_direction = 1
-                node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
+                # 第二层及以后，凸点不再分裂多方向，方向退化为单一向量
+                if isinstance(node_elem.marching_direction, list):
+                    if len(node_elem.marching_direction) > 0:
+                        node_elem.marching_direction = tuple(node_elem.marching_direction[0])
+                    else:
+                        node_elem.marching_direction = tuple(normal1)
+
+                if self.multi_direction and node_elem.convex_flag:
+                    node_elem.local_step_factor = 1.0
+                else:
+                    node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
 
         verbose("计算阵面间夹角、凹凸标记、局部步长因子、多方向推进数量..., Done.\n")
 

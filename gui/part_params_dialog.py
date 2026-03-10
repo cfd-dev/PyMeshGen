@@ -125,10 +125,7 @@ class PartParamsDialog(QDialog):
         # 多方向
         self.multi_direction_check = QCheckBox()
         self.multi_direction_check.setChecked(False)
-        self.multi_direction_check.setEnabled(False)
-        # 设置白色背景
-        # self.multi_direction_check.setStyleSheet("background-color: white;")
-        params_layout.addRow("多方向 (暂不支持):", self.multi_direction_check)
+        params_layout.addRow("多方向推进:", self.multi_direction_check)
         
         main_layout.addWidget(params_group)
         

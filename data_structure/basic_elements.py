@@ -207,6 +207,16 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self.local_step_factor = 1.0  # 节点处的局部步长因子
         self.corresponding_node = None  # 节点的对应节点
         self.matching_boundary = match_bound  # 节点所属的match边界
+        
+        # 多方向推进相关属性
+        self.is_virtual_point = False  # 是否为虚拟点
+        self.real_point_idx = None  # 对应的真实点编号 (虚拟点使用)
+        self.virtual_points = []  # 虚拟点列表 (真实点使用)
+        self.multi_directions = []  # 多方向矢量列表
+        self.direction_idx = 0  # 当前使用的方向索引
+        self.sp_line_start = None  # 多方向串线起点 (用于追踪)
+        self.stop_layer = 1000  # 停止推进层数
+        self.stop_flag = False  # 停止推进标志
 
     @classmethod
     def from_existing_node(cls, node_elem):
@@ -216,6 +226,39 @@ class NodeElementALM(NodeElement):  # 添加父类继承
             part_name=node_elem.part_name,
             bc_type=node_elem.bc_type,
         )
+        # 复制多方向推进相关属性
+        if hasattr(node_elem, 'marching_direction'):
+            new_node.marching_direction = node_elem.marching_direction.copy() if isinstance(node_elem.marching_direction, list) else node_elem.marching_direction
+        if hasattr(node_elem, 'marching_distance'):
+            new_node.marching_distance = node_elem.marching_distance
+        if hasattr(node_elem, 'angle'):
+            new_node.angle = node_elem.angle
+        if hasattr(node_elem, 'convex_flag'):
+            new_node.convex_flag = node_elem.convex_flag
+        if hasattr(node_elem, 'concav_flag'):
+            new_node.concav_flag = node_elem.concav_flag
+        if hasattr(node_elem, 'num_multi_direction'):
+            new_node.num_multi_direction = node_elem.num_multi_direction
+        if hasattr(node_elem, 'local_step_factor'):
+            new_node.local_step_factor = node_elem.local_step_factor
+        if hasattr(node_elem, 'corresponding_node'):
+            new_node.corresponding_node = node_elem.corresponding_node
+        if hasattr(node_elem, 'is_virtual_point'):
+            new_node.is_virtual_point = node_elem.is_virtual_point
+        if hasattr(node_elem, 'real_point_idx'):
+            new_node.real_point_idx = node_elem.real_point_idx
+        if hasattr(node_elem, 'virtual_points'):
+            new_node.virtual_points = node_elem.virtual_points.copy()
+        if hasattr(node_elem, 'multi_directions'):
+            new_node.multi_directions = node_elem.multi_directions.copy()
+        if hasattr(node_elem, 'direction_idx'):
+            new_node.direction_idx = node_elem.direction_idx
+        if hasattr(node_elem, 'sp_line_start'):
+            new_node.sp_line_start = node_elem.sp_line_start
+        if hasattr(node_elem, 'stop_layer'):
+            new_node.stop_layer = node_elem.stop_layer
+        if hasattr(node_elem, 'stop_flag'):
+            new_node.stop_flag = node_elem.stop_flag
         return new_node
 
 class LineSegment:
