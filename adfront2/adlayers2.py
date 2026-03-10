@@ -1035,59 +1035,14 @@ class Adlayers2:
                     node_elem.marching_direction = tuple(normal1)
                     continue
 
-            # 计算初始推进方向（法向量平均）
+            # 推进方向不做角度加权，直接采用相邻阵面法向的等权平均
             avg_direction = (normal1 + normal2) / 2.0
             norm = np.linalg.norm(avg_direction)
-            
             if norm > 1e-6:
-                avg_direction /= norm
-                new_direction = avg_direction
+                node_elem.marching_direction = tuple(avg_direction / norm)
             else:
                 # 如果平均方向接近零，说明两个法向相反，使用第一个法向
-                new_direction = normal1
-
-            # 加权光滑
-            w1 = self.relax_factor
-            wf1 = 0.5
-            wf2 = 1 - wf1
-
-            iterations = 0
-            max_iterations = 50
-            smooth = True
-            while smooth and iterations < max_iterations:
-                iterations += 1
-                old_direction = new_direction.copy()
-
-                new_direction = (1 - w1) * old_direction + w1 * (
-                    wf1 * normal1 + wf2 * normal2
-                )
-                norm = np.linalg.norm(new_direction)
-                if norm > 1e-10:
-                    new_direction /= norm
-
-                # 计算法向与相邻面的夹角及其与平均夹角的偏差 df
-                dot_product1 = np.dot(new_direction, normal1)
-                dot_product2 = np.dot(new_direction, normal2)
-                angle1 = np.arccos(np.clip(dot_product1, -1.0, 1.0))
-                angle2 = np.arccos(np.clip(dot_product2, -1.0, 1.0))
-
-                avg_angle = (angle1 + angle2) / 2
-
-                # 计算夹角偏差
-                df1 = abs(angle1 - avg_angle)
-                df2 = abs(angle2 - avg_angle)
-
-                # 更新权重
-                epsilon = 1e-10
-                wf1_bar = wf1 * (1 - df1 / (avg_angle + epsilon))
-                wf2_bar = wf2 * (1 - df2 / (avg_angle + epsilon))
-                wf1 = wf1_bar + wf1 * (1 - (wf1_bar + wf2_bar))
-                wf2 = wf2_bar + wf2 * (1 - (wf1_bar + wf2_bar))
-
-                if np.linalg.norm(new_direction - old_direction) < 1e-3:
-                    smooth = False
-
-            node_elem.marching_direction = tuple(new_direction)
+                node_elem.marching_direction = tuple(normal1)
 
         verbose("计算节点初始推进方向..., Done.\n")
 

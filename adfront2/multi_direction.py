@@ -100,9 +100,11 @@ class MultiDirectionManager:
         # 获取凸点右侧的相邻阵面（在添加虚拟阵面之前）
         neighbor_fronts = convex_node.node2front[:]
         right_front = None
+        right_neighbor = None
         for front in neighbor_fronts:
             if front.node_ids[0] == convex_node.idx:
                 right_front = front
+                right_neighbor = front.node_elems[1]
                 break
         
         # 创建虚拟点（不创建虚拟阵面）
@@ -141,8 +143,19 @@ class MultiDirectionManager:
         # 将凸点右侧阵面的起点更新为最后一个虚拟点
         if right_front is not None:
             last_virtual = convex_node.virtual_points[-1]
+            old_real = right_front.node_elems[0]
             right_front.node_elems[0] = last_virtual
             right_front.node_ids[0] = last_virtual.idx
+
+            # 同步节点-阵面关联，确保后续方向光滑和步长计算使用最新拓扑
+            self._remove_front_link(old_real, right_front)
+            self._add_front_link(last_virtual, right_front)
+
+            # 同步节点邻接关系：真实凸点不再与右邻点直连，末虚拟点接管该连接
+            if right_neighbor is not None:
+                self._remove_neighbor_link(old_real, right_neighbor)
+                self._add_neighbor_link(last_virtual, right_neighbor)
+
             debug(f"[阵面修改] 阵面{right_front.node_ids}的起点更新为虚拟点{last_virtual.idx}")
         
         # 初始化停止标志
@@ -181,12 +194,10 @@ class MultiDirectionManager:
         virtual_node.marching_direction = direction
         virtual_node.local_step_factor = local_step_factor
         virtual_node.sp_line_start = virtual_node  # 虚拟点自身是串线起点
-        
-        # 复制真实点的 node2front 关系
-        real_node = self._get_node_by_idx(real_point_idx)
-        if real_node:
-            virtual_node.node2front = real_node.node2front.copy()
-            virtual_node.node2node = real_node.node2node.copy()
+
+        # 虚拟点拓扑关系在创建虚拟阵面/重接右侧阵面时逐步构建，避免继承旧邻接导致方向光滑失真
+        virtual_node.node2front = []
+        virtual_node.node2node = []
         
         return virtual_node
     
@@ -212,14 +223,11 @@ class MultiDirectionManager:
         self.adlayers.current_part.front_list.append(virtual_front)
         
         # 将虚拟阵面添加到节点的 node2front 中
-        node1.node2front.append(virtual_front)
-        node2.node2front.append(virtual_front)
+        self._add_front_link(node1, virtual_front)
+        self._add_front_link(node2, virtual_front)
         
         # 更新节点的 node2node 关系
-        if node2 not in node1.node2node:
-            node1.node2node.append(node2)
-        if node1 not in node2.node2node:
-            node2.node2node.append(node1)
+        self._add_neighbor_link(node1, node2)
         
         debug(f"[虚拟阵面] 创建虚拟阵面: {node1.idx} -> {node2.idx}, bc_type=prism-cap")
         
@@ -241,6 +249,35 @@ class MultiDirectionManager:
             if node.idx == idx:
                 return node
         return None
+
+    @staticmethod
+    def _add_neighbor_link(node1, node2):
+        if node1 is None or node2 is None or node1.idx == node2.idx:
+            return
+        if all(nei.idx != node2.idx for nei in node1.node2node):
+            node1.node2node.append(node2)
+        if all(nei.idx != node1.idx for nei in node2.node2node):
+            node2.node2node.append(node1)
+
+    @staticmethod
+    def _remove_neighbor_link(node1, node2):
+        if node1 is None or node2 is None:
+            return
+        node1.node2node = [nei for nei in node1.node2node if nei.idx != node2.idx]
+        node2.node2node = [nei for nei in node2.node2node if nei.idx != node1.idx]
+
+    @staticmethod
+    def _add_front_link(node, front):
+        if node is None or front is None:
+            return
+        if all(existing is not front for existing in node.node2front):
+            node.node2front.append(front)
+
+    @staticmethod
+    def _remove_front_link(node, front):
+        if node is None or front is None:
+            return
+        node.node2front = [existing for existing in node.node2front if existing is not front]
     
     def get_real_point(self, node):
         """获取虚拟点对应的真实点
@@ -339,12 +376,15 @@ class MultiDirectionManager:
 
         if ilayer == 0:
             self.initialize_multi_direction(front_node_list, ilayer)
+            self._log_convex_direction_snapshot("初始化后")
 
         self.smooth_advancing_direction(
             front_node_list,
             smooth_iterations=smooth_iterations,
             relax_factor=relax_factor,
         )
+        if ilayer == 0:
+            self._log_convex_direction_snapshot("光滑后")
         self.calculate_step_scale_coeff(front_node_list, ilayer)
 
     def _insert_local_sp_pair(self, node_idx, coeff):
@@ -368,13 +408,11 @@ class MultiDirectionManager:
         verbose(f"开始光滑推进方向 (迭代{smooth_iterations}次)...")
         
         for iteration in range(smooth_iterations):
+            updated_directions = {}
+
             for node in front_node_list:
                 # 凹点不参与光滑
                 if node.concav_flag:
-                    continue
-
-                # 多方向光滑仅作用于凸点与虚拟点
-                if not (node.convex_flag or node.is_virtual_point):
                     continue
 
                 # 获取相邻节点
@@ -405,7 +443,14 @@ class MultiDirectionManager:
                 new_dir = (1 - relax_factor) * current_dir + relax_factor * avg_neighbor_dir
                 new_dir = self._normalize(new_dir)
 
-                # 多方向列表节点只更新当前有效方向（第一个方向）
+                updated_directions[node.idx] = new_dir
+
+            # 统一更新，避免本轮迭代内的更新顺序影响其他节点
+            for node in front_node_list:
+                if node.idx not in updated_directions:
+                    continue
+
+                new_dir = updated_directions[node.idx]
                 if isinstance(node.marching_direction, list):
                     if len(node.marching_direction) == 0:
                         node.marching_direction = [tuple(new_dir)]
@@ -415,6 +460,24 @@ class MultiDirectionManager:
                     node.marching_direction = tuple(new_dir)
         
         verbose("推进方向光滑完成")
+
+    def _log_convex_direction_snapshot(self, stage):
+        """输出凸点及虚拟点推进方向，便于多方向调试"""
+        if not self.convex_points:
+            return
+
+        for convex_node in self.convex_points:
+            chain_nodes = [convex_node] + list(getattr(convex_node, "virtual_points", []))
+            direction_text = []
+            for node in chain_nodes:
+                vec = self._extract_direction(node.marching_direction)
+                if vec is None:
+                    continue
+                direction_text.append(
+                    f"id={node.idx},dir=({vec[0]:.4f},{vec[1]:.4f}),nei={len(node.node2node)}"
+                )
+            if direction_text:
+                debug(f"[多方向方向][{stage}] " + " | ".join(direction_text))
     
     def calculate_step_scale_coeff(self, front_node_list, ilayer):
         """计算步长缩放系数
