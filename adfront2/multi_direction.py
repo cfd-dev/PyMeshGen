@@ -297,6 +297,62 @@ class MultiDirectionManager:
         
         # 设置新节点的串线起点
         new_node.sp_line_start = start_node
+
+    def _extract_direction(self, direction_value):
+        """提取当前有效推进方向向量（多方向列表默认取第一个）"""
+        try:
+            arr = np.asarray(direction_value, dtype=float)
+        except (TypeError, ValueError):
+            return None
+
+        if arr.ndim == 0:
+            return None
+        if arr.ndim >= 2:
+            if arr.shape[0] == 0:
+                return None
+            arr = arr[0]
+
+        arr = np.asarray(arr, dtype=float).reshape(-1)
+        if arr.size < 2:
+            return None
+        return self._normalize(arr[:2])
+
+    def _pick_wall_fronts(self, node):
+        wall_fronts = [
+            f
+            for f in node.node2front
+            if self.adlayers.is_wall_front(f) and getattr(f, "length", 1.0) > 1e-10
+        ]
+        if len(wall_fronts) < 2:
+            return None
+        return wall_fronts[0], wall_fronts[1]
+
+    def run_layer_workflow(
+        self, front_node_list, ilayer, smooth_iterations=3, relax_factor=0.5
+    ):
+        """按设计文档执行单层多方向流程
+
+        流程：初始化（首层）→ 方向光滑 → 步长缩放
+        """
+        if not self.adlayers.multi_direction:
+            return
+
+        if ilayer == 0:
+            self.initialize_multi_direction(front_node_list, ilayer)
+
+        self.smooth_advancing_direction(
+            front_node_list,
+            smooth_iterations=smooth_iterations,
+            relax_factor=relax_factor,
+        )
+        self.calculate_step_scale_coeff(front_node_list, ilayer)
+
+    def _insert_local_sp_pair(self, node_idx, coeff):
+        """缓存真实点步长因子，已存在则覆盖为最新值"""
+        self.local_sp_pair[node_idx] = coeff
+
+    def _get_local_sp_pair(self, node_idx):
+        return self.local_sp_pair.get(node_idx, 1.0)
     
     def smooth_advancing_direction(self, front_node_list, smooth_iterations=3, relax_factor=0.5):
         """光滑推进方向
@@ -310,17 +366,6 @@ class MultiDirectionManager:
             return
         
         verbose(f"开始光滑推进方向 (迭代{smooth_iterations}次)...")
-
-        def _extract_direction(direction_value):
-            """提取当前有效推进方向向量（多方向列表取第一个方向）"""
-            arr = np.array(direction_value, dtype=float)
-            if arr.ndim == 2:
-                if arr.shape[0] == 0:
-                    return None
-                arr = arr[0]
-            if arr.size < 2:
-                return None
-            return self._normalize(arr)
         
         for iteration in range(smooth_iterations):
             for node in front_node_list:
@@ -342,7 +387,7 @@ class MultiDirectionManager:
                 for neighbor in neighbors:
                     if neighbor.concav_flag:
                         continue
-                    neighbor_dir = _extract_direction(neighbor.marching_direction)
+                    neighbor_dir = self._extract_direction(neighbor.marching_direction)
                     if neighbor_dir is not None:
                         neighbor_dirs.append(neighbor_dir)
                 
@@ -353,7 +398,7 @@ class MultiDirectionManager:
                 avg_neighbor_dir = self._normalize(avg_neighbor_dir)
                 
                 # 加权平均
-                current_dir = _extract_direction(node.marching_direction)
+                current_dir = self._extract_direction(node.marching_direction)
                 if current_dir is None:
                     continue
                 # relax_factor=0 表示不光滑，=1 表示完全采用邻居平均方向
@@ -382,41 +427,23 @@ class MultiDirectionManager:
         """
         verbose("计算步长缩放系数...")
 
-        def _extract_direction(direction_value):
-            arr = np.array(direction_value, dtype=float)
-            if arr.ndim == 2:
-                if arr.shape[0] == 0:
-                    return None
-                arr = arr[0]
-            if arr.size < 2:
-                return None
-            return self._normalize(arr)
-
-        def _pick_wall_fronts(node):
-            wall_fronts = [
-                f
-                for f in node.node2front
-                if self.adlayers.is_wall_front(f) and getattr(f, "length", 1.0) > 1e-10
-            ]
-            if len(wall_fronts) < 2:
-                return None
-            return wall_fronts[0], wall_fronts[1]
-
         # 清空缓存，避免跨层残留
         self.local_sp_pair = {}
 
-        # 阶段 1: 使用当前（已光滑）方向计算步长系数，包含角点与虚拟点
+        # 阶段 1：计算真实点步长因子（跳过虚拟点；首层后跳过真实凸点）
         for node in front_node_list:
-            # 第一层后的真实凸点不再更新
+            if node.is_virtual_point:
+                continue
+
             if ilayer > 0 and node.convex_flag and not node.is_virtual_point:
                 continue
 
-            picked = _pick_wall_fronts(node)
+            picked = self._pick_wall_fronts(node)
             if picked is None:
                 continue
 
             front1, front2 = picked
-            np_dir = _extract_direction(node.marching_direction)
+            np_dir = self._extract_direction(node.marching_direction)
             if np_dir is None:
                 continue
 
@@ -426,28 +453,34 @@ class MultiDirectionManager:
             if coeff > 1e-10:
                 node.local_step_factor = node.local_step_factor / coeff
 
-            # 缓存串线起点（凸点/虚拟点）步长因子
-            if node.convex_flag or node.is_virtual_point:
-                self.local_sp_pair[node.idx] = node.local_step_factor
+            if node.convex_flag:
+                self._insert_local_sp_pair(node.idx, node.local_step_factor)
 
-        # 阶段 2: 多方向串线上的后续点沿用起点系数
+        # 阶段 2：首层虚拟点步长因子从真实点复制，并缓存真实点系数
+        if ilayer == 0:
+            for node in front_node_list:
+                if not node.is_virtual_point:
+                    continue
+
+                real_node = self.get_real_point(node)
+                if real_node is None:
+                    continue
+
+                node.local_step_factor = real_node.local_step_factor
+                self._insert_local_sp_pair(real_node.idx, real_node.local_step_factor)
+
+        # 阶段 3：多方向串线上的点从缓存继承真实点步长
         for node in front_node_list:
             if not node.sp_line_start:
                 continue
 
             start_node = self.get_sp_line_start(node)
-            # 串线起点自身不覆盖
             if start_node.idx == node.idx:
                 continue
 
-            if start_node.idx in self.local_sp_pair:
-                node.local_step_factor = self.local_sp_pair[start_node.idx]
-                continue
-
-            # 回退：按真实点系数获取
             real_node = self.get_real_point(start_node)
-            if real_node and real_node.idx in self.local_sp_pair:
-                node.local_step_factor = self.local_sp_pair[real_node.idx]
+            if real_node:
+                node.local_step_factor = self._get_local_sp_pair(real_node.idx)
 
         verbose("步长缩放系数计算完成")
     
