@@ -102,9 +102,11 @@ def info(message):
     _log("INFO", message)
 
 
-def error(message):
-    """输出ERROR级别消息"""
+def error(message, raise_exception=True):
+    """输出ERROR级别消息，并可选抛出异常中断流程"""
     _log("ERROR", message)
+    if raise_exception:
+        raise RuntimeError(message)
 
 
 def warning(message):

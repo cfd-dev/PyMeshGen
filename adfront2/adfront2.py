@@ -390,9 +390,8 @@ class Adfront2:
             self.base_front.al *= 1.2
             if self.base_front.al > 20:
                 error(
-                    f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面。"
+                    f"基准阵面搜索半径超过20，阵面{self.base_front.node_ids}，终止推进。"
                 )
-                return None
             
             heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
 

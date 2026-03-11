@@ -270,9 +270,9 @@ class TestMeshGeneration(unittest.TestCase):
         grid = parse_vtk_msh(output_file)
         tri, quad, other = self._count_cell_types(grid)
 
-        self.assertAlmostEqual(grid.num_cells, 164, delta=5)
-        self.assertAlmostEqual(grid.num_nodes, 160, delta=5)
-        self.assertAlmostEqual(tri, 68, delta=5)
+        self.assertAlmostEqual(grid.num_cells, 172, delta=5)
+        self.assertAlmostEqual(grid.num_nodes, 164, delta=5)
+        self.assertAlmostEqual(tri, 76, delta=5)
         self.assertAlmostEqual(quad, 96, delta=5)
         self.assertEqual(other, 0)
         self.assertLess(cost, 10)

@@ -196,7 +196,8 @@ class TestGUIMessage(unittest.TestCase):
         """测试GUI环境中的消息输出"""
         info("GUI消息测试开始")
         warning("这是一条警告消息")
-        error("这是一条错误消息")
+        with self.assertRaises(RuntimeError):
+            error("这是一条错误消息")
         info("GUI消息测试结束")
 
         self.assertTrue(True)
