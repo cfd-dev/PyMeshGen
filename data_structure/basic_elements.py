@@ -214,7 +214,7 @@ class NodeElementALM(NodeElement):  # 添加父类继承
         self.virtual_points = []  # 虚拟点列表 (真实点使用)
         self.multi_directions = []  # 多方向矢量列表
         self.direction_idx = 0  # 当前使用的方向索引
-        self.sp_line_start = None  # 多方向串线起点 (用于追踪)
+        self.strandline_start_node = None  # 多方向串线起点 (用于追踪)
         self.stop_layer = 1000  # 停止推进层数
         self.stop_flag = False  # 停止推进标志
 
@@ -253,8 +253,8 @@ class NodeElementALM(NodeElement):  # 添加父类继承
             new_node.multi_directions = node_elem.multi_directions.copy()
         if hasattr(node_elem, 'direction_idx'):
             new_node.direction_idx = node_elem.direction_idx
-        if hasattr(node_elem, 'sp_line_start'):
-            new_node.sp_line_start = node_elem.sp_line_start
+        if hasattr(node_elem, 'strandline_start_node'):
+            new_node.strandline_start_node = node_elem.strandline_start_node
         if hasattr(node_elem, 'stop_layer'):
             new_node.stop_layer = node_elem.stop_layer
         if hasattr(node_elem, 'stop_flag'):

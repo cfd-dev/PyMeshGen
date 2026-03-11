@@ -299,7 +299,7 @@ class Adlayers2:
             idx=self.num_nodes,
             bc_type="interior",
         )
-        new_node.sp_line_start = node_elem
+        new_node.strandline_start_node = node_elem
         self.node_coords.append(new_coords.tolist())
         self.num_nodes += 1
         node_elem.corresponding_node = new_node
@@ -462,10 +462,10 @@ class Adlayers2:
                         bc_type="interior",
                     )
                     # 串线追踪：特殊点从自身起链，其余节点继承已有起点
-                    if node_elem.sp_line_start is not None:
-                        new_node_elem.sp_line_start = node_elem.sp_line_start
+                    if node_elem.strandline_start_node is not None:
+                        new_node_elem.strandline_start_node = node_elem.strandline_start_node
                     elif node_elem.convex_flag or getattr(node_elem, "is_virtual_point", False):
-                        new_node_elem.sp_line_start = node_elem
+                        new_node_elem.strandline_start_node = node_elem
                     temp_num_nodes += 1
                     new_node_generated[i] = new_node_elem
 

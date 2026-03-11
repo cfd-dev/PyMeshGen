@@ -29,8 +29,8 @@ class MultiDirectionManager:
         self.concav_points = []  # 凹点列表
         self.virtual_points = []  # 虚拟点列表
         self.node_pair = {}  # 真实点与虚拟点的对应关系 {real_idx: [real_node, virt_node1, virt_node2, ...]}
-        self.sp_node_pair = {}  # 多方向串线追踪 {start_idx: [start_node, pushed_node1, pushed_node2, ...]}
-        self.local_sp_pair = {}  # 局部步长因子缓存 {node_idx: factor}
+        self.strandline_nodes_by_start = {}  # 多方向串线追踪 {start_idx: [start_node, pushed_node1, pushed_node2, ...]}
+        self.step_factor_cache_by_real_node = {}  # 局部步长因子缓存 {node_idx: factor}
         
         # 停止推进标志
         self.stop_flag_convex = {}  # 凸点停止标志 {idx: flag}
@@ -186,14 +186,14 @@ class MultiDirectionManager:
             bc_type="wall",
         )
         self.adlayers.node_coords.append(coords_list)
-        self.adlayers.num_nodes += 1
+        self.adlayers.num_nodes += 1  # 此处增加了点数，后面要减去虚拟点的数量吗？
         
         # 设置虚拟点属性
         virtual_node.is_virtual_point = True
         virtual_node.real_point_idx = real_point_idx
         virtual_node.marching_direction = direction
         virtual_node.local_step_factor = local_step_factor
-        virtual_node.sp_line_start = virtual_node  # 虚拟点自身是串线起点
+        virtual_node.strandline_start_node = virtual_node  # 虚拟点自身是串线起点
 
         # 虚拟点拓扑关系在创建虚拟阵面/重接右侧阵面时逐步构建，避免继承旧邻接导致方向光滑失真
         virtual_node.node2front = []
@@ -294,7 +294,7 @@ class MultiDirectionManager:
         real_idx = node.real_point_idx
         return self._get_node_by_idx(real_idx)
     
-    def is_sp_member(self, node):
+    def is_strandline_member(self, node):
         """判断节点是否在多方向串线上
         
         Args:
@@ -303,9 +303,9 @@ class MultiDirectionManager:
         Returns:
             flag: 是否在多方向串线上
         """
-        return node.sp_line_start is not None
+        return node.strandline_start_node is not None
     
-    def get_sp_line_start(self, node):
+    def get_strandline_start_node(self, node):
         """获取节点所在多方向串线的起点
         
         Args:
@@ -314,11 +314,11 @@ class MultiDirectionManager:
         Returns:
             start_node: 串线起点
         """
-        if node.sp_line_start:
-            return node.sp_line_start
+        if node.strandline_start_node:
+            return node.strandline_start_node
         return node
     
-    def insert_sp_node(self, start_node, new_node):
+    def append_strandline_node(self, start_node, new_node):
         """将新推进的节点插入到多方向串线中
         
         Args:
@@ -327,13 +327,13 @@ class MultiDirectionManager:
         """
         start_idx = start_node.idx
         
-        if start_idx not in self.sp_node_pair:
-            self.sp_node_pair[start_idx] = [start_node]
-        
-        self.sp_node_pair[start_idx].append(new_node)
+        if start_idx not in self.strandline_nodes_by_start:
+            self.strandline_nodes_by_start[start_idx] = [start_node]
+
+        self.strandline_nodes_by_start[start_idx].append(new_node)
         
         # 设置新节点的串线起点
-        new_node.sp_line_start = start_node
+        new_node.strandline_start_node = start_node
 
     def _extract_direction(self, direction_value):
         """提取当前有效推进方向向量（多方向列表默认取第一个）"""
@@ -387,12 +387,12 @@ class MultiDirectionManager:
             self._log_convex_direction_snapshot("光滑后")
         self.calculate_step_scale_coeff(front_node_list, ilayer)
 
-    def _insert_local_sp_pair(self, node_idx, coeff):
+    def _cache_step_factor_for_real_node(self, node_idx, coeff):
         """缓存真实点步长因子，已存在则覆盖为最新值"""
-        self.local_sp_pair[node_idx] = coeff
+        self.step_factor_cache_by_real_node[node_idx] = coeff
 
-    def _get_local_sp_pair(self, node_idx):
-        return self.local_sp_pair.get(node_idx, 1.0)
+    def _get_cached_step_factor_for_real_node(self, node_idx):
+        return self.step_factor_cache_by_real_node.get(node_idx, 1.0)
     
     def smooth_advancing_direction(self, front_node_list, smooth_iterations=3, relax_factor=0.5):
         """光滑推进方向
@@ -491,7 +491,7 @@ class MultiDirectionManager:
         verbose("计算步长缩放系数...")
 
         # 清空缓存，避免跨层残留
-        self.local_sp_pair = {}
+        self.step_factor_cache_by_real_node = {}
 
         # 阶段 1：计算真实点步长因子（跳过虚拟点；首层后跳过真实凸点）
         for node in front_node_list:
@@ -517,7 +517,7 @@ class MultiDirectionManager:
                 node.local_step_factor = node.local_step_factor / coeff
 
             if node.convex_flag:
-                self._insert_local_sp_pair(node.idx, node.local_step_factor)
+                self._cache_step_factor_for_real_node(node.idx, node.local_step_factor)
 
         # 阶段 2：首层虚拟点步长因子从真实点复制，并缓存真实点系数
         if ilayer == 0:
@@ -530,20 +530,20 @@ class MultiDirectionManager:
                     continue
 
                 node.local_step_factor = real_node.local_step_factor
-                self._insert_local_sp_pair(real_node.idx, real_node.local_step_factor)
+                self._cache_step_factor_for_real_node(real_node.idx, real_node.local_step_factor)
 
         # 阶段 3：多方向串线上的点从缓存继承真实点步长
         for node in front_node_list:
-            if not node.sp_line_start:
+            if not node.strandline_start_node:
                 continue
 
-            start_node = self.get_sp_line_start(node)
+            start_node = self.get_strandline_start_node(node)
             if start_node.idx == node.idx:
                 continue
 
             real_node = self.get_real_point(start_node)
             if real_node:
-                node.local_step_factor = self._get_local_sp_pair(real_node.idx)
+                node.local_step_factor = self._get_cached_step_factor_for_real_node(real_node.idx)
 
         verbose("步长缩放系数计算完成")
     
@@ -606,7 +606,7 @@ class MultiDirectionManager:
                 stop_layer = self.stop_layer_convex[real_idx]
                 
                 # 多方向串线上的点
-                if node.sp_line_start:
+                if node.strandline_start_node:
                     if ilayer >= stop_layer:
                         return True
                 else:
