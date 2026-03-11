@@ -1192,7 +1192,7 @@ class Adlayers2:
             relax_factor=self.relax_factor,
         )
         if self.ilayer == 0:
-            info(
+            debug(
                 f"[多方向调试] 首层初始化后虚拟点数量: "
                 f"{len(self.multi_direction_manager.virtual_points)}"
             )
@@ -1217,10 +1217,10 @@ class Adlayers2:
                 direction_hist.get(node.num_multi_direction, 0) + 1
             )
 
-        info(
+        debug(
             f"[多方向调试] 物面线段数量: wall={wall_front_count}, prism-cap={prism_cap_count}"
         )
-        info(
+        debug(
             f"[多方向调试] 凸角节点数量: {len(convex_nodes)}, "
             f"多方向节点数量: {len(multi_nodes)}"
         )
@@ -1229,9 +1229,9 @@ class Adlayers2:
             hist_text = ", ".join(
                 [f"{k}方向:{v}个" for k, v in sorted(direction_hist.items())]
             )
-            info(f"[多方向调试] 多方向数量分布: {hist_text}")
+            debug(f"[多方向调试] 多方向数量分布: {hist_text}")
         else:
-            info("[多方向调试] 多方向数量分布: 无")
+            debug("[多方向调试] 多方向数量分布: 无")
 
         if multi_nodes:
             details = ", ".join(
@@ -1240,7 +1240,7 @@ class Adlayers2:
                     for node in sorted(multi_nodes, key=lambda n: n.angle, reverse=True)
                 ]
             )
-            info(f"[多方向调试] 凸角角度详情: {details}")
+            verbose(f"[多方向调试] 凸角角度详情: {details}")
 
     def log_first_layer_cell_summary(self, start_cell_idx):
         """输出首层新增单元数量和类型"""
@@ -1266,10 +1266,38 @@ class Adlayers2:
             else:
                 other_count += 1
 
-        info(
+        debug(
             f"[首层统计] 新增单元总数: {self.num_cells - start_cell_idx}, "
             f"四边形: {quad_count}, 三角形: {tri_count}, 其他: {other_count}"
         )
+        sample_quads = []
+        for cell_idx in range(start_cell_idx, self.num_cells):
+            if isinstance(self.cell_container, dict):
+                cell = self.cell_container.get(cell_idx)
+            else:
+                if cell_idx >= len(self.cell_container):
+                    continue
+                cell = self.cell_container[cell_idx]
+            if not isinstance(cell, Quadrilateral):
+                continue
+            sample_quads.append((cell_idx, list(cell.node_ids)))
+            if len(sample_quads) >= 10:
+                break
+
+        if sample_quads:
+            verbose("[首层统计] 四边形样本(最多10个):")
+            for cell_idx, node_ids in sample_quads:
+                verbose(f"[首层统计]   单元{cell_idx}: 节点{node_ids}")
+                coord_text = []
+                for node_id in node_ids:
+                    if 0 <= node_id < len(self.node_coords):
+                        coord = self.node_coords[node_id]
+                        if len(coord) >= 2:
+                            coord_text.append(
+                                f"{node_id}:({coord[0]:.6f}, {coord[1]:.6f})"
+                            )
+                if coord_text:
+                    verbose(f"[首层统计]     坐标: {'; '.join(coord_text)}")
 
     def reconstruct_node2front(self):
         self.front_node_list = []
