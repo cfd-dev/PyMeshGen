@@ -382,27 +382,26 @@ class Adfront2:
 
         self.best_flag = self.pselected == self.pbest
 
-        # if self.pselected == None:
-        #     warning(
-        #         f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
-        #     )
-        #     self.base_front.al *= 1.2
-        #     heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
-        #     # self.debug_level = 1
-
-        # if self.base_front.al > 20:
-        #     # 异常退出
-        #     raise Exception("基准阵面搜索半径超过20，可能存在问题")
-        
         if self.pselected == None:
             warning(
                 f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
             )
             self.base_front.al *= 1.2
-            if self.base_front.al > 20:
-                warning(f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面。")
-                return None
             heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
+            # self.debug_level = 1
+
+        if self.base_front.al > 20:
+            raise Exception("基准阵面搜索半径超过20，可能存在问题")
+        
+        # if self.pselected == None:
+        #     warning(
+        #         f"阵面{self.base_front.node_ids}候选点列表中没有合适的点，扩大搜索范围！"
+        #     )
+        #     self.base_front.al *= 1.2
+        #     if self.base_front.al > 20:
+        #         warning(f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面。")
+        #         return None
+        #     heapq.heappush(self.front_list, self.base_front)  # 重新将基准阵面加入堆中
 
         return self.pselected
 

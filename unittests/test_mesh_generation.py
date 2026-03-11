@@ -110,8 +110,8 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 5942, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 5170, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 5925, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 5144, delta=20)
         self.assertLess(cost, 65)
 
     def test_naca0012_generation(self):
@@ -125,8 +125,8 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 2930, delta=10)
-        self.assertAlmostEqual(grid.num_nodes, 2200, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 2981, delta=10)
+        self.assertAlmostEqual(grid.num_nodes, 2216, delta=10)
         self.assertLess(cost, 40)
 
     def test_30p30n_generation(self):
@@ -155,8 +155,8 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 2926, delta=10)
-        self.assertAlmostEqual(grid.num_nodes, 2454, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 2947, delta=10)
+        self.assertAlmostEqual(grid.num_nodes, 2463, delta=10)
         self.assertLess(cost, 35)
 
     def test_convex_match_generation(self):
@@ -194,8 +194,8 @@ class TestMeshGeneration(unittest.TestCase):
         # 验证单元数、节点数
         grid = parse_vtk_msh(output_file)
 
-        self.assertAlmostEqual(grid.num_cells, 368, delta=10)  # 预期单元数
-        self.assertAlmostEqual(grid.num_nodes, 298, delta=10)  # 预期节点数
+        self.assertAlmostEqual(grid.num_cells, 379, delta=10)  # 预期单元数
+        self.assertAlmostEqual(grid.num_nodes, 304, delta=10)  # 预期节点数
         # 耗时比较
         self.assertLess(cost, 4)  # 预期耗时
 
@@ -210,8 +210,8 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 10758, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 8992, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 10726, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 8932, delta=10)
         self.assertLess(cost, 90)
 
     def test_naca0012_multi_generation(self):
