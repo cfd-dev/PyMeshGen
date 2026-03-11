@@ -186,7 +186,7 @@ class MultiDirectionManager:
             bc_type="wall",
         )
         self.adlayers.node_coords.append(coords_list)
-        self.adlayers.num_nodes += 1  # 此处增加了点数，后面要减去虚拟点的数量吗？
+        self.adlayers.num_nodes += 1
         
         # 设置虚拟点属性
         virtual_node.is_virtual_point = True
@@ -664,9 +664,80 @@ class MultiDirectionManager:
         # 删除虚拟阵面
         for part in self.adlayers.part_params:
             part.front_list = [f for f in part.front_list if f not in fronts_to_remove]
-        
+
+        self._compact_adlayers_nodes()
+
         verbose(f"删除了 {len(fronts_to_remove)} 个虚拟阵面")
         verbose("虚拟点消除完成")
+
+    def _collect_referenced_node_ids(self):
+        """收集后处理阶段仍被拓扑引用的节点编号"""
+        referenced_ids = set()
+
+        for part in self.adlayers.part_params:
+            for front in part.front_list:
+                for node in front.node_elems:
+                    referenced_ids.add(node.idx)
+
+        for cell in self.adlayers.cell_container:
+            if hasattr(cell, "node_ids") and cell.node_ids is not None:
+                referenced_ids.update(cell.node_ids)
+
+        for node in self.adlayers.boundary_nodes:
+            referenced_ids.add(node.idx)
+
+        return referenced_ids
+
+    def _compact_adlayers_nodes(self):
+        """压缩节点坐标与编号，移除后处理后不再引用的虚拟点"""
+        referenced_ids = self._collect_referenced_node_ids()
+        if not referenced_ids:
+            return
+
+        total_nodes = len(self.adlayers.node_coords)
+        invalid_ids = sorted(
+            node_id for node_id in referenced_ids if node_id < 0 or node_id >= total_nodes
+        )
+        if invalid_ids:
+            raise ValueError(f"节点压缩失败：发现越界节点编号 {invalid_ids[:10]}")
+
+        old_to_new = {old_id: new_id for new_id, old_id in enumerate(sorted(referenced_ids))}
+        old_num_nodes = self.adlayers.num_nodes
+        new_num_nodes = len(old_to_new)
+
+        if new_num_nodes == old_num_nodes:
+            return
+
+        for cell in self.adlayers.cell_container:
+            if hasattr(cell, "node_ids") and cell.node_ids is not None:
+                cell.node_ids = [old_to_new[node_id] for node_id in cell.node_ids]
+
+        unique_nodes = {}
+        for part in self.adlayers.part_params:
+            for front in part.front_list:
+                for node in front.node_elems:
+                    unique_nodes[id(node)] = node
+        for node in self.adlayers.boundary_nodes:
+            unique_nodes[id(node)] = node
+        for node in self.adlayers.front_node_list:
+            unique_nodes[id(node)] = node
+        for node in self.virtual_points:
+            unique_nodes[id(node)] = node
+
+        for node in unique_nodes.values():
+            old_idx = node.idx
+            if old_idx in old_to_new:
+                node.idx = old_to_new[old_idx]
+
+        for part in self.adlayers.part_params:
+            for front in part.front_list:
+                front.node_ids = [node.idx for node in front.node_elems]
+
+        kept_old_ids = sorted(old_to_new.keys())
+        self.adlayers.node_coords = [self.adlayers.node_coords[node_id] for node_id in kept_old_ids]
+        self.adlayers.num_nodes = new_num_nodes
+
+        verbose(f"节点压缩完成：{old_num_nodes} -> {new_num_nodes}（移除 {old_num_nodes - new_num_nodes} 个未引用节点）")
     
     @staticmethod
     def _normalize(vec):
