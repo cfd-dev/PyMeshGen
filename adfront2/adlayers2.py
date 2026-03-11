@@ -241,14 +241,20 @@ class Adlayers2:
 
         # 阶段1：基础几何与方向
         self.prepare_geometry_info()
+
         self.log_multi_direction_debug_summary()
+
         # 阶段2：多方向流程（初始化→方向光滑→步长缩放）
         self.apply_multi_direction_workflow()
+
         # 阶段3：步长计算与推进
         self.visualize_point_normals()
         self.calculate_marching_distance()
+
         self.advancing_fronts()
+        
         self.log_first_layer_cell_summary(start_cell_idx)
+
         self.show_progress()
 
     def debug_save(self):

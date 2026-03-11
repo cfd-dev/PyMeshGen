@@ -51,7 +51,7 @@ class TimeSpan:
         self._calculate_span()
         self.print_func(
             f"{title}"
-            f"  timeSpan: {self.time_span:.3f}  presentTime: {self.now_time:.3f}\n"
+            f"  timeSpan: {self.time_span:.3f}\n"
         )
 
     def _calculate_span(self):

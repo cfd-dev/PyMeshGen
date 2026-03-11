@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import unittest
 import time
+import json
 
 # 添加项目根目录和子目录到Python路径
 project_root = Path(__file__).parent.parent
@@ -42,7 +43,6 @@ class TestMeshGeneration(unittest.TestCase):
 
     def _fix_config_paths(self, config_path):
         """修复配置文件中的路径为绝对路径"""
-        import json
         import os
 
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -71,6 +71,33 @@ class TestMeshGeneration(unittest.TestCase):
             json.dump(config, f, indent=4, ensure_ascii=False)
 
         return temp_config_path
+
+    def _fix_project_case_config(self, case_name):
+        """修复项目config目录下算例配置路径并重定向输出"""
+        config_path = project_root / "config" / f"{case_name}.json"
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        input_file = Path(config.get('input_file', ''))
+        if not input_file.is_absolute():
+            config['input_file'] = str((project_root / input_file).resolve())
+
+        output_file = self.output_dir / f"test_{case_name}_output.vtk"
+        config['output_file'] = str(output_file.resolve())
+        config['viz_enabled'] = False
+
+        temp_config_path = Path(__file__).parent / f"temp_{case_name}.json"
+        with open(temp_config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+
+        return temp_config_path, output_file
+
+    @staticmethod
+    def _count_cell_types(grid):
+        tri = sum(1 for cell in grid.cells if len(cell) == 3)
+        quad = sum(1 for cell in grid.cells if len(cell) == 4)
+        other = grid.num_cells - tri - quad
+        return tri, quad, other
 
     def test_rae2822_generation(self):
         """测试Rae2822网格生成"""
@@ -186,6 +213,114 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertAlmostEqual(grid.num_cells, 10758, delta=20)
         self.assertAlmostEqual(grid.num_nodes, 8992, delta=10)
         self.assertLess(cost, 90)
+
+    def test_naca0012_multi_generation(self):
+        """测试naca0012_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("naca0012_multi")
+
+        try:
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        grid = parse_vtk_msh(output_file)
+        tri, quad, other = self._count_cell_types(grid)
+
+        self.assertAlmostEqual(grid.num_cells, 2923, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 2220, delta=20)
+        self.assertAlmostEqual(tri, 1546, delta=20)
+        self.assertAlmostEqual(quad, 1377, delta=20)
+        self.assertEqual(other, 0)
+        self.assertLess(cost, 40)
+
+    def test_rae2822_multi_generation(self):
+        """测试rae2822_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("rae2822_multi")
+
+        try:
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        grid = parse_vtk_msh(output_file)
+        tri, quad, other = self._count_cell_types(grid)
+
+        self.assertAlmostEqual(grid.num_cells, 5929, delta=30)
+        self.assertAlmostEqual(grid.num_nodes, 5185, delta=30)
+        self.assertAlmostEqual(tri, 1696, delta=30)
+        self.assertAlmostEqual(quad, 4233, delta=30)
+        self.assertEqual(other, 0)
+        self.assertLess(cost, 80)
+
+    def test_quad_quad_multi_generation(self):
+        """测试quad_quad_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("quad_quad_multi")
+
+        try:
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        grid = parse_vtk_msh(output_file)
+        tri, quad, other = self._count_cell_types(grid)
+
+        self.assertAlmostEqual(grid.num_cells, 164, delta=5)
+        self.assertAlmostEqual(grid.num_nodes, 160, delta=5)
+        self.assertAlmostEqual(tri, 68, delta=5)
+        self.assertAlmostEqual(quad, 96, delta=5)
+        self.assertEqual(other, 0)
+        self.assertLess(cost, 10)
+
+    def test_anw_multi_generation(self):
+        """测试anw_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("anw_multi")
+
+        try:
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        grid = parse_vtk_msh(output_file)
+        tri, quad, other = self._count_cell_types(grid)
+
+        self.assertAlmostEqual(grid.num_cells, 2993, delta=30)
+        self.assertAlmostEqual(grid.num_nodes, 2517, delta=30)
+        self.assertAlmostEqual(tri, 1052, delta=30)
+        self.assertAlmostEqual(quad, 1941, delta=30)
+        self.assertEqual(other, 0)
+        self.assertLess(cost, 60)
+
+    def test_30p30n_multi_generation(self):
+        """测试30p30n_multi当前行为（当前版本会在三角推进阶段报错）"""
+        case_file, _ = self._fix_project_case_config("30p30n_multi")
+
+        try:
+            with self.assertRaises(Exception) as context:
+                PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        self.assertIn("基准阵面搜索半径超过20", str(context.exception))
+
+    def test_30p30n_4wall_multi_generation(self):
+        """测试30p30n_4wall_multi当前行为（当前版本会在三角推进阶段报错）"""
+        case_file, _ = self._fix_project_case_config("30p30n_4wall_multi")
+
+        try:
+            with self.assertRaises(Exception) as context:
+                PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        self.assertIn("基准阵面搜索半径超过20", str(context.exception))
 
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
