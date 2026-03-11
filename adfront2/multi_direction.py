@@ -364,6 +364,34 @@ class MultiDirectionManager:
             return None
         return wall_fronts[0], wall_fronts[1]
 
+    # FIXME 推进方向在右上、左下两个方向上存在一些不光滑
+    def _get_prism_cap_interior_direction(self, node):
+        """若节点一侧为 interior、一侧为 prism-cap，返回与上一层一致的推进方向"""
+        node2front = getattr(node, "node2front", None)
+        if not node2front or len(node2front) != 2:
+            return None
+
+        front1, front2 = node2front
+        if front1.bc_type == "interior" and front2.bc_type == "prism-cap":
+            interior_front = front1
+        elif front2.bc_type == "interior" and front1.bc_type == "prism-cap":
+            interior_front = front2
+        else:
+            return None
+
+        node0, node1 = interior_front.node_elems
+        if node0.idx == node.idx:
+            other_node = node1
+        elif node1.idx == node.idx:
+            other_node = node0
+        else:
+            return None
+
+        direction = np.asarray(node.coords, dtype=float) - np.asarray(other_node.coords, dtype=float)
+        if np.linalg.norm(direction) <= 1e-10:
+            return self._extract_direction(node.marching_direction)
+        return self._normalize(direction[:2])
+
     def run_layer_workflow(
         self, front_node_list, ilayer, smooth_iterations=3, relax_factor=0.5
     ):
@@ -406,6 +434,20 @@ class MultiDirectionManager:
             return
         
         verbose(f"开始光滑推进方向 (迭代{smooth_iterations}次)...")
+
+        fixed_directions = {}
+        for node in front_node_list:
+            fixed_dir = self._get_prism_cap_interior_direction(node)
+            if fixed_dir is None:
+                continue
+            fixed_directions[node.idx] = fixed_dir
+            if isinstance(node.marching_direction, list):
+                if len(node.marching_direction) == 0:
+                    node.marching_direction = [tuple(fixed_dir)]
+                else:
+                    node.marching_direction[0] = tuple(fixed_dir)
+            else:
+                node.marching_direction = tuple(fixed_dir)
         
         for iteration in range(smooth_iterations):
             updated_directions = {}
@@ -413,6 +455,10 @@ class MultiDirectionManager:
             for node in front_node_list:
                 # 凹点不参与光滑
                 if node.concav_flag:
+                    continue
+
+                # prism-cap/interior 节点方向固定，不参与自身光滑
+                if node.idx in fixed_directions:
                     continue
 
                 # 获取相邻节点

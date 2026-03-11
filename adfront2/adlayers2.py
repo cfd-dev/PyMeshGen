@@ -252,7 +252,7 @@ class Adlayers2:
         self.calculate_marching_distance()
 
         self.advancing_fronts()
-        
+
         self.log_first_layer_cell_summary(start_cell_idx)
 
         self.show_progress()
@@ -1053,7 +1053,7 @@ class Adlayers2:
         verbose("计算节点初始推进方向..., Done.\n")
 
     def laplacian_smooth_normals(self):
-        """拉普拉斯平滑节点推进方向 - 修复版本"""
+        """拉普拉斯平滑节点推进方向"""
         verbose("节点推进方向光滑....")
         
         # 第一次遍历：收集所有节点的初始方向
@@ -1122,7 +1122,7 @@ class Adlayers2:
                         # 如果维度不一致，跳过该邻居
                         continue
 
-                    # 计算几何权重：基于距离和角度差异
+                    # 计算几何权重：仅基于距离
                     neighbor_pos = np.array(neighbor.coords)
                     distance = float(np.linalg.norm(current_pos - neighbor_pos))
 
@@ -1131,18 +1131,7 @@ class Adlayers2:
                         distance = 1e-10
 
                     # 距离权重：距离越近影响越大
-                    distance_weight = 1.0 / distance
-
-                    # 角度权重：方向差异越小影响越大
-                    dot_product = float(np.dot(current_dir, neighbor_dir))
-                    dot_product = np.clip(dot_product, -1.0, 1.0)
-                    angle = float(np.arccos(dot_product))
-
-                    # 角度权重：使用高斯函数，角度差异越小权重越大
-                    angle_weight = float(np.exp(-angle * angle / (2 * 0.5 * 0.5)))
-
-                    # 综合权重
-                    weight = distance_weight * angle_weight
+                    weight = 1.0 / distance
 
                     summation += weight * neighbor_dir
                     total_weight += weight
