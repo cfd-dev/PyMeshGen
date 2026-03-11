@@ -1399,6 +1399,12 @@ class Adlayers2:
 
             # 计算多方向推进数量和局部步长因子
             if self.multi_direction and node_elem.convex_flag and self.ilayer == 0:
+                # 仅在足够大的凸角上开启多方向，避免小角度分裂导致串线停滞
+                if node_elem.angle < 80.0:
+                    node_elem.num_multi_direction = 1
+                    node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
+                    continue
+
                 num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )

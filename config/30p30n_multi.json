@@ -1,5 +1,5 @@
 {
-    "debug_level": 0,
+    "debug_level": 1,
     "input_file": "./config/input/30p30n-small.cas",
     "output_file": "./out/30p30n-hybrid.vtk",
     "viz_enabled": false,

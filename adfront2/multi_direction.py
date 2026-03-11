@@ -248,6 +248,20 @@ class MultiDirectionManager:
         for node in self.virtual_points:
             if node.idx == idx:
                 return node
+
+        # 边界层推进后期，真实点可能已不在 front_node_list，但仍保存在 boundary_nodes
+        for node in self.adlayers.boundary_nodes:
+            if node.idx == idx:
+                return node
+
+        # 兜底：使用初始化阶段建立的真实/虚拟点映射
+        # node_pair[real_idx][0] 永远是该凸点对应的真实点
+        if idx in self.node_pair and len(self.node_pair[idx]) > 0:
+            return self.node_pair[idx][0]
+        for chain_nodes in self.node_pair.values():
+            for node in chain_nodes:
+                if node.idx == idx:
+                    return node
         return None
 
     @staticmethod
@@ -292,7 +306,15 @@ class MultiDirectionManager:
             return node
         
         real_idx = node.real_point_idx
-        return self._get_node_by_idx(real_idx)
+        real_node = self._get_node_by_idx(real_idx)
+        if real_node is not None:
+            return real_node
+
+        # 兜底：若真实点不在当前活动节点集合中，仍可从映射关系中恢复
+        mapped_nodes = self.node_pair.get(real_idx, [])
+        if mapped_nodes:
+            return mapped_nodes[0]
+        return None
     
     def is_strandline_member(self, node):
         """判断节点是否在多方向串线上

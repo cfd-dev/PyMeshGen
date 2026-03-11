@@ -93,6 +93,23 @@ class TestMeshGeneration(unittest.TestCase):
         return temp_config_path, output_file
 
     @staticmethod
+    def _override_case_config(temp_config_path, debug_level=None, wall_multi_direction=None):
+        """覆盖临时算例配置中的部分字段"""
+        with open(temp_config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        if debug_level is not None:
+            config['debug_level'] = debug_level
+
+        if wall_multi_direction is not None:
+            for part in config.get("parts", []):
+                if part.get("PRISM_SWITCH") == "wall":
+                    part["multi_direction"] = wall_multi_direction
+
+        with open(temp_config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+
+    @staticmethod
     def _count_cell_types(grid):
         tri = sum(1 for cell in grid.cells if len(cell) == 3)
         quad = sum(1 for cell in grid.cells if len(cell) == 4)
@@ -299,28 +316,42 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertLess(cost, 60)
 
     def test_30p30n_multi_generation(self):
-        """测试30p30n_multi当前行为（当前版本会在三角推进阶段报错）"""
-        case_file, _ = self._fix_project_case_config("30p30n_multi")
+        """测试30p30n_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("30p30n_multi")
+        self._override_case_config(case_file, debug_level=0)
 
         try:
-            with self.assertRaises(Exception) as context:
-                PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
         finally:
             case_file.unlink(missing_ok=True)
 
-        self.assertIn("基准阵面搜索半径超过20", str(context.exception))
+        grid = parse_vtk_msh(output_file)
+        self.assertAlmostEqual(grid.num_cells, 12440, delta=30)
+        self.assertAlmostEqual(grid.num_nodes, 11230, delta=30)
+        self.assertLess(cost, 80)
 
     def test_30p30n_4wall_multi_generation(self):
-        """测试30p30n_4wall_multi当前行为（当前版本会在三角推进阶段报错）"""
-        case_file, _ = self._fix_project_case_config("30p30n_4wall_multi")
+        """测试30p30n_4wall_multi网格生成"""
+        case_file, output_file = self._fix_project_case_config("30p30n_4wall_multi")
+        self._override_case_config(
+            case_file,
+            debug_level=0,
+            wall_multi_direction=False,
+        )
 
         try:
-            with self.assertRaises(Exception) as context:
-                PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            start = time.time()
+            PyMeshGen(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
         finally:
             case_file.unlink(missing_ok=True)
 
-        self.assertIn("基准阵面搜索半径超过20", str(context.exception))
+        grid = parse_vtk_msh(output_file)
+        self.assertAlmostEqual(grid.num_cells, 10759, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 9006, delta=20)
+        self.assertLess(cost, 80)
 
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
