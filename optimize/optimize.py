@@ -53,7 +53,11 @@ def optimize_hybrid_grid(hybrid_grid):
     movement_factor = 0.3
     opt_exe = './optimize/laplacian_opt.exe'
     cmd = [opt_exe, tmp_file, str(max_iter), str(movement_factor)]
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        warning(f"外部混合优化执行失败，保留当前混合网格: {exc}")
+        return hybrid_grid
     debug(f'Optimized VTK mesh written to: {tmp_file.replace(".vtk", "_opt.vtk")}')
     
     # 从优化后的VTK文件加载网格

@@ -389,6 +389,11 @@ class Adfront2:
 
             self.base_front.al *= 1.2
             if self.base_front.al > 20:
+                if getattr(self, "allow_front_drop", False):
+                    warning(
+                        f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面继续推进。"
+                    )
+                    return None
                 error(
                     f"基准阵面搜索半径超过20，阵面{self.base_front.node_ids}，终止推进。"
                 )

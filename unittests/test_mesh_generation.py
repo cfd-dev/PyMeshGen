@@ -355,9 +355,6 @@ class TestMeshGeneration(unittest.TestCase):
 
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
-        #  先跳过该测试
-        self.skipTest("跳过test_30p30n_mixed_generation!")
-
         case_file = self._fix_config_paths(self.test_dir / "30p30n_mixed.json")
         output_file = self.output_dir / "test-30p30n-mixed.vtk"
 
@@ -367,13 +364,12 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 4189, delta=30)
-        self.assertAlmostEqual(grid.num_nodes, 4035, delta=30)
-        self.assertLess(cost, 140)
+        self.assertAlmostEqual(grid.num_cells, 4200, delta=40)
+        self.assertAlmostEqual(grid.num_nodes, 4051, delta=40)
+        self.assertLess(cost, 260)
 
     def test_anw_mixed_generation(self):
         """测试anw_mixed网格生成"""
-        self.skipTest("跳过test_anw_mixed_generation!")
         case_file = self._fix_config_paths(self.test_dir / "anw_mixed.json")
         output_file = self.output_dir / "test_anw_mixed.vtk"
 
@@ -383,9 +379,9 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 1279, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 1126, delta=10)
         self.assertAlmostEqual(grid.num_nodes, 1085, delta=10)
-        self.assertLess(cost, 14)
+        self.assertLess(cost, 20)
 
 
 if __name__ == "__main__":

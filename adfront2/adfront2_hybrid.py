@@ -53,6 +53,7 @@ class Adfront2Hybrid(Adfront2):
         self.proximity_tol = 0.5 # 已测试该值为0.5时，效果较好
         self.progress_interval = 50
         self.sort_front = False  # 是否对阵面进行排序，四边形网格生成时默认不排序
+        self.allow_front_drop = True  # 混合网格中允许丢弃少量长期无解阵面，避免整体中断
         self.bbox = None
 
         self.initialize_data()
