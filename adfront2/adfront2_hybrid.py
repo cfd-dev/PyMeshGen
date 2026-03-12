@@ -8,7 +8,9 @@ from data_structure.basic_elements import NodeElement, LineSegment, Triangle, Qu
 from utils.timer import TimeSpan
 from utils.geom_toolkit import (
     calculate_angle,
+    calculate_distance2,
     is_left2d,
+    point_in_polygon,
     quadrilateral_area,
     fast_distance_check,
     point_to_segment_distance,
@@ -52,9 +54,14 @@ class Adfront2Hybrid(Adfront2):
         # 阵面与节点邻近的距离与当地网格步长的比例，小于该比例将返回邻近True
         self.proximity_tol = 0.5 # 已测试该值为0.5时，效果较好
         self.progress_interval = 50
-        self.sort_front = False  # 是否对阵面进行排序，四边形网格生成时默认不排序
+        self.sort_front = True  # 文献要求优先选择最短前沿作为活跃前沿
         self.allow_front_drop = True  # 混合网格中允许丢弃少量长期无解阵面，避免整体中断
+        # 文献鲁棒性：四边形候选失败时先更换活跃前沿，不立即退化为三角形
+        self.max_front_retries_for_quad = 2
+        self.front_retry_counter = {}
         self.bbox = None
+        self.quad_step_size = None
+        self.quad_node_candidates = [[], []]
 
         self.initialize_data()
 
@@ -64,10 +71,11 @@ class Adfront2Hybrid(Adfront2):
             front.al = self.al
 
         # 根据初始front_list计算边界框
-        min_x = min(front.node_elems[0].coords[0] for front in self.front_list)
-        max_x = max(front.node_elems[1].coords[0] for front in self.front_list)
-        min_y = min(front.node_elems[0].coords[1] for front in self.front_list)
-        max_y = max(front.node_elems[1].coords[1] for front in self.front_list)
+        all_nodes = [node.coords for front in self.front_list for node in front.node_elems]
+        min_x = min(node[0] for node in all_nodes)
+        max_x = max(node[0] for node in all_nodes)
+        min_y = min(node[1] for node in all_nodes)
+        max_y = max(node[1] for node in all_nodes)
         self.bbox = (min_x, min_y, max_x, max_y)
 
     def calculate_gap_criterion(self):
@@ -100,11 +108,8 @@ class Adfront2Hybrid(Adfront2):
                         return
 
     def get_base_front(self):
-        if self.sort_front:
-            heapq.heapify(self.front_list)
-            self.base_front = heapq.heappop(self.front_list)
-        else:
-            self.base_front = self.front_list.pop(0)
+        heapq.heapify(self.front_list)
+        self.base_front = heapq.heappop(self.front_list)
 
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形/四边形混合网格...")
@@ -128,11 +133,13 @@ class Adfront2Hybrid(Adfront2):
 
             self.add_new_points_for_quad(spacing)
 
-            self.search_candidates(self.base_front.al * spacing)
+            self.search_candidates_for_quad()
 
-            # self.debug_draw()
+            quad_selected = self.select_point_for_quad(spacing)
 
-            self.select_point_for_quad(spacing)
+            # 文献鲁棒性：扩大搜索后仍失败时，先放回当前前沿并切换其他活跃前沿
+            if not quad_selected and self.defer_base_front_for_retry():
+                continue
 
             self.add_new_point_for_tri(spacing)
 
@@ -157,6 +164,19 @@ class Adfront2Hybrid(Adfront2):
 
         self.mesh_type = 1
         self.add_new_point(spacing)
+        self.search_candidates(self.base_front.al * spacing)
+
+    def defer_base_front_for_retry(self):
+        """将当前活跃前沿回退到堆中，优先尝试其他前沿。"""
+        front_hash = self.base_front.hash
+        retry_count = self.front_retry_counter.get(front_hash, 0)
+        if retry_count >= self.max_front_retries_for_quad:
+            return False
+
+        self.front_retry_counter[front_hash] = retry_count + 1
+        self.base_front.priority = False
+        heapq.heappush(self.front_list, self.base_front)
+        return True
 
     def select_point_for_tri(self):
         """尝试选择点，生成三角形"""
@@ -213,6 +233,7 @@ class Adfront2Hybrid(Adfront2):
         )
 
         self.update_cells(new_cell)
+        self.front_retry_counter.pop(self.base_front.hash, None)
 
     def update_data_quad(self):
         if (
@@ -264,70 +285,95 @@ class Adfront2Hybrid(Adfront2):
         )
 
         self.update_cells(new_cell)
+        self.front_retry_counter.pop(self.base_front.hash, None)
 
     def select_point_for_quad(self, spacing):
+        failed_pairs = set()
+        if self._try_select_point_for_quad(spacing, failed_pairs):
+            return True
+
+        # 文献中的鲁棒性措施：扩大搜索范围到 1.6d 后再重试
+        self.search_candidates_for_quad(expand=True)
+        return self._try_select_point_for_quad(spacing, failed_pairs)
+
+    def _try_select_point_for_quad(self, spacing, failed_pairs=None):
+        if failed_pairs is None:
+            failed_pairs = set()
         # 预计算基准点坐标
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
 
-        # 候选节点质量评估参数
-        quality_criterion = self.quality_criterion
-        discount = self.discount
-
-        # 生成所有候选节点对（排除相同节点）
-        node_pairs = [
-            (n1, n2)
-            for n1 in self.node_candidates
-            for n2 in self.node_candidates
-            if n1 != n2
-        ]
-
-        # 统一处理四种候选情况
-        candidate_sources = [
-            # 常规候选对
-            (node_pairs, 1.0),
-            # pbest[1] 组合
-            ([(n, self.pbest[1]) for n in self.node_candidates], discount),
-            # pbest[0] 组合
-            ([(self.pbest[0], n) for n in self.node_candidates], discount),
-            # pbest对
-            ([(self.pbest[0], self.pbest[1])], discount**2),
-        ]
-
-        # 统一处理质量计算
         scored_candidates = []
-        for candidates, discount in candidate_sources:
-            for elem1, elem2 in candidates:
-                quality = quadrilateral_quality2(p0, p1, elem2.coords, elem1.coords)
-                discounted_quality = quality * discount
-                if discounted_quality > quality_criterion:
-                    scored_candidates.append((discounted_quality, elem1, elem2))
+        for elem1 in self.quad_node_candidates[0]:
+            for elem2 in self.quad_node_candidates[1]:
+                if elem1 == elem2:
+                    continue
+                pair_key = tuple(sorted((elem1.hash, elem2.hash)))
+                if pair_key in failed_pairs:
+                    continue
 
-        # 按质量降序排序（质量高的在前）
-        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+                quality = quadrilateral_quality2(p0, p1, elem2.coords, elem1.coords)
+                is_pbest1 = elem1.hash == self.pbest[0].hash
+                is_pbest2 = elem2.hash == self.pbest[1].hash
+
+                # 混合网格中避免完全依赖两个新点生成四边形，否则前沿容易持续膨胀
+                if is_pbest1 and is_pbest2:
+                    continue
+
+                discounted_quality = quality * (self.discount ** (is_pbest1 + is_pbest2))
+                if discounted_quality <= self.quality_criterion:
+                    continue
+
+                distance_sum = calculate_distance2(
+                    elem1.coords, self.pbest[0].coords
+                ) + calculate_distance2(elem2.coords, self.pbest[1].coords)
+                scored_candidates.append(
+                    (-discounted_quality, distance_sum, elem1, elem2, pair_key)
+                )
+
+        scored_candidates.sort(key=lambda x: (x[0], x[1]))
 
         self.pselected = None
         self.best_flag = [False] * 2
-        for quality, node_elem1, node_elem2 in scored_candidates:
+        for _, _, node_elem1, node_elem2, pair_key in scored_candidates:
             if not (
                 is_left2d(p0, p1, node_elem1.coords)
                 and is_left2d(p0, p1, node_elem2.coords)
             ):
+                failed_pairs.add(pair_key)
+                continue
+
+            if self.contains_front_node(node_elem1, node_elem2):
+                failed_pairs.add(pair_key)
                 continue
 
             if self.is_cross_quad(node_elem1, node_elem2):
+                failed_pairs.add(pair_key)
+                continue
+
+            if self.has_front_diagonal(node_elem1, node_elem2):
+                failed_pairs.add(pair_key)
                 continue
 
             if self.proximity_check(
                 node_elem1, node_elem2, self.proximity_tol * spacing
             ):
+                failed_pairs.add(pair_key)
                 continue
 
             if self.size_too_big(node_elem1, node_elem2, spacing):
+                failed_pairs.add(pair_key)
                 continue
 
             self.pselected = [node_elem1, node_elem2]
+            self.best_flag = [
+                node_elem1.hash == self.pbest[0].hash,
+                node_elem2.hash == self.pbest[1].hash,
+            ]
+            self.front_retry_counter.pop(self.base_front.hash, None)
             break
+
+        return self.pselected is not None
 
     def size_too_big(self, node_elem1, node_elem2, spacing):
         """检查当前新增的阵面是否满足长度要求，或者待新增的单元是否满足面积要求"""
@@ -436,16 +482,155 @@ class Adfront2Hybrid(Adfront2):
 
         return False
 
+    def contains_front_node(self, node_elem0, node_elem1):
+        polygon = [
+            self.base_front.node_elems[0].coords,
+            self.base_front.node_elems[1].coords,
+            node_elem1.coords,
+            node_elem0.coords,
+        ]
+        vertex_hashes = {
+            self.base_front.node_elems[0].hash,
+            self.base_front.node_elems[1].hash,
+            node_elem0.hash,
+            node_elem1.hash,
+        }
+        min_x = min(point[0] for point in polygon)
+        max_x = max(point[0] for point in polygon)
+        min_y = min(point[1] for point in polygon)
+        max_y = max(point[1] for point in polygon)
+
+        for front in self.front_candidates:
+            for node in front.node_elems:
+                if node.hash in vertex_hashes:
+                    continue
+                x, y = node.coords[:2]
+                if x < min_x or x > max_x or y < min_y or y > max_y:
+                    continue
+                if point_in_polygon(node.coords[:2], polygon):
+                    return True
+
+        return False
+
+    def has_front_diagonal(self, node_elem0, node_elem1):
+        p0 = self.base_front.node_elems[0]
+        p1 = self.base_front.node_elems[1]
+        front_hashes = {front.hash for front in self.front_list}
+        diag1 = Front(
+            node_elem1=p0,
+            node_elem2=node_elem1,
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
+        ).hash
+        diag2 = Front(
+            node_elem1=p1,
+            node_elem2=node_elem0,
+            idx=-1,
+            bc_type="interior",
+            part_name=self.base_front.part_name,
+            al=self.al,
+        ).hash
+        return diag1 in front_hashes or diag2 in front_hashes
+
+    def search_candidates_for_quad(self, expand=False):
+        if not isinstance(self.pbest, list) or len(self.pbest) != 2:
+            self.quad_node_candidates = [[], []]
+            self.node_candidates = []
+            self.front_candidates = []
+            self.cell_candidates = []
+            return
+
+        radius_factor = 2.0 * self.al if expand else self.al
+        search_radius = radius_factor * self.quad_step_size
+        self.search_radius = search_radius
+
+        candidate_lists = []
+        fronts_by_hash = {}
+        cells_by_hash = {}
+        union_nodes = {}
+
+        for ideal_point in self.pbest:
+            nodes, fronts = self._collect_fronts_and_nodes_near_point(
+                ideal_point.coords, search_radius
+            )
+            for node in nodes:
+                union_nodes[node.hash] = node
+            for front in fronts:
+                fronts_by_hash[front.hash] = front
+
+            sorted_nodes = sorted(
+                nodes,
+                key=lambda node_elem: calculate_distance2(node_elem.coords, ideal_point.coords),
+            )
+            if all(node.hash != ideal_point.hash for node in sorted_nodes):
+                sorted_nodes.append(ideal_point)
+            else:
+                sorted_nodes.sort(
+                    key=lambda node_elem: (
+                        node_elem.hash != ideal_point.hash,
+                        calculate_distance2(node_elem.coords, ideal_point.coords),
+                    )
+                )
+            candidate_lists.append(sorted_nodes)
+
+        if fronts_by_hash:
+            min_x = min(front.bbox[0] for front in fronts_by_hash.values()) - search_radius
+            min_y = min(front.bbox[1] for front in fronts_by_hash.values()) - search_radius
+            max_x = max(front.bbox[2] for front in fronts_by_hash.values()) + search_radius
+            max_y = max(front.bbox[3] for front in fronts_by_hash.values()) + search_radius
+            for cell in self.cell_container:
+                if (
+                    cell.bbox[0] <= max_x
+                    and cell.bbox[2] >= min_x
+                    and cell.bbox[1] <= max_y
+                    and cell.bbox[3] >= min_y
+                ):
+                    cells_by_hash[cell.hash] = cell
+
+        self.quad_node_candidates = candidate_lists
+        self.node_candidates = list(union_nodes.values())
+        self.front_candidates = list(fronts_by_hash.values())
+        self.cell_candidates = list(cells_by_hash.values())
+
+    def _collect_fronts_and_nodes_near_point(self, point, search_radius):
+        min_x = point[0] - search_radius
+        max_x = point[0] + search_radius
+        min_y = point[1] - search_radius
+        max_y = point[1] + search_radius
+        radius2 = search_radius * search_radius
+
+        fronts = []
+        nodes = {}
+        base_node_hashes = {node.hash for node in self.base_front.node_elems}
+        for front in self.front_list:
+            if (
+                front.bbox[0] > max_x
+                or front.bbox[2] < min_x
+                or front.bbox[1] > max_y
+                or front.bbox[3] < min_y
+            ):
+                continue
+
+            fronts.append(front)
+            for node_elem in front.node_elems:
+                if node_elem.hash in base_node_hashes:
+                    continue
+                if calculate_distance2(point, node_elem.coords) <= radius2:
+                    nodes[node_elem.hash] = node_elem
+
+        return list(nodes.values()), fronts
+
     def add_new_points_for_quad(self, spacing):
         """计算四边形的2个新顶点"""
-        theta1 = 120
+        theta1 = 110
         theta2 = 200
 
         l = self.base_front.length
         d0 = spacing
-        # TODO 步长如何计算合适？
-        # d = min(1.25 * l, max(0.8 * l, d0))  # 文献方法
-        d = d0  # 直接取为当地步长
+        d = min(1.25 * l, max(0.8 * l, d0))
+        self.quad_step_size = d
 
         # 计算新顶点的坐标
         self.pbest = []
@@ -503,10 +688,18 @@ class Adfront2Hybrid(Adfront2):
     def reconstruct_node2front(self):
         """重构node2front列表，按照先左侧阵面，后右侧阵面的顺序存储"""
         num_neighbors = 2
+        front_nodes = {
+            node_elem.hash: node_elem
+            for front in self.front_list
+            for node_elem in front.node_elems
+        }
+        for node_elem in front_nodes.values():
+            node_elem.node2front = [None] * num_neighbors
+
         for front in self.front_list:
             for node_elem in front.node_elems:
-                if len(node_elem.node2front) == 0:
-                    node_elem.node2front = [None] * num_neighbors  # 预分配2个位置
+                if len(node_elem.node2front) != num_neighbors:
+                    node_elem.node2front = [None] * num_neighbors
 
             # node_elem在front中是起点，则front是在后面
             for i, node_elem in enumerate(front.node_elems):

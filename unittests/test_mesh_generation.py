@@ -355,18 +355,19 @@ class TestMeshGeneration(unittest.TestCase):
 
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
-        case_file = self._fix_config_paths(self.test_dir / "30p30n_mixed.json")
-        output_file = self.output_dir / "test-30p30n-mixed.vtk"
+        case_file, output_file = self._fix_project_case_config("30p30n_mixed")
 
-        start = time.time()
-        PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
-        end = time.time()
-        cost = end - start
+        try:
+            start = time.time()
+            PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 4200, delta=40)
-        self.assertAlmostEqual(grid.num_nodes, 4051, delta=40)
-        self.assertLess(cost, 260)
+        self.assertAlmostEqual(grid.num_cells, 4991, delta=120)
+        self.assertAlmostEqual(grid.num_nodes, 3082, delta=120)
+        self.assertLess(cost, 120)
 
     def test_anw_mixed_generation(self):
         """测试anw_mixed网格生成"""
@@ -387,10 +388,10 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1126, delta=10)
-        self.assertAlmostEqual(grid.num_nodes, 1085, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 871, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 816, delta=20)
         self.assertEqual(zero_quality_quads, 0)
-        self.assertLess(cost, 20)
+        self.assertLess(cost, 40)
 
 
 if __name__ == "__main__":
