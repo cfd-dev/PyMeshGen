@@ -32,23 +32,25 @@ from utils.core_io import (
 
 
 def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
-    """核心网格生成函数
+    """核心网格生成流程（统一入口）。
 
-    调用底层算法生成网格，支持多种调用方式：
-    1. 通过parameters参数传递配置文件路径，从文件中读取网格数据
-    2. 直接通过mesh_data参数传递网格数据
-    3. 直接通过parts参数传递Part列表，直接使用part中的front_list
+    支持三类输入来源（优先级从高到低）：
+    1) `parts`：直接使用外部构造好的front_list；
+    2) `mesh_data`：直接使用外部网格对象；
+    3) `parameters.input_file`：从算例文件读取。
 
-    Args:
-        parameters: Parameters对象，包含网格生成的配置参数
-        mesh_data: 可选，直接传入的网格数据对象，可以是Unstructured_Grid对象、字典或其他类型
-        parts: 可选，直接传入的Part列表，优先级高于mesh_data
-        gui_instance: 可选，GUI实例，用于在网格生成过程中输出信息和显示中间结果
-
-    Returns:
-        生成的网格数据
+    网格类型与流程分支：
+    - 三角网格（mesh_type != 3）：
+      边界层 -> 三角推进 -> edge swap -> laplacian -> 合并输出。
+    - 混合网格（mesh_type == 3, 非q_morph）：
+      边界层 -> 混合推进(Adfront2Hybrid) -> edge swap -> 三角转四边形 -> 混合优化 -> 合并输出。
+    - 混合网格（mesh_type == 3, q_morph）：
+      边界层 -> 纯三角推进(Adfront2) -> edge swap -> laplacian(预平滑) -> q_morph合并 -> 混合优化 -> 合并输出。
     """
-    # 设置GUI实例到消息系统，确保所有info, error, warning等消息都能输出到GUI
+    # ------------------------------------------------------------------
+    # 0) 运行上下文初始化（GUI消息路由、计时器、可视化对象）
+    # ------------------------------------------------------------------
+    # 设置GUI实例到消息系统，确保所有info/error/warning消息都能输出到GUI
     if gui_instance:
         from utils.message import set_gui_instance
         set_gui_instance(gui_instance)
@@ -68,6 +70,9 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
         gui_log(gui_instance, f"开始生成{mesh_type_str}...")
         gui_progress(gui_instance, 0)  # 初始化参数
 
+    # ------------------------------------------------------------------
+    # 1) 输入解析与初始阵面构造（由utils.core_io统一处理）
+    # ------------------------------------------------------------------
     input_grid, front_heap = resolve_input_grid_and_front(
         parameters=parameters,
         mesh_data=mesh_data,
@@ -78,7 +83,9 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     log_parameters_debug_summary(parameters)
 
-    # 计算网格尺寸场
+    # ------------------------------------------------------------------
+    # 2) 构建尺寸场（QuadtreeSizing）
+    # ------------------------------------------------------------------
     gui_log(gui_instance, "开始计算网格尺寸场...")
     gui_progress(gui_instance, 3)  # 开始计算网格尺寸场
 
@@ -93,8 +100,10 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     gui_log(gui_instance, "网格尺寸场计算完成")
 
+    # ------------------------------------------------------------------
+    # 3) 生成边界层网格（Adlayers2）
+    # ------------------------------------------------------------------
     unstr_grid_list = []
-    # 推进生成边界层网格
     gui_log(gui_instance, "开始生成边界层网格...")
     gui_progress(gui_instance, 4)  # 开始生成边界层网格
 
@@ -110,7 +119,12 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     gui_log(gui_instance, "边界层网格生成完成")
 
-    # 推进生成网格
+    # ------------------------------------------------------------------
+    # 4) 生成内层网格
+    #    - 普通混合：Adfront2Hybrid
+    #    - q_morph混合：Adfront2（先纯三角）
+    #    - 三角网格：Adfront2
+    # ------------------------------------------------------------------
     gui_log(gui_instance, "开始推进生成网格...")
     gui_progress(gui_instance, 5)  # 开始推进生成网格
 
@@ -128,7 +142,13 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     gui_log(gui_instance, "网格生成完成")
 
-    # 网格质量优化
+    # ------------------------------------------------------------------
+    # 5) 网格质量优化与单元类型后处理
+    #    公共：edge_swap
+    #    q_morph混合：先laplacian预平滑，再q_morph合并
+    #    非q_morph混合：直接按配置方法合并（默认greedy）
+    #    三角网格：laplacian
+    # ------------------------------------------------------------------
     gui_log(gui_instance, "开始优化网格质量...")
     gui_progress(gui_instance, 6)  # 开始优化网格质量
 
@@ -152,7 +172,9 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     gui_log(gui_instance, "网格质量优化完成")
 
-    # 合并各向同性网格和边界层网格
+    # ------------------------------------------------------------------
+    # 6) 合并边界层与内层网格
+    # ------------------------------------------------------------------
     gui_log(gui_instance, "开始合并网格...")
     gui_progress(gui_instance, 7)  # 开始合并网格
 
@@ -162,6 +184,9 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     gui_log(gui_instance, "网格合并完成")
 
+    # ------------------------------------------------------------------
+    # 7) 输出与收尾（可视化、保存、GUI状态回填、计时结束）
+    # ------------------------------------------------------------------
     return output_and_finalize(
         global_unstr_grid=global_unstr_grid,
         parameters=parameters,
