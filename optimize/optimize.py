@@ -1,4 +1,3 @@
-import os
 import numpy as np
 import heapq
 from collections import deque
@@ -8,8 +7,6 @@ from utils import geom_toolkit as geom_tool
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose, warning, error
 from data_structure.basic_elements import Triangle, Quadrilateral
-import sys
-from pathlib import Path
 
 from .mesh_quality import quadrilateral_quality2, triangle_shape_quality
 
@@ -44,34 +41,10 @@ except ImportError:
     drl_smoothing = None
 
 def optimize_hybrid_grid(hybrid_grid):
-    """调用外部混合网格优化软件进行优化"""  
-    import subprocess
-    project_root = Path(__file__).resolve().parent.parent
-    out_dir = project_root / "out"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    tmp_file = str(out_dir / "tmp_mesh.vtk")
-    hybrid_grid.save_to_vtkfile(tmp_file)
-
-    max_iter = 10
-    movement_factor = 0.3
-    opt_exe = str(project_root / "optimize" / "laplacian_opt.exe")
-    cmd = [opt_exe, tmp_file, str(max_iter), str(movement_factor)]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-        warning(f"外部混合优化执行失败，保留当前混合网格: {exc}")
-        return hybrid_grid
-    debug(f'Optimized VTK mesh written to: {tmp_file.replace(".vtk", "_opt.vtk")}')
-    
-    # 从优化后的VTK文件加载网格
-    from fileIO.vtk_io import parse_vtk_msh
-    optimized_grid = parse_vtk_msh(tmp_file.replace(".vtk", "_opt.vtk"))
-    
-    # 如果需要，删除临时文件
-    if not __debug__:
-        os.remove(tmp_file)
-        os.remove(tmp_file.replace(".vtk", "_opt.vtk"))
-
+    """使用内部算法优化混合网格（不依赖外部可执行文件）。"""
+    info("开始内部混合网格优化...")
+    optimized_grid = hybrid_smooth(hybrid_grid, max_iter=10)
+    info("内部混合网格优化完成。")
     return optimized_grid
 
 
