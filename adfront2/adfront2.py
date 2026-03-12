@@ -522,7 +522,10 @@ class Adfront2:
                 node_coord[1] + normal_vec[1] * spacing,
             ]
         elif self.mesh_type == 3:
-            pass
+            pbest = [
+                fc[0] + normal_vec[0] * spacing,
+                fc[1] + normal_vec[1] * spacing,
+            ]
         else:
             pbest = [
                 fc[0] + normal_vec[0] * spacing,

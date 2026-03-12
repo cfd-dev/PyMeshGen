@@ -21,8 +21,7 @@ for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
 
-from PyMeshGen import PyMeshGen
-from PyMeshGen_mixed import PyMeshGen_mixed
+from PyMeshGen import PyMeshGen, PyMeshGen_mixed
 from fileIO.vtk_io import parse_vtk_msh
 from data_structure.parameters import Parameters
 from optimize.mesh_quality import quadrilateral_quality2

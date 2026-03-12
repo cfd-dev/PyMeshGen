@@ -41,7 +41,26 @@ def PyMeshGen(parameters=None, mesh_data=None):
     Returns:
         生成的网格数据
     """
-    return generate_mesh(parameters, mesh_data, _global_gui_instance)
+    return generate_mesh(
+        parameters=parameters,
+        mesh_data=mesh_data,
+        gui_instance=_global_gui_instance,
+    )
+
+
+def PyMeshGen_mixed(parameters=None, mesh_data=None):
+    """混合网格兼容入口。
+
+    统一复用core.generate_mesh，仅强制mesh_type=3以保持旧接口语义。
+    """
+    if parameters is None:
+        parameters = Parameters("FROM_MAIN_JSON")
+    parameters.mesh_type = 3
+    return generate_mesh(
+        parameters=parameters,
+        mesh_data=mesh_data,
+        gui_instance=_global_gui_instance,
+    )
 
 
 if __name__ == "__main__":

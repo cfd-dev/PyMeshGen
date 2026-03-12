@@ -25,6 +25,45 @@ from adfront2.adfront2_hybrid import Adfront2Hybrid
 from optimize.optimize import optimize_hybrid_grid
 
 
+def _is_mixed_mesh(mesh_type):
+    return mesh_type == 3
+
+
+def _use_triangle_pipeline_for_qmorph(parameters):
+    return (
+        _is_mixed_mesh(parameters.mesh_type)
+        and parameters.triangle_to_quad_method == "q_morph"
+    )
+
+
+def _create_interior_generator(
+    parameters, front_heap, sizing_system, boundary_grid, visual_obj
+):
+    if _use_triangle_pipeline_for_qmorph(parameters):
+        return Adfront2(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+    if _is_mixed_mesh(parameters.mesh_type):
+        return Adfront2Hybrid(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            node_coords=boundary_grid.node_coords,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+    return Adfront2(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        node_coords=boundary_grid.node_coords,
+        param_obj=parameters,
+        visual_obj=visual_obj,
+    )
+
+
 def _cell_node_count(cell):
     if cell is None:
         return 0
@@ -187,7 +226,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     # 输出信息到GUI
     if gui_instance:
-        mesh_type_str = "三角形/四边形混合网格" if parameters.mesh_type == 3 else "三角形网格"
+        mesh_type_str = (
+            "三角形/四边形混合网格"
+            if _is_mixed_mesh(parameters.mesh_type)
+            else "三角形网格"
+        )
         gui_log(gui_instance, f"开始生成{mesh_type_str}...")
         gui_progress(gui_instance, 0)  # 初始化参数
 
@@ -307,25 +350,17 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     gui_log(gui_instance, "开始推进生成网格...")
     gui_progress(gui_instance, 5)  # 开始推进生成网格
 
-    # 根据网格类型选择不同的生成算法
-    if parameters.mesh_type == 3:  # 三角形/四边形混合网格
-        adfront2 = Adfront2Hybrid(
-            boundary_front=front_heap,
-            sizing_system=sizing_system,
-            node_coords=boundary_grid.node_coords,
-            param_obj=parameters,
-            visual_obj=visual_obj,
-        )
-        triangular_grid = adfront2.generate_elements()
-    else:  # 三角形网格
-        adfront2 = Adfront2(
-            boundary_front=front_heap,
-            sizing_system=sizing_system,
-            node_coords=boundary_grid.node_coords,
-            param_obj=parameters,
-            visual_obj=visual_obj,
-        )
-        triangular_grid = adfront2.generate_elements()
+    if _use_triangle_pipeline_for_qmorph(parameters):
+        info("q-morph模式：先生成纯三角形网格，再进行q-morph四边形合并")
+
+    adfront2 = _create_interior_generator(
+        parameters=parameters,
+        front_heap=front_heap,
+        sizing_system=sizing_system,
+        boundary_grid=boundary_grid,
+        visual_obj=visual_obj,
+    )
+    triangular_grid = adfront2.generate_elements()
     
     gui_log(gui_instance, "网格生成完成")
 
@@ -335,7 +370,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     triangular_grid = edge_swap(triangular_grid)
     
-    if parameters.mesh_type == 3:  # 三角形/四边形混合网格
+    if _is_mixed_mesh(parameters.mesh_type):  # 三角形/四边形混合网格
         # 合并三角形生成混合网格
         hybrid_grid = triangular_grid.merge_elements(
             method=parameters.triangle_to_quad_method
