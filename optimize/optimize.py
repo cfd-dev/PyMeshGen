@@ -46,12 +46,15 @@ except ImportError:
 def optimize_hybrid_grid(hybrid_grid):
     """调用外部混合网格优化软件进行优化"""  
     import subprocess
-    tmp_file = "./out/tmp_mesh.vtk"
+    project_root = Path(__file__).resolve().parent.parent
+    out_dir = project_root / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tmp_file = str(out_dir / "tmp_mesh.vtk")
     hybrid_grid.save_to_vtkfile(tmp_file)
 
     max_iter = 10
     movement_factor = 0.3
-    opt_exe = './optimize/laplacian_opt.exe'
+    opt_exe = str(project_root / "optimize" / "laplacian_opt.exe")
     cmd = [opt_exe, tmp_file, str(max_iter), str(movement_factor)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)

@@ -9,6 +9,7 @@
 import copy
 import heapq
 from itertools import combinations
+from types import SimpleNamespace
 
 from data_structure.basic_elements import Triangle, Quadrilateral
 from optimize import mesh_quality
@@ -39,6 +40,7 @@ def merge_triangles_to_quads(unstr_grid):
     new_grid = copy.deepcopy(unstr_grid)
     
     node_coords = new_grid.node_coords
+    node_container = [SimpleNamespace(coords=coords) for coords in node_coords]
     edge_map = {}
     merge_candidates = []
 
@@ -74,40 +76,42 @@ def merge_triangles_to_quads(unstr_grid):
         if not geom_tool.is_convex(a, c, b, d, node_coords):
             continue
 
-        # 计算质量增益
+        try:
+            sorted_quad_nodes = geom_tool.sort_quadrilateral_nodes(
+                [a, c, b, d], node_container
+            )
+        except ValueError:
+            continue
+
+        # 用排序后的顶点环序评估候选四边形质量，避免交叉节点顺序生成退化四边形
         tri1.init_metrics()
         tri2.init_metrics()
-        tri_quality = (tri1.quality + tri2.quality) / 2
         quad_quality = mesh_quality.quadrilateral_quality2(
-            node_coords[a], node_coords[c], node_coords[b], node_coords[d]
+            *(node_coords[idx] for idx in sorted_quad_nodes)
         )
 
         # 质量提升判断（使用最小堆保存优质候选）
-        heapq.heappush(merge_candidates, (-quad_quality, (cell1, cell2, a, b, c, d)))
+        heapq.heappush(
+            merge_candidates,
+            (-quad_quality, (cell1, cell2, tuple(sorted_quad_nodes))),
+        )
 
     # 按质量从高到低处理合并
     merged = set()
     num_merged = 0
     while merge_candidates:
-        _, (cell1_idx, cell2_idx, a, b, c, d) = heapq.heappop(merge_candidates)
+        _, (cell1_idx, cell2_idx, quad_nodes) = heapq.heappop(merge_candidates)
 
         # 跳过已处理单元
         if cell1_idx in merged or cell2_idx in merged:
             continue
 
-        # 确保新创建的四边形法向指向z轴正方向
-        if not geom_tool.is_left2d(node_coords[a], node_coords[b], node_coords[d]):
-            a, c, b, d = a, d, b, c
-
         # 创建新四边形
         new_quad = Quadrilateral(
-            node_coords[a],
-            node_coords[c],
-            node_coords[b],
-            node_coords[d],
+            *(node_coords[idx] for idx in quad_nodes),
             "interior",
             len(new_grid.cell_container),
-            [a, c, b, d],
+            list(quad_nodes),
         )
 
         # 替换原单元

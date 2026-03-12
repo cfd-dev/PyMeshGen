@@ -25,6 +25,7 @@ from PyMeshGen import PyMeshGen
 from PyMeshGen_mixed import PyMeshGen_mixed
 from fileIO.vtk_io import parse_vtk_msh
 from data_structure.parameters import Parameters
+from optimize.mesh_quality import quadrilateral_quality2
 
 
 class TestMeshGeneration(unittest.TestCase):
@@ -379,8 +380,17 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
+        zero_quality_quads = 0
+        for cell in grid.cells:
+            if len(cell) != 4:
+                continue
+            points = [grid.node_coords[node_id] for node_id in cell]
+            if quadrilateral_quality2(*points) <= 1e-9:
+                zero_quality_quads += 1
+
         self.assertAlmostEqual(grid.num_cells, 1126, delta=10)
         self.assertAlmostEqual(grid.num_nodes, 1085, delta=10)
+        self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 20)
 
 
