@@ -337,7 +337,9 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     
     if parameters.mesh_type == 3:  # 三角形/四边形混合网格
         # 合并三角形生成混合网格
-        hybrid_grid = triangular_grid.merge_elements()
+        hybrid_grid = triangular_grid.merge_elements(
+            method=parameters.triangle_to_quad_method
+        )
         # 优化混合网格
         hybrid_grid = optimize_hybrid_grid(hybrid_grid)
         unstr_grid_list.append(hybrid_grid)

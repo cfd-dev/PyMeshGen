@@ -39,6 +39,7 @@ class Parameters:
         self.input_file = []
         self.output_file = []
         self.mesh_type = 1 # 1-三角形triangular，2-直角三角形right_trianglar，3-三角形/四边形混合2d_mixed
+        self.triangle_to_quad_method = "greedy_merge"
         self.viz_enabled = False
         self.auto_output = True  # 是否自动输出网格
 
@@ -110,6 +111,9 @@ class Parameters:
         self.input_file = config["input_file"]
         self.output_file = config["output_file"]
         self.mesh_type = config.get("mesh_type", 1)
+        self.triangle_to_quad_method = config.get(
+            "triangle_to_quad_method", "greedy_merge"
+        )
         self.viz_enabled = config["viz_enabled"]
         self.auto_output = config.get("auto_output", True)
 
@@ -139,6 +143,7 @@ class Parameters:
         params.input_file = []
         params.output_file = []
         params.mesh_type = 1
+        params.triangle_to_quad_method = "greedy_merge"
         params.viz_enabled = False
         params.auto_output = True
         params.load_config_data(config)
@@ -249,6 +254,9 @@ class Parameters:
         self.input_file = config.get("input_file", self.input_file)
         self.output_file = config.get("output_file", self.output_file)
         self.mesh_type = config.get("mesh_type", self.mesh_type)
+        self.triangle_to_quad_method = config.get(
+            "triangle_to_quad_method", self.triangle_to_quad_method
+        )
         self.viz_enabled = config.get("viz_enabled", self.viz_enabled)
         self.auto_output = config.get("auto_output", self.auto_output)
         set_debug_level(self.debug_level)

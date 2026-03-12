@@ -807,19 +807,17 @@ class Unstructured_Grid:
         for node_idx in self.node2cell:
             self.node2cell[node_idx] = list(set(self.node2cell[node_idx]))
 
-    def merge_elements(self):
+    def merge_elements(self, method="greedy_merge"):
         """
         合并相邻的三角形单元，形成四边形单元。
-        
-        此方法调用 utils.mesh_utils.merge_triangles_to_quads 工具函数。
-        
-        合并条件：
-        1. 两个三角形必须共享一条边
-        2. 合并后的四边形是凸多边形
-        3. 四边形质量高于合并前三角形质量中位数
-        
+
         Returns:
             Unstructured_Grid: 合并后的新网格对象（不修改原始网格）
         """
-        from utils.mesh_utils import merge_triangles_to_quads
-        return merge_triangles_to_quads(self)
+        from utils.mesh_utils import merge_triangles_to_quads, q_morph_triangles_to_quads
+
+        if method == "greedy_merge":
+            return merge_triangles_to_quads(self)
+        if method == "q_morph":
+            return q_morph_triangles_to_quads(self)
+        raise ValueError(f"不支持的三角形转四边形方法: {method}")
