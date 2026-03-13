@@ -837,7 +837,7 @@ class Adlayers2:
         Args:
             front: 当前待检查的阵面（prism_cap 类型）
         """
-        max_layer_diff = 2  # 最大允许层数差
+        max_layer_diff = 1  # 最大允许层数差
 
         neighbor_prism_caps = set()  # 存储相邻 prism_cap 的 hash 值
         neighbor_layers = set()  # 存储相邻 prism_cap 的层数
