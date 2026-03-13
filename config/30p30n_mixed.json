@@ -3,7 +3,7 @@
     "input_file": "./config/input/30p30n-small.cas",
     "output_file": "./out/30p30n-mixed.vtk",
 	"mesh_type": 3,
-    "triangle_to_quad_method": "greedy_merge",
+    "triangle_to_quad_method": "q_morph",
     "viz_enabled": false,
     "parts": [
         {

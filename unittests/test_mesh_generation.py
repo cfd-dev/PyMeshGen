@@ -145,8 +145,8 @@ class TestMeshGeneration(unittest.TestCase):
         cost = end - start
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 2981, delta=10)
-        self.assertAlmostEqual(grid.num_nodes, 2216, delta=10)
+        self.assertAlmostEqual(grid.num_cells, 2964, delta=10)
+        self.assertAlmostEqual(grid.num_nodes, 2231, delta=10)
         self.assertLess(cost, 40)
 
     def test_30p30n_generation(self):

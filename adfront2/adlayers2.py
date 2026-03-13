@@ -1022,33 +1022,74 @@ class Adlayers2:
             normal1 = np.array(front1.normal)
             normal2 = np.array(front2.normal)
 
-            # 处理节点只有一侧有流向阵面 (prism-cap)，另一侧是法向阵面 (interior) 的情况
-            if front1.bc_type == "interior" and front2.bc_type not in ("interior", "match"):
-                # interior 阵面不使用其法向，只使用流向阵面的法向
-                # 如果 interior 阵面有方向向量，则使用该方向
-                if hasattr(front1, 'direction') and front1.direction is not None:
-                    normal1 = np.array(front1.direction)
-                else:
-                    # 使用流向阵面的法向作为推进方向
-                    node_elem.marching_direction = tuple(normal2)
-                    continue
-            elif front2.bc_type == "interior" and front1.bc_type not in ("interior", "match"):
-                # interior 阵面不使用其法向，只使用流向阵面的法向
-                if hasattr(front2, 'direction') and front2.direction is not None:
-                    normal2 = np.array(front2.direction)
-                else:
-                    # 使用流向阵面的法向作为推进方向
-                    node_elem.marching_direction = tuple(normal1)
-                    continue
+            # TODO: 应对节点只有一侧有流向阵面(prism-cap)，另一侧是法向阵面(interior)的情况
+            if front1.bc_type == "interior":
+                # 处理方案1：将流向阵面法向作为推进方向
+                node_elem.marching_direction = tuple(normal2)
+                continue
+                # 处理方案2：将法向阵面的方向向量作为normal1
+                # normal1 = np.array(front2.direction)
+                # 处理方案3：将法向阵面的方向作为推进方向
+                # node_elem.marching_direction = tuple(front1.direction)
+                # continue
+            elif front2.bc_type == "interior":
+                # 处理方案1：将流向阵面法向作为推进方向
+                node_elem.marching_direction = tuple(normal1)
+                continue
+                # 处理方案2：将法向阵面的方向向量作为normal1
+                # normal2 = np.array(front1.direction)
+                # 处理方案3：将法向阵面的方向作为推进方向
+                # node_elem.marching_direction = tuple(front2.direction)
 
-            # 推进方向不做角度加权，直接采用相邻阵面法向的等权平均
+            # 计算初始推进方向（法向量平均）
             avg_direction = (normal1 + normal2) / 2.0
             norm = np.linalg.norm(avg_direction)
-            if norm > 1e-6:
-                node_elem.marching_direction = tuple(avg_direction / norm)
-            else:
-                # 如果平均方向接近零，说明两个法向相反，使用第一个法向
-                node_elem.marching_direction = tuple(normal1)
+            avg_direction /= norm
+
+            new_direction = avg_direction if norm > 1e-6 else normal1
+            
+            # 加权光滑
+            w1 = self.relax_factor
+            wf1 = 0.5
+            wf2 = 1 - wf1
+
+            iterations = 0
+            max_iterations = 50
+            smooth = True
+            while smooth and iterations < max_iterations:
+                iterations += 1
+                old_direction = new_direction.copy()
+
+                new_direction = (1 - w1) * old_direction + w1 * (
+                    wf1 * normal1 + wf2 * normal2
+                )
+                norm = np.linalg.norm(new_direction)
+                if norm > 1e-10:
+                    new_direction /= norm
+
+                # 计算法向与相邻面的夹角及其与平均夹角的偏差 df
+                dot_product1 = np.dot(new_direction, normal1)
+                dot_product2 = np.dot(new_direction, normal2)
+                angle1 = np.arccos(np.clip(dot_product1, -1.0, 1.0))
+                angle2 = np.arccos(np.clip(dot_product2, -1.0, 1.0))
+
+                avg_angle = (angle1 + angle2) / 2
+
+                # 计算夹角偏差
+                df1 = abs(angle1 - avg_angle)
+                df2 = abs(angle2 - avg_angle)
+
+                # 更新权重
+                epsilon = 1e-10
+                wf1_bar = wf1 * (1 - df1 / (avg_angle + epsilon))
+                wf2_bar = wf2 * (1 - df2 / (avg_angle + epsilon))
+                wf1 = wf1_bar + wf1 * (1 - (wf1_bar + wf2_bar))
+                wf2 = wf2_bar + wf2 * (1 - (wf1_bar + wf2_bar))
+
+                if np.linalg.norm(new_direction - old_direction) < 1e-3:
+                    smooth = False
+
+            node_elem.marching_direction = tuple(new_direction)
 
         verbose("计算节点初始推进方向..., Done.\n")
 
@@ -1399,17 +1440,11 @@ class Adlayers2:
 
             # 计算多方向推进数量和局部步长因子
             if self.multi_direction and node_elem.convex_flag and self.ilayer == 0:
-                # 仅在足够大的凸角上开启多方向，避免小角度分裂导致串线停滞
-                if node_elem.angle < 80.0:
-                    node_elem.num_multi_direction = 1
-                    node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
-                    continue
-
                 num_multi_direction = (
                     int(np.radians(node_elem.angle) / (1.1 * pi / 3)) + 1
                 )
-                # 仅对明显凸角启用多方向；平滑曲线小角度维持单方向
-                node_elem.num_multi_direction = max(1, num_multi_direction)
+                # 确保 num_multi_direction 至少为 2
+                node_elem.num_multi_direction = max(2, num_multi_direction)
 
                 debug(
                     f"[凸角检测] 节点{node_elem.idx} 角度={node_elem.angle:.1f}° "
