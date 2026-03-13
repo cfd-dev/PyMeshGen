@@ -3,7 +3,7 @@
     "input_file": "./config/input/inv_cylinder-8.cas",
     "output_file": "./out/cylinder.vtk",
     "mesh_type": 3,
-    "viz_enabled": true,
+    "viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield"

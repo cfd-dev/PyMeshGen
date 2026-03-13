@@ -65,6 +65,9 @@ class TestMeshGeneration(unittest.TestCase):
                 output_file = Path(__file__).parent / "test_files" / "2d_cases" / "test_outputs" / Path(output_file).name
                 config['output_file'] = str(output_file.resolve())
 
+        # 测试时统一关闭可视化，避免渲染导致卡顿
+        config['viz_enabled'] = False
+
         # 保存修复后的配置到临时文件
         temp_config_path = Path(__file__).parent / f"temp_{config_path.stem}.json"
         with open(temp_config_path, 'w', encoding='utf-8') as f:

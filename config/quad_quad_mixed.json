@@ -3,7 +3,7 @@
     "input_file": "./config/input/quad_quad.cas",
     "output_file": "./out/quad_quad.vtk",
     "mesh_type": 3,
-    "viz_enabled": true,
+    "viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield"

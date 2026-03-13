@@ -4,7 +4,7 @@
     "output_file": "./out/30p30n-mixed.vtk",
 	"mesh_type": 3,
     "triangle_to_quad_method": "greedy_merge",
-    "viz_enabled": true,
+    "viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield",

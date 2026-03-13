@@ -66,13 +66,25 @@ def _build_triangle_pair_candidate(
     tri1 = new_grid.cell_container[cell1_idx]
     tri2 = new_grid.cell_container[cell2_idx]
 
-    common = set(tri1.node_ids) & set(tri2.node_ids)
+    tri1_nodes = set(tri1.node_ids)
+    tri2_nodes = set(tri2.node_ids)
+    if len(tri1_nodes) != 3 or len(tri2_nodes) != 3:
+        return None
+
+    common = tri1_nodes & tri2_nodes
     if len(common) != 2:
         return None
 
     a, b = sorted(common)
-    c = list(set(tri1.node_ids) - common)[0]
-    d = list(set(tri2.node_ids) - common)[0]
+    tri1_unique = list(tri1_nodes - common)
+    tri2_unique = list(tri2_nodes - common)
+    if len(tri1_unique) != 1 or len(tri2_unique) != 1:
+        return None
+
+    c = tri1_unique[0]
+    d = tri2_unique[0]
+    if c == d:
+        return None
 
     if not geom_tool.is_convex(a, c, b, d, node_coords):
         return None
