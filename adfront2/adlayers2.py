@@ -771,11 +771,11 @@ class Adlayers2:
             if self._advance_virtual_front(front, new_interior_list, new_prism_cap_list):
                 continue
 
-            # 检查相邻阵面的层数差，若超过 2 则当前阵面早停
+            # 检查相邻阵面的层数差，若超过 1 则当前阵面早停
             if self._check_neighbor_layer_difference(front):
                 front.early_stop_flag = True
                 new_prism_cap_list.append(front)
-                verbose(f"[早停] 阵面{front.node_ids}因相邻阵面层数差>2 而早停，当前层数：{front.layer_count}")
+                verbose(f"[早停] 阵面{front.node_ids}因相邻阵面层数差>1 而早停，当前层数：{front.layer_count}")
                 continue
 
             (
@@ -829,7 +829,7 @@ class Adlayers2:
         verbose(f"下一层（第{self.ilayer+2}层）阵面数据更新..., Done.\n")
 
     def _check_neighbor_layer_difference(self, front):
-        """检查相邻 prism_cap 阵面的层数差，若超过 2 则返回 True（需要早停）
+        """检查相邻 prism_cap 阵面的层数差，若超过 1 则返回 True（需要早停）
         
         相邻 prism_cap 的定义：两个 prism_cap 可以通过任意数量的 interior 阵面链相连。
         使用 BFS 算法搜索所有可达的 prism_cap。
