@@ -1232,6 +1232,7 @@ class Adlayers2:
                 f"[多方向调试] 首层初始化后虚拟点数量: "
                 f"{len(self.multi_direction_manager.virtual_points)}"
             )
+            self.log_multi_direction_virtual_summary()
 
     def log_multi_direction_debug_summary(self):
         """输出首层多方向关键调试信息"""
@@ -1277,6 +1278,51 @@ class Adlayers2:
                 ]
             )
             verbose(f"[多方向调试] 凸角角度详情: {details}")
+
+        corner_nodes = [
+            node
+            for node in self.front_node_list
+            if len(getattr(node, "node2front", [])) >= 2
+            and (node.convex_flag or node.concav_flag)
+        ]
+        if corner_nodes:
+            debug("[多方向调试] 首层角点详情(角度/方向数/判定原因):")
+            for node in sorted(corner_nodes, key=lambda n: n.idx):
+                reason = getattr(node, "multi_direction_reason", "N/A")
+                debug(
+                    f"[角点] id={node.idx}, angle={node.angle:.2f}°, "
+                    f"convex={node.convex_flag}, concave={node.concav_flag}, "
+                    f"num_multi_direction={node.num_multi_direction}, reason={reason}"
+                )
+
+    def log_multi_direction_virtual_summary(self):
+        """输出首层每个角点创建的虚拟点数量"""
+        if (
+            not self.multi_direction
+            or self.ilayer != 0
+            or self.multi_direction_manager is None
+        ):
+            return
+
+        corner_nodes = [
+            node
+            for node in self.front_node_list
+            if len(getattr(node, "node2front", [])) >= 2
+            and (node.convex_flag or node.concav_flag)
+        ]
+        if not corner_nodes:
+            return
+
+        debug("[多方向调试] 首层角点虚拟点统计:")
+        for node in sorted(corner_nodes, key=lambda n: n.idx):
+            pair = self.multi_direction_manager.node_pair.get(node.idx, [])
+            virtual_count = max(0, len(pair) - 1)
+            real_id = node.idx
+            debug(
+                f"[角点虚拟点] id={node.idx}, angle={node.angle:.2f}°, "
+                f"num_multi_direction={node.num_multi_direction}, virtual_points={virtual_count}, "
+                f"real_point={real_id}"
+            )
 
     def log_first_layer_cell_summary(self, start_cell_idx):
         """输出首层新增单元数量和类型"""
@@ -1430,13 +1476,16 @@ class Adlayers2:
                 node_elem.convex_flag = True
                 node_elem.concav_flag = False
                 thetam = np.radians(node_elem.angle)
+                node_elem.multi_direction_reason = "凸角"
             elif cross > 1e-6:  # 凹角
                 node_elem.convex_flag = False
                 node_elem.concav_flag = True
                 thetam = -np.radians(node_elem.angle)
+                node_elem.multi_direction_reason = "凹角(不启用多方向)"
             else:  # 共线
                 node_elem.convex_flag = False
                 node_elem.concav_flag = False
+                node_elem.multi_direction_reason = "共线(非角点)"
 
             # 计算多方向推进数量和局部步长因子
             if self.multi_direction and node_elem.convex_flag and self.ilayer == 0:
@@ -1444,6 +1493,9 @@ class Adlayers2:
                 if node_elem.angle < 80.0:
                     node_elem.num_multi_direction = 1
                     node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
+                    node_elem.multi_direction_reason = (
+                        f"凸角但角度<{80.0}°，不分裂多方向"
+                    )
                     continue
 
                 num_multi_direction = (
@@ -1479,11 +1531,17 @@ class Adlayers2:
                     debug(
                         f"[多方向] 节点{node_elem.idx} 方向数量={len(node_elem.marching_direction)}"
                     )
+                    node_elem.multi_direction_reason = "凸角且角度满足阈值，启用多方向"
                     node_elem.local_step_factor = 1.0
                 else:
+                    node_elem.multi_direction_reason = "凸角但计算结果为单方向"
                     node_elem.local_step_factor = 1 - np.sign(thetam) * abs(thetam) / pi
             else:
                 node_elem.num_multi_direction = 1
+                if self.ilayer > 0 and node_elem.convex_flag:
+                    node_elem.multi_direction_reason = "非首层，凸角退化为单方向"
+                elif not self.multi_direction:
+                    node_elem.multi_direction_reason = "multi_direction未启用"
                 # 第二层及以后，凸点不再分裂多方向，方向退化为单一向量
                 if isinstance(node_elem.marching_direction, list):
                     if len(node_elem.marching_direction) > 0:

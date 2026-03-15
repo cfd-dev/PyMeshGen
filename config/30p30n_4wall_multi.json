@@ -2,7 +2,7 @@
     "debug_level": 0,
     "input_file": "./config/input/30p30n-4walls.cas",
     "output_file": "./out/30p30n-4walls.vtk",
-    "viz_enabled": true,
+    "viz_enabled": false,
     "parts": [
         {
             "part_name": "farfield",

@@ -341,7 +341,7 @@ class TestMeshGeneration(unittest.TestCase):
         self._override_case_config(
             case_file,
             debug_level=0,
-            wall_multi_direction=False,
+            wall_multi_direction=True,
         )
 
         try:
@@ -352,8 +352,8 @@ class TestMeshGeneration(unittest.TestCase):
             case_file.unlink(missing_ok=True)
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 10731, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 8955, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 10714, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 8960, delta=20)
         self.assertLess(cost, 80)
 
     def test_30p30n_mixed_generation(self):
