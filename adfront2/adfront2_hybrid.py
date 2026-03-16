@@ -82,9 +82,12 @@ class Adfront2Hybrid(Adfront2):
         width = self.bbox[2] - self.bbox[0]
         height = self.bbox[3] - self.bbox[1]
 
-        # 当距离小于0.15倍计算域大小时，开启阵面排序
-        safe_distance_sq = 0.3 * (width + height) / 2
-        safe_distance_sq *= safe_distance_sq
+        # Determine safe distance using local sizing rather than a global fraction of bbox.
+        # Trigger sorting when fronts from different parts are closer than
+        # threshold_factor * max(local_spacing_front1, local_spacing_front2).
+        # Using local spacing makes the decision scale with mesh size and improves
+        # robustness for mixed/anisotropic configurations.
+        threshold_factor = 2.0
 
         for front1 in self.front_list:
             for front2 in self.front_list:
@@ -93,6 +96,18 @@ class Adfront2Hybrid(Adfront2):
                     p1 = front1.node_elems[1].coords
                     q0 = front2.node_elems[0].coords
                     q1 = front2.node_elems[1].coords
+
+                    # get local spacing from sizing system; fall back to a bbox-based scale
+                    try:
+                        s1 = self.sizing_system.spacing_at(front1.center)
+                        s2 = self.sizing_system.spacing_at(front2.center)
+                    except Exception:
+                        # fallback: use average domain size as a coarse spacing
+                        s1 = s2 = 0.5 * (width + height) / 2
+
+                    safe_distance = threshold_factor * max(s1, s2)
+                    safe_distance_sq = safe_distance * safe_distance
+
                     if fast_distance_check(p0, p1, q0, q1, safe_distance_sq):
                         info("部件之间阵面最小距离较小，按阵面长短顺序推进生成...")
                         self.sort_front = True
