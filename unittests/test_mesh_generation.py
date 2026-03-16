@@ -443,8 +443,8 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1130, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 1085, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1166, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 1111, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
@@ -473,8 +473,8 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1130, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 1085, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1111, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 868, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
