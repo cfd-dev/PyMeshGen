@@ -96,7 +96,7 @@ class TestMeshGeneration(unittest.TestCase):
         return temp_config_path, output_file
 
     @staticmethod
-    def _override_case_config(temp_config_path, debug_level=None, wall_multi_direction=None):
+    def _override_case_config(temp_config_path, debug_level=None, wall_multi_direction=None, triangle_to_quad_method=None):
         """覆盖临时算例配置中的部分字段"""
         with open(temp_config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
@@ -108,6 +108,10 @@ class TestMeshGeneration(unittest.TestCase):
             for part in config.get("parts", []):
                 if part.get("PRISM_SWITCH") == "wall":
                     part["multi_direction"] = wall_multi_direction
+
+        if triangle_to_quad_method is not None:
+            # set top-level triangle_to_quad_method so Parameters picks it up
+            config['triangle_to_quad_method'] = triangle_to_quad_method
 
         with open(temp_config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
@@ -359,6 +363,32 @@ class TestMeshGeneration(unittest.TestCase):
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
         case_file, output_file = self._fix_project_case_config("30p30n_mixed")
+        self._override_case_config(
+            case_file,
+            debug_level=0,
+            triangle_to_quad_method="greedy_merge",
+        )
+
+        try:
+            start = time.time()
+            PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
+            cost = time.time() - start
+        finally:
+            case_file.unlink(missing_ok=True)
+
+        grid = parse_vtk_msh(output_file)
+        self.assertAlmostEqual(grid.num_cells, 4370, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 4199, delta=20)
+        self.assertLess(cost, 120)
+
+    def test_30p30n_mixed_generation_qmorh(self):
+        """测试30p30n_mixed网格生成, q-morph"""
+        case_file, output_file = self._fix_project_case_config("30p30n_mixed")
+        self._override_case_config(
+            case_file,
+            debug_level=0,
+            triangle_to_quad_method="q_morph",
+        )
 
         try:
             start = time.time()
@@ -396,6 +426,35 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
+    def test_anw_mixed_generation(self):
+        """测试anw_mixed网格生成"""
+        case_file = self._fix_config_paths(self.test_dir / "anw_mixed.json")
+        output_file = self.output_dir / "test_anw_mixed_greedy_merge.vtk"
+
+        self._override_case_config(
+            case_file,
+            debug_level=0,
+            triangle_to_quad_method="greedy_merge",
+        )
+
+        start = time.time()
+        PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
+        end = time.time()
+        cost = end - start
+
+        grid = parse_vtk_msh(output_file)
+        zero_quality_quads = 0
+        for cell in grid.cells:
+            if len(cell) != 4:
+                continue
+            points = [grid.node_coords[node_id] for node_id in cell]
+            if quadrilateral_quality2(*points) <= 1e-9:
+                zero_quality_quads += 1
+
+        self.assertAlmostEqual(grid.num_cells, 1130, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 1085, delta=20)
+        self.assertEqual(zero_quality_quads, 0)
+        self.assertLess(cost, 40)
 
 if __name__ == "__main__":
     unittest.main()
