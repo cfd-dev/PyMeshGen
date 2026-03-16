@@ -331,6 +331,28 @@ def is_left2d(p1, p2, p3):
     return cross_product > 0
 
 
+def is_convex_quad(p0, p1, p2, p3):
+    """
+    检查四边形是否为凸四边形（基于角度检查）
+    
+    参数:
+        p0, p1, p2, p3: 四边形顶点坐标（按顺序）
+    
+    返回:
+        bool: 如果是凸四边形返回 True，否则返回 False
+    
+    方法:
+        检查所有内角是否小于 180 度
+    """
+    angles = [
+        calculate_angle(p3, p0, p1),
+        calculate_angle(p0, p1, p2),
+        calculate_angle(p1, p2, p3),
+        calculate_angle(p2, p3, p0),
+    ]
+    return all(angle < 180 for angle in angles)
+
+
 def is_convex(a, b, c, d, node_coords):
     """改进的凸性检查，支持节点索引或坐标（仅适用于2D平面四边形）"""
 
