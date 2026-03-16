@@ -40,12 +40,63 @@ except ImportError:
     adam_optimization_smoothing = None
     drl_smoothing = None
 
-def optimize_hybrid_grid(hybrid_grid):
-    """使用内部算法优化混合网格（不依赖外部可执行文件）。"""
-    info("开始内部混合网格优化...")
+def optimize_hybrid_grid(hybrid_grid, use_angle_based=False, angle_iterations=3):
+    """
+    优化混合网格
+    
+    支持两种方式：
+    1. 角度优化算法：angle_based_smoothing（基于角度优化）
+    2. 内部算法：hybrid_smooth（基于 Laplacian 平滑）
+    
+    Args:
+        hybrid_grid: 混合网格对象
+        use_angle_based: 是否使用角度优化算法（默认 False）
+        angle_iterations: 角度优化迭代次数（默认 3）
+    
+    Returns:
+        优化后的网格对象
+    """
+    info("开始混合网格优化...")
+    
+    # 使用角度优化算法
+    if use_angle_based:
+        info(f"使用角度优化算法（{angle_iterations}次迭代）...")
+        optimized_grid = optimize_with_angle_based(hybrid_grid, angle_iterations)
+        if optimized_grid:
+            info("角度优化算法优化完成。")
+            return optimized_grid
+    
+    # 回退到内部优化器
+    info("使用内部 hybrid_smooth 算法优化...")
     optimized_grid = hybrid_smooth(hybrid_grid, max_iter=10)
     info("内部混合网格优化完成。")
     return optimized_grid
+
+
+def optimize_with_angle_based(hybrid_grid, iterations=3):
+    """
+    使用角度优化算法优化混合网格
+    
+    Args:
+        hybrid_grid: 混合网格对象
+        iterations: 迭代次数
+    
+    Returns:
+        优化后的网格对象
+    
+    参考：
+        optimize/angle_based_smoothing.py
+        angle_based_smoothing, smart_angle_based_smoothing
+    """
+    from .angle_based_smoothing import angle_based_smoothing
+    
+    try:
+        # 角度优化算法支持三角形和四边形混合网格
+        optimized_grid = angle_based_smoothing(hybrid_grid, iterations=iterations)
+        return optimized_grid
+    except Exception as e:
+        info(f"角度优化算法执行出错：{e}，回退到内部优化器")
+        return None
 
 
 

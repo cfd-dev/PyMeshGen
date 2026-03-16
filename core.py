@@ -154,6 +154,8 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     triangular_grid = edge_swap(triangular_grid)
 
+    triangular_grid.save_to_vtkfile("./out/debug.vtk")
+    
     # Q-morph算法执行前先确保三角形网格质量
     if use_triangle_pipeline_for_qmorph(parameters):
         triangular_grid = laplacian_smooth(triangular_grid, 3)
@@ -164,7 +166,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
             method=parameters.triangle_to_quad_method
         )
         # 优化混合网格
-        hybrid_grid = optimize_hybrid_grid(hybrid_grid)
+        hybrid_grid = optimize_hybrid_grid(
+            hybrid_grid, 
+            use_angle_based=True,  # 设置为 True 启用角度优化
+            angle_iterations=3
+        )
         unstr_grid_list.append(hybrid_grid)
     else:  # 三角形网格
         triangular_grid = laplacian_smooth(triangular_grid, 3)

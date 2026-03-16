@@ -17,6 +17,13 @@ def use_triangle_pipeline_for_qmorph(parameters):
 def create_interior_generator(
     parameters, front_heap, sizing_system, boundary_grid, visual_obj
 ):
+    """创建内部区域网格生成器。
+    
+    根据网格类型选择适当的生成器：
+    - q_morph 模式：使用 Adfront2（纯三角形推进）
+    - 混合网格模式：使用 Adfront2Hybrid（混合推进）
+    - 三角形网格模式：使用 Adfront2（纯三角形推进）
+    """
     if use_triangle_pipeline_for_qmorph(parameters):
         return Adfront2(
             boundary_front=front_heap,
@@ -26,6 +33,7 @@ def create_interior_generator(
             visual_obj=visual_obj,
         )
     if is_mixed_mesh(parameters.mesh_type):
+        # 使用混合网格生成器，推进过程中优先直接生成四边形
         return Adfront2Hybrid(
             boundary_front=front_heap,
             sizing_system=sizing_system,

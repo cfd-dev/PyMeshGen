@@ -96,7 +96,7 @@ class TestMeshGeneration(unittest.TestCase):
         return temp_config_path, output_file
 
     @staticmethod
-    def _override_case_config(temp_config_path, debug_level=None, wall_multi_direction=None, triangle_to_quad_method=None):
+    def _override_case_config(temp_config_path, debug_level=None, wall_multi_direction=None, triangle_to_quad_method=None, output_file=None):
         """覆盖临时算例配置中的部分字段"""
         with open(temp_config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
@@ -110,8 +110,26 @@ class TestMeshGeneration(unittest.TestCase):
                     part["multi_direction"] = wall_multi_direction
 
         if triangle_to_quad_method is not None:
-            # set top-level triangle_to_quad_method so Parameters picks it up
             config['triangle_to_quad_method'] = triangle_to_quad_method
+        
+        if output_file is not None:
+            # ensure output_file is a string (Path objects are not JSON serializable)
+            config['output_file'] = str(output_file)
+
+        # Convert any Path objects inside parts to strings to avoid JSON serialization errors
+        for part in config.get('parts', []):
+            for k, v in list(part.items()):
+                if isinstance(v, (str, int, float, bool)):
+                    continue
+                # stringify Path-like objects
+                try:
+                    from pathlib import Path
+                    if isinstance(v, Path):
+                        part[k] = str(v)
+                except Exception:
+                    # fallback: convert any non-serializable to string
+                    if not isinstance(v, (list, dict)):
+                        part[k] = str(v)
 
         with open(temp_config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
@@ -405,8 +423,12 @@ class TestMeshGeneration(unittest.TestCase):
     def test_anw_mixed_generation(self):
         """测试anw_mixed网格生成"""
         case_file = self._fix_config_paths(self.test_dir / "anw_mixed.json")
-        output_file = self.output_dir / "test_anw_mixed.vtk"
-
+        output_file = self.output_dir / "test_anw_mixed_greedy_merge.vtk"
+        self._override_case_config(
+            case_file,
+            debug_level=0,
+            output_file=output_file,
+        )
         start = time.time()
         PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
         end = time.time()
@@ -426,15 +448,15 @@ class TestMeshGeneration(unittest.TestCase):
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
-    def test_anw_mixed_generation(self):
+    def test_anw_mixed_generation_qmorph(self):
         """测试anw_mixed网格生成"""
         case_file = self._fix_config_paths(self.test_dir / "anw_mixed.json")
-        output_file = self.output_dir / "test_anw_mixed_greedy_merge.vtk"
+        output_file = self.output_dir / "test_anw_mixed.vtk"
 
         self._override_case_config(
             case_file,
             debug_level=0,
-            triangle_to_quad_method="greedy_merge",
+            triangle_to_quad_method="q_morph",
         )
 
         start = time.time()
