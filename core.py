@@ -11,7 +11,7 @@ sys.path.insert(0, project_root)  # Add project root first
 from meshsize import QuadtreeSizing
 from adfront2.adlayers2 import Adlayers2
 from data_structure.parameters import Parameters
-from optimize.optimize import edge_swap, laplacian_smooth
+from optimize.optimize import edge_swap, edge_collapse, laplacian_smooth
 from utils.timer import TimeSpan
 from utils.message import info, gui_log, gui_progress
 
@@ -153,6 +153,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     gui_progress(gui_instance, 6)  # 开始优化网格质量
 
     triangular_grid = edge_swap(triangular_grid)
+    triangular_grid = edge_collapse(triangular_grid)
 
     # triangular_grid.save_to_vtkfile("./out/debug.vtk")
     
