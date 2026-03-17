@@ -82,8 +82,8 @@ class Adfront2Hybrid(Adfront2):
         width = self.bbox[2] - self.bbox[0]
         height = self.bbox[3] - self.bbox[1]
 
-        # 当距离小于0.15倍计算域大小时，开启阵面排序
-        safe_distance_sq = 0.15 * (width + height) / 2
+        # 当距离小于0.3倍计算域大小时，开启阵面排序
+        safe_distance_sq = 0.3 * (width + height) / 2
         safe_distance_sq *= safe_distance_sq
 
         for front1 in self.front_list:

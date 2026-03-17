@@ -187,10 +187,18 @@ class Adfront2:
     def generate_elements(self):
         timer = TimeSpan("开始推进生成三角形...")
 
+        # 初始化调试文件
+        self._init_debug_file()
+
+        step = 0
         while self.front_list:
+            step += 1
+
             self.base_front = heapq.heappop(self.front_list)
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
+
+            self._log_front_step(step)
 
             self.add_new_point(spacing)
 
@@ -198,17 +206,58 @@ class Adfront2:
 
             self.debug_draw()
 
-            self.select_point()
+            selected = self.select_point()
+
+            if selected is None:
+                self._log_push_failure(step)
 
             self.update_data()
 
             self.show_progress()
 
         self.construct_unstr_grid()
-
+        
         timer.show_to_console("完成三角形网格生成.")
 
+        self._log_completion(step)
+
         return self.unstr_grid
+
+    def _init_debug_file(self):
+        """初始化调试文件"""
+        if self.debug_level < 2:
+            return
+        
+        debug_file = "mesh_debug_intersection.log"
+        with open(debug_file, "w", encoding="utf-8") as f:
+            f.write("网格推进调试日志\n")
+            f.write(f"初始阵面数量：{len(self.front_list)}\n")
+
+    def _log_front_step(self, step):
+        """记录阵面推进步骤"""
+        if self.debug_level >= 2 and step % 100 == 0:
+            debug_file = "mesh_debug_intersection.log"
+            with open(debug_file, "a", encoding="utf-8") as f:
+                f.write(f"\n--- 推进步骤 {step} ---\n")
+                f.write(f"基准阵面 ID: {self.base_front.idx}, 节点：{self.base_front.node_ids}, "
+                       f"长度：{self.base_front.length:.6f}, 中心：{self.base_front.center}\n")
+
+    def _log_push_failure(self, step):
+        """记录推进失败"""
+        if self.debug_level >= 2:
+            debug_file = "mesh_debug_intersection.log"
+            with open(debug_file, "a", encoding="utf-8") as f:
+                f.write(f"[推进失败] 步骤 {step}: 阵面{self.base_front.node_ids} 未找到合适的推进点\n")
+
+    def _log_completion(self, step):
+        """记录推进完成信息"""
+        if self.debug_level >= 2:
+            debug_file = "mesh_debug_intersection.log"
+            with open(debug_file, "a", encoding="utf-8") as f:
+                f.write(f"\n========== 推进完成 ==========\n")
+                f.write(f"总推进步骤：{step}\n")
+                f.write(f"生成单元总数：{self.num_cells}\n")
+                f.write(f"生成节点总数：{self.num_nodes}\n")
 
     def search_candidates(self, search_radius):
         """搜索候选节点和阵面"""
@@ -329,18 +378,30 @@ class Adfront2:
         )
 
         self.update_fronts([new_front1, new_front2])
-        heapq.heapify(self.front_list)  # 重新堆化
+        heapq.heapify(self.front_list)
 
         # 更新单元
         new_cell = Triangle(
             self.base_front.node_elems[0],
             self.base_front.node_elems[1],
             self.pselected,
-            part_name='interior-triangle',  # 直接设置部件名称
+            part_name='interior-triangle',
             idx=self.num_cells,
         )
 
+        # 记录单元创建信息
+        self._log_cell_creation(new_cell, new_front1, new_front2)
+
         self.update_cells(new_cell)
+
+    def _log_cell_creation(self, new_cell, new_front1, new_front2):
+        """记录单元创建信息"""
+        if self.debug_level >= 2:
+            debug_file = "mesh_debug_intersection.log"
+            with open(debug_file, "a", encoding="utf-8") as f:
+                f.write(f"[单元创建] 步骤{self.num_cells}: 创建三角形单元 {new_cell.node_ids}\n")
+                f.write(f"[单元创建] 顶点坐标：{new_cell.p1}, {new_cell.p2}, {new_cell.p3}\n")
+                f.write(f"[单元创建] 新阵面 1: {new_front1.node_ids}, 新阵面 2: {new_front2.node_ids}\n")
 
     def select_point(self):
         # 预计算基准点坐标
@@ -375,6 +436,9 @@ class Adfront2:
                 continue
 
             if self.is_cross(node_elem):
+                continue
+
+            if self.is_cross_rtree(node_elem):
                 continue
 
             self.pselected = node_elem
@@ -412,20 +476,44 @@ class Adfront2:
         self.construct_unstr_grid()
         self.unstr_grid.save_debug_file(f"cells{self.num_cells}")
 
+    def _log_debug_info(self, node_elem, check_type, intersect_detail):
+        """记录相交检查信息"""
+        if self.debug_level < 2:
+            return
+
+        p0 = self.base_front.node_elems[0]
+        p1 = self.base_front.node_elems[1]
+        debug_file = "mesh_debug_intersection.log"
+
+        with open(debug_file, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"[相交检查] 基准阵面：{self.base_front.node_ids} (ID={self.base_front.idx})\n")
+            f.write(f"[相交检查] 阵面长度：{self.base_front.length:.6f}\n")
+            f.write(f"[相交检查] 候选节点：{node_elem.idx}, 坐标：{node_elem.coords}\n")
+            f.write(f"[相交检查] 检查类型：{check_type}\n")
+            f.write(f"[相交检查] 相交详情：{intersect_detail}\n")
+            f.write(f"[相交检查] 新单元顶点：{p0.idx}, {p1.idx}, {node_elem.idx}\n")
+            f.write(f"[相交检查] 新单元坐标：{p0.coords}, {p1.coords}, {node_elem.coords}\n")
+            f.write(f"[相交检查] 当前单元总数：{len(self.cell_container)}\n")
+            f.write(f"[相交检查] 候选单元数：{len(self.cell_candidates)}\n")
+            f.write(f"[相交检查] 候选阵面数：{len(self.front_candidates)}\n")
+
     def is_cross(self, node_elem):
+        """检查候选集是否相交（快速检查）"""
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
 
         line1 = LineSegment(node_elem, p0)
         line2 = LineSegment(node_elem, p1)
 
+        # 检查候选阵面
         for front in self.front_candidates:
             front_line = LineSegment(front.node_elems[0], front.node_elems[1])
             if front_line.is_intersect(line1) or front_line.is_intersect(line2):
                 return True
 
+        # 检查候选单元
         cell_to_add = Triangle(node_elem, p0, p1)
-
         for check_cell in self.cell_candidates:
             if isinstance(check_cell, Quadrilateral):
                 if check_cell.is_intersect_triangle(cell_to_add):
@@ -435,6 +523,99 @@ class Adfront2:
                     return True
 
         return False
+
+    def is_cross_rtree(self, node_elem):
+        """使用 R 树检查新单元是否与现有单元/阵面相交
+
+        返回 True 表示相交（不能创建），False 表示不相交（可以创建）
+        """
+        p0 = self.base_front.node_elems[0]
+        p1 = self.base_front.node_elems[1]
+        cell_to_add = Triangle(node_elem, p0, p1)
+
+        # 1. 检查所有已生成单元
+        if self.space_index_cell is not None:
+            result = self._check_cell_intersection(cell_to_add, node_elem)
+            if result:
+                return True
+
+        # 2. 检查所有阵面
+        if self.space_index_front is not None:
+            result = self._check_front_intersection(p0, p1, node_elem)
+            if result:
+                return True
+
+        return False
+
+    def _check_cell_intersection(self, cell_to_add, node_elem):
+        """检查单元相交，返回相交的单元和详情"""
+        all_x = [cell_to_add.p1[0], cell_to_add.p2[0], cell_to_add.p3[0]]
+        all_y = [cell_to_add.p1[1], cell_to_add.p2[1], cell_to_add.p3[1]]
+        padding = 1e-6
+        query_bbox = (min(all_x) - padding, min(all_y) - padding,
+                     max(all_x) + padding, max(all_y) + padding)
+
+        possible_ids = list(self.space_index_cell.intersection(query_bbox))
+
+        for cell_id in possible_ids:
+            if cell_id not in self.cell_dict:
+                continue
+
+            check_cell = self.cell_dict[cell_id]
+            has_intersect, detail = self._cell_intersect_check(
+                cell_to_add, check_cell
+            )
+
+            if has_intersect:
+                self._log_debug_info(node_elem, "单元相交", detail)
+                return True
+
+        return False
+
+    def _cell_intersect_check(self, cell_to_add, check_cell):
+        """检查两个单元是否相交，返回 (是否相交，详情)"""
+        if isinstance(check_cell, Quadrilateral):
+            if check_cell.is_intersect_triangle(cell_to_add):
+                return True, f"与四边形单元{check_cell.node_ids}相交"
+        elif isinstance(check_cell, Triangle):
+            if check_cell.is_intersect(cell_to_add):
+                return True, f"与三角形单元{check_cell.node_ids}相交"
+        return False, ""
+
+    def _check_front_intersection(self, p0, p1, node_elem):
+        """检查阵面相交"""
+        new_line1 = LineSegment(p0, node_elem)
+        new_line2 = LineSegment(node_elem, p1)
+
+        all_x = [p0.coords[0], p1.coords[0], node_elem.coords[0]]
+        all_y = [p0.coords[1], p1.coords[1], node_elem.coords[1]]
+        padding = 1e-6
+        query_bbox = (min(all_x) - padding, min(all_y) - padding,
+                     max(all_x) + padding, max(all_y) + padding)
+
+        possible_ids = list(self.space_index_front.intersection(query_bbox))
+        self_node_ids = {(p0.idx, node_elem.idx), (node_elem.idx, p1.idx)}
+
+        for front_id in possible_ids:
+            if front_id not in self.front_dict:
+                continue
+
+            front = self.front_dict[front_id]
+            if front.node_ids in self_node_ids:
+                continue
+
+            if self._front_intersect_check(front, new_line1, new_line2):
+                self._log_debug_info(
+                    node_elem, "阵面相交", f"与阵面{front.node_ids}相交"
+                )
+                return True
+
+        return False
+
+    def _front_intersect_check(self, front, new_line1, new_line2):
+        """检查阵面是否与新边相交"""
+        front_line = LineSegment(front.node_elems[0], front.node_elems[1])
+        return front_line.is_intersect(new_line1) or front_line.is_intersect(new_line2)
 
     def search_candidates_with_bbox(self):
         self.node_candidates = []

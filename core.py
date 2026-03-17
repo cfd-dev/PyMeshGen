@@ -154,7 +154,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     triangular_grid = edge_swap(triangular_grid)
 
-    triangular_grid.save_to_vtkfile("./out/debug.vtk")
+    # triangular_grid.save_to_vtkfile("./out/debug.vtk")
     
     # Q-morph算法执行前先确保三角形网格质量
     if use_triangle_pipeline_for_qmorph(parameters):

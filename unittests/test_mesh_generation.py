@@ -396,7 +396,7 @@ class TestMeshGeneration(unittest.TestCase):
 
         grid = parse_vtk_msh(output_file)
         self.assertAlmostEqual(grid.num_cells, 4370, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 4199, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 4202, delta=20)
         self.assertLess(cost, 120)
 
     def test_30p30n_mixed_generation_qmorh(self):
