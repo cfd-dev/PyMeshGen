@@ -216,7 +216,7 @@ class Adfront2:
             self.show_progress()
 
         self.construct_unstr_grid()
-        
+
         timer.show_to_console("完成三角形网格生成.")
 
         self._log_completion(step)
@@ -533,89 +533,97 @@ class Adfront2:
         p1 = self.base_front.node_elems[1]
         cell_to_add = Triangle(node_elem, p0, p1)
 
-        # 1. 检查所有已生成单元
+        # 1. 使用 R 树索引检查所有已生成单元
         if self.space_index_cell is not None:
-            result = self._check_cell_intersection(cell_to_add, node_elem)
-            if result:
-                return True
+            # 计算新单元的包围盒
+            all_x = [p0.coords[0], p1.coords[0], node_elem.coords[0]]
+            all_y = [p0.coords[1], p1.coords[1], node_elem.coords[1]]
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
 
-        # 2. 检查所有阵面
+            # 扩大搜索范围以捕捉邻近单元
+            padding = 1e-6
+            query_bbox = (min_x - padding, min_y - padding,
+                         max_x + padding, max_y + padding)
+
+            # 查询可能与新单元相交的单元 ID
+            possible_intersect_ids = list(self.space_index_cell.intersection(query_bbox))
+
+            for cell_id in possible_intersect_ids:
+                if cell_id in self.cell_dict:
+                    check_cell = self.cell_dict[cell_id]
+
+                    # 检查是否相交
+                    has_intersect = False
+                    intersect_detail = ""
+
+                    if isinstance(check_cell, Quadrilateral):
+                        if check_cell.is_intersect_triangle(cell_to_add):
+                            has_intersect = True
+                            intersect_detail = f"与四边形单元{check_cell.node_ids}相交"
+                    elif isinstance(check_cell, Triangle):
+                        if check_cell.is_intersect(cell_to_add):
+                            has_intersect = True
+                            intersect_detail = f"与三角形单元{check_cell.node_ids}相交"
+
+                    if has_intersect:
+                        self._log_debug_info(
+                            node_elem, "单元相交", intersect_detail
+                        )
+                        return True
+
+        # 2. 检查新阵面是否与现有阵面相交（使用 R 树或全量检查）
         if self.space_index_front is not None:
-            result = self._check_front_intersection(p0, p1, node_elem)
-            if result:
-                return True
+            # 使用 R 树加速阵面相交检查
+            new_line1 = LineSegment(p0, node_elem)
+            new_line2 = LineSegment(node_elem, p1)
+
+            # 计算新阵面的包围盒
+            all_x = [p0.coords[0], p1.coords[0], node_elem.coords[0]]
+            all_y = [p0.coords[1], p1.coords[1], node_elem.coords[1]]
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+
+            padding = 1e-6
+            query_bbox = (min_x - padding, min_y - padding,
+                         max_x + padding, max_y + padding)
+
+            possible_front_ids = list(self.space_index_front.intersection(query_bbox))
+
+            for front_id in possible_front_ids:
+                if front_id in self.front_dict:
+                    front = self.front_dict[front_id]
+                    # 跳过自身
+                    if front.node_ids in [(p0.idx, node_elem.idx),
+                                          (node_elem.idx, p1.idx)]:
+                        continue
+
+                    front_line = LineSegment(front.node_elems[0], front.node_elems[1])
+                    if front_line.is_intersect(new_line1) or front_line.is_intersect(new_line2):
+                        self._log_debug_info(
+                            node_elem, "阵面相交", f"与阵面{front.node_ids}相交"
+                        )
+                        return True
+        else:
+            # 无 R 树时全量检查
+            new_front1_nodes = (p0.idx, node_elem.idx)
+            new_front2_nodes = (node_elem.idx, p1.idx)
+
+            for front in self.front_list:
+                if front.node_ids in [new_front1_nodes, new_front2_nodes]:
+                    continue
+
+                front_line = LineSegment(front.node_elems[0], front.node_elems[1])
+                new_line1 = LineSegment(p0, node_elem)
+                new_line2 = LineSegment(node_elem, p1)
+
+                if front_line.is_intersect(new_line1) or front_line.is_intersect(new_line2):
+                    self._log_debug_info(
+                        node_elem, "阵面相交", f"与阵面{front.node_ids}相交"
+                    )
+                    return True
 
         return False
-
-    def _check_cell_intersection(self, cell_to_add, node_elem):
-        """检查单元相交，返回相交的单元和详情"""
-        all_x = [cell_to_add.p1[0], cell_to_add.p2[0], cell_to_add.p3[0]]
-        all_y = [cell_to_add.p1[1], cell_to_add.p2[1], cell_to_add.p3[1]]
-        padding = 1e-6
-        query_bbox = (min(all_x) - padding, min(all_y) - padding,
-                     max(all_x) + padding, max(all_y) + padding)
-
-        possible_ids = list(self.space_index_cell.intersection(query_bbox))
-
-        for cell_id in possible_ids:
-            if cell_id not in self.cell_dict:
-                continue
-
-            check_cell = self.cell_dict[cell_id]
-            has_intersect, detail = self._cell_intersect_check(
-                cell_to_add, check_cell
-            )
-
-            if has_intersect:
-                self._log_debug_info(node_elem, "单元相交", detail)
-                return True
-
-        return False
-
-    def _cell_intersect_check(self, cell_to_add, check_cell):
-        """检查两个单元是否相交，返回 (是否相交，详情)"""
-        if isinstance(check_cell, Quadrilateral):
-            if check_cell.is_intersect_triangle(cell_to_add):
-                return True, f"与四边形单元{check_cell.node_ids}相交"
-        elif isinstance(check_cell, Triangle):
-            if check_cell.is_intersect(cell_to_add):
-                return True, f"与三角形单元{check_cell.node_ids}相交"
-        return False, ""
-
-    def _check_front_intersection(self, p0, p1, node_elem):
-        """检查阵面相交"""
-        new_line1 = LineSegment(p0, node_elem)
-        new_line2 = LineSegment(node_elem, p1)
-
-        all_x = [p0.coords[0], p1.coords[0], node_elem.coords[0]]
-        all_y = [p0.coords[1], p1.coords[1], node_elem.coords[1]]
-        padding = 1e-6
-        query_bbox = (min(all_x) - padding, min(all_y) - padding,
-                     max(all_x) + padding, max(all_y) + padding)
-
-        possible_ids = list(self.space_index_front.intersection(query_bbox))
-        self_node_ids = {(p0.idx, node_elem.idx), (node_elem.idx, p1.idx)}
-
-        for front_id in possible_ids:
-            if front_id not in self.front_dict:
-                continue
-
-            front = self.front_dict[front_id]
-            if front.node_ids in self_node_ids:
-                continue
-
-            if self._front_intersect_check(front, new_line1, new_line2):
-                self._log_debug_info(
-                    node_elem, "阵面相交", f"与阵面{front.node_ids}相交"
-                )
-                return True
-
-        return False
-
-    def _front_intersect_check(self, front, new_line1, new_line2):
-        """检查阵面是否与新边相交"""
-        front_line = LineSegment(front.node_elems[0], front.node_elems[1])
-        return front_line.is_intersect(new_line1) or front_line.is_intersect(new_line2)
 
     def search_candidates_with_bbox(self):
         self.node_candidates = []
