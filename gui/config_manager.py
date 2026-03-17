@@ -284,6 +284,9 @@ class ConfigManager:
                     "debug_level": 0,
                     "input_file": [],
                     "output_file": new_params["output_file"],
+                    "mesh_type": new_params["mesh_type"],
+                    "triangle_to_quad_method": new_params.get("triangle_to_quad_method", "q_morph"),
+                    "auto_output": new_params["auto_output"],
                     "viz_enabled": False,
                     "parts": []
                 }

@@ -152,7 +152,7 @@ class GlobalParamsDialog(QDialog):
         self.mesh_type_combo.setCurrentIndex(combo_index)
 
         # 三角形合并算法
-        triangle_to_quad_method = self.params.get("triangle_to_quad_method", "greedy_merge")
+        triangle_to_quad_method = self.params.get("triangle_to_quad_method", "q_morph")
         method_index = self.triangle_to_quad_combo.findText(triangle_to_quad_method)
         if method_index >= 0:
             self.triangle_to_quad_combo.setCurrentIndex(method_index)
