@@ -1020,6 +1020,88 @@ class PyMeshGenGUI(QMainWindow):
         """导入几何文件（使用异步线程，避免GUI卡顿）"""
         self.geometry_operations.import_geometry()
 
+    def import_thingi10k_model(self):
+        """导入Thingi10K模型（使用异步线程，避免GUI卡顿）"""
+        from gui.thingi10k_import_dialog import Thingi10kImportDialog, Thingi10kImportThread
+
+        existing_dialog = getattr(self, "_thingi10k_import_dialog", None)
+        if existing_dialog and existing_dialog.isVisible():
+            existing_dialog.raise_()
+            existing_dialog.activateWindow()
+            return
+
+        dialog = Thingi10kImportDialog(self)
+        dialog.setAttribute(Qt.WA_DeleteOnClose, True)
+        dialog.finished.connect(lambda: setattr(self, "_thingi10k_import_dialog", None))
+
+        def on_import_requested(file_id, variant):
+            if hasattr(self, '_thingi10k_import_thread') and self._thingi10k_import_thread.isRunning():
+                QMessageBox.warning(self, "警告", "正在导入中，请等待完成")
+                return
+
+            self._thingi10k_import_thread = Thingi10kImportThread(file_id, variant)
+            self._thingi10k_import_thread.progress_updated.connect(self.on_thingi10k_import_progress)
+            self._thingi10k_import_thread.import_finished.connect(self.on_thingi10k_import_finished)
+            self._thingi10k_import_thread.import_failed.connect(self.on_thingi10k_import_failed)
+
+            self._thingi10k_import_thread.start()
+            self.log_info(f"开始导入Thingi10K模型 ID: {file_id}, 类型: {variant}")
+            self.update_status("正在导入Thingi10K模型...")
+
+        dialog.importRequested.connect(on_import_requested)
+        self._thingi10k_import_dialog = dialog
+        dialog.show()
+
+    def on_thingi10k_import_progress(self, progress, message):
+        """Thingi10K导入进度更新"""
+        self.status_bar.show_progress(message, progress)
+        self.log_info(message)
+
+    def on_thingi10k_import_finished(self, success, message, mesh_data):
+        """Thingi10K导入完成回调"""
+        self.status_bar.hide_progress()
+
+        if success:
+            self.log_info(message)
+            self.update_status("Thingi10K模型导入完成")
+
+            try:
+                vertices = mesh_data['vertices']
+                facets = mesh_data['facets']
+
+                mesh_dict = {
+                    'type': 'vtk',
+                    'node_coords': vertices,
+                    'cells': facets
+                }
+
+                self.current_mesh = mesh_dict
+
+                self.display_mode = "mesh"
+                if hasattr(self, 'view_controller'):
+                    self.view_controller.set_display_mode("mesh")
+
+                self.display_mesh()
+
+                stats = mesh_data.get('statistics', {})
+                info_msg = f"模型加载成功！\n\n统计信息:\n节点数: {stats.get('num_vertices', 'N/A')}\n三角形数: {stats.get('num_triangles', 'N/A')}\n四边形数: {stats.get('num_quads', 'N/A')}\n总面数: {stats.get('num_facets', 'N/A')}"
+                QMessageBox.information(self, "导入成功", info_msg)
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"显示模型失败: {str(e)}")
+                self.log_error(f"显示模型失败: {str(e)}")
+        else:
+            QMessageBox.warning(self, "警告", message)
+            self.log_info(f"导入未完成: {message}")
+            self.update_status("Thingi10K模型导入失败")
+
+    def on_thingi10k_import_failed(self, error_message):
+        """Thingi10K导入失败回调"""
+        self.status_bar.hide_progress()
+        QMessageBox.critical(self, "错误", error_message)
+        self.log_error(error_message)
+        self.update_status("Thingi10K模型导入失败")
+
     def open_geometry_create_dialog(self):
         """打开几何创建对话框"""
         from gui.geometry_create_dialog import GeometryCreateDialog

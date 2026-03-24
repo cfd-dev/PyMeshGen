@@ -352,7 +352,10 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['import_geometry'] = geometry_io_group.add_large_button("导入几何", icon=get_icon('import'), tooltip="导入几何文件 (IGES/STEP/STL等)")
         self.buttons['geometry']['export_geometry'] = geometry_io_group.add_large_button("导出几何", icon=get_icon('export'), tooltip="导出几何文件 (IGES/STEP/STL等)")
         layout.addWidget(geometry_io_group)
-        
+
+        thingi10k_group = RibbonGroup("Thingi10K数据集")
+        self.buttons['geometry']['import_thingi10k'] = thingi10k_group.add_large_button("导入Thingi10K", icon=get_icon('import'), tooltip="从Thingi10K数据集导入模型")
+        layout.addWidget(thingi10k_group)
 
         geometry_group = RibbonGroup("几何操作")
         self.buttons['geometry']['create_geometry'] = geometry_group.add_large_button("创建几何", icon=get_icon('geom-create'), tooltip="创建点/线/圆弧/曲线")
@@ -436,6 +439,7 @@ class RibbonWidget(QWidget):
         # Geometry tab callbacks
         self.buttons['geometry']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
         self.buttons['geometry']['export_geometry'].clicked.connect(_wrap(main_window.export_geometry, "导出几何"))
+        self.buttons['geometry']['import_thingi10k'].clicked.connect(_wrap(main_window.import_thingi10k_model, "导入Thingi10K模型"))
         self.buttons['geometry']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
         self.buttons['geometry']['extract_boundary'].clicked.connect(_wrap(main_window.mesh_operations.extract_boundary_mesh_info, "提取边界网格"))
         self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))

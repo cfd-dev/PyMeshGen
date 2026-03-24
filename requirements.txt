@@ -21,7 +21,10 @@ pillow>=10.0.0
 # 几何处理 (PythonOCC-Core)
 # GitHub: https://github.com/tpaviot/pythonocc-core
 # 安装命令: pip install pythonocc-core
-pythonocc-core
+pythonocc-core>=7.7.0
+
+# CGNS文件支持
+h5py>=3.9.0
 
 # 神经网络和机器学习依赖
 torch>=2.0.0  # PyTorch深度学习框架，所有神经网络模块的基础
