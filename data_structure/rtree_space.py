@@ -118,3 +118,94 @@ def get_candidate_elements_id(base_elem, space_index, search_radius):
     candidates = list(space_index.intersection(query_bbox))
 
     return candidates
+
+
+def build_space_index_3d_with_RTree(elems):
+    """
+    构建3D空间索引加速相交检测
+    
+    Args:
+        elems: 元素列表，每个元素需要有bbox属性 (x_min, y_min, z_min, x_max, y_max, z_max)
+    
+    Returns:
+        elem_dict: 元素字典 {id: elem}
+        space_index: RTree索引
+    """
+    elem_dict = {id(e): e for e in elems}
+    
+    p = index.Property()
+    p.dimension = 3
+    
+    space_index = index.Index(properties=p)
+    for e_id, elem in elem_dict.items():
+        if len(elem.bbox) == 6:
+            space_index.insert(e_id, elem.bbox)
+        elif len(elem.bbox) == 4:
+            bbox_3d = (elem.bbox[0], elem.bbox[1], 0, elem.bbox[2], elem.bbox[3], 0)
+            space_index.insert(e_id, bbox_3d)
+    
+    return elem_dict, space_index
+
+
+def get_candidate_elements_id_3d(base_elem, space_index, search_radius):
+    """
+    获取3D空间中可能相交的元素
+    
+    Args:
+        base_elem: 基准元素，需要有bbox属性
+        space_index: RTree索引
+        search_radius: 搜索半径
+    
+    Returns:
+        候选元素ID列表
+    """
+    if len(base_elem.bbox) == 6:
+        x_min, y_min, z_min, x_max, y_max, z_max = base_elem.bbox
+        query_bbox = (
+            x_min - search_radius,
+            y_min - search_radius,
+            z_min - search_radius,
+            x_max + search_radius,
+            y_max + search_radius,
+            z_max + search_radius
+        )
+    else:
+        x_min, y_min, x_max, y_max = base_elem.bbox
+        query_bbox = (
+            x_min - search_radius,
+            y_min - search_radius,
+            -search_radius,
+            x_max + search_radius,
+            y_max + search_radius,
+            search_radius
+        )
+    
+    candidates = list(space_index.intersection(query_bbox))
+    
+    return candidates
+
+
+def add_elems_to_space_index_3d_with_RTree(elems, space_index, elem_dict):
+    """
+    向3D RTree索引中添加元素
+    
+    Args:
+        elems: 要添加的元素列表
+        space_index: RTree索引
+        elem_dict: 元素字典
+    
+    Returns:
+        更新后的索引和字典
+    """
+    for ele in elems:
+        try:
+            if len(ele.bbox) == 6:
+                space_index.insert(id(ele), ele.bbox)
+            elif len(ele.bbox) == 4:
+                bbox_3d = (ele.bbox[0], ele.bbox[1], 0, ele.bbox[2], ele.bbox[3], 0)
+                space_index.insert(id(ele), bbox_3d)
+            elem_dict[id(ele)] = ele
+        except index.RTreeError as e:
+            print(f"R树插入失败: {e}")
+    
+    return space_index, elem_dict
