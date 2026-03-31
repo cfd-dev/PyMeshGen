@@ -25,8 +25,6 @@ from .mesh_quality import SurfaceMeshQuality, check_edge_triangle_intersection
 from utils.message import info, debug, warning, error
 from utils.timer import TimeSpan
 from data_structure.rtree_space import (
-    build_space_index_with_RTree,
-    get_candidate_elements_id,
     build_space_index_3d_with_RTree,
     get_candidate_elements_id_3d,
     add_elems_to_space_index_3d_with_RTree
@@ -359,28 +357,37 @@ class SurfaceMeshGenerator:
     ) -> bool:
         """
         检查相交
-        
+
         Args:
             front: 当前阵面
             node: 候选节点
-        
+
         Returns:
             是否相交
         """
         p0 = np.array(front.node_elems[0].coords)
         p1 = np.array(front.node_elems[1].coords)
         p2 = np.array(node.coords)
-        
+
         new_edges = [
             (p0, p2),
             (p2, p1)
         ]
-        
+
+        # 只检查与最近三角形的相交，排除共享顶点的情况
         for edge_start, edge_end in new_edges:
             for triangle in self.triangle_list[-100:]:
+                # 排除共享顶点的三角形
+                tri_node_ids = set(triangle.node_ids)
+                front_node_ids = {front.node_elems[0].idx, front.node_elems[1].idx}
+                if node.idx in tri_node_ids:
+                    continue
+                if tri_node_ids & front_node_ids:
+                    continue
+
                 if check_edge_triangle_intersection(edge_start, edge_end, triangle):
                     return True
-        
+
         return False
     
     def _update_mesh(
@@ -390,18 +397,20 @@ class SurfaceMeshGenerator:
     ):
         """
         更新网格数据
-        
+
         Args:
             front: 当前阵面
             node: 选中的节点
         """
+        new_node_added = False
         if node.hash not in self.node_hash_set:
             self.node_hash_set.add(node.hash)
             self.node_list.append(node)
             self.node_coords.append(node.coords)
             self.node_dict[node.idx] = node
             self.num_nodes += 1
-        
+            new_node_added = True
+
         triangle = SurfaceTriangle(
             front.node_elems[0],
             front.node_elems[1],
@@ -411,7 +420,19 @@ class SurfaceMeshGenerator:
         )
         self.triangle_list.append(triangle)
         self.num_triangles += 1
-        
+
+        # 更新空间索引
+        if new_node_added:
+            if self.space_index_node is not None:
+                self.space_index_node, self.node_dict = add_elems_to_space_index_3d_with_RTree(
+                    [node], self.space_index_node, self.node_dict
+                )
+
+        if self.space_index_triangle is not None:
+            self.space_index_triangle, _ = add_elems_to_space_index_3d_with_RTree(
+                [triangle], self.space_index_triangle, {}
+            )
+
         new_front1 = SurfaceFront(
             front.node_elems[0],
             node,
@@ -419,7 +440,7 @@ class SurfaceMeshGenerator:
             idx=len(self.front_list) + 1,
             bc_type="interior"
         )
-        
+
         new_front2 = SurfaceFront(
             node,
             front.node_elems[1],
@@ -427,7 +448,7 @@ class SurfaceMeshGenerator:
             idx=len(self.front_list) + 2,
             bc_type="interior"
         )
-        
+
         heapq.heappush(self.front_list, new_front1)
         heapq.heappush(self.front_list, new_front2)
     
