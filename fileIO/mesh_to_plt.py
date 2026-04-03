@@ -59,6 +59,10 @@ def export_mesh_to_plt(
     # 提取网格数据
     if grid is not None:
         nodes, faces, simplices, edge_index = _extract_from_grid(grid)
+        
+        # 确保 nodes 是 numpy 数组
+        if not isinstance(nodes, np.ndarray):
+            nodes = np.array(nodes)
     elif nodes is None or (faces is None and edge_index is None):
         raise ValueError("必须提供 grid 参数，或同时提供 nodes 和 faces/edge_index")
 
@@ -96,41 +100,107 @@ def _extract_from_grid(grid: Dict):
         grid: PyMeshGen 网格字典
 
     Returns:
-        nodes, faces, simplices, edge_index
+        node_array, all_faces, simplices, edge_index
     """
-    # 提取节点
-    nodes = np.array([node["coords"] for node in grid["nodes"]])
+    # 提取节点（支持两种格式：字典列表或元组列表）
+    if grid["nodes"] and isinstance(grid["nodes"][0], dict):
+        node_array = np.array([node["coords"] for node in grid["nodes"]])
+    else:
+        node_array = np.array(grid["nodes"])
+    
+    # 确保 node_array 是 2D 数组
+    if node_array.ndim == 1:
+        dim = grid.get("dimension", 2)
+        node_array = node_array.reshape(-1, dim)
 
     # 收集所有面
     all_faces = []
+    wall_faces_list = []
     for zone in grid.get("zones", {}).values():
         if zone.get("type") == "faces":
             all_faces.extend(zone.get("data", []))
+            if zone.get("bc_type") == "wall":
+                wall_faces_list.extend(zone.get("data", []))
+
+    # 提取单元（如果网格数据中包含 cells）
+    simplices_list = []
+    if "cells" in grid and len(grid["cells"]) > 0:
+        for cell in grid["cells"]:
+            if "nodes" in cell:
+                cell_nodes = cell["nodes"]
+                # 转为 0-based 索引
+                cell_nodes_0based = [n - 1 if n > 0 else -n - 1 for n in cell_nodes]
+                if len(cell_nodes_0based) == 3:
+                    # 三角形
+                    simplices_list.append(cell_nodes_0based)
+                elif len(cell_nodes_0based) == 4:
+                    # 四边形，三角剖分
+                    simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[1], cell_nodes_0based[2]])
+                    simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[2], cell_nodes_0based[3]])
+    elif "faces" in grid and len(grid.get("faces", [])) > 0:
+        # Fluent 面基网格：通过面重建单元
+        # 收集每个单元的面
+        cell_faces_map = {}  # cell_id -> list of face node indices
+        for face in grid["faces"]:
+            left_cell = face.get("left_cell", 0)
+            right_cell = face.get("right_cell", 0)
+            face_nodes = face.get("nodes", [])
+            
+            if left_cell > 0:
+                if left_cell not in cell_faces_map:
+                    cell_faces_map[left_cell] = []
+                cell_faces_map[left_cell].extend(face_nodes)
+            
+            if right_cell > 0:
+                if right_cell not in cell_faces_map:
+                    cell_faces_map[right_cell] = []
+                cell_faces_map[right_cell].extend(face_nodes)
+        
+        # 从单元的面中提取唯一的节点索引
+        for cell_id, nodes_list in cell_faces_map.items():
+            unique_nodes = sorted(list(set(nodes_list)))
+            if len(unique_nodes) == 3:
+                # 三角形单元
+                simplices_list.append([n - 1 for n in unique_nodes])
+            elif len(unique_nodes) == 4:
+                # 四边形，三角剖分
+                simplices_list.append([unique_nodes[0] - 1, unique_nodes[1] - 1, unique_nodes[2] - 1])
+                simplices_list.append([unique_nodes[0] - 1, unique_nodes[2] - 1, unique_nodes[3] - 1])
+    else:
+        # 从 zones 中的 face 数据提取 simplices（旧格式）
+        for face in all_faces:
+            face_nodes = face.get("nodes", [])
+            if len(face_nodes) == 3:
+                simplices_list.append([n - 1 for n in face_nodes])
+            elif len(face_nodes) == 4:
+                simplices_list.append([face_nodes[0] - 1, face_nodes[1] - 1, face_nodes[2] - 1])
+                simplices_list.append([face_nodes[0] - 1, face_nodes[2] - 1, face_nodes[3] - 1])
 
     # 构建边索引（2D）
     edge_set = set()
-    simplices_list = []
-
-    for face in all_faces:
-        face_nodes = face.get("nodes", [])
-        if len(face_nodes) == 2:
-            # 线段面
-            n1, n2 = face_nodes[0] - 1, face_nodes[1] - 1  # 转为 0-based
-            edge_set.add((min(n1, n2), max(n1, n2)))
-        elif len(face_nodes) >= 3:
-            # 多边形面，三角剖分
-            # 简单扇形三角剖分
-            for i in range(1, len(face_nodes) - 1):
-                simplices_list.append([
-                    face_nodes[0] - 1,
-                    face_nodes[i] - 1,
-                    face_nodes[i + 1] - 1,
-                ])
+    
+    # 如果有单元，从单元中提取边
+    if simplices_list:
+        for cell_nodes in simplices_list:
+            for i in range(len(cell_nodes)):
+                n1, n2 = cell_nodes[i], cell_nodes[(i + 1) % len(cell_nodes)]
+                edge_set.add((min(n1, n2), max(n1, n2)))
+    else:
+        # 否则从面中提取
+        for face in all_faces:
+            face_nodes = face.get("nodes", [])
+            if len(face_nodes) == 2:
+                n1, n2 = face_nodes[0] - 1, face_nodes[1] - 1
+                edge_set.add((min(n1, n2), max(n1, n2)))
+            elif len(face_nodes) >= 3:
+                for i in range(len(face_nodes)):
+                    n1, n2 = face_nodes[i] - 1, face_nodes[(i + 1) % len(face_nodes)] - 1
+                    edge_set.add((min(n1, n2), max(n1, n2)))
 
     edge_index = np.array(list(edge_set)).T if edge_set else None
     simplices = np.array(simplices_list) if simplices_list else None
 
-    return nodes, all_faces, simplices, edge_index
+    return node_array, all_faces, simplices, edge_index
 
 
 def _write_plt_file(
@@ -255,27 +325,30 @@ def _write_plt_file(
             right_cell = np.zeros(num_faces, dtype=int)
 
             if simplices is not None:
+                # 优化：构建边到面的映射（O(faces)）
+                edge_to_face = {}
+                for face_idx in range(num_faces):
+                    if edge_index is not None:
+                        e1, e2 = edge_index[0, face_idx], edge_index[1, face_idx]
+                        edge_key = (min(e1, e2), max(e1, e2))
+                        edge_to_face[edge_key] = face_idx
+                    elif face_idx < len(face_to_nodes) and len(face_to_nodes[face_idx]) == 2:
+                        e1, e2 = face_to_nodes[face_idx][0] - 1, face_to_nodes[face_idx][1] - 1
+                        edge_key = (min(e1, e2), max(e1, e2))
+                        edge_to_face[edge_key] = face_idx
+
+                # 遍历单元，查找匹配的边（O(cells × edges)）
                 for cell_idx, simplex in enumerate(simplices):
-                    # 遍历单元的边
                     for i in range(len(simplex)):
                         p1, p2 = simplex[i], simplex[(i + 1) % len(simplex)]
                         edge_key = (min(p1, p2), max(p1, p2))
 
-                        # 查找匹配的边
-                        for face_idx in range(num_faces):
-                            if edge_index is not None:
-                                e1, e2 = edge_index[0, face_idx], edge_index[1, face_idx]
-                            elif face_idx < len(face_to_nodes) and len(face_to_nodes[face_idx]) == 2:
-                                e1, e2 = face_to_nodes[face_idx][0] - 1, face_to_nodes[face_idx][1] - 1
+                        face_idx = edge_to_face.get(edge_key)
+                        if face_idx is not None:
+                            if left_cell[face_idx] == 0:
+                                left_cell[face_idx] = cell_idx + 1
                             else:
-                                continue
-
-                            if (min(e1, e2), max(e1, e2)) == edge_key:
-                                if left_cell[face_idx] == 0:
-                                    left_cell[face_idx] = cell_idx + 1
-                                else:
-                                    right_cell[face_idx] = cell_idx + 1
-                                break
+                                right_cell[face_idx] = cell_idx + 1
 
             # 输出左单元
             for i in range(num_faces):

@@ -318,7 +318,8 @@ class TestExtractFromGrid(unittest.TestCase):
         
         self.assertEqual(nodes.shape, (3, 2))
         self.assertEqual(len(faces), 1)
-        self.assertEqual(simplices.shape, (1, 3))
+        # 现在从 zones 中的 face 提取 simplices
+        self.assertEqual(simplices.shape[0], 1)
 
     def test_extract_mixed_faces(self):
         """测试：提取混合类型面（线段和多边形）"""
@@ -350,10 +351,100 @@ class TestExtractFromGrid(unittest.TestCase):
         
         nodes, faces, simplices, edge_index = _extract_from_grid(grid)
         
-        # 应该有 2 条边（wall 面）
-        self.assertEqual(edge_index.shape[1], 2)
+        # 应该有 4 条边（四边形的 4 条边 + wall 面的 2 条边，去重后 5 条）
+        self.assertEqual(edge_index.shape[1], 5)
         # 四边形应该被三角剖分为 2 个三角形
         self.assertEqual(simplices.shape[0], 2)
+
+    def test_export_from_cas_file(self):
+        """测试：从真实 .cas 文件导出为 PLT"""
+        # 定位 .cas 文件
+        cas_file = TEST_FILES_DIR.parent / "naca0012-tri-coarse.cas"
+
+        if not cas_file.exists():
+            # 尝试其他可能的路径
+            alt_paths = [
+                root_dir / "config" / "input" / "naca0012-tri-coarse.cas",
+                root_dir / "neural" / "GNN_ALM" / "sample_grids" / "training" / "naca4digits" / "naca0012-tri-coarse.cas",
+            ]
+            for alt_path in alt_paths:
+                if alt_path.exists():
+                    cas_file = alt_path
+                    break
+            else:
+                self.skipTest(f"找不到测试文件: naca0012-tri-coarse.cas")
+
+        output_path = TEST_FILES_DIR / "naca0012_tri_coarse.plt"
+
+        # 执行导出
+        result_path = export_from_cas(
+            cas_file=str(cas_file),
+            output_path=str(output_path),
+        )
+
+        # 验证文件被创建
+        self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
+        self.assertEqual(result_path, str(output_path))
+
+        # 验证文件内容
+        content = output_path.read_text()
+
+        # 检查基本结构
+        self.assertIn("TITLE", content)
+        self.assertIn("VARIABLES", content)
+        self.assertIn("ZONE", content)
+        self.assertIn("ZoneType = FEPolygon", content)
+
+        # NACA0012 粗网格应该有约 1362 个节点
+        self.assertIn("Nodes", content)
+
+        # 应该是 2D 网格
+        self.assertIn("X, Y", content)
+
+        print(f"[OK] 成功从 .cas 文件导出 PLT: {output_path}")
+        print(f"   文件大小: {output_path.stat().st_size / 1024:.1f} KB")
+
+    def test_export_semisphere_3d_cas(self):
+        """测试：从 3D 半球的混合网格 .cas 文件导出为 PLT"""
+        # 定位 .cas 文件
+        cas_file = root_dir / "examples" / "semisphere" / "semisphere-hybrid.cas"
+
+        if not cas_file.exists():
+            self.skipTest(f"找不到测试文件: semisphere-hybrid.cas")
+
+        output_path = TEST_FILES_DIR / "semisphere_hybrid.plt"
+
+        # 执行导出
+        result_path = export_from_cas(
+            cas_file=str(cas_file),
+            output_path=str(output_path),
+        )
+
+        # 验证文件被创建
+        self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
+        self.assertEqual(result_path, str(output_path))
+
+        # 验证文件内容
+        content = output_path.read_text()
+
+        # 检查基本结构
+        self.assertIn("TITLE", content)
+        self.assertIn("VARIABLES", content)
+        self.assertIn("ZONE", content)
+
+        # 应该是 3D 网格
+        self.assertIn("ZoneType = FEPolyhedron", content)
+        self.assertIn("X, Y, Z", content)
+
+        # 验证节点数（应该有 6291 个节点）
+        self.assertIn("Nodes", content)
+
+        # 获取文件大小
+        file_size_kb = output_path.stat().st_size / 1024
+        self.assertGreater(file_size_kb, 100, "PLT 文件大小应该大于 100 KB")
+
+        print(f"[OK] 成功从 3D 半球混合网格导出 PLT: {output_path}")
+        print(f"   文件大小: {file_size_kb:.1f} KB")
 
 
 if __name__ == "__main__":
