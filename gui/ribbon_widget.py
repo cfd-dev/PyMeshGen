@@ -205,7 +205,6 @@ class RibbonWidget(QWidget):
         io_group = RibbonGroup("Mesh")
         self.buttons['file']['import'] = io_group.add_large_button("导入网格", icon=get_icon('import'), tooltip="导入网格 (Ctrl+I)")
         self.buttons['file']['export'] = io_group.add_large_button("导出网格", icon=get_icon('export'), tooltip="导出网格 (Ctrl+E)")
-        self.buttons['file']['export_plt'] = io_group.add_large_button("导出PLT", icon=get_icon('export'), tooltip="导出Tecplot PLT网格文件")
         layout.addWidget(io_group)
 
         dimension_group = RibbonGroup("Dimension")
@@ -430,7 +429,6 @@ class RibbonWidget(QWidget):
         self.buttons['file']['save'].clicked.connect(_wrap(main_window.config_manager.save_config, "保存工程"))
         self.buttons['file']['import'].clicked.connect(_wrap(main_window.mesh_operations.import_mesh, "导入网格"))
         self.buttons['file']['export'].clicked.connect(_wrap(main_window.mesh_operations.export_mesh, "导出网格"))
-        self.buttons['file']['export_plt'].clicked.connect(_wrap(main_window.mesh_operations.export_mesh_plt, "导出PLT网格"))
         self.buttons['file']['import_geometry'].clicked.connect(_wrap(main_window.import_geometry, "导入几何"))
         self.buttons['file']['export_geometry'].clicked.connect(_wrap(main_window.export_geometry, "导出几何"))
         self.buttons['file']['mesh_dimension'].clicked.connect(_wrap(main_window.mesh_operations.set_mesh_dimension, "设置网格维度"))

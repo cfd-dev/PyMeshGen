@@ -359,8 +359,10 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
                     node_indices = face
                 
                 for node_idx in node_indices:
-                    # 转换为 0-based 索引
-                    boundary_node_set.add(node_idx - 1 if node_idx > 0 else node_idx)
+                    node_idx = int(node_idx)
+                    # 注意：boundary_info中的faces数据已经是0-based的（来自_extract_faces_from_element_indices）
+                    # 直接使用，不需要转换
+                    boundary_node_set.add(node_idx)
             
             boundary_nodes_list = sorted(list(boundary_node_set))
             if len(boundary_nodes_list) == 0:
@@ -369,23 +371,50 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
             node_index_map = {old_idx: new_idx + 1 for new_idx, old_idx in enumerate(boundary_nodes_list)}
             
             num_boundary_nodes = len(boundary_nodes_list)
-            num_boundary_faces = len(faces_data)
-            
-            if num_boundary_faces == 0:
-                continue
             
             # 判断是2D还是3D边界
             is_3d = nodes.shape[1] >= 3
             
-            # 检查面的节点数，确定 ZoneType
-            # 收集所有面的节点数
+            # 第一步：预处理所有面，收集有效的面和确定ZoneType
             face_node_counts = []
+            valid_faces = []
+            
             for face in faces_data:
+                # face 可能是 dict 格式或 list 格式
                 if isinstance(face, dict):
                     face_nodes = face.get('nodes', [])
                 else:
                     face_nodes = face
-                face_node_counts.append(len(face_nodes))
+
+                if len(face_nodes) == 0:
+                    continue
+
+                # 注意：boundary_info中的faces数据已经是0-based的
+                # 直接使用，不需要转换
+                face_nodes_0based = [int(n) for n in face_nodes]
+                
+                # 使用 node_index_map 转换为新的 1-based 索引
+                face_nodes_new_1based = []
+                valid = True
+                for node_idx in face_nodes_0based:
+                    mapped_idx = node_index_map.get(node_idx)
+                    if mapped_idx is None:
+                        # 如果找不到节点，跳过这个面
+                        valid = False
+                        break
+                    face_nodes_new_1based.append(mapped_idx)
+                
+                if not valid or len(face_nodes_new_1based) < 2:
+                    continue
+                
+                face_node_counts.append(len(face_nodes_new_1based))
+                valid_faces.append(face_nodes_new_1based)
+            
+            # 如果没有有效面，跳过这个zone
+            if not valid_faces:
+                continue
+            
+            num_boundary_faces = len(valid_faces)
             
             # 确定主要面类型
             from collections import Counter
@@ -422,30 +451,8 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
                 if num_boundary_nodes % words_per_line != 0:
                     f.write("\n")
             
-            # 单元连接
-            for face in faces_data:
-                # face 可能是 dict 格式或 list 格式
-                if isinstance(face, dict):
-                    face_nodes = face.get('nodes', [])
-                else:
-                    face_nodes = face
-                
-                if len(face_nodes) == 0:
-                    continue
-                
-                # 转换为 0-based 索引
-                face_nodes_0based = []
-                for node_idx in face_nodes:
-                    if node_idx > 0:
-                        face_nodes_0based.append(node_idx - 1)
-                    else:
-                        face_nodes_0based.append(node_idx)
-                
-                # 使用 node_index_map 转换为新的 1-based 索引
-                face_nodes_new_1based = []
-                for node_idx in face_nodes_0based:
-                    face_nodes_new_1based.append(node_index_map.get(node_idx, 0))
-                
+            # 单元连接（使用预处理的有效面）
+            for face_nodes_new_1based in valid_faces:
                 # 根据 ZoneType 输出单元连接
                 if zone_type == "FELINESEG":
                     # 线段：2个节点
