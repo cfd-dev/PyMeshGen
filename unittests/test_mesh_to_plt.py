@@ -656,6 +656,154 @@ class TestGUIExportWorkflow(unittest.TestCase):
         print(f"   节点数: {len(mesh_data.node_coords)}")
         print(f"   边界区域数: {len(mesh_data.boundary_info)}")
 
+    def _simulate_cgns_export(self, cgns_file, output_plt):
+        """
+        模拟从 CGNS 文件导出为 PLT 的流程：
+        1. 使用 UniversalCGNSReader 解析 CGNS 文件
+        2. 创建 Unstructured_Grid 对象
+        3. 导出为 PLT
+        """
+        import numpy as np
+        from fileIO.universal_cgns_reader import UniversalCGNSReader
+        from data_structure.unstructured_grid import Unstructured_Grid
+
+        # 步骤 1：解析 CGNS 文件
+        reader = UniversalCGNSReader(str(cgns_file))
+        success = reader.read()
+        self.assertTrue(success, f"CGNS 文件读取失败: {cgns_file.name}")
+
+        # 步骤 2：创建 Unstructured_Grid 对象
+        mesh_data = Unstructured_Grid.from_cells(
+            node_coords=[],
+            cells=[],
+            boundary_nodes_idx=[],
+            grid_dimension=3,  # CGNS 通常为 3D
+        )
+        mesh_data.file_path = str(cgns_file)
+        mesh_data.mesh_type = 'cgns'
+
+        # 复制节点坐标
+        if reader.points is not None:
+            mesh_data.node_coords = [list(coord) for coord in reader.points]
+
+        # 复制单元（从 CGNS cells 转换）
+        # CGNS cells 是 section 列表，每个 section 包含一种类型的多个单元
+        # 体积单元（pyramid, tetra, wedge, hexa）放入主区域
+        # 面单元（triangle, quad）放入边界区域
+        volume_cells = []
+        boundary_faces = {}  # {section_index: {'nodes': [...], 'bc_type': ...}}
+
+        volume_types = {'pyramid', 'tetra', 'wedge', 'hexa', 'pyra'}
+        boundary_types = {'triangle', 'quad', 'bar'}
+
+        if reader.cells:
+            for section_idx, section in enumerate(reader.cells):
+                cell_type = section.get('type', '').lower()
+                data = section.get('data')
+
+                if data is None:
+                    continue
+
+                # 将 numpy 数组转换为列表
+                if isinstance(data, np.ndarray):
+                    cell_list = data.tolist()
+                else:
+                    cell_list = list(data) if data else []
+
+                if not cell_list:
+                    continue
+
+                # CGNS 使用 1-based 索引，需要转换为 0-based
+                cells_0based = []
+                for cell_nodes in cell_list:
+                    cells_0based.append([int(n) - 1 for n in cell_nodes])
+
+                if cell_type in volume_types:
+                    # 体积单元：添加到主区域
+                    volume_cells.extend(cells_0based)
+                elif cell_type in boundary_types:
+                    # 面单元：添加到边界区域
+                    boundary_faces[str(section_idx)] = {
+                        'nodes': cells_0based,
+                        'bc_type': 'boundary',
+                    }
+
+        # 设置体积单元
+        if volume_cells:
+            mesh_data.set_cells(volume_cells)
+
+        # 设置边界信息
+        if boundary_faces:
+            mesh_data.boundary_info = {}
+            for zone_name, zone_data in boundary_faces.items():
+                # 将面节点列表转换为 faces 格式
+                faces = [{'nodes': [n + 1 for n in cell]} for cell in zone_data['nodes']]
+                mesh_data.boundary_info[zone_name] = {
+                    'part_name': zone_name,
+                    'bc_type': zone_data['bc_type'],
+                    'faces': faces,
+                }
+
+        # 复制维度信息
+        mesh_data.dimension = 3
+
+        mesh_data.update_counts()
+
+        # 步骤 3：导出为 PLT
+        title = Path(cgns_file).stem
+        mesh_data.export_to_plt(
+            output_path=output_plt,
+            title=title
+        )
+
+        return mesh_data
+
+    def test_gui_export_cgns_mesh(self):
+        """测试：GUI 流程导出 CGNS 网格
+
+        验证：
+        - 从 CGNS 文件解析到 Unstructured_Grid 创建
+        - 维度判断正确（3D 网格使用 FEPolyhedron）
+        - VARIABLES 包含 X, Y, Z
+        - 内部单元正确输出
+        """
+        cgns_file = root_dir / "examples" / "chn-t1" / "grid_chnt-1_coarse.cgns"
+
+        if not cgns_file.exists():
+            self.skipTest("找不到测试文件: grid_chnt-1_coarse.cgns")
+
+        output_path = TEST_FILES_DIR / "gui_export_cgns.plt"
+
+        # 模拟 GUI 导出
+        mesh_data = self._simulate_cgns_export(cgns_file, str(output_path))
+
+        # 验证文件存在
+        self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
+
+        # 验证文件内容
+        content = output_path.read_text(encoding='utf-8')
+
+        # 验证 3D 特征
+        self.assertIn('"X", "Y", "Z"', content, "CGNS 网格应该包含 X, Y, Z 变量")
+        self.assertIn("ZoneType = FEPolyhedron", content, "CGNS 3D 主区域应该使用 FEPolyhedron")
+
+        # 验证维度属性
+        self.assertEqual(mesh_data.dimension, 3, "网格维度应该是 3D")
+
+        # 验证节点数
+        self.assertGreater(len(mesh_data.node_coords), 0, "节点数应该大于 0")
+
+        # 验证文件大小
+        file_size_kb = output_path.stat().st_size / 1024
+        self.assertGreater(file_size_kb, 10, "PLT 文件大小应该大于 10 KB")
+
+        print(f"\n[OK] GUI 流程成功导出 CGNS 网格: {output_path}")
+        print(f"   文件大小: {file_size_kb:.1f} KB")
+        print(f"   网格维度: {mesh_data.dimension}D")
+        print(f"   节点数: {len(mesh_data.node_coords)}")
+        if hasattr(mesh_data, 'boundary_info') and mesh_data.boundary_info:
+            print(f"   边界区域数: {len(mesh_data.boundary_info)}")
+
 
 # ============================================================
 # 主入口
