@@ -489,6 +489,175 @@ class TestRealFileExport(unittest.TestCase):
 
 
 # ============================================================
+# 测试类 6: GUI 导出流程测试
+# ============================================================
+
+class TestGUIExportWorkflow(unittest.TestCase):
+    """GUI 导出流程测试（模拟 GUI 的完整导出流程）"""
+
+    def _simulate_gui_export(self, cas_file, output_plt):
+        """
+        模拟 GUI 的导出流程：
+        1. 解析 CAS 文件
+        2. 重建网格
+        3. 创建 Unstructured_Grid 对象
+        4. 导出为 PLT
+        """
+        from fileIO.read_cas import parse_fluent_msh, reconstruct_mesh_from_cas
+        from data_structure.unstructured_grid import Unstructured_Grid
+
+        # 步骤 1：解析 CAS 文件
+        raw_cas_data = parse_fluent_msh(cas_file)
+
+        # 步骤 2：重建网格
+        unstr_grid = reconstruct_mesh_from_cas(raw_cas_data)
+
+        # 步骤 3：创建 Unstructured_Grid 对象
+        mesh_data = Unstructured_Grid.from_cells(
+            node_coords=[],
+            cells=[],
+            boundary_nodes_idx=[],
+            grid_dimension=2,
+        )
+        mesh_data.file_path = cas_file
+        mesh_data.mesh_type = 'cas'
+
+        # 复制节点坐标
+        if hasattr(unstr_grid, 'node_coords'):
+            mesh_data.node_coords = [list(coord) for coord in unstr_grid.node_coords]
+        elif hasattr(unstr_grid, 'nodes'):
+            mesh_data.node_coords = [list(node.coords) for node in unstr_grid.nodes]
+
+        # 复制单元
+        if hasattr(unstr_grid, 'cell_container'):
+            cells = []
+            for cell in unstr_grid.cell_container:
+                if cell is not None and hasattr(cell, 'node_ids'):
+                    cells.append(cell.node_ids)
+            mesh_data.set_cells(cells)
+
+        # 复制维度信息
+        if hasattr(unstr_grid, 'dimension'):
+            mesh_data.dimension = int(unstr_grid.dimension)
+
+        # 复制边界信息
+        if hasattr(unstr_grid, 'boundary_info'):
+            mesh_data.boundary_info = unstr_grid.boundary_info
+
+        mesh_data.update_counts()
+
+        # 步骤 4：导出为 PLT（这就是 GUI 中实际调用的方法）
+        title = Path(cas_file).stem
+        mesh_data.export_to_plt(
+            output_path=output_plt,
+            title=title
+        )
+
+        return mesh_data
+
+    def test_gui_export_2d_mesh(self):
+        """测试：GUI 流程导出 2D 网格
+
+        验证：
+        - 从 CAS 文件解析到 Unstructured_Grid 创建
+        - 维度判断正确（2D 网格使用 FEPolygon）
+        - VARIABLES 只有 X, Y（没有 Z）
+        - 内部单元正确输出
+        """
+        cas_file = TEST_FILES_DIR.parent / "naca0012-tri-coarse.cas"
+
+        if not cas_file.exists():
+            alt_paths = [
+                root_dir / "config" / "input" / "naca0012-tri-coarse.cas",
+                root_dir / "neural" / "GNN_ALM" / "sample_grids" / "training" / "naca4digits" / "naca0012-tri-coarse.cas",
+                root_dir / "examples" / "2d_airfoils" / "airplane-bomb-2d.cas",
+            ]
+            for alt_path in alt_paths:
+                if alt_path.exists():
+                    cas_file = alt_path
+                    break
+            else:
+                self.skipTest("找不到测试文件: naca0012-tri-coarse.cas 或 airplane-bomb-2d.cas")
+
+        output_path = TEST_FILES_DIR / "gui_export_2d.plt"
+
+        # 模拟 GUI 导出
+        mesh_data = self._simulate_gui_export(cas_file, str(output_path))
+
+        # 验证文件存在
+        self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
+
+        # 验证文件内容
+        content = output_path.read_text(encoding='utf-8')
+
+        # 验证 2D 特征
+        self.assertIn('"X", "Y"', content, "2D 网格应该只有 X, Y 变量")
+        self.assertNotIn('"Z"', content, "2D 网格不应该有 Z 变量")
+        self.assertIn("ZoneType = FEPolygon", content, "2D 网格应该使用 FEPolygon")
+
+        # 验证维度属性
+        self.assertEqual(mesh_data.dimension, 2, "网格维度应该是 2D")
+
+        # 验证节点数
+        self.assertIn("Nodes", content)
+
+        print(f"\n[OK] GUI 流程成功导出 2D 网格: {output_path}")
+        print(f"   文件大小: {output_path.stat().st_size / 1024:.1f} KB")
+        print(f"   网格维度: {mesh_data.dimension}D")
+        print(f"   节点数: {len(mesh_data.node_coords)}")
+
+    def test_gui_export_3d_mesh(self):
+        """测试：GUI 流程导出 3D 混合网格
+
+        验证：
+        - 从 CAS 文件解析到 Unstructured_Grid 创建
+        - 维度判断正确（3D 网格使用 FEPolyhedron）
+        - VARIABLES 包含 X, Y, Z
+        - 边界区域正确输出（FEQUADRILATERAL 格式）
+        - 内部单元正确输出
+        """
+        cas_file = root_dir / "examples" / "semisphere" / "semisphere-hybrid.cas"
+
+        if not cas_file.exists():
+            self.skipTest("找不到测试文件: semisphere-hybrid.cas")
+
+        output_path = TEST_FILES_DIR / "gui_export_3d.plt"
+
+        # 模拟 GUI 导出
+        mesh_data = self._simulate_gui_export(cas_file, str(output_path))
+
+        # 验证文件存在
+        self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
+
+        # 验证文件内容
+        content = output_path.read_text(encoding='utf-8')
+
+        # 验证 3D 特征
+        self.assertIn('"X", "Y", "Z"', content, "3D 网格应该包含 X, Y, Z 变量")
+        self.assertIn("ZoneType = FEPolyhedron", content, "3D 主区域应该使用 FEPolyhedron")
+
+        # 验证边界区域使用 FEQUADRILATERAL
+        self.assertIn("ZoneType = FEQUADRILATERAL", content, "3D 边界区域应该使用 FEQUADRILATERAL")
+
+        # 验证维度属性
+        self.assertEqual(mesh_data.dimension, 3, "网格维度应该是 3D")
+
+        # 验证有边界区域
+        self.assertTrue(hasattr(mesh_data, 'boundary_info'), "3D 网格应该有边界信息")
+        self.assertGreater(len(mesh_data.boundary_info), 0, "3D 网格应该有边界区域")
+
+        # 验证文件大小
+        file_size_kb = output_path.stat().st_size / 1024
+        self.assertGreater(file_size_kb, 100, "PLT 文件大小应该大于 100 KB")
+
+        print(f"\n[OK] GUI 流程成功导出 3D 网格: {output_path}")
+        print(f"   文件大小: {file_size_kb:.1f} KB")
+        print(f"   网格维度: {mesh_data.dimension}D")
+        print(f"   节点数: {len(mesh_data.node_coords)}")
+        print(f"   边界区域数: {len(mesh_data.boundary_info)}")
+
+
+# ============================================================
 # 主入口
 # ============================================================
 

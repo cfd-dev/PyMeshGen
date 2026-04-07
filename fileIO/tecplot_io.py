@@ -87,8 +87,14 @@ def export_mesh_to_plt(
     if not title.endswith(" exported from PyMeshGen"):
         title = f"{title} exported from PyMeshGen"
 
-    # 4. 3D 时初始化文件并写入边界区域
-    is_3d = nodes.shape[1] == 3
+    # 4. 判断维度（2D 或 3D）
+    # 优先使用 grid 中的 dimension 字段，其次使用节点坐标的维度
+    if grid is not None and "dimension" in grid:
+        dimension = grid["dimension"]
+    else:
+        dimension = nodes.shape[1] if nodes.ndim == 2 else 2
+    
+    is_3d = dimension == 3 or (nodes.ndim == 2 and nodes.shape[1] == 3)
     if is_3d:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
@@ -184,7 +190,14 @@ def export_unstructured_grid_to_plt(
     """
     # 提取节点坐标
     nodes = np.array(unstructured_grid.node_coords)
-    is_3d = nodes.shape[1] == 3
+    # 判断维度：优先使用 unstructured_grid 的 dimension 属性
+    # 因为即使原始网格是2D，节点坐标也可能被存储为3维（第三维为0）
+    if hasattr(unstructured_grid, 'dimension'):
+        dimension = unstructured_grid.dimension
+    else:
+        dimension = nodes.shape[1] if nodes.ndim == 2 else 2
+    
+    is_3d = dimension == 3
     
     # 提取单元连接
     simplices_list = []
@@ -225,24 +238,25 @@ def export_unstructured_grid_to_plt(
     
     # 提取边界区域信息
     boundary_zones = _extract_boundary_zones_from_grid(unstructured_grid)
-    
+
     # 3D 网格需要特殊处理边界
+    # 2D 网格即使有边界区域，也不需要先写入边界区域（Tecplot 2D 格式不支持独立边界 Zone）
     if is_3d and boundary_zones:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         if not title.endswith(" exported from PyMeshGen"):
             title = f"{title} exported from PyMeshGen" if title else "Mesh exported from PyMeshGen"
-        
+
         # 写入 TITLE
         with open(output_path, "w") as f:
             f.write(f'TITLE = "{title}"\n')
-        
+
         # 先写入边界区域
         _write_boundary_zones_from_dict(
             nodes=nodes,
             boundary_zones=boundary_zones,
             output_path=output_path,
         )
-        
+
         # 再追加主区域
         _append_main_zone(
             nodes=nodes,
@@ -252,12 +266,13 @@ def export_unstructured_grid_to_plt(
             scalars=scalars or {},
             output_path=output_path,
             title=title,
+            dimension=dimension,  # 传递维度参数
         )
     else:
         # 2D 或无边界区域，直接写入
         if scalars is None:
             scalars = {}
-        
+
         _write_plt_file(
             nodes=nodes,
             faces=None,
@@ -266,6 +281,7 @@ def export_unstructured_grid_to_plt(
             scalars=scalars,
             output_path=output_path,
             title=title,
+            dimension=dimension,  # 传递维度参数
         )
     
     print(f"PLT 文件已保存: {output_path}")
@@ -369,11 +385,11 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
                 continue
             
             node_index_map = {old_idx: new_idx + 1 for new_idx, old_idx in enumerate(boundary_nodes_list)}
-            
+
             num_boundary_nodes = len(boundary_nodes_list)
-            
+
             # 判断是2D还是3D边界
-            is_3d = nodes.shape[1] >= 3
+            is_3d = nodes.ndim == 2 and nodes.shape[1] >= 3
             
             # 第一步：预处理所有面，收集有效的面和确定ZoneType
             face_node_counts = []
@@ -413,26 +429,13 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
             # 如果没有有效面，跳过这个zone
             if not valid_faces:
                 continue
-            
+
             num_boundary_faces = len(valid_faces)
-            
-            # 确定主要面类型
-            from collections import Counter
-            if face_node_counts:
-                most_common_count = Counter(face_node_counts).most_common(1)[0][0]
-            else:
-                most_common_count = 2
-            
-            # 根据节点数确定 ZoneType
-            if most_common_count == 2:
-                zone_type = "FELINESEG"  # 2D边界（线段）
-            elif most_common_count == 3:
-                zone_type = "FETRIANGLE"  # 三角形面
-            elif most_common_count == 4:
-                zone_type = "FEQUADRILATERAL"  # 四边形面
-            else:
-                zone_type = "FEPOLYGON"  # 多边形面
-            
+
+            # 对于 3D 边界区域，强制使用 FEQUADRILATERAL 格式
+            # 三角形面通过重复第 4 个节点转换为四边形（与 _write_boundary_zones_first 一致）
+            zone_type = "FEQUADRILATERAL"
+
             # 写入边界区域 Zone 头
             f.write('VARIABLES = "X", "Y", "Z"\n')
             f.write(f'ZONE T= "{zone_title}"\n')
@@ -442,9 +445,11 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
             f.write(f"Datapacking = BLOCK\n")
             
             # 边界节点坐标
-            for dim in range(nodes.shape[1]):
+            # 根据 is_3d 决定写入的维度数
+            num_dims_to_write = 3 if is_3d else 2
+            for dim in range(num_dims_to_write):
                 for node_idx in boundary_nodes_list:
-                    coord = nodes[node_idx, dim] if nodes.shape[1] > dim else 0.0
+                    coord = nodes[node_idx, dim] if dim < nodes.shape[1] else 0.0
                     f.write(f"{coord:.10f} ")
                     if (node_index_map[node_idx]) % words_per_line == 0:
                         f.write("\n")
@@ -452,26 +457,17 @@ def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict
                     f.write("\n")
             
             # 单元连接（使用预处理的有效面）
+            # 由于固定使用 FEQUADRILATERAL，所有面都输出 4 个节点
             for face_nodes_new_1based in valid_faces:
-                # 根据 ZoneType 输出单元连接
-                if zone_type == "FELINESEG":
-                    # 线段：2个节点
-                    if len(face_nodes_new_1based) >= 2:
-                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]}\n")
-                elif zone_type == "FETRIANGLE":
-                    # 三角形：3个节点
-                    if len(face_nodes_new_1based) >= 3:
-                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]}\n")
-                elif zone_type == "FEQUADRILATERAL":
-                    # 四边形：4个节点
-                    if len(face_nodes_new_1based) >= 4:
-                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[3]}\n")
-                    elif len(face_nodes_new_1based) == 3:
-                        # 三角形转换为四边形（重复第4个节点）
-                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[2]}\n")
-                elif zone_type == "FEPOLYGON":
-                    # 多边形：需要输出节点数和节点
-                    f.write(f"{len(face_nodes_new_1based)} " + " ".join(str(n) for n in face_nodes_new_1based) + "\n")
+                if len(face_nodes_new_1based) >= 4:
+                    # 四边形：直接输出 4 个节点
+                    f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[3]}\n")
+                elif len(face_nodes_new_1based) == 3:
+                    # 三角形：重复第 4 个节点转换为四边形
+                    f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[2]}\n")
+                elif len(face_nodes_new_1based) == 2:
+                    # 线段：重复第 3、4 个节点（理论上不应该出现）
+                    f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[1]} {face_nodes_new_1based[1]}\n")
 
 
 def _extract_from_grid(grid: Dict):
@@ -495,6 +491,10 @@ def _extract_from_grid(grid: Dict):
     if node_array.ndim == 1:
         dim = grid.get("dimension", 2)
         node_array = node_array.reshape(-1, dim)
+    
+    # 确保节点坐标维度正确
+    if node_array.ndim == 2 and node_array.shape[1] < 2:
+        raise ValueError(f"节点坐标维度不足，期望至少 2 维，实际 {node_array.shape}")
 
     # 收集所有面
     all_faces = []
@@ -505,10 +505,12 @@ def _extract_from_grid(grid: Dict):
     # 提取单元 (simplices)
     simplices_list = []
 
+    # 优先从 cells 中提取
     if "cells" in grid and len(grid["cells"]) > 0:
         for cell in grid["cells"]:
             if "nodes" in cell:
                 cell_nodes = cell["nodes"]
+                # 转换为 0-based 索引
                 cell_nodes_0based = [n - 1 if n > 0 else -n - 1 for n in cell_nodes]
                 if len(cell_nodes_0based) == 3:
                     simplices_list.append(cell_nodes_0based)
@@ -516,6 +518,7 @@ def _extract_from_grid(grid: Dict):
                     simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[1], cell_nodes_0based[2]])
                     simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[2], cell_nodes_0based[3]])
 
+    # 如果 cells 为空，尝试从 faces 构建单元
     elif "faces" in grid and len(grid.get("faces", [])) > 0:
         cell_faces_map = {}
         for face in grid["faces"]:
@@ -535,14 +538,33 @@ def _extract_from_grid(grid: Dict):
             elif len(unique_nodes) == 4:
                 simplices_list.append([unique_nodes[0] - 1, unique_nodes[1] - 1, unique_nodes[2] - 1])
                 simplices_list.append([unique_nodes[0] - 1, unique_nodes[2] - 1, unique_nodes[3] - 1])
-    else:
-        for face in all_faces:
-            face_nodes = face.get("nodes", [])
-            if len(face_nodes) == 3:
-                simplices_list.append([n - 1 for n in face_nodes])
-            elif len(face_nodes) == 4:
-                simplices_list.append([face_nodes[0] - 1, face_nodes[1] - 1, face_nodes[2] - 1])
-                simplices_list.append([face_nodes[0] - 1, face_nodes[2] - 1, face_nodes[3] - 1])
+    
+    # 如果仍为空，尝试从 zones 中的内部区域提取
+    if not simplices_list:
+        for zone_name, zone_data in grid.get("zones", {}).items():
+            # 跳过边界区域，只处理内部区域
+            bc_type = zone_data.get("bc_type", "")
+            if bc_type and bc_type.lower() not in ("internal", "interior"):
+                continue
+            
+            # 从 zone 数据中提取单元
+            zone_data_list = zone_data.get("data", [])
+            for item in zone_data_list:
+                if isinstance(item, dict):
+                    if "nodes" in item:
+                        face_nodes = item["nodes"]
+                        if len(face_nodes) == 3:
+                            simplices_list.append([n - 1 for n in face_nodes])
+                        elif len(face_nodes) == 4:
+                            simplices_list.append([face_nodes[0] - 1, face_nodes[1] - 1, face_nodes[2] - 1])
+                            simplices_list.append([face_nodes[0] - 1, face_nodes[2] - 1, face_nodes[3] - 1])
+                elif isinstance(item, list):
+                    # 直接的节点列表
+                    if len(item) == 3:
+                        simplices_list.append([n - 1 for n in item])
+                    elif len(item) == 4:
+                        simplices_list.append([item[0] - 1, item[1] - 1, item[2] - 1])
+                        simplices_list.append([item[0] - 1, item[2] - 1, item[3] - 1])
 
     # 构建边索引
     edge_set = set()
@@ -577,6 +599,7 @@ def _write_plt_file(
     output_path: str,
     title: str,
     append_mode: bool = False,
+    dimension: int = None,  # 新增：允许显式指定维度
 ):
     """
     写入 Tecplot PLT 文件主区域
@@ -590,9 +613,14 @@ def _write_plt_file(
         output_path: 输出文件路径
         title: 文件标题
         append_mode: 是否追加模式（3D 主区域时使用）
+        dimension: 网格维度（2 或 3），如果不指定则从 nodes.shape 推断
     """
     num_nodes = len(nodes)
-    is_3d = nodes.shape[1] == 3
+    # 判断维度：优先使用传入的 dimension 参数，否则从节点坐标的列数推断
+    if dimension is not None:
+        is_3d = dimension == 3
+    else:
+        is_3d = nodes.ndim == 2 and nodes.shape[1] == 3
 
     cell_type = "FEPolyhedron" if is_3d else "FEPolygon"
     num_cells = len(simplices) if simplices is not None else 0
@@ -679,9 +707,13 @@ def _write_plt_file(
             f.write("TotalNumBoundaryConnections = 0\n")
 
         # 节点坐标数据 (BLOCK 格式)
-        for dim in range(nodes.shape[1]):
+        # 根据 is_3d 决定写入的维度数，而不是 nodes.shape[1]
+        # 因为 2D 网格可能存储为 3 维坐标（第三维为 0）
+        num_dims_to_write = 3 if is_3d else 2
+        for dim in range(num_dims_to_write):
             for i in range(num_nodes):
-                f.write(f"{nodes[i, dim]:.10f} ")
+                coord = nodes[i, dim] if dim < nodes.shape[1] else 0.0
+                f.write(f"{coord:.10f} ")
                 if (i + 1) % words_per_line == 0:
                     f.write("\n")
             if num_nodes % words_per_line != 0:
@@ -829,6 +861,7 @@ def _append_main_zone(
     scalars: Dict[str, np.ndarray],
     output_path: str,
     title: str,
+    dimension: int = None,  # 新增：允许显式指定维度
 ):
     """
     追加主网格区域到 PLT 文件（用于 3D）
@@ -844,4 +877,5 @@ def _append_main_zone(
         output_path=output_path,
         title=title,
         append_mode=True,
+        dimension=dimension,  # 传递维度参数
     )
