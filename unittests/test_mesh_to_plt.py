@@ -31,7 +31,7 @@ import sys
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from fileIO.mesh_to_plt import export_mesh_to_plt, export_from_cas, _extract_from_grid
+from fileIO.tecplot_io import export_mesh_to_plt, export_from_cas, _extract_from_grid
 
 # 测试文件保存目录
 TEST_FILES_DIR = Path(__file__).parent / "test_files" / "plt_export"
@@ -166,41 +166,48 @@ class TestMeshToPLT(unittest.TestCase):
         self.assertTrue(len(data_lines) > 0)
 
     def test_3d_mesh_export(self):
-        """测试：3D 网格导出
-        
-        网格结构：两个四面体共享一个面
-        底面：正方形 (0,1,2,3)，顶点：(4)
+        """测试：3D 网格导出（含边界区域）
+
+        网格结构：两个四面体组成的金字塔
+        - 节点：底面正方形 4 点 + 顶点 1 点
+        - 单元 (Cells)：2 个四面体
+        - 边界 (Zones)：5 个侧面三角形 + 2 个底面三角形
         """
-        nodes = np.array([
-            [0.0, 0.0, 0.0],  # 节点 0
-            [1.0, 0.0, 0.0],  # 节点 1
-            [1.0, 1.0, 0.0],  # 节点 2
-            [0.0, 1.0, 0.0],  # 节点 3
-            [0.5, 0.5, 1.0],  # 节点 4 (顶点)
-        ])
-
-        # 2 个四面体单元
-        simplices = np.array([
-            [0, 1, 2, 4],  # 四面体 1
-            [0, 2, 3, 4],  # 四面体 2
-        ])
-
-        # 9 条独立边
-        # 四面体 1 边：0-1, 1-2, 2-0, 0-4, 1-4, 2-4
-        # 四面体 2 边：0-2, 2-3, 3-0, 0-4, 2-4, 3-4
-        # 去重后：0-1, 1-2, 2-3, 3-0, 0-4, 1-4, 2-4, 3-4, 0-2
-        edge_index = np.array([
-            [0, 1, 2, 3, 0, 1, 2, 3, 0],
-            [1, 2, 3, 0, 4, 4, 4, 4, 2],
-        ])
+        # 提供包含体单元 (Cells) 和边界区域 (Zones) 的完整网格数据
+        grid = {
+            "nodes": [
+                {"coords": (0.0, 0.0, 0.0)},  # 节点 1
+                {"coords": (1.0, 0.0, 0.0)},  # 节点 2
+                {"coords": (1.0, 1.0, 0.0)},  # 节点 3
+                {"coords": (0.0, 1.0, 0.0)},  # 节点 4
+                {"coords": (0.5, 0.5, 1.0)},  # 节点 5 (顶点)
+            ],
+            # 【关键修复】显式定义体单元 (Cells)，确保 Tecplot 识别为 2 个四面体
+            "cells": [
+                {"nodes": [1, 2, 3, 5]},  # 四面体 1
+                {"nodes": [1, 3, 4, 5]},  # 四面体 2
+            ],
+            "zones": {
+                "wall": {
+                    "type": "faces",
+                    "bc_type": "wall",
+                    "data": [
+                        {"nodes": [1, 2, 5]},  # 侧面
+                        {"nodes": [2, 3, 5]},  # 侧面
+                        {"nodes": [3, 4, 5]},  # 侧面
+                        {"nodes": [4, 1, 5]},  # 侧面
+                        {"nodes": [1, 2, 3]},  # 底面部分 1
+                        {"nodes": [1, 3, 4]},  # 底面部分 2
+                    ],
+                },
+            },
+        }
 
         scalars = {"P": np.array([1.0, 1.1, 1.2, 1.3, 1.4])}
         output_path = TEST_FILES_DIR / "3d_mesh.plt"
 
         result_path = export_mesh_to_plt(
-            nodes=nodes,
-            simplices=simplices,
-            edge_index=edge_index,
+            grid=grid,
             scalars=scalars,
             output_path=str(output_path),
             title="3D Test",
@@ -208,7 +215,19 @@ class TestMeshToPLT(unittest.TestCase):
 
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
+
+        # 验证：包含 3D 变量
         self.assertIn('"X", "Y", "Z", "P"', content)
+        
+        # 验证：包含边界区域 Zone (wall)
+        self.assertIn('ZONE T= "wall"', content)
+        
+        # 验证：主区域为 3D 体网格 (FEPolyhedron)
+        self.assertIn("ZoneType = FEPolyhedron", content)
+        
+        # 验证：体单元数量正确 (2 个四面体)
+        # 之前的错误是因为 Elements = 6 (误将面当作单元)，现在应为 2
+        self.assertIn("Elements = 2", content)
 
 
 # ============================================================

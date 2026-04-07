@@ -1,49 +1,25 @@
 """
-非结构网格导出为 Tecplot PLT 文件
+Tecplot PLT 文件输入输出模块
 
 功能：
-1. 从 PyMeshGen 网格数据导出为 Tecplot PLT 格式
-2. 支持 2D/3D 网格 (FEPolygon / FEPolyhedron)
-3. 支持标量场数据（如压力、温度等）
+- 从 PyMeshGen 网格数据导出为 Tecplot PLT 格式
+- 支持 2D (FEPolygon) 和 3D (FEPolyhedron) 非结构网格
+- 支持标量场数据导出
+- 3D 网格自动输出边界区域 Zone
 
-Tecplot FEPolygon/FEPolyhedron 格式说明：
-参考: https://github.com/su2code/SU2/raw/master/externals/tecio/360_data_format_guide.pdf
-
-文件格式结构：
-┌─────────────────────────────────────────────────┐
-│ 文件头 (Header)                                 │
-│ ├─ TITLE = "..."                                │
-│ ├─ VARIABLES = "X", "Y", "P", ...               │
-│ └─ ZONE                                         │
-│    ├─ ZoneType = FEPolygon / FEPolyhedron       │
-│    ├─ Nodes, Faces, Elements                     │
-│    ├─ Datapacking = BLOCK                        │
-│    ├─ TotalNumFaceNodes                          │
-│    └─ NumConnectedBoundaryFaces = 0              │
-├─────────────────────────────────────────────────┤
-│ 数据区 (Data) - BLOCK 格式                      │
-│ ├─ 节点坐标: X[nodes], Y[nodes], Z[nodes](3D)   │
-│ └─ 标量场数据: P[nodes], T[nodes], ...          │
-├─────────────────────────────────────────────────┤
-│ 拓扑区 (Topology)                               │
-│ ├─ FaceNodeNumber (3D 专用): 每个面的节点数      │
-│ ├─ FaceNodesLink: 面-节点连接索引 (1-based)      │
-│ ├─ LeftCell: 每个面的左单元索引 (1-based)        │
-│ ├─ RightCell: 每个面的右单元索引 (1-based)       │
-│ └─ FaceElementLink: 每个单元包含的面列表         │
-└─────────────────────────────────────────────────┘
-
-边界外表面识别：
-Tecplot 通过 LeftCell/RightCell 中的 0 值自动识别边界外表面：
-- LeftCell[i] == 0 或 RightCell[i] == 0 的面即为边界外表面
+Tecplot 格式说明：
+- 2D 网格使用 FEPolygon 格式
+- 3D 网格使用 FEPolyhedron 格式，边界区域使用 FEQUADRILATERAL 格式
+- 数据采用 BLOCK 打包方式
+- 索引均为 1-based
 
 用法：
-    from fileIO.mesh_to_plt import export_mesh_to_plt
+    from fileIO.tecplot_io import export_mesh_to_plt
 
-    # 方式 1: 从 PyMeshGen 网格字典导出
+    # 从网格字典导出
     export_mesh_to_plt(grid, output_path="output.plt")
 
-    # 方式 2: 从节点和面数据直接导出
+    # 从节点和面数据直接导出
     export_mesh_to_plt(
         nodes=nodes,
         simplices=simplices,
@@ -58,10 +34,6 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 
-# ============================================================
-# 公共接口
-# ============================================================
-
 def export_mesh_to_plt(
     grid: Optional[Dict] = None,
     nodes: Optional[np.ndarray] = None,
@@ -75,19 +47,15 @@ def export_mesh_to_plt(
     """
     将非结构网格导出为 Tecplot PLT 文件
 
-    支持两种输入方式：
-    1. PyMeshGen 网格字典（grid 参数）
-    2. 直接的节点/面数据（nodes, simplices, edge_index）
-
     Args:
-        grid: PyMeshGen 网格数据字典，包含 nodes, faces, zones 等字段
-        nodes: 节点坐标数组，形状 [num_nodes, 2] 或 [num_nodes, 3]
+        grid: PyMeshGen 网格数据字典
+        nodes: 节点坐标数组 [num_nodes, 2] 或 [num_nodes, 3]
         faces: 面列表，每个面包含 "nodes" 字段（1-based 索引）
-        simplices: 单元连接数组，形状 [num_cells, 3] 三角形 或 [num_cells, 4] 四面体
-        edge_index: 边索引数组，形状 [2, num_edges]，2D 时需要
-        scalars: 标量字段字典，如 {"P": pressure, "T": temperature}
+        simplices: 单元连接数组，形状 [num_cells, 3] 或 [num_cells, 4]
+        edge_index: 边索引数组，形状 [2, num_edges]
+        scalars: 标量字段字典，如 {"P": pressure}
         output_path: 输出 PLT 文件路径
-        title: 文件标题
+        title: 文件标题（会自动添加 " exported from PyMeshGen" 后缀）
 
     Returns:
         输出文件路径
@@ -95,66 +63,65 @@ def export_mesh_to_plt(
     Raises:
         ValueError: 输入参数无效时抛出
     """
-    # ── 步骤 1: 提取网格数据 ──────────────────────────────────
+    # 1. 提取网格数据
     if grid is not None:
-        # 从 PyMeshGen 网格字典提取
         nodes, faces, simplices, edge_index = _extract_from_grid(grid)
         if not isinstance(nodes, np.ndarray):
             nodes = np.array(nodes)
     elif nodes is None or (faces is None and edge_index is None):
         raise ValueError("必须提供 grid 参数，或同时提供 nodes 和 faces/edge_index")
 
-    # 验证节点数据
     if nodes is None or len(nodes) == 0:
         raise ValueError("节点数据为空")
 
-    # 确保 nodes 是 numpy 数组
     if not isinstance(nodes, np.ndarray):
         nodes = np.array(nodes)
 
-    # ── 步骤 2: 准备标量数据 ──────────────────────────────────
+    # 2. 准备标量数据
     if scalars is None:
         scalars = {}
 
-    # ── 步骤 2.5: 格式化文件标题 ──────────────────────────────
-    # 格式：原始名称 + " exported from PyMeshGen"
+    # 3. 格式化文件标题
     if not title:
         title = "Mesh"
     if not title.endswith(" exported from PyMeshGen"):
         title = f"{title} exported from PyMeshGen"
 
-    # ── 步骤 2.6: 3D 时初始化文件并写入全局标题 ────────────────
-    # 3D 时需要先写边界区域，所以先创建文件并写入 TITLE
-    # 2D 时由 _write_plt_file 负责创建文件和写入 TITLE
+    # 4. 3D 时初始化文件并写入边界区域
     is_3d = nodes.shape[1] == 3
     if is_3d:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         with open(output_path, "w") as f:
             f.write(f'TITLE = "{title}"\n')
 
-    # ── 步骤 3: 3D 时先写入边界区域 ───────────────────────────
-    # 根据 C++ 参考代码 WriteFileByActionKeyByTECLib：
-    # 3D 时需要先输出边界区域，再输出主区域
-    # 2D 时只输出主区域
-    if is_3d and grid is not None and grid.get("zones"):
-        # 先写入边界区域
-        _write_boundary_zones_first(
-            nodes=nodes,
-            grid=grid,
-            output_path=output_path,
-        )
-        # 再追加主区域
-        _append_main_zone(
-            nodes=nodes,
-            faces=faces,
-            simplices=simplices,
-            edge_index=edge_index,
-            scalars=scalars,
-            output_path=output_path,
-            title=title,
-        )
+        # 3D 需要先输出边界区域，再输出主区域
+        if grid is not None and grid.get("zones"):
+            _write_boundary_zones_first(
+                nodes=nodes,
+                grid=grid,
+                output_path=output_path,
+            )
+            _append_main_zone(
+                nodes=nodes,
+                faces=faces,
+                simplices=simplices,
+                edge_index=edge_index,
+                scalars=scalars,
+                output_path=output_path,
+                title=title,
+            )
+        else:
+            _write_plt_file(
+                nodes=nodes,
+                faces=faces,
+                simplices=simplices,
+                edge_index=edge_index,
+                scalars=scalars,
+                output_path=output_path,
+                title=title,
+            )
     else:
-        # 2D 或无网格字典：只写入主区域
+        # 2D 直接写入主区域
         _write_plt_file(
             nodes=nodes,
             faces=faces,
@@ -169,7 +136,7 @@ def export_mesh_to_plt(
     return output_path
 
 
-def export_from_cas(cas_file: str, output_path: str, 
+def export_from_cas(cas_file: str, output_path: str,
                     scalars: Optional[Dict[str, np.ndarray]] = None) -> str:
     """
     从 Fluent .cas 文件导出为 PLT 文件
@@ -185,11 +152,9 @@ def export_from_cas(cas_file: str, output_path: str,
     from fileIO.read_cas import parse_fluent_msh
     from data_structure.mesh_reconstruction import preprocess_grid
 
-    # 解析网格并预处理
     grid = parse_fluent_msh(cas_file)
     preprocess_grid(grid)
 
-    # 导出为 PLT
     title = Path(cas_file).stem
     return export_mesh_to_plt(
         grid=grid,
@@ -199,68 +164,50 @@ def export_from_cas(cas_file: str, output_path: str,
     )
 
 
-# ============================================================
-# 内部函数：网格数据提取
-# ============================================================
-
 def _extract_from_grid(grid: Dict):
     """
     从 PyMeshGen 网格字典中提取节点、面、单元信息
 
-    支持多种网格格式：
+    支持三种网格格式：
     - 包含 cells 的网格
     - Fluent 面基网格 (faces 格式)
     - zones 格式的旧版网格
 
-    Args:
-        grid: PyMeshGen 网格字典
-
     Returns:
         tuple: (node_array, all_faces, simplices, edge_index)
-            - node_array: 节点坐标数组 [num_nodes, dim]
-            - all_faces: 所有面的列表
-            - simplices: 单元连接数组
-            - edge_index: 边索引数组 [2, num_edges]
     """
-    # ── 提取节点坐标 ──────────────────────────────────────────
-    # 支持两种格式：字典列表 {"coords": (...)} 或元组列表
+    # 提取节点坐标
     if grid["nodes"] and isinstance(grid["nodes"][0], dict):
         node_array = np.array([node["coords"] for node in grid["nodes"]])
     else:
         node_array = np.array(grid["nodes"])
 
-    # 确保是 2D 数组 [num_nodes, dim]
     if node_array.ndim == 1:
         dim = grid.get("dimension", 2)
         node_array = node_array.reshape(-1, dim)
 
-    # ── 收集所有面 ────────────────────────────────────────────
+    # 收集所有面
     all_faces = []
     for zone in grid.get("zones", {}).values():
         if zone.get("type") == "faces":
             all_faces.extend(zone.get("data", []))
 
-    # ── 提取单元 (simplices) ──────────────────────────────────
+    # 提取单元 (simplices)
     simplices_list = []
 
-    # 情况 1: 网格包含 cells
     if "cells" in grid and len(grid["cells"]) > 0:
         for cell in grid["cells"]:
             if "nodes" in cell:
                 cell_nodes = cell["nodes"]
-                # 转为 0-based 索引
                 cell_nodes_0based = [n - 1 if n > 0 else -n - 1 for n in cell_nodes]
                 if len(cell_nodes_0based) == 3:
-                    simplices_list.append(cell_nodes_0based)  # 三角形
+                    simplices_list.append(cell_nodes_0based)
                 elif len(cell_nodes_0based) == 4:
-                    # 四边形三角剖分
                     simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[1], cell_nodes_0based[2]])
                     simplices_list.append([cell_nodes_0based[0], cell_nodes_0based[2], cell_nodes_0based[3]])
 
-    # 情况 2: Fluent 面基网格
     elif "faces" in grid and len(grid.get("faces", [])) > 0:
-        # 通过面重建单元：收集每个单元包含的面
-        cell_faces_map = {}  # cell_id -> list of face node indices
+        cell_faces_map = {}
         for face in grid["faces"]:
             left_cell = face.get("left_cell", 0)
             right_cell = face.get("right_cell", 0)
@@ -271,38 +218,30 @@ def _extract_from_grid(grid: Dict):
             if right_cell > 0:
                 cell_faces_map.setdefault(right_cell, []).extend(face_nodes)
 
-        # 从单元的面中提取唯一节点
         for nodes_list in cell_faces_map.values():
             unique_nodes = sorted(set(nodes_list))
             if len(unique_nodes) == 3:
-                simplices_list.append([n - 1 for n in unique_nodes])  # 三角形
+                simplices_list.append([n - 1 for n in unique_nodes])
             elif len(unique_nodes) == 4:
-                # 四边形三角剖分
                 simplices_list.append([unique_nodes[0] - 1, unique_nodes[1] - 1, unique_nodes[2] - 1])
                 simplices_list.append([unique_nodes[0] - 1, unique_nodes[2] - 1, unique_nodes[3] - 1])
-
-    # 情况 3: 从 zones 中的 face 数据提取 (旧格式)
     else:
         for face in all_faces:
             face_nodes = face.get("nodes", [])
             if len(face_nodes) == 3:
                 simplices_list.append([n - 1 for n in face_nodes])
             elif len(face_nodes) == 4:
-                # 四边形三角剖分
                 simplices_list.append([face_nodes[0] - 1, face_nodes[1] - 1, face_nodes[2] - 1])
                 simplices_list.append([face_nodes[0] - 1, face_nodes[2] - 1, face_nodes[3] - 1])
 
-    # ── 构建边索引 ────────────────────────────────────────────
+    # 构建边索引
     edge_set = set()
-
     if simplices_list:
-        # 从单元中提取边
         for cell_nodes in simplices_list:
             for i in range(len(cell_nodes)):
                 n1, n2 = cell_nodes[i], cell_nodes[(i + 1) % len(cell_nodes)]
                 edge_set.add((min(n1, n2), max(n1, n2)))
     else:
-        # 从面中提取边
         for face in all_faces:
             face_nodes = face.get("nodes", [])
             if len(face_nodes) == 2:
@@ -319,10 +258,6 @@ def _extract_from_grid(grid: Dict):
     return node_array, all_faces, simplices, edge_index
 
 
-# ============================================================
-# 内部函数：PLT 文件写入
-# ============================================================
-
 def _write_plt_file(
     nodes: np.ndarray,
     faces: Optional[List[Dict]],
@@ -334,16 +269,7 @@ def _write_plt_file(
     append_mode: bool = False,
 ):
     """
-    写入 Tecplot PLT 文件
-
-    PLT 文件格式 (Tecplot 360):
-    ┌─────────────────────────────────────────────────────────┐
-    │ 1. 文件头: TITLE, VARIABLES, ZONE 定义                  │
-    │ 2. 节点坐标数据: X[], Y[], Z[](3D)                      │
-    │ 3. 标量场数据: P[], T[], ...(BLOCK 格式)                │
-    │ 4. 拓扑数据: FaceNodeNumber(3D), FaceNodesLink,         │
-    │             LeftCell, RightCell, FaceElementLink        │
-    └─────────────────────────────────────────────────────────┘
+    写入 Tecplot PLT 文件主区域
 
     Args:
         nodes: 节点坐标数组 [num_nodes, 2] 或 [num_nodes, 3]
@@ -353,34 +279,27 @@ def _write_plt_file(
         scalars: 标量字段字典
         output_path: 输出文件路径
         title: 文件标题
-        append_mode: 是否追加模式（3D 时使用）
+        append_mode: 是否追加模式（3D 主区域时使用）
     """
     num_nodes = len(nodes)
     is_3d = nodes.shape[1] == 3
 
-    # ── 确定网格类型 ──────────────────────────────────────────
     cell_type = "FEPolyhedron" if is_3d else "FEPolygon"
     num_cells = len(simplices) if simplices is not None else 0
     num_faces = edge_index.shape[1] if edge_index is not None else (len(faces) if faces else 0)
 
-    # ── 构建变量列表 ──────────────────────────────────────────
     var_names = ["X", "Y", "Z"] if is_3d else ["X", "Y"]
     var_names.extend(scalars.keys())
 
-    # ── 确保输出目录存在 ──────────────────────────────────────
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    words_per_line = 5
 
-    words_per_line = 5  # Tecplot 标准：每行最多 5 个数据
-
-    # ============================================================
-    # 预先构建拓扑关系 (在写入文件前计算)
-    # ============================================================
+    # 预先构建拓扑关系
     face_to_nodes = []
     left_cell = np.zeros(num_faces, dtype=int)
     right_cell = np.zeros(num_faces, dtype=int)
 
     if num_faces > 0:
-        # ── 构建 face_to_nodes (1-based 索引) ─────────────────
         if edge_index is not None:
             for i in range(edge_index.shape[1]):
                 n1, n2 = edge_index[0, i] + 1, edge_index[1, i] + 1
@@ -390,13 +309,10 @@ def _write_plt_file(
                 face_nodes = [n + 1 for n in face.get("nodes", [])]
                 face_to_nodes.append(face_nodes)
 
-        # ── 计算 TotalNumFaceNodes ────────────────────────────
         total_num_face_nodes = sum(len(fn) for fn in face_to_nodes)
 
-        # ── 构建 LeftCell/RightCell ───────────────────────────
-        # 通过边-面映射，确定每个面的左右单元
+        # 构建 LeftCell/RightCell
         if num_cells > 0 and simplices is not None:
-            # 构建边到面的映射 (O(faces))
             edge_to_face = {}
             for face_idx in range(num_faces):
                 if edge_index is not None:
@@ -409,7 +325,6 @@ def _write_plt_file(
                     continue
                 edge_to_face[edge_key] = face_idx
 
-            # 遍历单元，查找匹配的边 (O(cells × edges_per_cell))
             for cell_idx, simplex in enumerate(simplices):
                 for i in range(len(simplex)):
                     p1, p2 = simplex[i], simplex[(i + 1) % len(simplex)]
@@ -417,13 +332,13 @@ def _write_plt_file(
                     face_idx = edge_to_face.get(edge_key)
                     if face_idx is not None:
                         if left_cell[face_idx] == 0:
-                            left_cell[face_idx] = cell_idx + 1  # 1-based
+                            left_cell[face_idx] = cell_idx + 1
                         else:
                             right_cell[face_idx] = cell_idx + 1
     else:
         total_num_face_nodes = 0
 
-    # ── 构建单元到面的映射 (用于 FaceElementLink) ─────────────
+    # 构建单元到面的映射
     cell_to_faces = {}
     if num_faces > 0 and num_cells > 0:
         for face_idx in range(num_faces):
@@ -433,18 +348,12 @@ def _write_plt_file(
             if rc > 0:
                 cell_to_faces.setdefault(rc, []).append(face_idx + 1)
 
-    # ============================================================
     # 写入文件
-    # ============================================================
-    # 根据 append_mode 决定文件打开模式
     file_mode = "a" if append_mode else "w"
     with open(output_path, file_mode) as f:
-        # ── 1. 文件头 ─────────────────────────────────────────
-        # 如果是追加模式（3D 主区域），TITLE 已经在文件开头写过了，这里只写 ZONE
         if not append_mode:
             f.write(f'TITLE = "{title}"\n')
-        
-        # 变量名需要用双引号包裹 (Tecplot 标准)
+
         var_names_quoted = ', '.join(f'"{v}"' for v in var_names)
         f.write(f"VARIABLES = {var_names_quoted}\n")
         f.write("ZONE\n")
@@ -456,12 +365,10 @@ def _write_plt_file(
 
         if num_faces > 0:
             f.write(f"TotalNumFaceNodes = {total_num_face_nodes}\n")
-            # 注意：NumConnectedBoundaryFaces 和 TotalNumBoundaryConnections
-            # 必须同时为 0 或同时非零 (Tecplot 格式要求)
             f.write("NumConnectedBoundaryFaces = 0\n")
             f.write("TotalNumBoundaryConnections = 0\n")
 
-        # ── 2. 节点坐标数据 (BLOCK 格式) ──────────────────────
+        # 节点坐标数据 (BLOCK 格式)
         for dim in range(nodes.shape[1]):
             for i in range(num_nodes):
                 f.write(f"{nodes[i, dim]:.10f} ")
@@ -470,8 +377,8 @@ def _write_plt_file(
             if num_nodes % words_per_line != 0:
                 f.write("\n")
 
-        # ── 3. 标量场数据 ─────────────────────────────────────
-        for var_name, var_data in scalars.items():
+        # 标量场数据
+        for var_data in scalars.values():
             for i in range(num_nodes):
                 f.write(f"{var_data[i]:.10f} ")
                 if (i + 1) % words_per_line == 0:
@@ -479,9 +386,9 @@ def _write_plt_file(
             if num_nodes % words_per_line != 0:
                 f.write("\n")
 
-        # ── 4. 拓扑数据 ───────────────────────────────────────
+        # 拓扑数据
         if num_faces > 0 and num_cells > 0:
-            # 4a. FaceNodeNumber (3D 专用): 每个面的节点数量
+            # FaceNodeNumber (3D 专用)
             if is_3d:
                 for iFace, fn in enumerate(face_to_nodes):
                     f.write(f"{len(fn)} ")
@@ -490,7 +397,7 @@ def _write_plt_file(
                 if len(face_to_nodes) % words_per_line == 0:
                     f.write("\n")
 
-            # 4b. FaceNodesLink: 面-节点连接列表 (1-based 索引)
+            # FaceNodesLink
             node_count = 0
             for fn in face_to_nodes:
                 for nid in fn:
@@ -501,7 +408,7 @@ def _write_plt_file(
             if node_count % words_per_line != 0:
                 f.write("\n")
 
-            # 4c. LeftCell: 每个面的左单元索引 (1-based, 0 表示边界)
+            # LeftCell
             for i in range(num_faces):
                 f.write(f"{left_cell[i]} ")
                 if (i + 1) % words_per_line == 0:
@@ -509,7 +416,7 @@ def _write_plt_file(
             if num_faces % words_per_line != 0:
                 f.write("\n")
 
-            # 4d. RightCell: 每个面的右单元索引 (1-based, 0 表示边界)
+            # RightCell
             for i in range(num_faces):
                 f.write(f"{right_cell[i]} ")
                 if (i + 1) % words_per_line == 0:
@@ -517,7 +424,7 @@ def _write_plt_file(
             if num_faces % words_per_line != 0:
                 f.write("\n")
 
-            # 4e. FaceElementLink: 每个单元包含的面列表
+            # FaceElementLink
             for cell_idx in range(1, num_cells + 1):
                 faces_in_cell = cell_to_faces.get(cell_idx, [])
                 for face_id in faces_in_cell:
@@ -525,80 +432,63 @@ def _write_plt_file(
                 f.write("\n")
 
 
-# ============================================================
-# 内部函数：3D 边界区域写入（先写入）
-# ============================================================
-
 def _write_boundary_zones_first(nodes: np.ndarray, grid: Dict, output_path: str):
     """
     3D 时先写入边界区域作为独立的 PLT Zone
-    
-    根据 C++ 参考代码 WriteFileByActionKeyByTECLib 和 WriteBoundaryByTECLib：
-    - 3D 时需要先输出边界区域，再输出主区域
-    - 每个边界类型（wall, inlet, outlet 等）作为独立的 Zone
-    - 边界区域使用 FEPolygon 格式（ZoneType = 6）
-    - 输出节点坐标和拓扑数据（faceNodes, leftElement, rightElement）
-    
+
+    每个边界类型（wall, inlet, outlet 等）作为独立的 FEQUADRILATERAL Zone。
+    三角形面通过重复第 4 个节点转换为四边形。
+
     Args:
         nodes: 节点坐标数组 [num_nodes, 3]
         grid: PyMeshGen 网格字典，包含 zones 信息
-        output_path: 输出文件路径（写入模式）
+        output_path: 输出文件路径（追加模式）
     """
     words_per_line = 5
-    
-    # 收集所有边界区域（bc_type != "internal" 的 zone）
+
+    # 收集所有边界区域
     boundary_zones = []
     for zone_name, zone_data in grid.get("zones", {}).items():
         bc_type = zone_data.get("bc_type", "internal")
         if bc_type and bc_type.lower() not in ("internal", "interior"):
             boundary_zones.append((zone_name, zone_data))
-    
-    if not boundary_zones:
-        return  # 没有边界区域
 
-    # 以追加模式打开文件
+    if not boundary_zones:
+        return
+
     with open(output_path, "a") as f:
         for zone_name, zone_data in boundary_zones:
-            bc_type = zone_data.get("bc_type", "unspecified")
             part_name = zone_data.get("part_name", zone_name)
-            
-            # 使用部件名称作为 Zone 名称（优先使用 part_name）
             zone_title = part_name if part_name else zone_name
-            
-            # 获取该区域的面数据
+
             faces_data = zone_data.get("data", [])
             if not faces_data:
                 continue
-            
-            # ── 收集该边界区域的所有节点 ──────────────────────
+
+            # 收集边界区域节点
             boundary_node_set = set()
             for face in faces_data:
                 for node_idx in face.get("nodes", []):
-                    boundary_node_set.add(node_idx - 1)  # 转为 0-based
-            
-            # 创建节点索引映射（原索引 -> 新索引）
+                    boundary_node_set.add(node_idx - 1)
+
             boundary_nodes_list = sorted(list(boundary_node_set))
             node_index_map = {old_idx: new_idx + 1 for new_idx, old_idx in enumerate(boundary_nodes_list)}
-            
+
             num_boundary_nodes = len(boundary_nodes_list)
             num_boundary_faces = len(faces_data)
-            
+
             if num_boundary_nodes == 0 or num_boundary_faces == 0:
                 continue
-            
-            # ── 写入边界区域 Zone 头 ──────────────────────────
-            # 参考 WriteBoundaryByTECLib：
-            # 3D 网格的边界区域使用 FEQUADRILATERAL 格式
-            # 使用 ZONE T="Name" 格式继承部件名称
+
+            # 写入边界区域 Zone 头
             f.write('VARIABLES = "X", "Y", "Z"\n')
             f.write(f'ZONE T= "{zone_title}"\n')
-            f.write(f"ZoneType = FEQUADRILATERAL\n")  # 四边形网格
+            f.write(f"ZoneType = FEQUADRILATERAL\n")
             f.write(f"Nodes    = {num_boundary_nodes}\n")
-            f.write(f"Elements = {num_boundary_faces}\n")  # 边界区域的面作为四边形单元
+            f.write(f"Elements = {num_boundary_faces}\n")
             f.write(f"Datapacking = BLOCK\n")
 
-            # ── 写入边界节点坐标 ──────────────────────────────
-            # 参考 WriteBoundaryByTECLib：输出 x, y, z
+            # 边界节点坐标
             for dim in range(3):
                 for node_idx in boundary_nodes_list:
                     f.write(f"{nodes[node_idx, dim]:.10f} ")
@@ -607,9 +497,7 @@ def _write_boundary_zones_first(nodes: np.ndarray, grid: Dict, output_path: str)
                 if num_boundary_nodes % words_per_line != 0:
                     f.write("\n")
 
-            # ── 写入单元连接（FEQUADRILATERAL：每个单元 4 个节点） ──
-            # 三角形面：重复第 4 个节点（n1, n2, n3, n3）
-            # 四边形面：正常输出（n1, n2, n3, n4）
+            # 单元连接（FEQUADRILATERAL）
             for face in faces_data:
                 face_nodes = face.get("nodes", [])
                 if len(face_nodes) >= 3:
@@ -620,13 +508,8 @@ def _write_boundary_zones_first(nodes: np.ndarray, grid: Dict, output_path: str)
                         n4 = node_index_map.get(face_nodes[3] - 1, 0)
                         f.write(f"{n1} {n2} {n3} {n4}\n")
                     else:
-                        # 三角形：重复第 3 个节点作为第 4 个节点
                         f.write(f"{n1} {n2} {n3} {n3}\n")
 
-
-# ============================================================
-# 内部函数：追加主区域到文件
-# ============================================================
 
 def _append_main_zone(
     nodes: np.ndarray,
@@ -639,20 +522,9 @@ def _append_main_zone(
 ):
     """
     追加主网格区域到 PLT 文件（用于 3D）
-    
-    根据 C++ 参考代码 WriteFileByActionKeyByTECLib：
-    3D 时边界区域先写入，然后追加主区域
-    
-    Args:
-        nodes: 节点坐标数组
-        faces: 面列表
-        simplices: 单元连接数组
-        edge_index: 边索引数组
-        scalars: 标量字段字典
-        output_path: 输出文件路径（追加模式）
-        title: 文件标题
+
+    3D 时边界区域先写入，然后调用此函数追加主区域。
     """
-    # 调用现有函数，但使用追加模式
     _write_plt_file(
         nodes=nodes,
         faces=faces,
@@ -663,6 +535,3 @@ def _append_main_zone(
         title=title,
         append_mode=True,
     )
-
-
-
