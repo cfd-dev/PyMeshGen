@@ -160,6 +160,52 @@ class MeshOperations:
                 QMessageBox.critical(self.gui, "错误", f"导出网格失败: {str(e)}")
                 self.gui.log_error(f"导出网格失败: {str(e)}")
 
+    def export_mesh_plt(self):
+        """导出网格为Tecplot PLT格式"""
+        from PyQt5.QtWidgets import QFileDialog, QMessageBox
+
+        if not self.gui.current_mesh:
+            QMessageBox.warning(self.gui, "警告", "没有可导出的网格")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.gui,
+            "导出PLT网格文件",
+            os.path.join(self.gui.project_root, "meshes", "mesh.plt"),
+            "Tecplot PLT文件 (*.plt)"
+        )
+
+        if file_path:
+            try:
+                # 获取当前网格数据
+                mesh_data = self.gui.current_mesh
+                
+                # 检查是否是网格字典格式
+                if isinstance(mesh_data, dict):
+                    # 使用原有的字典导出方法
+                    from fileIO.tecplot_io import export_mesh_to_plt
+                    export_mesh_to_plt(
+                        grid=mesh_data,
+                        output_path=file_path,
+                        title=os.path.basename(file_path)
+                    )
+                elif hasattr(mesh_data, 'export_to_plt'):
+                    # 使用 Unstructured_Grid 的新方法
+                    mesh_data.export_to_plt(
+                        output_path=file_path,
+                        title=os.path.basename(file_path)
+                    )
+                else:
+                    raise ValueError("不支持的网格对象格式")
+                
+                self.gui.log_info(f"已导出PLT网格文件: {file_path}")
+                self.gui.update_status("已导出PLT网格文件")
+            except Exception as e:
+                import traceback
+                error_msg = f"导出PLT网格失败: {str(e)}\n{traceback.format_exc()}"
+                QMessageBox.critical(self.gui, "错误", f"导出PLT网格失败: {str(e)}")
+                self.gui.log_error(error_msg)
+
     def _require_mesh(self, log_message, status_message="未找到网格数据", prompt_message="请先生成或导入网格"):
         """确保存在当前网格，否则提示并返回None"""
         if not hasattr(self.gui, 'current_mesh') or not self.gui.current_mesh:

@@ -821,3 +821,23 @@ class Unstructured_Grid:
         if method == "q_morph":
             return q_morph_triangles_to_quads(self)
         raise ValueError(f"不支持的三角形转四边形方法: {method}")
+
+    def export_to_plt(self, output_path: str, title: str = "Mesh Data", scalars=None) -> str:
+        """
+        将网格导出为 Tecplot PLT 文件
+
+        Args:
+            output_path: 输出文件路径
+            title: 文件标题
+            scalars: 标量字段字典（可选）
+
+        Returns:
+            输出文件路径
+        """
+        from fileIO.tecplot_io import export_unstructured_grid_to_plt
+        return export_unstructured_grid_to_plt(
+            unstructured_grid=self,
+            output_path=output_path,
+            title=title,
+            scalars=scalars,
+        )

@@ -164,6 +164,309 @@ def export_from_cas(cas_file: str, output_path: str,
     )
 
 
+def export_unstructured_grid_to_plt(
+    unstructured_grid,
+    output_path: str,
+    title: str = "Mesh Data",
+    scalars: Optional[Dict[str, np.ndarray]] = None,
+) -> str:
+    """
+    从 Unstructured_Grid 对象导出为 Tecplot PLT 文件
+
+    Args:
+        unstructured_grid: Unstructured_Grid 对象
+        output_path: 输出 PLT 文件路径
+        title: 文件标题
+        scalars: 标量字段字典（可选）
+
+    Returns:
+        输出文件路径
+    """
+    # 提取节点坐标
+    nodes = np.array(unstructured_grid.node_coords)
+    is_3d = nodes.shape[1] == 3
+    
+    # 提取单元连接
+    simplices_list = []
+    for cell in unstructured_grid.cell_container:
+        if cell is None:
+            continue
+        if hasattr(cell, 'node_ids'):
+            node_ids = cell.node_ids
+            if node_ids and hasattr(node_ids[0], 'idx'):
+                simplices_list.append([node.idx for node in node_ids])
+            else:
+                simplices_list.append(list(node_ids))
+    
+    # 按节点数分组处理混合单元
+    from collections import defaultdict
+    cells_by_nodes = defaultdict(list)
+    for cell_nodes in simplices_list:
+        cells_by_nodes[len(cell_nodes)].append(cell_nodes)
+    
+    # 选择主要单元类型
+    main_type = max(cells_by_nodes.keys(), key=lambda k: len(cells_by_nodes[k]))
+    simplices = np.array(cells_by_nodes[main_type])
+    
+    # 构建边索引
+    edge_set = set()
+    node_count = main_type
+    for cell_nodes in cells_by_nodes[main_type]:
+        if node_count == 3 or node_count == 4:
+            for i in range(node_count):
+                n1, n2 = cell_nodes[i], cell_nodes[(i + 1) % node_count]
+                edge_set.add((min(n1, n2), max(n1, n2)))
+        elif node_count >= 4:
+            for i in range(min(4, node_count)):
+                n1, n2 = cell_nodes[i], cell_nodes[(i + 1) % min(4, node_count)]
+                edge_set.add((min(n1, n2), max(n1, n2)))
+    
+    edge_index = np.array(list(edge_set)).T if edge_set else None
+    
+    # 提取边界区域信息
+    boundary_zones = _extract_boundary_zones_from_grid(unstructured_grid)
+    
+    # 3D 网格需要特殊处理边界
+    if is_3d and boundary_zones:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        if not title.endswith(" exported from PyMeshGen"):
+            title = f"{title} exported from PyMeshGen" if title else "Mesh exported from PyMeshGen"
+        
+        # 写入 TITLE
+        with open(output_path, "w") as f:
+            f.write(f'TITLE = "{title}"\n')
+        
+        # 先写入边界区域
+        _write_boundary_zones_from_dict(
+            nodes=nodes,
+            boundary_zones=boundary_zones,
+            output_path=output_path,
+        )
+        
+        # 再追加主区域
+        _append_main_zone(
+            nodes=nodes,
+            faces=None,
+            simplices=simplices,
+            edge_index=edge_index,
+            scalars=scalars or {},
+            output_path=output_path,
+            title=title,
+        )
+    else:
+        # 2D 或无边界区域，直接写入
+        if scalars is None:
+            scalars = {}
+        
+        _write_plt_file(
+            nodes=nodes,
+            faces=None,
+            simplices=simplices,
+            edge_index=edge_index,
+            scalars=scalars,
+            output_path=output_path,
+            title=title,
+        )
+    
+    print(f"PLT 文件已保存: {output_path}")
+    return output_path
+
+
+def _extract_boundary_zones_from_grid(unstructured_grid) -> List[Dict]:
+    """
+    从 Unstructured_Grid 对象中提取边界区域信息
+
+    优先级：boundary_info > parts_info（仅提取边界类型的区域）
+
+    Args:
+        unstructured_grid: Unstructured_Grid 对象
+
+    Returns:
+        边界区域列表，每个区域包含 part_name, bc_type, faces 信息
+    """
+    boundary_zones = []
+    seen_part_names = set()
+    
+    # 优先从 boundary_info 中提取（包含正确的 faces 数据）
+    if hasattr(unstructured_grid, 'boundary_info') and unstructured_grid.boundary_info:
+        for zone_name, zone_data in unstructured_grid.boundary_info.items():
+            if 'faces' in zone_data and zone_data.get('faces'):
+                part_name = zone_data.get('part_name', zone_name)
+                bc_type = zone_data.get('bc_type', 'boundary')
+                
+                # 跳过内部边界
+                if bc_type and bc_type.lower() in ("internal", "interior"):
+                    continue
+                
+                boundary_zones.append({
+                    'part_name': part_name,
+                    'bc_type': bc_type,
+                    'data': zone_data['faces']
+                })
+                seen_part_names.add(part_name)
+    
+    # 如果 boundary_info 为空，尝试从 parts_info 中提取
+    if not boundary_zones and hasattr(unstructured_grid, 'parts_info') and unstructured_grid.parts_info:
+        for part_name, part_data in unstructured_grid.parts_info.items():
+            # 跳过已添加的部件
+            if part_name in seen_part_names:
+                continue
+            
+            bc_type = part_data.get('bc_type', '')
+            # 只提取边界类型的部件
+            if bc_type and bc_type.lower() not in ("internal", "interior", ""):
+                if 'faces' in part_data and part_data['faces']:
+                    boundary_zones.append({
+                        'part_name': part_data.get('part_name', part_name),
+                        'bc_type': bc_type,
+                        'data': part_data['faces']
+                    })
+                    seen_part_names.add(part_name)
+    
+    return boundary_zones
+
+
+def _write_boundary_zones_from_dict(nodes: np.ndarray, boundary_zones: List[Dict], output_path: str):
+    """
+    从边界区域字典写入 PLT 文件
+
+    Args:
+        nodes: 节点坐标数组
+        boundary_zones: 边界区域列表
+        output_path: 输出文件路径（追加模式）
+    """
+    words_per_line = 5
+    
+    if not boundary_zones:
+        return
+    
+    with open(output_path, "a") as f:
+        for zone_data in boundary_zones:
+            part_name = zone_data.get('part_name', 'Unknown')
+            zone_title = part_name
+            
+            faces_data = zone_data.get('data', [])
+            if not faces_data:
+                continue
+            
+            # 收集边界区域节点
+            boundary_node_set = set()
+            for face in faces_data:
+                # face 可能是 dict 格式或 list 格式
+                if isinstance(face, dict):
+                    node_indices = face.get('nodes', [])
+                else:
+                    node_indices = face
+                
+                for node_idx in node_indices:
+                    # 转换为 0-based 索引
+                    boundary_node_set.add(node_idx - 1 if node_idx > 0 else node_idx)
+            
+            boundary_nodes_list = sorted(list(boundary_node_set))
+            if len(boundary_nodes_list) == 0:
+                continue
+            
+            node_index_map = {old_idx: new_idx + 1 for new_idx, old_idx in enumerate(boundary_nodes_list)}
+            
+            num_boundary_nodes = len(boundary_nodes_list)
+            num_boundary_faces = len(faces_data)
+            
+            if num_boundary_faces == 0:
+                continue
+            
+            # 判断是2D还是3D边界
+            is_3d = nodes.shape[1] >= 3
+            
+            # 检查面的节点数，确定 ZoneType
+            # 收集所有面的节点数
+            face_node_counts = []
+            for face in faces_data:
+                if isinstance(face, dict):
+                    face_nodes = face.get('nodes', [])
+                else:
+                    face_nodes = face
+                face_node_counts.append(len(face_nodes))
+            
+            # 确定主要面类型
+            from collections import Counter
+            if face_node_counts:
+                most_common_count = Counter(face_node_counts).most_common(1)[0][0]
+            else:
+                most_common_count = 2
+            
+            # 根据节点数确定 ZoneType
+            if most_common_count == 2:
+                zone_type = "FELINESEG"  # 2D边界（线段）
+            elif most_common_count == 3:
+                zone_type = "FETRIANGLE"  # 三角形面
+            elif most_common_count == 4:
+                zone_type = "FEQUADRILATERAL"  # 四边形面
+            else:
+                zone_type = "FEPOLYGON"  # 多边形面
+            
+            # 写入边界区域 Zone 头
+            f.write('VARIABLES = "X", "Y", "Z"\n')
+            f.write(f'ZONE T= "{zone_title}"\n')
+            f.write(f"ZoneType = {zone_type}\n")
+            f.write(f"Nodes    = {num_boundary_nodes}\n")
+            f.write(f"Elements = {num_boundary_faces}\n")
+            f.write(f"Datapacking = BLOCK\n")
+            
+            # 边界节点坐标
+            for dim in range(nodes.shape[1]):
+                for node_idx in boundary_nodes_list:
+                    coord = nodes[node_idx, dim] if nodes.shape[1] > dim else 0.0
+                    f.write(f"{coord:.10f} ")
+                    if (node_index_map[node_idx]) % words_per_line == 0:
+                        f.write("\n")
+                if num_boundary_nodes % words_per_line != 0:
+                    f.write("\n")
+            
+            # 单元连接
+            for face in faces_data:
+                # face 可能是 dict 格式或 list 格式
+                if isinstance(face, dict):
+                    face_nodes = face.get('nodes', [])
+                else:
+                    face_nodes = face
+                
+                if len(face_nodes) == 0:
+                    continue
+                
+                # 转换为 0-based 索引
+                face_nodes_0based = []
+                for node_idx in face_nodes:
+                    if node_idx > 0:
+                        face_nodes_0based.append(node_idx - 1)
+                    else:
+                        face_nodes_0based.append(node_idx)
+                
+                # 使用 node_index_map 转换为新的 1-based 索引
+                face_nodes_new_1based = []
+                for node_idx in face_nodes_0based:
+                    face_nodes_new_1based.append(node_index_map.get(node_idx, 0))
+                
+                # 根据 ZoneType 输出单元连接
+                if zone_type == "FELINESEG":
+                    # 线段：2个节点
+                    if len(face_nodes_new_1based) >= 2:
+                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]}\n")
+                elif zone_type == "FETRIANGLE":
+                    # 三角形：3个节点
+                    if len(face_nodes_new_1based) >= 3:
+                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]}\n")
+                elif zone_type == "FEQUADRILATERAL":
+                    # 四边形：4个节点
+                    if len(face_nodes_new_1based) >= 4:
+                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[3]}\n")
+                    elif len(face_nodes_new_1based) == 3:
+                        # 三角形转换为四边形（重复第4个节点）
+                        f.write(f"{face_nodes_new_1based[0]} {face_nodes_new_1based[1]} {face_nodes_new_1based[2]} {face_nodes_new_1based[2]}\n")
+                elif zone_type == "FEPOLYGON":
+                    # 多边形：需要输出节点数和节点
+                    f.write(f"{len(face_nodes_new_1based)} " + " ".join(str(n) for n in face_nodes_new_1based) + "\n")
+
+
 def _extract_from_grid(grid: Dict):
     """
     从 PyMeshGen 网格字典中提取节点、面、单元信息
