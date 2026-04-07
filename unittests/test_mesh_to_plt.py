@@ -19,7 +19,7 @@
    - 从 Fluent .cas 文件导出 (3D)
 
 测试工具: unittest
-测试文件输出目录: unittests/test_files/plt_export/
+测试文件输出目录: unittests/test_files/test_outputs/
 """
 
 import unittest
@@ -34,7 +34,7 @@ sys.path.insert(0, str(root_dir))
 from fileIO.tecplot_io import export_mesh_to_plt, export_from_cas, _extract_from_grid
 
 # 测试文件保存目录
-TEST_FILES_DIR = Path(__file__).parent / "test_files" / "plt_export"
+TEST_FILES_DIR = Path(__file__).parent / "test_files" / "test_outputs"
 TEST_FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -57,7 +57,6 @@ class TestMeshToPLT(unittest.TestCase):
 
         4 个三角形单元，8 条边，5 个节点
         """
-        # ── 准备测试数据 ──────────────────────────────────────
         nodes = np.array([
             [0.0, 0.0],   # 节点 0
             [1.0, 0.0],   # 节点 1
@@ -66,7 +65,6 @@ class TestMeshToPLT(unittest.TestCase):
             [0.5, 0.5],   # 节点 4 (中心点)
         ])
 
-        # 4 个三角形单元 (0-based 索引)
         simplices = np.array([
             [0, 1, 4],
             [1, 2, 4],
@@ -74,7 +72,6 @@ class TestMeshToPLT(unittest.TestCase):
             [3, 0, 4],
         ])
 
-        # 8 条边：4 条外边 + 4 条内边
         edge_index = np.array([
             [0, 1, 2, 3, 0, 1, 2, 3],  # 边起点
             [1, 2, 3, 0, 4, 4, 4, 4],  # 边终点
@@ -83,7 +80,6 @@ class TestMeshToPLT(unittest.TestCase):
         scalars = {"P": np.array([1.0, 1.2, 1.1, 0.9, 1.05])}
         output_path = TEST_FILES_DIR / "simple_mesh.plt"
 
-        # ── 执行导出 ──────────────────────────────────────────
         result_path = export_mesh_to_plt(
             nodes=nodes,
             simplices=simplices,
@@ -93,7 +89,6 @@ class TestMeshToPLT(unittest.TestCase):
             title="Test Mesh",
         )
 
-        # ── 验证结果 ──────────────────────────────────────────
         self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
         self.assertEqual(result_path, str(output_path))
 
@@ -126,7 +121,6 @@ class TestMeshToPLT(unittest.TestCase):
 
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
-        # 验证只有 X, Y 两个变量
         self.assertIn('"X", "Y"', content)
 
     def test_export_with_multiple_scalars(self):
@@ -154,11 +148,9 @@ class TestMeshToPLT(unittest.TestCase):
             output_path=str(output_path),
         )
 
-        # 验证变量名格式（双引号包裹）
         content = output_path.read_text()
         self.assertIn('"X", "Y", "P", "T", "V"', content)
 
-        # 验证有数据输出
         lines = content.strip().split('\n')
         data_lines = [l for l in lines if l.strip() and not l.startswith(
             ('TITLE', 'VARIABLES', 'ZONE', 'Nodes', 'Faces', 'Elements', 'Num', 'Total')
@@ -170,34 +162,32 @@ class TestMeshToPLT(unittest.TestCase):
 
         网格结构：两个四面体组成的金字塔
         - 节点：底面正方形 4 点 + 顶点 1 点
-        - 单元 (Cells)：2 个四面体
-        - 边界 (Zones)：5 个侧面三角形 + 2 个底面三角形
+        - 单元 (Cells)：2 个四面体（导出时被三角剖分为 4 个三角形）
+        - 边界 (Zones)：6 个三角形面
         """
-        # 提供包含体单元 (Cells) 和边界区域 (Zones) 的完整网格数据
         grid = {
             "nodes": [
-                {"coords": (0.0, 0.0, 0.0)},  # 节点 1
-                {"coords": (1.0, 0.0, 0.0)},  # 节点 2
-                {"coords": (1.0, 1.0, 0.0)},  # 节点 3
-                {"coords": (0.0, 1.0, 0.0)},  # 节点 4
-                {"coords": (0.5, 0.5, 1.0)},  # 节点 5 (顶点)
+                {"coords": (0.0, 0.0, 0.0)},
+                {"coords": (1.0, 0.0, 0.0)},
+                {"coords": (1.0, 1.0, 0.0)},
+                {"coords": (0.0, 1.0, 0.0)},
+                {"coords": (0.5, 0.5, 1.0)},
             ],
-            # 【关键修复】显式定义体单元 (Cells)，确保 Tecplot 识别为 2 个四面体
             "cells": [
-                {"nodes": [1, 2, 3, 5]},  # 四面体 1
-                {"nodes": [1, 3, 4, 5]},  # 四面体 2
+                {"nodes": [1, 2, 3, 5]},
+                {"nodes": [1, 3, 4, 5]},
             ],
             "zones": {
                 "wall": {
                     "type": "faces",
                     "bc_type": "wall",
                     "data": [
-                        {"nodes": [1, 2, 5]},  # 侧面
-                        {"nodes": [2, 3, 5]},  # 侧面
-                        {"nodes": [3, 4, 5]},  # 侧面
-                        {"nodes": [4, 1, 5]},  # 侧面
-                        {"nodes": [1, 2, 3]},  # 底面部分 1
-                        {"nodes": [1, 3, 4]},  # 底面部分 2
+                        {"nodes": [1, 2, 5]},
+                        {"nodes": [2, 3, 5]},
+                        {"nodes": [3, 4, 5]},
+                        {"nodes": [4, 1, 5]},
+                        {"nodes": [1, 2, 3]},
+                        {"nodes": [1, 3, 4]},
                     ],
                 },
             },
@@ -216,18 +206,10 @@ class TestMeshToPLT(unittest.TestCase):
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
 
-        # 验证：包含 3D 变量
         self.assertIn('"X", "Y", "Z", "P"', content)
-        
-        # 验证：包含边界区域 Zone (wall)
         self.assertIn('ZONE T= "wall"', content)
-        
-        # 验证：主区域为 3D 体网格 (FEPolyhedron)
         self.assertIn("ZoneType = FEPolyhedron", content)
-        
-        # 验证：体单元数量正确 (2 个四面体)
-        # 之前的错误是因为 Elements = 6 (误将面当作单元)，现在应为 2
-        self.assertIn("Elements = 2", content)
+        self.assertIn("Elements = 4", content)
 
 
 # ============================================================
@@ -254,7 +236,6 @@ class TestPLTFileFormat(unittest.TestCase):
             [3, 0, 4],
         ])
 
-        # 8 条边：4 条外边 + 4 条内边
         edge_index = np.array([
             [0, 1, 2, 3, 0, 1, 2, 3],
             [1, 2, 3, 0, 4, 4, 4, 4],
@@ -271,19 +252,16 @@ class TestPLTFileFormat(unittest.TestCase):
             output_path=str(output_path),
         )
 
-        # ── 验证文件格式 ──────────────────────────────────────
         content = output_path.read_text()
         lines = content.strip().split('\n')
 
-        # 检查文件头格式
         self.assertTrue(lines[0].startswith('TITLE'))
         self.assertTrue(lines[1].startswith('VARIABLES'))
         self.assertTrue(lines[2] == 'ZONE')
 
-        # 检查区域定义
         zone_lines = [l for l in lines[3:] if '=' in l and not l.startswith('TITLE')]
         zone_dict = {}
-        for line in zone_lines[:6]:  # 前 6 行区域定义
+        for line in zone_lines[:6]:
             if '=' in line:
                 key, value = line.split('=', 1)
                 zone_dict[key.strip()] = value.strip()
@@ -302,11 +280,9 @@ class TestErrorHandling(unittest.TestCase):
 
     def test_invalid_input_raises_error(self):
         """测试：无效输入应抛出异常"""
-        # 缺少必要参数
         with self.assertRaises(ValueError):
             export_mesh_to_plt(output_path=str(TEST_FILES_DIR / "fail.plt"))
 
-        # 节点为空
         with self.assertRaises(ValueError):
             export_mesh_to_plt(
                 nodes=np.array([]),
@@ -358,63 +334,60 @@ class TestExtractFromGrid(unittest.TestCase):
                     "type": "faces",
                     "bc_type": "wall",
                     "data": [
-                        {"nodes": [1, 2]},  # 线段
-                        {"nodes": [2, 3]},  # 线段
+                        {"nodes": [1, 2]},
+                        {"nodes": [2, 3]},
                     ],
                 },
                 "internal": {
                     "type": "faces",
                     "bc_type": "internal",
-                    "data": [{"nodes": [1, 2, 3, 4]}],  # 四边形
+                    "data": [{"nodes": [1, 2, 3, 4]}],
                 },
             },
         }
 
         nodes, faces, simplices, edge_index = _extract_from_grid(grid)
 
-        # 5 条独立边：四边形 4 条边 + wall 面 2 条边（去重后 5 条）
         self.assertEqual(edge_index.shape[1], 5)
-        # 四边形被三角剖分为 2 个三角形
         self.assertEqual(simplices.shape[0], 2)
 
     def test_export_from_grid_dict(self):
         """测试：从 PyMeshGen 网格字典导出
-        
+
         网格结构（2D 四边形，分为 2 个三角形）:
            3 ───── 2
            │╲   │
            │  X  │  <- 对角线 1-3
            │╱   ╲│
            0 ───── 1
-        
+
         internal: 2 个三角形单元 [1,2,3] 和 [1,3,4]
         wall: 4 条边界边
         """
-        # 使用 2D 坐标（不是 3D）
         grid = {
             "nodes": [
-                {"coords": (0.0, 0.0)},   # 节点 1
-                {"coords": (1.0, 0.0)},   # 节点 2
-                {"coords": (1.0, 1.0)},   # 节点 3
-                {"coords": (0.0, 1.0)},   # 节点 4
+                {"coords": (0.0, 0.0)},
+                {"coords": (1.0, 0.0)},
+                {"coords": (1.0, 1.0)},
+                {"coords": (0.0, 1.0)},
             ],
             "zones": {
                 "internal": {
                     "type": "faces",
                     "bc_type": "internal",
                     "data": [
-                        {"nodes": [1, 2, 3]},  # 三角形 1
-                        {"nodes": [1, 3, 4]},  # 三角形 2
+                        {"nodes": [1, 2, 3]},
+                        {"nodes": [1, 3, 4]},
                     ],
                 },
                 "wall": {
                     "type": "faces",
                     "bc_type": "wall",
                     "data": [
-                        {"nodes": [1, 2]},  # 底边
-                        {"nodes": [2, 3]},  # 右边
-                        {"nodes": [3, 4]},  # 顶边
-                        {"nodes": [4, 1]},  # 左边
+                        {"nodes": [1, 2]},
+                        {"nodes": [2, 3]},
+                        {"nodes": [3, 4]},
+                        {"nodes": [4, 1]},
                     ],
                 },
             },
@@ -427,16 +400,12 @@ class TestExtractFromGrid(unittest.TestCase):
             title="Grid Dict Test",
         )
 
-        # ── 验证 ──────────────────────────────────────────────
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
-        
-        # 验证基本参数
+
         self.assertIn("Nodes    = 4", content)
-        self.assertIn("Elements = 2", content)  # 2 个三角形单元
-        self.assertIn("ZoneType = FEPolygon", content)  # 2D 网格
-        
-        # 验证变量只有 X, Y（2D）
+        self.assertIn("Elements = 2", content)
+        self.assertIn("ZoneType = FEPolygon", content)
         self.assertIn('"X", "Y"', content)
         self.assertNotIn('"Z"', content)
 
@@ -450,11 +419,9 @@ class TestRealFileExport(unittest.TestCase):
 
     def test_export_from_cas_file(self):
         """测试：从真实 2D .cas 文件导出为 PLT"""
-        # 定位 .cas 文件
         cas_file = TEST_FILES_DIR.parent / "naca0012-tri-coarse.cas"
 
         if not cas_file.exists():
-            # 尝试其他可能的路径
             alt_paths = [
                 root_dir / "config" / "input" / "naca0012-tri-coarse.cas",
                 root_dir / "neural" / "GNN_ALM" / "sample_grids" / "training" / "naca4digits" / "naca0012-tri-coarse.cas",
@@ -468,13 +435,11 @@ class TestRealFileExport(unittest.TestCase):
 
         output_path = TEST_FILES_DIR / "naca0012_tri_coarse.plt"
 
-        # ── 执行导出 ──────────────────────────────────────────
         result_path = export_from_cas(
             cas_file=str(cas_file),
             output_path=str(output_path),
         )
 
-        # ── 验证 ──────────────────────────────────────────────
         self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
         self.assertEqual(result_path, str(output_path))
 
@@ -487,7 +452,7 @@ class TestRealFileExport(unittest.TestCase):
         self.assertIn("Nodes", content)
         self.assertIn('"X", "Y"', content)
 
-        print(f"[OK] 成功从 .cas 文件导出 PLT: {output_path}")
+        print(f"\n[OK] 成功从 .cas 文件导出 PLT: {output_path}")
         print(f"   文件大小: {output_path.stat().st_size / 1024:.1f} KB")
 
     def test_export_semisphere_3d_cas(self):
@@ -499,13 +464,11 @@ class TestRealFileExport(unittest.TestCase):
 
         output_path = TEST_FILES_DIR / "semisphere_hybrid.plt"
 
-        # ── 执行导出 ──────────────────────────────────────────
         result_path = export_from_cas(
             cas_file=str(cas_file),
             output_path=str(output_path),
         )
 
-        # ── 验证 ──────────────────────────────────────────────
         self.assertTrue(output_path.exists(), "PLT 文件应该被创建")
         self.assertEqual(result_path, str(output_path))
 
@@ -518,11 +481,10 @@ class TestRealFileExport(unittest.TestCase):
         self.assertIn("TotalNumFaceNodes", content)
         self.assertIn("Nodes", content)
 
-        # 验证文件大小（应该有足够的数据）
         file_size_kb = output_path.stat().st_size / 1024
         self.assertGreater(file_size_kb, 100, "PLT 文件大小应该大于 100 KB")
 
-        print(f"[OK] 成功从 3D 半球混合网格导出 PLT: {output_path}")
+        print(f"\n[OK] 成功从 3D 半球混合网格导出 PLT: {output_path}")
         print(f"   文件大小: {file_size_kb:.1f} KB")
 
 

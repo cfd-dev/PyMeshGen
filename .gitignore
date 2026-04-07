@@ -22,7 +22,7 @@ meshes
 backup*
 
 # 测试输出
-unittests/test_files/2d_cases/test_outputs/
+test_outputs/
 
 # 神经网络模型和数据
 neural/model
