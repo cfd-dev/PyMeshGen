@@ -116,16 +116,54 @@ def export_mesh_to_plt(
     if scalars is None:
         scalars = {}
 
-    # ── 步骤 3: 写入 PLT 文件 ──────────────────────────────────
-    _write_plt_file(
-        nodes=nodes,
-        faces=faces,
-        simplices=simplices,
-        edge_index=edge_index,
-        scalars=scalars,
-        output_path=output_path,
-        title=title,
-    )
+    # ── 步骤 2.5: 格式化文件标题 ──────────────────────────────
+    # 格式：原始名称 + " exported from PyMeshGen"
+    if not title:
+        title = "Mesh"
+    if not title.endswith(" exported from PyMeshGen"):
+        title = f"{title} exported from PyMeshGen"
+
+    # ── 步骤 2.6: 3D 时初始化文件并写入全局标题 ────────────────
+    # 3D 时需要先写边界区域，所以先创建文件并写入 TITLE
+    # 2D 时由 _write_plt_file 负责创建文件和写入 TITLE
+    is_3d = nodes.shape[1] == 3
+    if is_3d:
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w") as f:
+            f.write(f'TITLE = "{title}"\n')
+
+    # ── 步骤 3: 3D 时先写入边界区域 ───────────────────────────
+    # 根据 C++ 参考代码 WriteFileByActionKeyByTECLib：
+    # 3D 时需要先输出边界区域，再输出主区域
+    # 2D 时只输出主区域
+    if is_3d and grid is not None and grid.get("zones"):
+        # 先写入边界区域
+        _write_boundary_zones_first(
+            nodes=nodes,
+            grid=grid,
+            output_path=output_path,
+        )
+        # 再追加主区域
+        _append_main_zone(
+            nodes=nodes,
+            faces=faces,
+            simplices=simplices,
+            edge_index=edge_index,
+            scalars=scalars,
+            output_path=output_path,
+            title=title,
+        )
+    else:
+        # 2D 或无网格字典：只写入主区域
+        _write_plt_file(
+            nodes=nodes,
+            faces=faces,
+            simplices=simplices,
+            edge_index=edge_index,
+            scalars=scalars,
+            output_path=output_path,
+            title=title,
+        )
 
     print(f"PLT 文件已保存: {output_path}")
     return output_path
@@ -293,6 +331,7 @@ def _write_plt_file(
     scalars: Dict[str, np.ndarray],
     output_path: str,
     title: str,
+    append_mode: bool = False,
 ):
     """
     写入 Tecplot PLT 文件
@@ -314,6 +353,7 @@ def _write_plt_file(
         scalars: 标量字段字典
         output_path: 输出文件路径
         title: 文件标题
+        append_mode: 是否追加模式（3D 时使用）
     """
     num_nodes = len(nodes)
     is_3d = nodes.shape[1] == 3
@@ -396,9 +436,14 @@ def _write_plt_file(
     # ============================================================
     # 写入文件
     # ============================================================
-    with open(output_path, "w") as f:
+    # 根据 append_mode 决定文件打开模式
+    file_mode = "a" if append_mode else "w"
+    with open(output_path, file_mode) as f:
         # ── 1. 文件头 ─────────────────────────────────────────
-        f.write(f'TITLE = "{title}"\n')
+        # 如果是追加模式（3D 主区域），TITLE 已经在文件开头写过了，这里只写 ZONE
+        if not append_mode:
+            f.write(f'TITLE = "{title}"\n')
+        
         # 变量名需要用双引号包裹 (Tecplot 标准)
         var_names_quoted = ', '.join(f'"{v}"' for v in var_names)
         f.write(f"VARIABLES = {var_names_quoted}\n")
@@ -478,3 +523,146 @@ def _write_plt_file(
                 for face_id in faces_in_cell:
                     f.write(f"{face_id} ")
                 f.write("\n")
+
+
+# ============================================================
+# 内部函数：3D 边界区域写入（先写入）
+# ============================================================
+
+def _write_boundary_zones_first(nodes: np.ndarray, grid: Dict, output_path: str):
+    """
+    3D 时先写入边界区域作为独立的 PLT Zone
+    
+    根据 C++ 参考代码 WriteFileByActionKeyByTECLib 和 WriteBoundaryByTECLib：
+    - 3D 时需要先输出边界区域，再输出主区域
+    - 每个边界类型（wall, inlet, outlet 等）作为独立的 Zone
+    - 边界区域使用 FEPolygon 格式（ZoneType = 6）
+    - 输出节点坐标和拓扑数据（faceNodes, leftElement, rightElement）
+    
+    Args:
+        nodes: 节点坐标数组 [num_nodes, 3]
+        grid: PyMeshGen 网格字典，包含 zones 信息
+        output_path: 输出文件路径（写入模式）
+    """
+    words_per_line = 5
+    
+    # 收集所有边界区域（bc_type != "internal" 的 zone）
+    boundary_zones = []
+    for zone_name, zone_data in grid.get("zones", {}).items():
+        bc_type = zone_data.get("bc_type", "internal")
+        if bc_type and bc_type.lower() not in ("internal", "interior"):
+            boundary_zones.append((zone_name, zone_data))
+    
+    if not boundary_zones:
+        return  # 没有边界区域
+
+    # 以追加模式打开文件
+    with open(output_path, "a") as f:
+        for zone_name, zone_data in boundary_zones:
+            bc_type = zone_data.get("bc_type", "unspecified")
+            part_name = zone_data.get("part_name", zone_name)
+            
+            # 使用部件名称作为 Zone 名称（优先使用 part_name）
+            zone_title = part_name if part_name else zone_name
+            
+            # 获取该区域的面数据
+            faces_data = zone_data.get("data", [])
+            if not faces_data:
+                continue
+            
+            # ── 收集该边界区域的所有节点 ──────────────────────
+            boundary_node_set = set()
+            for face in faces_data:
+                for node_idx in face.get("nodes", []):
+                    boundary_node_set.add(node_idx - 1)  # 转为 0-based
+            
+            # 创建节点索引映射（原索引 -> 新索引）
+            boundary_nodes_list = sorted(list(boundary_node_set))
+            node_index_map = {old_idx: new_idx + 1 for new_idx, old_idx in enumerate(boundary_nodes_list)}
+            
+            num_boundary_nodes = len(boundary_nodes_list)
+            num_boundary_faces = len(faces_data)
+            
+            if num_boundary_nodes == 0 or num_boundary_faces == 0:
+                continue
+            
+            # ── 写入边界区域 Zone 头 ──────────────────────────
+            # 参考 WriteBoundaryByTECLib：
+            # 3D 网格的边界区域使用 FEQUADRILATERAL 格式
+            # 使用 ZONE T="Name" 格式继承部件名称
+            f.write('VARIABLES = "X", "Y", "Z"\n')
+            f.write(f'ZONE T= "{zone_title}"\n')
+            f.write(f"ZoneType = FEQUADRILATERAL\n")  # 四边形网格
+            f.write(f"Nodes    = {num_boundary_nodes}\n")
+            f.write(f"Elements = {num_boundary_faces}\n")  # 边界区域的面作为四边形单元
+            f.write(f"Datapacking = BLOCK\n")
+
+            # ── 写入边界节点坐标 ──────────────────────────────
+            # 参考 WriteBoundaryByTECLib：输出 x, y, z
+            for dim in range(3):
+                for node_idx in boundary_nodes_list:
+                    f.write(f"{nodes[node_idx, dim]:.10f} ")
+                    if (node_index_map[node_idx]) % words_per_line == 0:
+                        f.write("\n")
+                if num_boundary_nodes % words_per_line != 0:
+                    f.write("\n")
+
+            # ── 写入单元连接（FEQUADRILATERAL：每个单元 4 个节点） ──
+            # 三角形面：重复第 4 个节点（n1, n2, n3, n3）
+            # 四边形面：正常输出（n1, n2, n3, n4）
+            for face in faces_data:
+                face_nodes = face.get("nodes", [])
+                if len(face_nodes) >= 3:
+                    n1 = node_index_map.get(face_nodes[0] - 1, 0)
+                    n2 = node_index_map.get(face_nodes[1] - 1, 0)
+                    n3 = node_index_map.get(face_nodes[2] - 1, 0)
+                    if len(face_nodes) >= 4:
+                        n4 = node_index_map.get(face_nodes[3] - 1, 0)
+                        f.write(f"{n1} {n2} {n3} {n4}\n")
+                    else:
+                        # 三角形：重复第 3 个节点作为第 4 个节点
+                        f.write(f"{n1} {n2} {n3} {n3}\n")
+
+
+# ============================================================
+# 内部函数：追加主区域到文件
+# ============================================================
+
+def _append_main_zone(
+    nodes: np.ndarray,
+    faces,
+    simplices,
+    edge_index,
+    scalars: Dict[str, np.ndarray],
+    output_path: str,
+    title: str,
+):
+    """
+    追加主网格区域到 PLT 文件（用于 3D）
+    
+    根据 C++ 参考代码 WriteFileByActionKeyByTECLib：
+    3D 时边界区域先写入，然后追加主区域
+    
+    Args:
+        nodes: 节点坐标数组
+        faces: 面列表
+        simplices: 单元连接数组
+        edge_index: 边索引数组
+        scalars: 标量字段字典
+        output_path: 输出文件路径（追加模式）
+        title: 文件标题
+    """
+    # 调用现有函数，但使用追加模式
+    _write_plt_file(
+        nodes=nodes,
+        faces=faces,
+        simplices=simplices,
+        edge_index=edge_index,
+        scalars=scalars,
+        output_path=output_path,
+        title=title,
+        append_mode=True,
+    )
+
+
+

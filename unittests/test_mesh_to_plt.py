@@ -47,14 +47,14 @@ class TestMeshToPLT(unittest.TestCase):
 
     def test_export_simple_2d_mesh(self):
         """测试：导出简单 2D 三角形网格
-        
+
         网格结构:
            3 ───── 2
-           │ \   / │
-           │   4   │
-           │ /   \ │
+           │╲   ╱│
+           │  4  │
+           │╱   ╲│
            0 ───── 1
-        
+
         4 个三角形单元，8 条边，5 个节点
         """
         # ── 准备测试数据 ──────────────────────────────────────
@@ -359,31 +359,43 @@ class TestExtractFromGrid(unittest.TestCase):
         self.assertEqual(simplices.shape[0], 2)
 
     def test_export_from_grid_dict(self):
-        """测试：从 PyMeshGen 网格字典导出"""
+        """测试：从 PyMeshGen 网格字典导出
+        
+        网格结构（2D 四边形，分为 2 个三角形）:
+           3 ───── 2
+           │╲   │
+           │  X  │  <- 对角线 1-3
+           │╱   ╲│
+           0 ───── 1
+        
+        internal: 2 个三角形单元 [1,2,3] 和 [1,3,4]
+        wall: 4 条边界边
+        """
+        # 使用 2D 坐标（不是 3D）
         grid = {
             "nodes": [
-                {"coords": (0.0, 0.0, 0.0)},
-                {"coords": (1.0, 0.0, 0.0)},
-                {"coords": (1.0, 1.0, 0.0)},
-                {"coords": (0.0, 1.0, 0.0)},
+                {"coords": (0.0, 0.0)},   # 节点 1
+                {"coords": (1.0, 0.0)},   # 节点 2
+                {"coords": (1.0, 1.0)},   # 节点 3
+                {"coords": (0.0, 1.0)},   # 节点 4
             ],
             "zones": {
                 "internal": {
                     "type": "faces",
                     "bc_type": "internal",
                     "data": [
-                        {"nodes": [1, 2, 3]},
-                        {"nodes": [1, 3, 4]},
+                        {"nodes": [1, 2, 3]},  # 三角形 1
+                        {"nodes": [1, 3, 4]},  # 三角形 2
                     ],
                 },
                 "wall": {
                     "type": "faces",
                     "bc_type": "wall",
                     "data": [
-                        {"nodes": [1, 2]},
-                        {"nodes": [2, 3]},
-                        {"nodes": [3, 4]},
-                        {"nodes": [4, 1]},
+                        {"nodes": [1, 2]},  # 底边
+                        {"nodes": [2, 3]},  # 右边
+                        {"nodes": [3, 4]},  # 顶边
+                        {"nodes": [4, 1]},  # 左边
                     ],
                 },
             },
@@ -396,9 +408,18 @@ class TestExtractFromGrid(unittest.TestCase):
             title="Grid Dict Test",
         )
 
+        # ── 验证 ──────────────────────────────────────────────
         self.assertTrue(output_path.exists())
         content = output_path.read_text()
+        
+        # 验证基本参数
         self.assertIn("Nodes    = 4", content)
+        self.assertIn("Elements = 2", content)  # 2 个三角形单元
+        self.assertIn("ZoneType = FEPolygon", content)  # 2D 网格
+        
+        # 验证变量只有 X, Y（2D）
+        self.assertIn('"X", "Y"', content)
+        self.assertNotIn('"Z"', content)
 
 
 # ============================================================
