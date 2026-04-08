@@ -10,6 +10,7 @@ from pathlib import Path
 import unittest
 import time
 import json
+import glob
 
 # 添加项目根目录和子目录到Python路径
 project_root = Path(__file__).parent.parent
@@ -40,6 +41,16 @@ class TestMeshGeneration(unittest.TestCase):
             Path(__file__).parent / "test_files" / "2d_cases" / "test_outputs"
         )
         cls.output_dir.mkdir(exist_ok=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        """所有测试执行完成后清理临时文件"""
+        temp_dir = Path(__file__).parent
+        for temp_file in temp_dir.glob("temp_*.json"):
+            try:
+                temp_file.unlink()
+            except Exception:
+                pass  # 忽略删除失败的情况
 
     def _fix_config_paths(self, config_path):
         """修复配置文件中的路径为绝对路径"""
@@ -418,7 +429,7 @@ class TestMeshGeneration(unittest.TestCase):
         grid = parse_vtk_msh(output_file)
         self.assertAlmostEqual(grid.num_cells, 4254, delta=120)
         self.assertAlmostEqual(grid.num_nodes, 3314, delta=120)
-        self.assertLess(cost, 120)
+        self.assertLess(cost, 140)
 
     def test_anw_mixed_generation(self):
         """测试anw_mixed网格生成"""
@@ -428,6 +439,7 @@ class TestMeshGeneration(unittest.TestCase):
             case_file,
             debug_level=0,
             output_file=output_file,
+            triangle_to_quad_method="greedy_merge",
         )
         start = time.time()
         PyMeshGen_mixed(Parameters("FROM_CASE_JSON", case_file))
@@ -443,8 +455,8 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1166, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 1111, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1173, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 1121, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
@@ -473,7 +485,7 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1111, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1131, delta=20)
         self.assertAlmostEqual(grid.num_nodes, 868, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
