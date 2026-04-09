@@ -10,6 +10,7 @@ sys.path.insert(0, project_root)  # Add project root first
 # Now import modules using proper package structure
 from meshsize import QuadtreeSizing
 from adfront2.adlayers2 import Adlayers2
+from delaunay.bowyer_watson import create_bowyer_watson_mesh
 from data_structure.parameters import Parameters
 from optimize.optimize import edge_swap, edge_collapse, laplacian_smooth
 from utils.timer import TimeSpan
@@ -40,8 +41,10 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     3) `parameters.input_file`：从算例文件读取。
 
     网格类型与流程分支：
-    - 三角网格（mesh_type != 3）：
+    - 三角网格（mesh_type == 1 或 2）：
       边界层 -> 三角推进 -> edge swap -> laplacian -> 合并输出。
+    - Bowyer-Watson 三角网格（mesh_type == 4）：
+      边界层 -> Bowyer-Watson Delaunay 三角剖分 -> edge swap -> laplacian -> 合并输出。
     - 混合网格（mesh_type == 3, 非q_morph）：
       边界层 -> 混合推进(Adfront2Hybrid) -> edge swap -> 三角转四边形 -> 混合优化 -> 合并输出。
     - 混合网格（mesh_type == 3, q_morph）：
@@ -102,25 +105,45 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # ------------------------------------------------------------------
     # 3) 生成边界层网格（Adlayers2）
+    #    - Bowyer-Watson 模式（mesh_type == 4）也支持边界层
     # ------------------------------------------------------------------
     unstr_grid_list = []
-    gui_log(gui_instance, "开始生成边界层网格...")
-    gui_progress(gui_instance, 4)  # 开始生成边界层网格
-
-    adlayers = Adlayers2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        param_obj=parameters,
-        visual_obj=visual_obj,
-    )
-    boundary_grid, front_heap = adlayers.generate_elements()
-    log_mesh_debug_summary(boundary_grid, "边界层网格")
-    unstr_grid_list.append(boundary_grid)
     
-    gui_log(gui_instance, "边界层网格生成完成")
+    # 检查是否开启了边界层（任何 part 的 PRISM_SWITCH 不是 'off'）
+    # part_params 中存储的是 Part 对象，Part 对象有 part_params 属性（MeshParameters）
+    has_boundary_layer = False
+    for part_obj in parameters.part_params:
+        # Part 对象有 part_params 属性
+        if hasattr(part_obj, 'part_params'):
+            mesh_param = part_obj.part_params
+            if hasattr(mesh_param, 'PRISM_SWITCH') and mesh_param.PRISM_SWITCH != 'off':
+                has_boundary_layer = True
+                break
+    
+    if has_boundary_layer:
+        gui_log(gui_instance, "开始生成边界层网格...")
+        gui_progress(gui_instance, 4)  # 开始生成边界层网格
+
+        adlayers = Adlayers2(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            param_obj=parameters,
+            visual_obj=visual_obj,
+        )
+        boundary_grid, front_heap = adlayers.generate_elements()
+        log_mesh_debug_summary(boundary_grid, "边界层网格")
+        unstr_grid_list.append(boundary_grid)
+
+        gui_log(gui_instance, "边界层网格生成完成")
+    else:
+        if parameters.mesh_type == 4:
+            info("Bowyer-Watson 模式：无边界层配置，跳过边界层生成")
+        boundary_grid = None
+        gui_log(gui_instance, "无边界层配置")
 
     # ------------------------------------------------------------------
     # 4) 生成内层网格
+    #    - Bowyer-Watson：mesh_type == 4
     #    - 普通混合：Adfront2Hybrid
     #    - q_morph混合：Adfront2（先纯三角）
     #    - 三角网格：Adfront2
@@ -128,19 +151,71 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     gui_log(gui_instance, "开始推进生成网格...")
     gui_progress(gui_instance, 5)  # 开始推进生成网格
 
-    if use_triangle_pipeline_for_qmorph(parameters):
-        info("q-morph模式：先生成纯三角形网格，再进行q-morph四边形合并")
+    # Bowyer-Watson Delaunay 网格生成分支
+    if parameters.mesh_type == 4:
+        info("Bowyer-Watson 模式：使用 Delaunay 三角剖分生成网格")
+        
+        from data_structure.unstructured_grid import Unstructured_Grid
+        from data_structure.basic_elements import Triangle as BWTriangle, NodeElement
+        
+        # 调用 Bowyer-Watson 算法
+        points, simplices, boundary_mask = create_bowyer_watson_mesh(
+            boundary_front=front_heap,
+            sizing_system=sizing_system,
+            target_triangle_count=None,  # 可选：指定目标三角形数量
+            smoothing_iterations=3,
+        )
+        
+        # 将结果转换为 Unstructured_Grid 对象
+        node_coords = points.tolist()
+        cell_container = []
+        boundary_nodes = set()
+        
+        for i, simplex in enumerate(simplices):
+            # 创建 NodeElement 对象
+            nodes = []
+            for node_idx in simplex:
+                node = NodeElement(
+                    coords=node_coords[node_idx],
+                    idx=int(node_idx),
+                    part_name="interior-node",
+                    bc_type="boundary" if boundary_mask[node_idx] else "interior",
+                )
+                nodes.append(node)
+                if boundary_mask[node_idx]:
+                    boundary_nodes.add(node)
+            
+            # 创建 Triangle 对象
+            triangle = BWTriangle(
+                p1=nodes[0],
+                p2=nodes[1],
+                p3=nodes[2],
+                part_name="interior-triangle",
+                idx=i,
+            )
+            cell_container.append(triangle)
+        
+        triangular_grid = Unstructured_Grid(
+            cell_container=cell_container,
+            node_coords=node_coords,
+            boundary_nodes=boundary_nodes,
+        )
+        
+        gui_log(gui_instance, "Bowyer-Watson 网格生成完成")
+    else:
+        if use_triangle_pipeline_for_qmorph(parameters):
+            info("q-morph模式：先生成纯三角形网格，再进行q-morph四边形合并")
 
-    adfront2 = create_interior_generator(
-        parameters=parameters,
-        front_heap=front_heap,
-        sizing_system=sizing_system,
-        boundary_grid=boundary_grid,
-        visual_obj=visual_obj,
-    )
-    triangular_grid = adfront2.generate_elements()
-    
-    gui_log(gui_instance, "网格生成完成")
+        adfront2 = create_interior_generator(
+            parameters=parameters,
+            front_heap=front_heap,
+            sizing_system=sizing_system,
+            boundary_grid=boundary_grid,
+            visual_obj=visual_obj,
+        )
+        triangular_grid = adfront2.generate_elements()
+
+        gui_log(gui_instance, "网格生成完成")
 
     # ------------------------------------------------------------------
     # 5) 网格质量优化与单元类型后处理
