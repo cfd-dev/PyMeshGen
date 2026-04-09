@@ -219,16 +219,23 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # ------------------------------------------------------------------
     # 5) 网格质量优化与单元类型后处理
-    #    公共：edge_swap
-    #    q_morph混合：先laplacian预平滑，再q_morph合并
-    #    非q_morph混合：直接按配置方法合并（默认greedy）
-    #    三角网格：laplacian
+    #    - Bowyer-Watson：跳过后续优化（已经是 Delaunay 最优网格）
+    #    - 公共：edge_swap
+    #    - q_morph混合：先laplacian预平滑，再q_morph合并
+    #    - 非q_morph混合：直接按配置方法合并（默认greedy）
+    #    - 三角网格：laplacian
     # ------------------------------------------------------------------
     gui_log(gui_instance, "开始优化网格质量...")
     gui_progress(gui_instance, 6)  # 开始优化网格质量
 
-    triangular_grid = edge_swap(triangular_grid)
-    triangular_grid = edge_collapse(triangular_grid)
+    # Bowyer-Watson 模式：跳过边交换和边折叠
+    # 因为 Bowyer-Watson 已经生成了最优的 Delaunay 三角网格
+    # 额外的后处理可能会破坏已经恢复的边界边
+    if parameters.mesh_type != 4:
+        triangular_grid = edge_swap(triangular_grid)
+        triangular_grid = edge_collapse(triangular_grid)
+    else:
+        info("Bowyer-Watson 模式：跳过边交换和边折叠（已是 Delaunay 最优网格）")
 
     # triangular_grid.save_to_vtkfile("./out/debug.vtk")
     

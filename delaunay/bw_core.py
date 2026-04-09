@@ -611,10 +611,12 @@ class BowyerWatsonMeshGenerator:
 
     def _recover_single_edge(self, v1: int, v2: int) -> bool:
         """恢复单条边界边。"""
+        # 检查边是否已经存在
         common_tris = [tri for tri in self.triangles if v1 in tri.vertices and v2 in tri.vertices]
         if common_tris:
             return True
 
+        # 查找与这条边相交的三角形
         crossing_tris = [
             tri for tri in self.triangles
             if self._edge_intersects_triangle(
@@ -623,10 +625,59 @@ class BowyerWatsonMeshGenerator:
             )
         ]
 
-        if not crossing_tris:
-            return self._insert_midpoint_for_edge(v1, v2)
+        if crossing_tris:
+            # 有相交三角形，使用重剖分
+            return self._retriangulate_for_edge_recovery(v1, v2, crossing_tris)
 
-        return self._retriangulate_for_edge_recovery(v1, v2, crossing_tris)
+        # 没有相交三角形，说明这条边在"空洞"中
+        # 尝试找到可以形成三角形的第三个顶点
+        return self._force_create_edge(v1, v2)
+    
+    def _force_create_edge(self, v1: int, v2: int) -> bool:
+        """强制创建边界边（当边在空洞中时）。
+        
+        算法：
+        1. 找到与 v1 和 v2 都相邻的节点
+        2. 使用这些节点创建包含 (v1, v2) 的三角形
+        """
+        # 找到与 v1 相邻的节点
+        v1_neighbors = set()
+        for tri in self.triangles:
+            if v1 in tri.vertices:
+                for v in tri.vertices:
+                    if v != v1:
+                        v1_neighbors.add(v)
+        
+        # 找到与 v2 相邻的节点
+        v2_neighbors = set()
+        for tri in self.triangles:
+            if v2 in tri.vertices:
+                for v in tri.vertices:
+                    if v != v2:
+                        v2_neighbors.add(v)
+        
+        # 找到共同邻居
+        common_neighbors = v1_neighbors & v2_neighbors
+        
+        if not common_neighbors:
+            # 没有共同邻居，使用中点插入
+            return self._insert_midpoint_for_edge(v1, v2)
+        
+        # 使用共同邻居创建三角形
+        created = False
+        for v3 in common_neighbors:
+            # 检查三角形是否已存在
+            exists = any(
+                set(tri.vertices) == {v1, v2, v3}
+                for tri in self.triangles
+            )
+            if not exists:
+                new_tri = Triangle(v1, v2, v3)
+                self._compute_circumcircle(new_tri)
+                self.triangles.append(new_tri)
+                created = True
+        
+        return created
 
     def _edge_intersects_triangle(self, p1: np.ndarray, p2: np.ndarray,
                                    tri_points: List[np.ndarray]) -> bool:
@@ -651,27 +702,72 @@ class BowyerWatsonMeshGenerator:
 
     def _retriangulate_for_edge_recovery(self, v1: int, v2: int,
                                           crossing_tris: List[Triangle]) -> bool:
-        """通过局部重剖分恢复边界边。"""
+        """通过局部重剖分恢复边界边。
+        
+        算法：
+        1. 收集所有与边(v1,v2)相交的三角形
+        2. 删除这些三角形
+        3. 收集这些三角形的所有顶点（除了v1和v2）
+        4. 将这些顶点按照与边的位置关系分为两侧
+        5. 在每一侧创建三角形，确保(v1,v2)成为边界边
+        """
         if not crossing_tris:
             return False
 
+        # 收集所有顶点
         all_vertices = set()
         for tri in crossing_tris:
             all_vertices.update(tri.vertices)
         all_vertices.discard(v1)
         all_vertices.discard(v2)
-        all_vertices.update([v1, v2])
-
+        
+        # 删除相交的三角形
         bad_set = set(id(tri) for tri in crossing_tris)
         self.triangles = [tri for tri in self.triangles if id(tri) not in bad_set]
-
-        vertex_list = sorted(all_vertices)
-        for i in range(len(vertex_list) - 1):
-            va, vb = vertex_list[i], vertex_list[i + 1]
-            if va not in (v1, v2) and vb not in (v1, v2):
-                new_tri = Triangle(v1, va, vb)
-                self._compute_circumcircle(new_tri)
-                self.triangles.append(new_tri)
+        
+        # 计算边的方向
+        edge_vec = self.points[v2] - self.points[v1]
+        edge_len = np.linalg.norm(edge_vec)
+        if edge_len < 1e-10:
+            return False
+        edge_dir = edge_vec / edge_len
+        
+        # 将顶点分为两侧（基于边的法线方向）
+        normal = np.array([-edge_dir[1], edge_dir[0]])  # 法线方向
+        side_a = []  # 法线正方向
+        side_b = []  # 法线负方向
+        
+        for v in all_vertices:
+            vec_to_v = self.points[v] - self.points[v1]
+            projection = np.dot(vec_to_v, normal)
+            if projection > 0:
+                side_a.append(v)
+            else:
+                side_b.append(v)
+        
+        # 对两侧的顶点按照沿边方向的位置排序
+        def sort_along_edge(vertices):
+            return sorted(vertices, key=lambda v: np.dot(self.points[v] - self.points[v1], edge_dir))
+        
+        side_a = sort_along_edge(side_a)
+        side_b = sort_along_edge(side_b)
+        
+        # 在每一侧创建三角形扇
+        # 侧 A: v1 -> side_a[0] -> side_a[1] -> ... -> v2
+        prev = v1
+        for v in side_a:
+            new_tri = Triangle(prev, v, v2)
+            self._compute_circumcircle(new_tri)
+            self.triangles.append(new_tri)
+            prev = v
+        
+        # 侧 B: v1 -> side_b[0] -> side_b[1] -> ... -> v2
+        prev = v1
+        for v in side_b:
+            new_tri = Triangle(prev, v, v2)
+            self._compute_circumcircle(new_tri)
+            self.triangles.append(new_tri)
+            prev = v
 
         return True
 
@@ -749,16 +845,9 @@ class BowyerWatsonMeshGenerator:
             self.boundary_mask[:self.boundary_count] = True
             self._laplacian_smoothing(self.smoothing_iterations)
 
-            verbose("  平滑后重新三角剖分...")
-            self._clear_triangle_caches()
-            self.triangles = []
-            self._triangulate()
-
-            if self.holes:
-                self._remove_hole_triangles()
-            self._recover_boundary_edges()
-            if self.holes:
-                self._remove_hole_triangles()
+            # Laplacian 平滑只移动点位置，不改变拓扑连接
+            # 因此不需要重新三角剖分，保持原有的三角形连接即可
+            verbose("  平滑完成（保持原有三角连接）")
         else:
             verbose("阶段 3/3: 跳过平滑（未启用）")
             if self.holes:

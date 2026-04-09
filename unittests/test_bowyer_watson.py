@@ -894,27 +894,36 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
 
                 if input_file.exists():
                     print(f"\n  - 边界恢复检查:")
-                    boundary_check_result = self._check_boundary_recovery(
+                    boundary_edges_result = self._check_boundary_edges(
                         cas_file=str(input_file),
                         grid=grid,
                         test_name=test_name
                     )
                     
-                    if boundary_check_result['pass']:
+                    if boundary_edges_result['pass']:
                         print(f"  - [PASS] 边界恢复检查通过")
-                        print(f"    - 外边界点数: {boundary_check_result['outer_boundary_points']}")
-                        print(f"    - 孔洞边界点数: {boundary_check_result['hole_boundary_points']}")
-                        print(f"    - 孔洞内点数: {boundary_check_result['points_in_hole']}")
-                        print(f"    - 孔洞内单元数: {boundary_check_result['cells_in_hole']}")
+                        for zone_key, zone_result in boundary_edges_result['zone_results'].items():
+                            print(f"    - {zone_key}: {zone_result['total_edges']}/{zone_result['total_edges']} 条边恢复")
+                            if zone_result['inner_boundary_inner_points'] > 0:
+                                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_points']} 个点")
+                            if zone_result['inner_boundary_inner_cells'] > 0:
+                                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
                     else:
                         print(f"  - [FAIL] 边界恢复检查失败")
-                        print(f"    - 问题: {boundary_check_result['issue']}")
-                        # 打印详细的孔洞内单元信息用于调试
-                        if 'cells_in_hole_details' in boundary_check_result:
-                            print(f"    - 孔洞内单元详情:")
-                            for cell_info in boundary_check_result['cells_in_hole_details'][:5]:
-                                print(f"      单元 {cell_info['cell_idx']}: 质心 ({cell_info['centroid'][0]:.4f}, {cell_info['centroid'][1]:.4f})")
-                        self.fail(f"{test_name} 边界恢复检查失败: {boundary_check_result['issue']}")
+                        for zone_key, zone_result in boundary_edges_result['zone_results'].items():
+                            if zone_result['missing_edges'] > 0:
+                                print(f"    - {zone_key}: {zone_result['missing_edges']}/{zone_result['total_edges']} 条边丢失")
+                                for detail in zone_result['missing_details'][:5]:
+                                    n1, n2, coord1, coord2, reason = detail
+                                    if reason:
+                                        print(f"      边 ({n1},{n2}): {reason}")
+                                    else:
+                                        print(f"      边 ({n1},{n2}): ({coord1[0]:.4f},{coord1[1]:.4f}) -> ({coord2[0]:.4f},{coord2[1]:.4f})")
+                        
+                        if boundary_edges_result['issue']:
+                            print(f"    - 问题: {boundary_edges_result['issue']}")
+                        
+                        self.fail(f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}")
                 else:
                     print(f"\n  - [SKIP] CAS 文件不存在，跳过边界恢复检查")
 
@@ -926,8 +935,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             traceback.print_exc()
             self.fail(f"{test_name} 测试失败: {e}")
 
-    def _check_boundary_recovery(self, cas_file, grid, test_name):
-        """检查网格生成前后边界是否保持一致
+    def _check_boundary_edges(self, cas_file, grid, test_name):
+        """检查网格中特定边界的边是否完整恢复，以及内边界内部是否有非法点/单元
 
         参数:
             cas_file: CAS 文件路径
@@ -938,137 +947,159 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             dict: 包含检查结果的信息
         """
         from fileIO.read_cas import parse_fluent_msh
-        from utils.geom_toolkit import point_in_polygon
 
-        # 使用 parse_fluent_msh 读取 CAS 文件，获取原始边界点
         try:
-            raw_cas_data = parse_fluent_msh(cas_file)
+            cas_data = parse_fluent_msh(cas_file)
         except Exception as e:
             return {
                 'pass': False,
-                'issue': f'无法解析 CAS 文件: {e}'
+                'issue': f'无法解析 CAS 文件: {e}',
+                'zone_results': {}
             }
 
-        # 获取原始边界点坐标
-        original_boundary_points = raw_cas_data.get('nodes', [])
-        if not original_boundary_points:
-            return {
-                'pass': False,
-                'issue': 'CAS 文件中没有找到边界点'
+        cas_nodes = np.array(cas_data['nodes'])
+        tolerance = 0.01
+
+        # 提取所有边界区域的边
+        boundary_edges_by_zone = {}
+        for face in cas_data['faces']:
+            part_name = face.get('part_name', 'unknown')
+            bc_type = face.get('bc_type', 'unknown')
+            
+            # 跳过内部面
+            if bc_type == 'interior':
+                continue
+            
+            zone_key = f"{part_name}_{bc_type}"
+            if zone_key not in boundary_edges_by_zone:
+                boundary_edges_by_zone[zone_key] = {
+                    'edges': [],
+                    'nodes': set(),
+                    'bc_type': bc_type
+                }
+            
+            if len(face['nodes']) == 2:
+                n1, n2 = face['nodes'][0] - 1, face['nodes'][1] - 1
+                boundary_edges_by_zone[zone_key]['edges'].append((n1, n2))
+                boundary_edges_by_zone[zone_key]['nodes'].add(n1)
+                boundary_edges_by_zone[zone_key]['nodes'].add(n2)
+
+        # 对每个边界区域检查边的恢复情况
+        vtk_nodes = np.array(grid.node_coords)
+        all_results = {}
+        all_pass = True
+
+        for zone_key, zone_info in boundary_edges_by_zone.items():
+            cas_edges = zone_info['edges']
+            zone_node_indices = zone_info['nodes']
+            
+            # 获取该区域的 CAS 节点坐标
+            zone_coords = cas_nodes[list(zone_node_indices)]
+            
+            # 判断是否为内边界（不触及全局边界）
+            global_x_min, global_x_max = np.min(cas_nodes[:, 0]), np.max(cas_nodes[:, 0])
+            global_y_min, global_y_max = np.min(cas_nodes[:, 1]), np.max(cas_nodes[:, 1])
+            
+            x_min, x_max = np.min(zone_coords[:, 0]), np.max(zone_coords[:, 0])
+            y_min, y_max = np.min(zone_coords[:, 1]), np.max(zone_coords[:, 1])
+            
+            touches_global_boundary = (
+                abs(x_min - global_x_min) < tolerance or
+                abs(x_max - global_x_max) < tolerance or
+                abs(y_min - global_y_min) < tolerance or
+                abs(y_max - global_y_max) < tolerance
+            )
+            is_inner_boundary = not touches_global_boundary
+            
+            # 在 VTK 中查找对应的节点
+            vtk_node_map = {}  # CAS node index -> VTK node index
+            for cas_idx in zone_node_indices:
+                cas_coord = cas_nodes[cas_idx]
+                for vtk_idx in range(len(vtk_nodes)):
+                    vtk_coord = vtk_nodes[vtk_idx]
+                    if np.sqrt(np.sum((vtk_coord[:2] - cas_coord[:2])**2)) < tolerance:
+                        vtk_node_map[cas_idx] = vtk_idx
+                        break
+
+            # 检查每条边是否存在
+            missing_edges = []
+            for n1, n2 in cas_edges:
+                if n1 not in vtk_node_map or n2 not in vtk_node_map:
+                    missing_edges.append((n1, n2, cas_nodes[n1], cas_nodes[n2], "节点未找到"))
+                    continue
+                
+                vtk_n1 = vtk_node_map[n1]
+                vtk_n2 = vtk_node_map[n2]
+                
+                # 检查这两个节点是否共享单元
+                edge_exists = False
+                for cell in grid.cells:
+                    if vtk_n1 in cell and vtk_n2 in cell:
+                        edge_exists = True
+                        break
+                
+                if not edge_exists:
+                    missing_edges.append((n1, n2, cas_nodes[n1], cas_nodes[n2], None))
+
+            # 对于内边界，检查内部是否有点或单元
+            inner_boundary_inner_points = 0
+            inner_boundary_inner_cells = 0
+            
+            if is_inner_boundary and len(zone_coords) >= 3:
+                # 计算内边界的最小半径（假设为圆形或近似圆形）
+                center = np.mean(zone_coords, axis=0)
+                radii = np.sqrt(np.sum((zone_coords - center)**2, axis=1))
+                min_radius = np.min(radii)
+                
+                # 检查是否有节点在内边界内部
+                for vtk_idx in range(len(vtk_nodes)):
+                    vtk_coord = vtk_nodes[vtk_idx, :2]
+                    dist_to_center = np.sqrt(np.sum((vtk_coord - center[:2])**2))
+                    if dist_to_center < min_radius - tolerance:
+                        inner_boundary_inner_points += 1
+                
+                # 检查是否有单元的质心在内边界内部
+                for cell in grid.cells:
+                    cell_nodes_2d = [vtk_nodes[n, :2] for n in cell]
+                    centroid = np.mean(cell_nodes_2d, axis=0)
+                    dist_to_center = np.sqrt(np.sum((centroid - center[:2])**2))
+                    if dist_to_center < min_radius - tolerance:
+                        inner_boundary_inner_cells += 1
+
+            result = {
+                'total_edges': len(cas_edges),
+                'missing_edges': len(missing_edges),
+                'missing_details': missing_edges,
+                'inner_boundary_inner_points': inner_boundary_inner_points,
+                'inner_boundary_inner_cells': inner_boundary_inner_cells
             }
+            all_results[zone_key] = result
 
-        # 对于 quad_quad，外边界是 [-10, 10] x [-10, 10]，孔洞是 [-3, 3] x [-3, 3]
-        # 根据 CAS 文件，前 36 个点是外边界点（每边 9 个点）
-        # 接下来的 16 个点是孔洞边界点（每边 4 个点）
-        outer_boundary_coords = original_boundary_points[:36]
-        hole_boundary_coords = original_boundary_points[36:52]
+            # 判断该区域是否通过检查
+            zone_pass = (len(missing_edges) == 0 and 
+                        inner_boundary_inner_points == 0 and 
+                        inner_boundary_inner_cells == 0)
+            if not zone_pass:
+                all_pass = False
 
-        # 定义孔洞多边形（用于检查点是否在孔洞内）
-        hole_polygon = np.array([
-            [-3.0, -3.0],
-            [-3.0,  3.0],
-            [ 3.0,  3.0],
-            [ 3.0, -3.0],
-        ])
+        # 构建总体问题描述
+        issue = None
+        if not all_pass:
+            issues = []
+            for zone_key, zone_result in all_results.items():
+                if zone_result['missing_edges'] > 0:
+                    issues.append(f"{zone_key}: {zone_result['missing_edges']} 条边丢失")
+                if zone_result['inner_boundary_inner_points'] > 0:
+                    issues.append(f"{zone_key}: 内部发现 {zone_result['inner_boundary_inner_points']} 个点")
+                if zone_result['inner_boundary_inner_cells'] > 0:
+                    issues.append(f"{zone_key}: 内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
+            issue = "; ".join(issues)
 
-        # 检查生成的网格
-        tolerance = 0.01  # 容差
-
-        # 1. 检查孔洞边界上的点
-        hole_boundary_points_found = []
-        for i, pt in enumerate(grid.node_coords):
-            x, y = pt[0], pt[1]
-
-            # 检查是否在孔洞边界上
-            on_hole_boundary = False
-            if abs(x + 3.0) < tolerance and -3.0 - tolerance <= y <= 3.0 + tolerance:
-                on_hole_boundary = True
-            elif abs(x - 3.0) < tolerance and -3.0 - tolerance <= y <= 3.0 + tolerance:
-                on_hole_boundary = True
-            elif abs(y + 3.0) < tolerance and -3.0 - tolerance <= x <= 3.0 + tolerance:
-                on_hole_boundary = True
-            elif abs(y - 3.0) < tolerance and -3.0 - tolerance <= x <= 3.0 + tolerance:
-                on_hole_boundary = True
-
-            if on_hole_boundary:
-                hole_boundary_points_found.append((i, x, y))
-
-        # 2. 检查孔洞内部的点（不应该有点）
-        points_in_hole = []
-        for i, pt in enumerate(grid.node_coords):
-            pt_2d = np.array([pt[0], pt[1]])
-            if point_in_polygon(pt_2d, hole_polygon):
-                points_in_hole.append((i, pt))
-
-        # 3. 检查孔洞内部的单元（不应该有单元）
-        cells_in_hole = []
-        cells_in_hole_details = []
-        for i, cell in enumerate(grid.cells):
-            cell_nodes = [grid.node_coords[n] for n in cell]
-            cell_nodes_2d = [np.array([n[0], n[1]]) for n in cell_nodes]
-            centroid = np.mean(cell_nodes_2d, axis=0)
-            if point_in_polygon(centroid, hole_polygon):
-                cells_in_hole.append((i, cell, centroid))
-                cells_in_hole_details.append({
-                    'cell_idx': i,
-                    'centroid': centroid,
-                    'cell_nodes': cell
-                })
-
-        # 4. 检查外边界点是否保留
-        outer_boundary_found = []
-        for i, pt in enumerate(grid.node_coords):
-            x, y = pt[0], pt[1]
-
-            # 检查是否在外边界上
-            on_outer_boundary = False
-            if abs(x + 10.0) < tolerance and -10.0 - tolerance <= y <= 10.0 + tolerance:
-                on_outer_boundary = True
-            elif abs(x - 10.0) < tolerance and -10.0 - tolerance <= y <= 10.0 + tolerance:
-                on_outer_boundary = True
-            elif abs(y + 10.0) < tolerance and -10.0 - tolerance <= x <= 10.0 + tolerance:
-                on_outer_boundary = True
-            elif abs(y - 10.0) < tolerance and -10.0 - tolerance <= x <= 10.0 + tolerance:
-                on_outer_boundary = True
-
-            if on_outer_boundary:
-                outer_boundary_found.append((i, x, y))
-
-        # 验证结果
-        result = {
-            'pass': True,
-            'issue': None,
-            'outer_boundary_points': len(outer_boundary_found),
-            'hole_boundary_points': len(hole_boundary_points_found),
-            'points_in_hole': len(points_in_hole),
-            'cells_in_hole': len(cells_in_hole),
-            'cells_in_hole_details': cells_in_hole_details,
+        return {
+            'pass': all_pass,
+            'zone_results': all_results,
+            'issue': issue
         }
-
-        # 孔洞内不应该有点或单元
-        if len(points_in_hole) > 0:
-            result['pass'] = False
-            result['issue'] = f"孔洞内发现 {len(points_in_hole)} 个点"
-            return result
-
-        if len(cells_in_hole) > 0:
-            result['pass'] = False
-            result['issue'] = f"孔洞内发现 {len(cells_in_hole)} 个单元"
-            return result
-
-        # 孔洞边界应该有足够多的点（至少应该有原始孔洞边界点）
-        if len(hole_boundary_points_found) < len(hole_boundary_coords) - 2:
-            result['pass'] = False
-            result['issue'] = f"孔洞边界点不足：期望至少 {len(hole_boundary_coords)} 个，实际找到 {len(hole_boundary_points_found)} 个"
-            return result
-
-        # 外边界应该有足够的点
-        if len(outer_boundary_found) < len(outer_boundary_coords) - 2:
-            result['pass'] = False
-            result['issue'] = f"外边界点不足：期望至少 {len(outer_boundary_coords)} 个，实际找到 {len(outer_boundary_found)} 个"
-            return result
-
-        return result
 
     def _create_bw_config_from_root(self, original_config_path, output_file, enable_boundary_layer=False):
         """从项目根目录 config/ 文件夹创建 Bowyer-Watson 配置（mesh_type=4）
