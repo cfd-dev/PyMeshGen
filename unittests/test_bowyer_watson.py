@@ -697,7 +697,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         # 设置输出文件
         config['output_file'] = str(output_file)
         config['viz_enabled'] = False
-        config['debug_level'] = 2  # 启用 VERBOSE 输出以查看详细进度
+        config['debug_level'] = 0  # 启用 INFO 输出
         
         # 保存到临时文件
         temp_config_path = project_root / f"temp_bw_{original_config_path.stem}.json"
@@ -800,7 +800,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             check_boundary_recovery=True
         )
 
-    def _test_bowyer_watson_with_config_from_root(self, config_file, output_file_name, enable_boundary_layer, test_name, check_boundary_recovery=False):
+    def _test_bowyer_watson_with_config_from_root(self, config_file, output_file_name, enable_boundary_layer, test_name, check_boundary_recovery=True):
         """从项目根目录 config/ 文件夹加载配置的 Bowyer-Watson 测试方法
 
         参数:
@@ -808,7 +808,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             output_file_name: 输出文件名
             enable_boundary_layer: 是否启用边界层
             test_name: 测试名称
-            check_boundary_recovery: 是否检查边界恢复
+            check_boundary_recovery: 是否检查边界恢复（默认 True）
         """
         from PyMeshGen import PyMeshGen
         from data_structure.parameters import Parameters
@@ -1044,27 +1044,66 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             # 对于内边界，检查内部是否有点或单元
             inner_boundary_inner_points = 0
             inner_boundary_inner_cells = 0
-            
+
             if is_inner_boundary and len(zone_coords) >= 3:
-                # 计算内边界的最小半径（假设为圆形或近似圆形）
-                center = np.mean(zone_coords, axis=0)
-                radii = np.sqrt(np.sum((zone_coords - center)**2, axis=1))
-                min_radius = np.min(radii)
-                
-                # 检查是否有节点在内边界内部
-                for vtk_idx in range(len(vtk_nodes)):
-                    vtk_coord = vtk_nodes[vtk_idx, :2]
-                    dist_to_center = np.sqrt(np.sum((vtk_coord - center[:2])**2))
-                    if dist_to_center < min_radius - tolerance:
-                        inner_boundary_inner_points += 1
-                
-                # 检查是否有单元的质心在内边界内部
-                for cell in grid.cells:
-                    cell_nodes_2d = [vtk_nodes[n, :2] for n in cell]
-                    centroid = np.mean(cell_nodes_2d, axis=0)
-                    dist_to_center = np.sqrt(np.sum((centroid - center[:2])**2))
-                    if dist_to_center < min_radius - tolerance:
-                        inner_boundary_inner_cells += 1
+                # 使用通用的点在多边形内检查（适用于任意形状的内边界）
+                from utils.geom_toolkit import point_in_polygon
+
+                # 构建内边界多边形：使用 CAS 边的连接关系，而非角度排序
+                # 这样可以正确处理非凸几何形状
+                boundary_edges = zone_info.get('edges', [])
+                if len(boundary_edges) >= 3:
+                    # 从边构建连续的多边形路径
+                    adjacency = {}
+                    for n1, n2 in boundary_edges:
+                        adjacency.setdefault(n1, []).append(n2)
+                        adjacency.setdefault(n2, []).append(n1)
+
+                    # 追踪连续路径
+                    ordered_coords = []
+                    visited_edges = set()
+                    start_node = list(adjacency.keys())[0]
+                    current = start_node
+                    prev = None
+
+                    while True:
+                        coord = cas_nodes[current]
+                        ordered_coords.append(coord)
+
+                        # 找到下一条未访问的边
+                        next_node = None
+                        for neighbor in adjacency.get(current, []):
+                            edge_key = tuple(sorted([current, neighbor]))
+                            if edge_key not in visited_edges:
+                                next_node = neighbor
+                                break
+
+                        if next_node is None:
+                            break
+
+                        visited_edges.add(tuple(sorted([current, next_node])))
+                        prev = current
+                        current = next_node
+
+                        # 回到起点，形成闭环
+                        if current == start_node:
+                            break
+
+                    if len(ordered_coords) >= 3:
+                        hole_polygon = np.array(ordered_coords)
+
+                        # 检查是否有节点在内边界内部
+                        for vtk_idx in range(len(vtk_nodes)):
+                            vtk_coord = vtk_nodes[vtk_idx, :2]
+                            if point_in_polygon(vtk_coord, hole_polygon):
+                                inner_boundary_inner_points += 1
+
+                        # 检查是否有单元的质心在内边界内部
+                        for cell in grid.cells:
+                            cell_nodes_2d = [vtk_nodes[n, :2] for n in cell]
+                            centroid = np.mean(cell_nodes_2d, axis=0)
+                            if point_in_polygon(centroid, hole_polygon):
+                                inner_boundary_inner_cells += 1
 
             result = {
                 'total_edges': len(cas_edges),
@@ -1139,7 +1178,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         # 设置输出文件
         config['output_file'] = str(output_file)
         config['viz_enabled'] = False
-        config['debug_level'] = 2  # 启用 VERBOSE 输出以查看详细进度
+        config['debug_level'] = 0  # 启用 INFO 输出
 
         # 保存到临时文件
         temp_config_path = project_root / f"temp_bw_{original_config_path.stem}.json"

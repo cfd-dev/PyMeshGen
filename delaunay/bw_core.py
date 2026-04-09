@@ -639,6 +639,7 @@ class BowyerWatsonMeshGenerator:
         算法：
         1. 找到与 v1 和 v2 都相邻的节点
         2. 使用这些节点创建包含 (v1, v2) 的三角形
+        3. 如果没有共同邻居，尝试找到最合适的第三个节点
         """
         # 找到与 v1 相邻的节点
         v1_neighbors = set()
@@ -659,25 +660,65 @@ class BowyerWatsonMeshGenerator:
         # 找到共同邻居
         common_neighbors = v1_neighbors & v2_neighbors
         
-        if not common_neighbors:
-            # 没有共同邻居，使用中点插入
+        if common_neighbors:
+            # 使用共同邻居创建三角形
+            created = False
+            for v3 in common_neighbors:
+                # 检查三角形是否已存在
+                exists = any(
+                    set(tri.vertices) == {v1, v2, v3}
+                    for tri in self.triangles
+                )
+                if not exists:
+                    new_tri = Triangle(v1, v2, v3)
+                    self._compute_circumcircle(new_tri)
+                    self.triangles.append(new_tri)
+                    created = True
+            return created
+        
+        # 没有共同邻居，尝试找到最合适的第三个节点
+        # 策略：找到与 v1 或 v2 相邻，且与边 (v1,v2) 形成合理角度的节点
+        edge_vec = self.points[v2] - self.points[v1]
+        edge_len = np.linalg.norm(edge_vec)
+        if edge_len < 1e-10:
             return self._insert_midpoint_for_edge(v1, v2)
         
-        # 使用共同邻居创建三角形
-        created = False
-        for v3 in common_neighbors:
-            # 检查三角形是否已存在
-            exists = any(
-                set(tri.vertices) == {v1, v2, v3}
-                for tri in self.triangles
-            )
-            if not exists:
-                new_tri = Triangle(v1, v2, v3)
-                self._compute_circumcircle(new_tri)
-                self.triangles.append(new_tri)
-                created = True
+        # 收集所有候选节点
+        candidate_nodes = v1_neighbors | v2_neighbors
         
-        return created
+        best_v3 = None
+        best_angle = -1
+        
+        for v3 in candidate_nodes:
+            # 检查三角形是否已存在
+            if any(set(tri.vertices) == {v1, v2, v3} for tri in self.triangles):
+                continue
+            
+            # 计算角度（避免太尖锐的三角形）
+            v3_v1 = self.points[v1] - self.points[v3]
+            v3_v2 = self.points[v2] - self.points[v3]
+            
+            dot = np.dot(v3_v1, v3_v2)
+            norm1 = np.linalg.norm(v3_v1)
+            norm2 = np.linalg.norm(v3_v2)
+            
+            if norm1 < 1e-10 or norm2 < 1e-10:
+                continue
+            
+            cos_angle = dot / (norm1 * norm2)
+            # 选择角度最大的（最接近 180 度的三角形最不好）
+            if cos_angle > best_angle:
+                best_angle = cos_angle
+                best_v3 = v3
+        
+        if best_v3 is not None:
+            new_tri = Triangle(v1, v2, best_v3)
+            self._compute_circumcircle(new_tri)
+            self.triangles.append(new_tri)
+            return True
+        
+        # 最后手段：中点插入
+        return self._insert_midpoint_for_edge(v1, v2)
 
     def _edge_intersects_triangle(self, p1: np.ndarray, p2: np.ndarray,
                                    tri_points: List[np.ndarray]) -> bool:
@@ -850,39 +891,6 @@ class BowyerWatsonMeshGenerator:
             verbose("  平滑完成（保持原有三角连接）")
         else:
             verbose("阶段 3/3: 跳过平滑（未启用）")
-            if self.holes:
-                self._remove_hole_triangles()
-
-        # 最终孔洞清理
-        if self.holes:
-            verbose("最终清理孔洞内三角形...")
-            hole_boundary_points = set()
-            for hole in self.holes:
-                for hole_pt in hole:
-                    for pt_idx, pt in enumerate(self.points):
-                        if np.linalg.norm(pt[:2] - hole_pt[:2]) < 1e-6:
-                            hole_boundary_points.add(pt_idx)
-                            break
-
-            triangles_to_keep = []
-            removed_by_vertex = 0
-            removed_by_centroid = 0
-
-            for tri in self.triangles:
-                if all(v in hole_boundary_points for v in tri.vertices):
-                    removed_by_vertex += 1
-                    continue
-                centroid = self._compute_triangle_centroid(tri)
-                if any(point_in_polygon(centroid, h) for h in self.holes):
-                    removed_by_centroid += 1
-                    continue
-                triangles_to_keep.append(tri)
-
-            total_removed = removed_by_vertex + removed_by_centroid
-            if total_removed > 0:
-                verbose(f"  最终清理删除了 {total_removed} 个孔洞内三角形 "
-                        f"(顶点: {removed_by_vertex}, 质心: {removed_by_centroid})")
-            self.triangles = triangles_to_keep
 
         points = self.points.copy()
         simplices = np.array([tri.vertices for tri in self.triangles])
