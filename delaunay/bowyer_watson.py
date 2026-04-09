@@ -16,6 +16,7 @@ import numpy as np
 from typing import List, Tuple, Optional, Callable
 from math import sqrt
 from scipy.spatial import KDTree
+from collections import Counter
 
 from utils.message import info, debug, warning, verbose
 from utils.timer import TimeSpan
@@ -24,7 +25,7 @@ from utils.timer import TimeSpan
 class Triangle:
     """三角形单元类"""
 
-    __slots__ = ['vertices', 'circumcenter', 'circumradius', 'idx']
+    __slots__ = ['vertices', 'circumcenter', 'circumradius', 'idx', 'circumcircle_valid', 'quality', 'quality_valid', 'circumcircle_bbox']
 
     def __init__(self, p1: int, p2: int, p3: int, idx: int = -1):
         # 顶点索引排序以便于去重和比较
@@ -32,6 +33,10 @@ class Triangle:
         self.circumcenter = None  # 外接圆圆心
         self.circumradius = None  # 外接圆半径
         self.idx = idx  # 三角形索引
+        self.circumcircle_valid = False  # 外接圆是否已计算并有效
+        self.quality = 0.0  # 三角形质量缓存
+        self.quality_valid = False  # 质量是否已计算并有效
+        self.circumcircle_bbox = None  # 外接圆的包围盒（用于空间索引）
 
     def __eq__(self, other):
         if not isinstance(other, Triangle):
@@ -107,11 +112,15 @@ class BowyerWatsonMeshGenerator:
 
     def _compute_circumcircle(self, tri: Triangle) -> Tuple[np.ndarray, float]:
         """
-        计算三角形的外接圆
+        计算三角形的外接圆（带缓存）
 
         返回:
             (center, radius): 外接圆圆心和半径
         """
+        # 如果已计算且有效，直接返回缓存值
+        if tri.circumcircle_valid and tri.circumcenter is not None and tri.circumradius is not None:
+            return tri.circumcenter, tri.circumradius
+
         p1 = self.points[tri.vertices[0]]
         p2 = self.points[tri.vertices[1]]
         p3 = self.points[tri.vertices[2]]
@@ -126,30 +135,48 @@ class BowyerWatsonMeshGenerator:
             # 三点共线或非常接近，返回重心
             center = np.array([(ax + bx + cx) / 3.0, (ay + by + cy) / 3.0])
             radius = float(np.linalg.norm(p1 - center))
-            return center, radius
+        else:
+            ux = (
+                (ax**2 + ay**2) * (by - cy)
+                + (bx**2 + by**2) * (cy - ay)
+                + (cx**2 + cy**2) * (ay - by)
+            ) / d
+            uy = (
+                (ax**2 + ay**2) * (cx - bx)
+                + (bx**2 + by**2) * (ax - cx)
+                + (cx**2 + cy**2) * (bx - ax)
+            ) / d
 
-        ux = (
-            (ax**2 + ay**2) * (by - cy)
-            + (bx**2 + by**2) * (cy - ay)
-            + (cx**2 + cy**2) * (ay - by)
-        ) / d
-        uy = (
-            (ax**2 + ay**2) * (cx - bx)
-            + (bx**2 + by**2) * (ax - cx)
-            + (cx**2 + cy**2) * (bx - ax)
-        ) / d
+            center = np.array([ux, uy])
+            radius = float(np.linalg.norm(p1 - center))
 
-        center = np.array([ux, uy])
-        radius = float(np.linalg.norm(p1 - center))
+        # 缓存结果
+        tri.circumcenter = center
+        tri.circumradius = radius
+        tri.circumcircle_valid = True
+        # 计算包围盒用于空间索引
+        tri.circumcircle_bbox = (
+            center[0] - radius,
+            center[1] - radius,
+            center[0] + radius,
+            center[1] + radius,
+        )
 
         return center, radius
+
+    def _point_in_circumcircle_bbox(self, point: np.ndarray, bbox: Tuple[float, float, float, float]) -> bool:
+        """
+        快速检查点是否可能在包围盒内（初步筛选）
+        """
+        return (bbox[0] <= point[0] <= bbox[2]) and (bbox[1] <= point[1] <= bbox[3])
 
     def _point_in_circumcircle(self, point: np.ndarray, tri: Triangle) -> bool:
         """
         检查点是否在三角形的外接圆内（含边界）
         """
-        if tri.circumcenter is None:
-            tri.circumcenter, tri.circumradius = self._compute_circumcircle(tri)
+        # 确保外接圆已计算
+        if not tri.circumcircle_valid:
+            self._compute_circumcircle(tri)
 
         distance = float(np.linalg.norm(point - tri.circumcenter))
         # 使用小的容差值避免浮点误差
@@ -213,30 +240,27 @@ class BowyerWatsonMeshGenerator:
                 if self._point_in_circumcircle(point, tri):
                     bad_triangles.append(tri)
 
-            # 找到坏三角形的边界边（不共享的边）
-            boundary_edges_dict = {}
+            # 找到坏三角形的边界边（不共享的边）- 使用 Counter 优化
+            edge_counter = Counter()
             for tri in bad_triangles:
                 for edge in tri.get_edges():
-                    # 使用排序后的边作为键
                     edge_key = tuple(sorted(edge))
-                    if edge_key in boundary_edges_dict:
-                        boundary_edges_dict[edge_key] += 1
-                    else:
-                        boundary_edges_dict[edge_key] = 1
+                    edge_counter[edge_key] += 1
 
             # 只出现一次的边是边界边
             polygon_edges = [
-                edge for edge, count in boundary_edges_dict.items() if count == 1
+                edge for edge, count in edge_counter.items() if count == 1
             ]
 
             # 删除坏三角形
-            for tri in bad_triangles:
-                triangles.remove(tri)
+            bad_set = set(id(tri) for tri in bad_triangles)
+            triangles = [tri for tri in triangles if id(tri) not in bad_set]
 
             # 创建新三角形连接边界边和新点
             for edge in polygon_edges:
                 new_tri = Triangle(edge[0], edge[1], i)
-                new_tri.circumcenter, new_tri.circumradius = self._compute_circumcircle(new_tri)
+                # 预计算外接圆
+                self._compute_circumcircle(new_tri)
                 triangles.append(new_tri)
 
         # 移除包含超级三角形顶点的三角形
@@ -254,11 +278,15 @@ class BowyerWatsonMeshGenerator:
 
     def _compute_triangle_quality(self, tri: Triangle) -> float:
         """
-        计算三角形质量（基于纵横比）
+        计算三角形质量（基于纵横比）（带缓存）
 
         质量定义：quality = 2 * r_inscribed / r_circumscribed
         值越接近 1，三角形质量越好（等边三角形质量为 1）
         """
+        # 如果质量已计算且有效，直接返回缓存值
+        if tri.quality_valid:
+            return tri.quality
+
         p1 = self.points[tri.vertices[0]]
         p2 = self.points[tri.vertices[1]]
         p3 = self.points[tri.vertices[2]]
@@ -273,26 +301,43 @@ class BowyerWatsonMeshGenerator:
         # 面积（海伦公式）
         area_sq = s * (s - a) * (s - b) * (s - c)
         if area_sq < 0:
-            return 0.0
-        area = sqrt(max(area_sq, 0.0))
+            quality = 0.0
+        else:
+            area = sqrt(max(area_sq, 0.0))
 
-        if area < 1e-12:
-            return 0.0
+            if area < 1e-12:
+                quality = 0.0
+            else:
+                # 内切圆半径
+                inscribed_radius = area / s
 
-        # 内切圆半径
-        inscribed_radius = area / s
+                # 外接圆半径
+                if not tri.circumcircle_valid:
+                    self._compute_circumcircle(tri)
+                circumscribed_radius = tri.circumradius
 
-        # 外接圆半径
-        if tri.circumradius is None:
-            tri.circumcenter, tri.circumradius = self._compute_circumcircle(tri)
-        circumscribed_radius = tri.circumradius
+                if circumscribed_radius < 1e-12:
+                    quality = 0.0
+                else:
+                    # 质量 = 2 * r_inscribed / r_circumscribed
+                    quality = 2.0 * inscribed_radius / circumscribed_radius
+                    quality = min(quality, 1.0)
 
-        if circumscribed_radius < 1e-12:
-            return 0.0
+        # 缓存结果
+        tri.quality = quality
+        tri.quality_valid = True
 
-        # 质量 = 2 * r_inscribed / r_circumscribed
-        quality = 2.0 * inscribed_radius / circumscribed_radius
-        return min(quality, 1.0)
+        return quality
+
+    def _compute_triangle_centroid(self, tri: Triangle) -> np.ndarray:
+        """
+        计算三角形的质心
+        """
+        return np.mean([
+            self.points[tri.vertices[0]],
+            self.points[tri.vertices[1]],
+            self.points[tri.vertices[2]],
+        ], axis=0)
 
     def _get_target_size_for_triangle(self, tri: Triangle) -> Optional[float]:
         """
@@ -321,52 +366,50 @@ class BowyerWatsonMeshGenerator:
     def _insert_point_incremental(self, point_idx: int, triangles: List[Triangle]) -> List[Triangle]:
         """
         增量式插入单个点到现有三角剖分中
-        
+
         这是优化的关键：只更新受影响的三角形，而不是重新剖分所有点
-        
+
         参数:
             point_idx: 新插入点的索引
             triangles: 当前三角形列表
-            
+
         返回:
             更新后的三角形列表
         """
         point = self.points[point_idx]
-        
+
         # 找到所有外接圆包含新点的三角形（bad triangles）
         bad_triangles = []
         for tri in triangles:
             if self._point_in_circumcircle(point, tri):
                 bad_triangles.append(tri)
-        
+
         if not bad_triangles:
             return triangles
-        
-        # 找到 bad triangles 的边界边（不共享的边）
-        boundary_edges_dict = {}
+
+        # 找到 bad triangles 的边界边（不共享的边）- 使用 Counter 优化
+        edge_counter = Counter()
         for tri in bad_triangles:
             for edge in tri.get_edges():
                 edge_key = tuple(sorted(edge))
-                if edge_key in boundary_edges_dict:
-                    boundary_edges_dict[edge_key] += 1
-                else:
-                    boundary_edges_dict[edge_key] = 1
-        
+                edge_counter[edge_key] += 1
+
         # 只出现一次的边是边界边
         polygon_edges = [
-            edge for edge, count in boundary_edges_dict.items() if count == 1
+            edge for edge, count in edge_counter.items() if count == 1
         ]
-        
+
         # 删除 bad triangles
         bad_set = set(id(tri) for tri in bad_triangles)
         triangles = [tri for tri in triangles if id(tri) not in bad_set]
-        
+
         # 创建新三角形连接边界边和新点
         for edge in polygon_edges:
             new_tri = Triangle(edge[0], edge[1], point_idx)
-            new_tri.circumcenter, new_tri.circumradius = self._compute_circumcircle(new_tri)
+            # 预计算外接圆
+            self._compute_circumcircle(new_tri)
             triangles.append(new_tri)
-        
+
         return triangles
 
     def _insert_points_iteratively(self, target_triangle_count: Optional[int] = None):
@@ -377,6 +420,8 @@ class BowyerWatsonMeshGenerator:
         - 使用增量式插入（避免全量重剖分）
         - 使用 KD-tree 加速最近邻搜索
         - 批量处理候选三角形
+        - 缓存三角形质量计算结果
+        - 预计算边界范围
 
         终止条件（满足任一即停止）：
         1. 达到目标三角形数量
@@ -392,10 +437,29 @@ class BowyerWatsonMeshGenerator:
         if target_triangle_count is not None:
             target_total_points = (target_triangle_count + 2 + boundary_count) // 2
 
+        # 预计算边界范围和最小距离阈值
+        x_min = np.min(self.original_points[:, 0])
+        x_max = np.max(self.original_points[:, 0])
+        y_min = np.min(self.original_points[:, 1])
+        y_max = np.max(self.original_points[:, 1])
+        margin = 0.001 * max(x_max - x_min, y_max - y_min)
+
+        # 预计算最小距离阈值
+        if len(self.original_points) > 1:
+            avg_edge = np.mean([
+                float(np.linalg.norm(self.original_points[1] - self.original_points[0]))
+            ])
+            min_dist_threshold = 0.01 * avg_edge if avg_edge > 0 else 0.01
+        else:
+            min_dist_threshold = 0.01
+
         max_iterations = 0
+        kdtree_rebuild_interval = 100  # 增加 KD-tree 重建间隔
+        last_kdtree_build = 0
+
         while True:
             max_iterations += 1
-            
+
             # 定期输出进度（每 10 次迭代输出一次）
             if max_iterations % 10 == 0 or max_iterations == 1:
                 current_triangles = len(self.triangles)
@@ -404,7 +468,7 @@ class BowyerWatsonMeshGenerator:
                 verbose(f"  [进度] 迭代 {max_iterations} | "
                        f"节点: {current_points} (边界: {boundary_count}, 内部: {current_inserted}) | "
                        f"三角形: {current_triangles}")
-            
+
             # 安全检查：防止无限循环
             if len(self.points) > 100000:
                 warning(f"达到最大节点数限制 (100000)，停止插点")
@@ -422,20 +486,24 @@ class BowyerWatsonMeshGenerator:
             if len(self.triangles) == 0:
                 break
 
-            # 寻找需要细分的三角形
+            # 寻找需要细分的三角形 - 优化：使用缓存
             worst_quality = float('inf')
             worst_triangle = None
             needs_refinement = False
 
+            # 缓存点坐标访问
+            points = self.points
+
             for tri in self.triangles:
-                # 计算三角形质量
+                # 计算三角形质量（使用缓存）
                 quality = self._compute_triangle_quality(tri)
 
-                # 计算最大边长
+                # 计算最大边长（优化：向量化计算）
+                v0, v1, v2 = tri.vertices
                 edge_lengths = [
-                    float(np.linalg.norm(self.points[tri.vertices[1]] - self.points[tri.vertices[0]])),
-                    float(np.linalg.norm(self.points[tri.vertices[2]] - self.points[tri.vertices[1]])),
-                    float(np.linalg.norm(self.points[tri.vertices[0]] - self.points[tri.vertices[2]])),
+                    float(np.linalg.norm(points[v1] - points[v0])),
+                    float(np.linalg.norm(points[v2] - points[v1])),
+                    float(np.linalg.norm(points[v0] - points[v2])),
                 ]
                 max_edge = max(edge_lengths)
 
@@ -463,50 +531,35 @@ class BowyerWatsonMeshGenerator:
             if worst_triangle is None:
                 break
 
-            # 新点位置：外接圆圆心
-            if worst_triangle.circumcenter is None:
-                worst_triangle.circumcenter, worst_triangle.circumradius = \
-                    self._compute_circumcircle(worst_triangle)
+            # 确保外接圆已计算
+            if not worst_triangle.circumcircle_valid:
+                self._compute_circumcircle(worst_triangle)
 
             new_point = worst_triangle.circumcenter.copy()
-
-            # 计算边界范围
-            x_min = np.min(self.original_points[:, 0])
-            x_max = np.max(self.original_points[:, 0])
-            y_min = np.min(self.original_points[:, 1])
-            y_max = np.max(self.original_points[:, 1])
-
-            margin = 0.001 * max(x_max - x_min, y_max - y_min)
 
             # 检查新点是否在边界范围内
             if not (x_min - margin < new_point[0] < x_max + margin and
                     y_min - margin < new_point[1] < y_max + margin):
                 # 如果外接圆中心在边界外，尝试在三角形内部随机生成点
-                p1 = self.points[worst_triangle.vertices[0]]
-                p2 = self.points[worst_triangle.vertices[1]]
-                p3 = self.points[worst_triangle.vertices[2]]
+                p1 = points[worst_triangle.vertices[0]]
+                p2 = points[worst_triangle.vertices[1]]
+                p3 = points[worst_triangle.vertices[2]]
 
                 r1, r2 = np.random.rand(2)
                 if r1 + r2 > 1:
                     r1, r2 = 1 - r1, 1 - r2
                 new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
 
-            # 使用 KD-tree 加速最近邻搜索
+            # 使用 KD-tree 加速最近邻搜索（优化重建频率）
             if len(self.points) > 0:
-                # 构建 KD-tree（只在需要时）
-                if max_iterations == 1 or max_iterations % 50 == 0:
+                # 构建 KD-tree（优化频率）
+                if max_iterations == 1 or (max_iterations - last_kdtree_build) >= kdtree_rebuild_interval:
                     self._kdtree = KDTree(self.points)
-                
+                    last_kdtree_build = max_iterations
+
                 min_dist, _ = self._kdtree.query(new_point)
             else:
                 min_dist = float('inf')
-
-            # 最小距离阈值
-            avg_edge = np.mean([
-                float(np.linalg.norm(self.original_points[1] - self.original_points[0]))
-                if len(self.original_points) > 1 else 0.1
-            ])
-            min_dist_threshold = 0.01 * avg_edge if avg_edge > 0 else 0.01
 
             # 如果距离足够远，则添加新点
             if min_dist > min_dist_threshold:
@@ -514,7 +567,7 @@ class BowyerWatsonMeshGenerator:
                 new_point_idx = len(self.points)
                 self.points = np.vstack([self.points, new_point])
                 inserted_points += 1
-                
+
                 # 增量式插入（关键优化：避免全量重剖分）
                 self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
             else:
