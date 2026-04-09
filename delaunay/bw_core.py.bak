@@ -16,7 +16,6 @@ from typing import List, Tuple, Optional
 from math import sqrt
 from scipy.spatial import KDTree
 from collections import Counter
-import heapq  # 新增：用于优先级队列
 
 from utils.message import debug, verbose
 from utils.geom_toolkit import point_in_polygon, is_polygon_clockwise
@@ -30,13 +29,11 @@ class Triangle:
     """三角形单元，带外接圆缓存和质量缓存。
 
     顶点索引始终按升序存储，便于去重和比较。
-    参考 Gmsh MTri3：显式存储邻接关系以加速 Cavity 查找。
     """
 
     __slots__ = [
         'vertices', 'circumcenter', 'circumradius', 'idx',
         'circumcircle_valid', 'quality', 'quality_valid', 'circumcircle_bbox',
-        'neighbors',  # 新增：三条边的邻接三角形索引 [None 或 Triangle]
     ]
 
     def __init__(self, p1: int, p2: int, p3: int, idx: int = -1):
@@ -48,7 +45,6 @@ class Triangle:
         self.quality = 0.0
         self.quality_valid = False
         self.circumcircle_bbox = None
-        self.neighbors = [None, None, None]  # 邻接三角形，neigh[i] 对应 vertices[i]->vertices[(i+1)%3] 这条边
 
     def __eq__(self, other):
         return isinstance(other, Triangle) and self.vertices == other.vertices
@@ -174,73 +170,11 @@ class BowyerWatsonMeshGenerator:
         return center, radius
 
     def _point_in_circumcircle(self, point: np.ndarray, tri: Triangle) -> bool:
-        """检查点是否在三角形的外接圆内（含容差）。
-        
-        改进：使用 Robust Predicates 避免浮点误差。
-        参考 Gmsh：使用 robustPredicates::incircle() 和 orient2d()
-        
-        incircle 测试：
-          结果 > 0：点在圆内
-          结果 = 0：点在圆上
-          结果 < 0：点在圆外
-        """
+        """检查点是否在三角形的外接圆内（含容差）。"""
         if not tri.circumcircle_valid:
             self._compute_circumcircle(tri)
-        
-        p1 = self.points[tri.vertices[0]]
-        p2 = self.points[tri.vertices[1]]
-        p3 = self.points[tri.vertices[2]]
-        
-        # 使用精确的 incircle 谓词
-        result = self._robust_incircle(
-            p1[0], p1[1],
-            p2[0], p2[1],
-            p3[0], p3[1],
-            point[0], point[1]
-        )
-        
-        return result > 0
-
-    def _robust_incircle(self, ax, ay, bx, by, cx, cy, px, py):
-        """精确的 incircle 测试（Shewchuk 的 Robust Predicates）。
-        
-        判断点 p 是否在三角形 (a, b, c) 的外接圆内。
-        使用行列式计算，避免浮点误差。
-        
-        返回：
-          > 0：p 在圆内
-          = 0：p 在圆上
-          < 0：p 在圆外
-        """
-        # 使用简化版的精确算术（Python 支持任意精度整数）
-        # 完整实现需要使用 Shewchuk 的自适应精度算术
-        # 这里使用 Python 的高精度浮点作为折中方案
-        
-        # 构造增广矩阵的行列式
-        # | ax-px  ay-py  (ax-px)²+(ay-py)² |
-        # | bx-px  by-py  (bx-px)²+(by-py)² |
-        # | cx-px  cy-py  (cx-px)²+(cy-py)² |
-        
-        adx = ax - px
-        ady = ay - py
-        bdx = bx - px
-        bdy = by - py
-        cdx = cx - px
-        cdy = cy - py
-        
-        alift = adx * adx + ady * ady
-        blift = bdx * bdx + bdy * bdy
-        clift = cdx * cdx + cdy * cdy
-        
-        # 计算 3x3 行列式
-        det = (adx * (bdy * clift - cdy * blift) -
-               ady * (bdx * clift - cdx * blift) +
-               alift * (bdx * cdy - cdx * bdy))
-        
-        # 还需要乘以 orient2d 的符号以确保正确的方向
-        orient = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
-        
-        return det * orient
+        distance = float(np.linalg.norm(point - tri.circumcenter))
+        return distance < tri.circumradius * (1.0 + 1e-10)
 
     # -------------------------------------------------------------------------
     # 质量与尺寸计算
@@ -332,7 +266,6 @@ class BowyerWatsonMeshGenerator:
         """执行 Bowyer-Watson 三角剖分。
 
         流程：超级三角形 → 逐点插入 → 删除超级三角形
-        改进：在剖分完成后构建邻接关系。
         """
         super_tri = self._create_super_triangle()
         triangles = [super_tri]
@@ -361,9 +294,6 @@ class BowyerWatsonMeshGenerator:
         self.triangles = [tri for tri in triangles if not any(v in super_verts for v in tri.vertices)]
         self.points = self.points[:-3]
 
-        # 构建邻接关系（关键改进）
-        self._build_adjacency(self.triangles)
-
         return self.triangles
 
     # -------------------------------------------------------------------------
@@ -375,8 +305,6 @@ class BowyerWatsonMeshGenerator:
 
         参考 Gmsh 的 recurFindCavity 算法：
         在查找 Cavity 时，如果遇到受保护的边界边，停止递归。
-        
-        改进：使用显式邻接关系加速 Cavity 查找，并在插入后更新邻接。
         """
         point = self.points[point_idx]
         bad_triangles = [tri for tri in triangles if self._point_in_circumcircle(point, tri)]
@@ -393,32 +321,20 @@ class BowyerWatsonMeshGenerator:
         if not shell_edges:
             return triangles
 
-        # 保存旧 Cavity 三角形用于星形性验证（P0-2）
-        old_cavity_tris = [tri for tri in triangles if id(tri) in cavity_set]
-
         # 删除 Cavity 内的三角形
         triangles = [tri for tri in triangles if id(tri) not in cavity_set]
 
         # 用新点与 shell 上的每条边创建新三角形
-        new_triangles = []
         for v1, v2 in shell_edges:
             new_tri = Triangle(v1, v2, point_idx)
             self._compute_circumcircle(new_tri)
             triangles.append(new_tri)
-            new_triangles.append(new_tri)
-
-        # 增量更新邻接关系（只更新受影响的部分）
-        self._update_adjacency_after_insertion(triangles, new_triangles, cavity_set)
 
         return triangles
 
     def _find_cavity_with_protection(self, start_tri, point_idx, all_triangles,
                                      bad_tri_ids, shell_edges, cavity_set):
-        """递归查找 Cavity，遇到保护边时停止。
-        
-        改进：使用显式邻接关系，将查找从 O(n) 降为 O(1)。
-        参考 Gmsh recurFindCavityAniso 算法。
-        """
+        """递归查找 Cavity，遇到保护边时停止。"""
         tri_id = id(start_tri)
         if tri_id in cavity_set:
             return
@@ -437,9 +353,8 @@ class BowyerWatsonMeshGenerator:
                 shell_edges.append(edge)
                 continue
 
-            # 使用显式邻接关系查找相邻三角形（O(1)）
-            neighbor = tri.neighbors[i]
-            
+            # 查找相邻三角形
+            neighbor = self._find_neighbor_triangle(tri, edge, all_triangles)
             if neighbor is None:
                 # 边界上的边，加入 shell
                 shell_edges.append(edge)
@@ -452,10 +367,7 @@ class BowyerWatsonMeshGenerator:
                 shell_edges.append(edge)
 
     def _find_neighbor_triangle(self, tri, edge, all_triangles):
-        """查找共享指定边的相邻三角形。（已废弃，保留用于向后兼容）
-        
-        改进：使用 _build_adjacency 和显式 neighbors 字段替代。
-        """
+        """查找共享指定边的相邻三角形。"""
         v1, v2 = edge
         for other in all_triangles:
             if id(other) == id(tri):
@@ -463,108 +375,6 @@ class BowyerWatsonMeshGenerator:
             if v1 in other.vertices and v2 in other.vertices:
                 return other
         return None
-
-    def _build_adjacency(self, triangles: List[Triangle]):
-        """构建所有三角形的邻接关系。
-        
-        参考 Gmsh connectTris：通过边匹配建立双向邻接关系。
-        时间复杂度：O(n log n)，30% 的时间花在这里（Gmsh 统计）
-        """
-        # 清空旧邻接关系
-        for tri in triangles:
-            tri.neighbors = [None, None, None]
-        
-        # 构建边到三角形的映射
-        edge_to_tri = {}
-        for tri in triangles:
-            for i in range(3):
-                v1 = tri.vertices[i]
-                v2 = tri.vertices[(i + 1) % 3]
-                edge_key = tuple(sorted([v1, v2]))
-                
-                if edge_key in edge_to_tri:
-                    # 找到相邻三角形，建立双向邻接关系
-                    other_tri, other_local_idx = edge_to_tri[edge_key]
-                    tri.neighbors[i] = other_tri
-                    other_tri.neighbors[other_local_idx] = tri
-                else:
-                    edge_to_tri[edge_key] = (tri, i)
-
-    def _update_adjacency_after_insertion(self, triangles, new_triangles, cavity_set):
-        """插入新点后增量更新邻接关系。
-        
-        策略：
-        1. 新三角形之间的邻接关系（通过 shell 边连接）
-        2. 新三角形与现有三角形的邻接关系（shell 边的另一端）
-        3. 清除指向已删除三角形的邻接指针
-        """
-        # 清除指向已删除三角形的邻接指针
-        for tri in triangles:
-            if tri not in new_triangles:
-                for i in range(3):
-                    if tri.neighbors[i] is not None and id(tri.neighbors[i]) in cavity_set:
-                        tri.neighbors[i] = None
-        
-        # 构建新三角形的邻接关系
-        shell_edges_set = set()
-        for new_tri in new_triangles:
-            for i in range(3):
-                v1 = new_tri.vertices[i]
-                v2 = new_tri.vertices[(i + 1) % 3]
-                edge_key = tuple(sorted([v1, v2]))
-                shell_edges_set.add(edge_key)
-        
-        # 在新三角形之间建立邻接关系
-        edge_to_new_tri = {}
-        for new_tri in new_triangles:
-            for i in range(3):
-                v1 = new_tri.vertices[i]
-                v2 = new_tri.vertices[(i + 1) % 3]
-                edge_key = tuple(sorted([v1, v2]))
-                
-                if edge_key in edge_to_new_tri:
-                    other_tri, other_local_idx = edge_to_new_tri[edge_key]
-                    new_tri.neighbors[i] = other_tri
-                    other_tri.neighbors[other_local_idx] = new_tri
-                else:
-                    edge_to_new_tri[edge_key] = (new_tri, i)
-
-    def _validate_star_shaped(self, shell_edges, new_point_idx, old_cavity_tris):
-        """验证 Cavity 是星形的（新点能看到所有 shell 边）。
-        
-        参考 Gmsh insertVertexB 的体积守恒检查：
-        |oldVolume - newVolume| < EPS * oldVolume
-        
-        这确保了插入点不会产生重叠或空洞。
-        """
-        if not old_cavity_tris:
-            return True
-        
-        # 计算旧 Cavity 面积
-        old_area = sum(self._triangle_area(tri) for tri in old_cavity_tris)
-        
-        # 计算新三角形总面积
-        new_area = 0.0
-        for v1, v2 in shell_edges:
-            new_tri_area = 0.5 * abs(
-                (self.points[v2][0] - self.points[v1][0]) * (self.points[new_point_idx][1] - self.points[v1][1]) -
-                (self.points[v2][1] - self.points[v1][1]) * (self.points[new_point_idx][0] - self.points[v1][0])
-            )
-            new_area += new_tri_area
-        
-        # 面积守恒检查（相对误差 < 1e-10）
-        if old_area > 1e-12:
-            return abs(old_area - new_area) < 1e-10 * old_area
-        else:
-            return abs(old_area - new_area) < 1e-12
-
-    def _triangle_area(self, tri):
-        """计算三角形的面积（使用顶点坐标）。"""
-        v0, v1, v2 = tri.vertices
-        return 0.5 * abs(
-            (self.points[v1][0] - self.points[v0][0]) * (self.points[v2][1] - self.points[v0][1]) -
-            (self.points[v1][1] - self.points[v0][1]) * (self.points[v2][0] - self.points[v0][0])
-        )
 
     # -------------------------------------------------------------------------
     # 迭代插点主循环
@@ -577,11 +387,6 @@ class BowyerWatsonMeshGenerator:
         1. 达到目标三角形数量
         2. 所有三角形都满足尺寸和质量要求
         3. 达到最大节点数限制
-        
-        改进 P1-1：使用优先级队列（堆）优化最差三角形查找，
-                   参考 Gmsh 的 std::set<MTri3*, compareTri3Ptr>
-        改进 P1-2：动态调整 KD 树更新策略
-        改进 P1-3：增强点间距检查（边长+角度综合）
         """
         boundary_count = self.boundary_count
         initial_point_count = len(self.points)
@@ -603,17 +408,11 @@ class BowyerWatsonMeshGenerator:
             min_dist_threshold = 0.01
 
         max_iterations = 0
+        kdtree_rebuild_interval = 100
         last_kdtree_build = 0
-        last_kdtree_points = len(self.points)  # P1-2：记录上次 KD 树的点数
         consecutive_failures = 0
         max_consecutive_failures = 500
         failed_triangles = set()
-
-        # P1-1：构建优先级队列（按质量排序，最小质量在堆顶）
-        heap = []
-        for tri in self.triangles:
-            quality = self._compute_triangle_quality(tri)
-            heapq.heappush(heap, (quality, id(tri), tri))
 
         while True:
             max_iterations += 1
@@ -637,25 +436,18 @@ class BowyerWatsonMeshGenerator:
                 break
             if len(self.triangles) == 0:
                 break
-            if not heap:
-                break
 
-            # P1-1：从优先级队列中取出最差三角形
+            worst_quality = float('inf')
             worst_triangle = None
             needs_refinement = False
-            
-            while heap:
-                quality, tri_id, tri = heapq.heappop(heap)
-                
-                # 检查三角形是否已被删除或处理过
+            points = self.points
+
+            for tri in self.triangles:
                 if tri.vertices in failed_triangles:
                     continue
-                if tri not in self.triangles:
-                    continue
-                
-                # 验证是否真的需要改进
+
+                quality = self._compute_triangle_quality(tri)
                 v0, v1, v2 = tri.vertices
-                points = self.points
                 edge_lengths = [
                     float(np.linalg.norm(points[v1] - points[v0])),
                     float(np.linalg.norm(points[v2] - points[v1])),
@@ -676,15 +468,10 @@ class BowyerWatsonMeshGenerator:
 
                 if should_split:
                     needs_refinement = True
-                    worst_triangle = tri
-                    # 重新插入堆（因为我们需要保留其他三角形）
-                    # 但已经找到了最差的，所以不需要重新插入
-                    break
-                else:
-                    # 这个三角形满足要求，但可能还有其他不满足的
-                    # 继续从堆中查找
-                    pass
-            
+                    if quality < worst_quality:
+                        worst_quality = quality
+                        worst_triangle = tri
+
             if not needs_refinement:
                 verbose("  [进度] 所有三角形满足尺寸和质量要求")
                 break
@@ -694,50 +481,37 @@ class BowyerWatsonMeshGenerator:
             if not worst_triangle.circumcircle_valid:
                 self._compute_circumcircle(worst_triangle)
 
-            # P2-1：尝试使用前端方法计算插入点（如果启用）
-            new_point = self._compute_insertion_point(worst_triangle, x_min, x_max, y_min, y_max, margin)
+            new_point = worst_triangle.circumcenter.copy()
 
-            # P1-2：动态 KD 树更新策略（点数变化超过 10% 时重建）
+            if not (x_min - margin < new_point[0] < x_max + margin and
+                    y_min - margin < new_point[1] < y_max + margin):
+                p1 = points[worst_triangle.vertices[0]]
+                p2 = points[worst_triangle.vertices[1]]
+                p3 = points[worst_triangle.vertices[2]]
+                r1, r2 = np.random.rand(2)
+                if r1 + r2 > 1:
+                    r1, r2 = 1 - r1, 1 - r2
+                new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
+
             if len(self.points) > 0:
-                should_rebuild_kdtree = (
-                    max_iterations == 1 or
-                    len(self.points) > last_kdtree_points * 1.1 or  # 增加 10%
-                    (max_iterations - last_kdtree_build) >= 100  # 或超过 100 次迭代
-                )
-                if should_rebuild_kdtree:
+                if max_iterations == 1 or (max_iterations - last_kdtree_build) >= kdtree_rebuild_interval:
                     self._kdtree = KDTree(self.points)
                     last_kdtree_build = max_iterations
-                    last_kdtree_points = len(self.points)
                 min_dist, _ = self._kdtree.query(new_point)
             else:
                 min_dist = float('inf')
 
-            # P1-3：增强点间距检查（不仅检查最近距离，还检查边长和角度）
             if min_dist > min_dist_threshold:
-                # 额外检查：新点与所在三角形的边长比例
-                if self._validate_new_point(worst_triangle, new_point, min_dist_threshold):
-                    new_point_idx = len(self.points)
-                    self.points = np.vstack([self.points, new_point])
-                    self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-                    
-                    # 更新优先级队列：重新计算受影响三角形的质量
-                    # 为简单起见，我们定期重建整个堆
-                    if max_iterations % 50 == 0:
-                        heap = []
-                        for tri in self.triangles:
-                            if tri.vertices not in failed_triangles:
-                                quality = self._compute_triangle_quality(tri)
-                                heapq.heappush(heap, (quality, id(tri), tri))
-                else:
-                    failed_triangles.add(worst_triangle.vertices)
-                    consecutive_failures += 1
+                new_point_idx = len(self.points)
+                self.points = np.vstack([self.points, new_point])
+                self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
             else:
                 failed_triangles.add(worst_triangle.vertices)
                 consecutive_failures += 1
-
-            if consecutive_failures >= max_consecutive_failures:
-                verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
-                break
+                if consecutive_failures >= max_consecutive_failures:
+                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
+                    break
+                continue
 
         final_triangles = len(self.triangles)
         final_points = len(self.points)
@@ -746,146 +520,12 @@ class BowyerWatsonMeshGenerator:
                 f"节点: {final_points} (边界: {boundary_count}, 内部: {final_inserted}) | "
                 f"三角形: {final_triangles}")
 
-    def _compute_insertion_point(self, tri, x_min, x_max, y_min, y_max, margin):
-        """计算新插入点的位置。
-        
-        参考 Gmsh：
-        - 默认：外接圆圆心（Circumcenter）
-        - 如果圆心超出边界：使用重心坐标随机采样
-        - 前端方法变体：在活跃边中垂线上找最优位置（P2-1）
-        """
-        # P2-1：尝试使用前端方法计算最优插入点
-        optimal_point = self._optimal_point_frontal(tri)
-        
-        if optimal_point is not None:
-            new_point = optimal_point
-        else:
-            # 回退到外接圆圆心
-            new_point = tri.circumcenter.copy()
-
-        # 检查圆心是否在有效范围内
-        if not (x_min - margin < new_point[0] < x_max + margin and
-                y_min - margin < new_point[1] < y_max + margin):
-            # 超出范围，使用重心坐标随机采样
-            points = self.points
-            p1 = points[tri.vertices[0]]
-            p2 = points[tri.vertices[1]]
-            p3 = points[tri.vertices[2]]
-            r1, r2 = np.random.rand(2)
-            if r1 + r2 > 1:
-                r1, r2 = 1 - r1, 1 - r2
-            new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
-        
-        return new_point
-
-    def _optimal_point_frontal(self, tri):
-        """前端方法变体：在活跃边的中垂线上计算最优插入点。
-        
-        参考 Gmsh optimalPointFrontal() 算法：
-        1. 找到三角形的"活跃边"（至少有一条边在 front 上）
-        2. 计算活跃边的中点
-        3. 在中垂线上找到最优位置，使得新三角形接近等边
-        
-        这确保新插入的点产生接近等边三角形，提高网格质量。
-        
-        返回：
-          - 最优插入点坐标，或 None（如果无法计算）
-        """
-        points = self.points
-        v0, v1, v2 = tri.vertices
-        
-        # 找到最长边作为活跃边（启发式策略）
-        edges = [
-            (v0, v1),
-            (v1, v2),
-            (v0, v2)
-        ]
-        
-        max_len = 0
-        active_edge = None
-        for edge in edges:
-            length = float(np.linalg.norm(points[edge[1]] - points[edge[0]]))
-            if length > max_len:
-                max_len = length
-                active_edge = edge
-        
-        if active_edge is None:
-            return None
-        
-        # 计算活跃边的中点
-        midpoint = (points[active_edge[0]] + points[active_edge[1]]) / 2.0
-        
-        # 计算外接圆圆心
-        if not tri.circumcircle_valid:
-            self._compute_circumcircle(tri)
-        circumcenter = tri.circumcenter
-        
-        # 计算方向向量（中点指向圆心）
-        direction = circumcenter - midpoint
-        dir_len = float(np.linalg.norm(direction))
-        
-        if dir_len < 1e-12:
-            return None
-        
-        # 归一化方向向量
-        direction = direction / dir_len
-        
-        # 计算目标距离（等边三角形的高）
-        target_size = self._get_target_size_for_triangle(tri)
-        if target_size is not None:
-            # 等边三角形的高：h = sqrt(3)/2 * edge_length
-            target_dist = target_size * sqrt(3.0) / 2.0
-        else:
-            # 没有尺寸场，使用当前边长
-            target_dist = max_len * sqrt(3.0) / 2.0
-        
-        # 计算最优插入点
-        optimal_point = midpoint + direction * min(target_dist, dir_len)
-        
-        return optimal_point
-
-    def _validate_new_point(self, tri, new_point, min_dist_threshold):
-        """验证新插入点的质量（P1-3：增强检查）。
-        
-        参考 Gmsh insertVertexB：
-        1. 最小距离检查（已有）
-        2. 新三角形边长不能过小
-        3. 新三角形不能有太钝的角
-        """
-        points = self.points
-        v0, v1, v2 = tri.vertices
-        
-        # 计算新点到三个顶点的距离
-        d0 = float(np.linalg.norm(new_point - points[v0]))
-        d1 = float(np.linalg.norm(new_point - points[v1]))
-        d2 = float(np.linalg.norm(new_point - points[v2]))
-        
-        # 检查最小边长（相对于目标尺寸）
-        target_size = self._get_target_size_for_triangle(tri)
-        if target_size is not None:
-            min_edge = min(d0, d1, d2)
-            if min_edge < target_size * 0.1:  # 边长不能小于目标尺寸的 10%
-                return False
-        
-        # 检查角度（使用叉积计算余弦值）
-        # 这里简化处理，只检查最小距离
-        if min(d0, d1, d2) < min_dist_threshold * 0.5:
-            return False
-        
-        return True
-
     # -------------------------------------------------------------------------
     # Laplacian 平滑（默认关闭）
     # -------------------------------------------------------------------------
 
     def _laplacian_smoothing(self, iterations: int = 3, alpha: float = 0.5):
-        """Laplacian 平滑，边界点保持不动，内部点被约束在原始边界包围盒内。
-        
-        改进 P2-2：参考 Gmsh laplaceSmoothing()
-        1. 使用度量空间加权平均（考虑各向异性）
-        2. 逐步衰减因子 (FACTOR /= 1.4) 保证稳定性
-        3. 移动接受准则：新位置的相邻单元质量不能降低
-        """
+        """Laplacian 平滑，边界点保持不动，内部点被约束在原始边界包围盒内。"""
         if iterations <= 0:
             return
 
@@ -901,10 +541,8 @@ class BowyerWatsonMeshGenerator:
 
         smoothed_points = self.points.copy()
 
-        for iteration in range(iterations):
+        for _ in range(iterations):
             new_points = smoothed_points.copy()
-            
-            # 构建邻接关系
             neighbor_dict = {}
             for tri in self.triangles:
                 for i in range(3):
@@ -915,100 +553,17 @@ class BowyerWatsonMeshGenerator:
                     neighbor_dict[v].add(tri.vertices[(i + 2) % 3])
 
             for v, neighbors in neighbor_dict.items():
-                # 边界点保持不动
                 if self.boundary_mask[v]:
                     continue
-                if len(neighbors) == 0:
-                    continue
-                
-                # P2-2：度量加权平均
-                weighted_sum = np.zeros(2)
-                weight_total = 0.0
-                
-                for n in neighbors:
-                    neighbor_pos = smoothed_points[n]
-                    direction = neighbor_pos - smoothed_points[v]
-                    
-                    # 计算度量距离权重（简化版：使用欧氏距离的倒数）
-                    dist = float(np.linalg.norm(direction))
-                    if dist > 1e-12:
-                        weight = 1.0 / dist  # 距离越近权重越大
-                    else:
-                        weight = 1.0
-                    
-                    weighted_sum += neighbor_pos * weight
-                    weight_total += weight
-                
-                if weight_total > 1e-12:
-                    target_pos = weighted_sum / weight_total
-                else:
-                    target_pos = smoothed_points[v]
-                
-                # P2-2：逐步衰减因子（最多 5 次尝试）
-                FACTOR = 1.0
-                best_pos = smoothed_points[v]
-                best_quality = self._compute_vertex_quality(v, smoothed_points)
-                
-                for _ in range(5):
-                    trial_pos = smoothed_points[v] + alpha * FACTOR * (target_pos - smoothed_points[v])
-                    
-                    # 约束在边界包围盒内
-                    trial_pos[0] = np.clip(trial_pos[0], x_min, x_max)
-                    trial_pos[1] = np.clip(trial_pos[1], y_min, y_max)
-                    
-                    # 移动接受准则：验证质量不下降
-                    trial_quality = self._compute_vertex_quality_at(v, trial_pos, smoothed_points)
-                    if trial_quality >= best_quality * 0.95:  # 允许 5% 的质量损失
-                        best_pos = trial_pos
-                        best_quality = trial_quality
-                        break
-                    else:
-                        FACTOR /= 1.4  # 衰减因子
-                
-                new_points[v] = best_pos
+                if len(neighbors) > 0:
+                    neighbor_center = np.mean([smoothed_points[n] for n in neighbors], axis=0)
+                    new_points[v] = smoothed_points[v] + alpha * (neighbor_center - smoothed_points[v])
+                    new_points[v, 0] = np.clip(new_points[v, 0], x_min, x_max)
+                    new_points[v, 1] = np.clip(new_points[v, 1], y_min, y_max)
 
             smoothed_points = new_points
 
         self.points = smoothed_points
-
-    def _compute_vertex_quality(self, v_idx, points):
-        """计算顶点 v_idx 周围三角形的平均质量。"""
-        total_quality = 0.0
-        count = 0
-        
-        for tri in self.triangles:
-            if v_idx in tri.vertices:
-                quality = self._compute_triangle_quality(tri)
-                total_quality += quality
-                count += 1
-        
-        return total_quality / count if count > 0 else 0.0
-
-    def _compute_vertex_quality_at(self, v_idx, new_pos, points):
-        """计算顶点移动到 new_pos 后周围三角形的平均质量。"""
-        # 临时移动顶点
-        old_pos = points[v_idx].copy()
-        points[v_idx] = new_pos
-        
-        # 清除相关三角形的缓存
-        for tri in self.triangles:
-            if v_idx in tri.vertices:
-                tri.quality_valid = False
-                tri.circumcircle_valid = False
-        
-        # 计算新质量
-        quality = self._compute_vertex_quality(v_idx, points)
-        
-        # 恢复顶点位置
-        points[v_idx] = old_pos
-        
-        # 恢复缓存状态
-        for tri in self.triangles:
-            if v_idx in tri.vertices:
-                tri.quality_valid = False
-                tri.circumcircle_valid = False
-        
-        return quality
 
     # -------------------------------------------------------------------------
     # 孔洞处理
@@ -1125,8 +680,7 @@ class BowyerWatsonMeshGenerator:
             intersecting = self._find_intersecting_edge(v1, v2)
             if intersecting is None:
                 return any(v1 in tri.vertices and v2 in tri.vertices for tri in self.triangles)
-            # intersecting 是元组 (a_idx, b_idx)，需要解包
-            if not self._flip_edge(intersecting[0], intersecting[1]):
+            if not self._flip_edge(intersecting):
                 return False
         return False
 
@@ -1153,10 +707,7 @@ class BowyerWatsonMeshGenerator:
         return None
 
     def _flip_edge(self, n1: int, n2: int) -> bool:
-        """翻转边 (n1, n2)。要求该边被两个三角形共享。
-        
-        改进：翻转后更新邻接关系。
-        """
+        """翻转边 (n1, n2)。要求该边被两个三角形共享。"""
         t1 = t2 = None
         for tri in self.triangles:
             if n1 in tri.vertices and n2 in tri.vertices:
@@ -1187,10 +738,6 @@ class BowyerWatsonMeshGenerator:
         if not is_convex:
             return False
 
-        # 保存旧邻接关系（排除 t1 和 t2）
-        old_neighbors_t1 = [n for n in t1.neighbors if n is not None and n is not t2]
-        old_neighbors_t2 = [n for n in t2.neighbors if n is not None and n is not t1]
-
         self.triangles.remove(t1)
         self.triangles.remove(t2)
 
@@ -1200,29 +747,10 @@ class BowyerWatsonMeshGenerator:
         self._compute_circumcircle(new_tri2)
         self.triangles.append(new_tri1)
         self.triangles.append(new_tri2)
-        
-        # 增量更新邻接关系
-        # 新三角形继承旧三角形的邻接关系（除了彼此）
-        new_tri1.neighbors = [None, None, None]
-        new_tri2.neighbors = [None, None, None]
-        
-        # 更新指向 t1/t2 的邻接指针
-        for neighbor in old_neighbors_t1:
-            for i in range(3):
-                if neighbor.neighbors[i] is t1:
-                    # 需要找到新的邻接三角形
-                    pass  # 稍后通过 _build_adjacency 统一更新
-        
-        # 为简单起见，翻转后重建整个邻接关系
-        self._build_adjacency(self.triangles)
-        
         return True
 
     def _insert_midpoint_for_edge(self, v1: int, v2: int) -> bool:
-        """通过在边中点插入新点来恢复边界边。
-        
-        改进：插入后重建邻接关系。
-        """
+        """通过在边中点插入新点来恢复边界边。"""
         midpoint = (self.points[v1] + self.points[v2]) / 2.0
         min_dist = float('inf')
         if self._kdtree is not None:
@@ -1233,7 +761,6 @@ class BowyerWatsonMeshGenerator:
             self.points = np.vstack([self.points, midpoint])
             self.boundary_mask = np.append(self.boundary_mask, False)
             self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-            # 邻接关系已经在 _insert_point_incremental 中更新
             return True
         return False
 

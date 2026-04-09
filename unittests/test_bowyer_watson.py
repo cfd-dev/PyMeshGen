@@ -1021,15 +1021,16 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             )
             is_inner_boundary = not touches_global_boundary
             
-            # 在 VTK 中查找对应的节点
+            # 在 VTK 中查找对应的节点（找最近的节点，而非第一个在容差内的节点）
             vtk_node_map = {}  # CAS node index -> VTK node index
             for cas_idx in zone_node_indices:
                 cas_coord = cas_nodes[cas_idx]
-                for vtk_idx in range(len(vtk_nodes)):
-                    vtk_coord = vtk_nodes[vtk_idx]
-                    if np.sqrt(np.sum((vtk_coord[:2] - cas_coord[:2])**2)) < tolerance:
-                        vtk_node_map[cas_idx] = vtk_idx
-                        break
+                dists = np.sqrt(np.sum((vtk_nodes[:, :2] - cas_coord[:2])**2, axis=1))
+                nearest_idx = np.argmin(dists)
+                nearest_dist = dists[nearest_idx]
+                
+                if nearest_dist < tolerance:
+                    vtk_node_map[cas_idx] = nearest_idx
 
             # 检查每条边是否存在
             missing_edges = []
