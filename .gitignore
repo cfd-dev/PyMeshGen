@@ -23,6 +23,7 @@ backup*
 
 # 测试输出
 test_outputs/
+ref
 
 # 神经网络模型和数据
 neural/model

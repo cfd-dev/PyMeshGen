@@ -644,7 +644,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         cls.test_dir = project_root / "unittests" / "test_files" / "2d_cases"
         cls.output_dir = cls.test_dir / "test_outputs"
         cls.output_dir.mkdir(exist_ok=True)
-        
+
+    @classmethod
     def tearDownClass(cls):
         """清理临时文件"""
         for temp_file in project_root.glob("temp_bw_*.json"):
@@ -758,7 +759,344 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             enable_boundary_layer=True,
             test_name="RAE2822 Bowyer-Watson（带边界层）"
         )
+
+    def test_quad_quad_bowyer_watson(self):
+        """测试 20: quad_quad 使用 Bowyer-Watson 算法（无边界层）"""
+        self._test_bowyer_watson_with_config_from_root(
+            "quad_quad.json",
+            "test_quad_quad_bw_no_bl.vtk",
+            enable_boundary_layer=False,
+            test_name="quad_quad Bowyer-Watson（无边界层）",
+            check_boundary_recovery=True
+        )
+
+    def test_quad_quad_bowyer_watson_with_boundary_layer(self):
+        """测试 21: quad_quad 使用 Bowyer-Watson 算法（带边界层）"""
+        self._test_bowyer_watson_with_config_from_root(
+            "quad_quad.json",
+            "test_quad_quad_bw_with_bl.vtk",
+            enable_boundary_layer=True,
+            test_name="quad_quad Bowyer-Watson（带边界层）",
+            check_boundary_recovery=True
+        )
     
+    def _test_bowyer_watson_with_config_from_root(self, config_file, output_file_name, enable_boundary_layer, test_name, check_boundary_recovery=False):
+        """从项目根目录 config/ 文件夹加载配置的 Bowyer-Watson 测试方法
+
+        参数:
+            config_file: 配置文件名（位于 project_root/config/ 目录）
+            output_file_name: 输出文件名
+            enable_boundary_layer: 是否启用边界层
+            test_name: 测试名称
+            check_boundary_recovery: 是否检查边界恢复
+        """
+        from PyMeshGen import PyMeshGen
+        from data_structure.parameters import Parameters
+        from fileIO.vtk_io import parse_vtk_msh
+        from utils.message import set_debug_level, DEBUG_LEVEL_VERBOSE
+        from utils.geom_toolkit import point_in_polygon
+        import time
+        import json
+
+        # 设置 VERBOSE 输出级别
+        set_debug_level(DEBUG_LEVEL_VERBOSE)
+
+        # 原始配置文件（从项目根目录的 config/ 文件夹）
+        original_config = project_root / "config" / config_file
+
+        if not original_config.exists():
+            self.skipTest(f"{config_file} 不存在于 config/ 目录")
+
+        # 读取原始配置以获取 CAS 文件路径
+        with open(original_config, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+
+        # 输出文件
+        output_file = self.output_dir / output_file_name
+
+        try:
+            # 创建 Bowyer-Watson 配置
+            bw_config = self._create_bw_config_from_root(original_config, output_file, enable_boundary_layer)
+
+            print(f"\n{test_name}:")
+            print(f"  - 配置文件: {bw_config.name}")
+            print(f"  - 输出文件: {output_file.name}")
+
+            # 运行网格生成
+            start = time.time()
+            parameters = Parameters("FROM_CASE_JSON", str(bw_config))
+            PyMeshGen(parameters)
+            end = time.time()
+            cost = end - start
+
+            # 验证输出文件存在
+            self.assertTrue(output_file.exists(), "输出文件应该存在")
+
+            # 读取并验证网格
+            grid = parse_vtk_msh(str(output_file))
+
+            print(f"  - 生成时间: {cost:.2f}秒")
+            print(f"  - 节点数: {grid.num_nodes}")
+            print(f"  - 单元数: {grid.num_cells}")
+
+            # 验证网格质量（应该生成合理的网格）
+            self.assertGreater(grid.num_nodes, 0, "节点数应大于 0")
+            self.assertGreater(grid.num_cells, 0, "单元数应大于 0")
+            self.assertLess(cost, 120, "生成时间应小于 120 秒")
+
+            # 统计单元类型
+            tri_count = sum(1 for cell in grid.cells if len(cell) == 3)
+            quad_count = sum(1 for cell in grid.cells if len(cell) == 4)
+            other_count = grid.num_cells - tri_count - quad_count
+
+            print(f"  - 三角形数: {tri_count}")
+            print(f"  - 四边形数: {quad_count}")
+            print(f"  - 其他单元: {other_count}")
+
+            # Bowyer-Watson 内层网格应该全部是三角形
+            # 但如果开启了边界层，总网格中可能包含四边形（边界层）
+            if enable_boundary_layer:
+                # 带边界层时，内层应该是三角形
+                print(f"  - 模式: Bowyer-Watson + 边界层")
+                self.assertGreater(tri_count, 0, "应该有三角形单元")
+            else:
+                # 无边界层时，应该全部是三角形
+                print(f"  - 模式: 纯 Bowyer-Watson 三角网格")
+                self.assertEqual(tri_count, grid.num_cells, "无边界层时应全部是三角形单元")
+
+            # 检查边界恢复
+            if check_boundary_recovery:
+                # 获取 CAS 文件路径
+                input_file_str = config_data.get('input_file', '')
+                input_file = Path(input_file_str)
+                if not input_file.is_absolute():
+                    input_file = project_root / input_file
+
+                if input_file.exists():
+                    print(f"\n  - 边界恢复检查:")
+                    boundary_check_result = self._check_boundary_recovery(
+                        cas_file=str(input_file),
+                        grid=grid,
+                        test_name=test_name
+                    )
+                    
+                    if boundary_check_result['pass']:
+                        print(f"  - [PASS] 边界恢复检查通过")
+                        print(f"    - 外边界点数: {boundary_check_result['outer_boundary_points']}")
+                        print(f"    - 孔洞边界点数: {boundary_check_result['hole_boundary_points']}")
+                        print(f"    - 孔洞内点数: {boundary_check_result['points_in_hole']}")
+                        print(f"    - 孔洞内单元数: {boundary_check_result['cells_in_hole']}")
+                    else:
+                        print(f"  - [FAIL] 边界恢复检查失败")
+                        print(f"    - 问题: {boundary_check_result['issue']}")
+                        # 打印详细的孔洞内单元信息用于调试
+                        if 'cells_in_hole_details' in boundary_check_result:
+                            print(f"    - 孔洞内单元详情:")
+                            for cell_info in boundary_check_result['cells_in_hole_details'][:5]:
+                                print(f"      单元 {cell_info['cell_idx']}: 质心 ({cell_info['centroid'][0]:.4f}, {cell_info['centroid'][1]:.4f})")
+                        self.fail(f"{test_name} 边界恢复检查失败: {boundary_check_result['issue']}")
+                else:
+                    print(f"\n  - [SKIP] CAS 文件不存在，跳过边界恢复检查")
+
+            print(f"  - [PASS] {test_name} 测试通过")
+
+        except Exception as e:
+            print(f"  - [FAIL] {test_name} 测试失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.fail(f"{test_name} 测试失败: {e}")
+
+    def _check_boundary_recovery(self, cas_file, grid, test_name):
+        """检查网格生成前后边界是否保持一致
+
+        参数:
+            cas_file: CAS 文件路径
+            grid: 生成的网格对象
+            test_name: 测试名称
+
+        返回:
+            dict: 包含检查结果的信息
+        """
+        from fileIO.read_cas import parse_fluent_msh
+        from utils.geom_toolkit import point_in_polygon
+
+        # 使用 parse_fluent_msh 读取 CAS 文件，获取原始边界点
+        try:
+            raw_cas_data = parse_fluent_msh(cas_file)
+        except Exception as e:
+            return {
+                'pass': False,
+                'issue': f'无法解析 CAS 文件: {e}'
+            }
+
+        # 获取原始边界点坐标
+        original_boundary_points = raw_cas_data.get('nodes', [])
+        if not original_boundary_points:
+            return {
+                'pass': False,
+                'issue': 'CAS 文件中没有找到边界点'
+            }
+
+        # 对于 quad_quad，外边界是 [-10, 10] x [-10, 10]，孔洞是 [-3, 3] x [-3, 3]
+        # 根据 CAS 文件，前 36 个点是外边界点（每边 9 个点）
+        # 接下来的 16 个点是孔洞边界点（每边 4 个点）
+        outer_boundary_coords = original_boundary_points[:36]
+        hole_boundary_coords = original_boundary_points[36:52]
+
+        # 定义孔洞多边形（用于检查点是否在孔洞内）
+        hole_polygon = np.array([
+            [-3.0, -3.0],
+            [-3.0,  3.0],
+            [ 3.0,  3.0],
+            [ 3.0, -3.0],
+        ])
+
+        # 检查生成的网格
+        tolerance = 0.01  # 容差
+
+        # 1. 检查孔洞边界上的点
+        hole_boundary_points_found = []
+        for i, pt in enumerate(grid.node_coords):
+            x, y = pt[0], pt[1]
+
+            # 检查是否在孔洞边界上
+            on_hole_boundary = False
+            if abs(x + 3.0) < tolerance and -3.0 - tolerance <= y <= 3.0 + tolerance:
+                on_hole_boundary = True
+            elif abs(x - 3.0) < tolerance and -3.0 - tolerance <= y <= 3.0 + tolerance:
+                on_hole_boundary = True
+            elif abs(y + 3.0) < tolerance and -3.0 - tolerance <= x <= 3.0 + tolerance:
+                on_hole_boundary = True
+            elif abs(y - 3.0) < tolerance and -3.0 - tolerance <= x <= 3.0 + tolerance:
+                on_hole_boundary = True
+
+            if on_hole_boundary:
+                hole_boundary_points_found.append((i, x, y))
+
+        # 2. 检查孔洞内部的点（不应该有点）
+        points_in_hole = []
+        for i, pt in enumerate(grid.node_coords):
+            pt_2d = np.array([pt[0], pt[1]])
+            if point_in_polygon(pt_2d, hole_polygon):
+                points_in_hole.append((i, pt))
+
+        # 3. 检查孔洞内部的单元（不应该有单元）
+        cells_in_hole = []
+        cells_in_hole_details = []
+        for i, cell in enumerate(grid.cells):
+            cell_nodes = [grid.node_coords[n] for n in cell]
+            cell_nodes_2d = [np.array([n[0], n[1]]) for n in cell_nodes]
+            centroid = np.mean(cell_nodes_2d, axis=0)
+            if point_in_polygon(centroid, hole_polygon):
+                cells_in_hole.append((i, cell, centroid))
+                cells_in_hole_details.append({
+                    'cell_idx': i,
+                    'centroid': centroid,
+                    'cell_nodes': cell
+                })
+
+        # 4. 检查外边界点是否保留
+        outer_boundary_found = []
+        for i, pt in enumerate(grid.node_coords):
+            x, y = pt[0], pt[1]
+
+            # 检查是否在外边界上
+            on_outer_boundary = False
+            if abs(x + 10.0) < tolerance and -10.0 - tolerance <= y <= 10.0 + tolerance:
+                on_outer_boundary = True
+            elif abs(x - 10.0) < tolerance and -10.0 - tolerance <= y <= 10.0 + tolerance:
+                on_outer_boundary = True
+            elif abs(y + 10.0) < tolerance and -10.0 - tolerance <= x <= 10.0 + tolerance:
+                on_outer_boundary = True
+            elif abs(y - 10.0) < tolerance and -10.0 - tolerance <= x <= 10.0 + tolerance:
+                on_outer_boundary = True
+
+            if on_outer_boundary:
+                outer_boundary_found.append((i, x, y))
+
+        # 验证结果
+        result = {
+            'pass': True,
+            'issue': None,
+            'outer_boundary_points': len(outer_boundary_found),
+            'hole_boundary_points': len(hole_boundary_points_found),
+            'points_in_hole': len(points_in_hole),
+            'cells_in_hole': len(cells_in_hole),
+            'cells_in_hole_details': cells_in_hole_details,
+        }
+
+        # 孔洞内不应该有点或单元
+        if len(points_in_hole) > 0:
+            result['pass'] = False
+            result['issue'] = f"孔洞内发现 {len(points_in_hole)} 个点"
+            return result
+
+        if len(cells_in_hole) > 0:
+            result['pass'] = False
+            result['issue'] = f"孔洞内发现 {len(cells_in_hole)} 个单元"
+            return result
+
+        # 孔洞边界应该有足够多的点（至少应该有原始孔洞边界点）
+        if len(hole_boundary_points_found) < len(hole_boundary_coords) - 2:
+            result['pass'] = False
+            result['issue'] = f"孔洞边界点不足：期望至少 {len(hole_boundary_coords)} 个，实际找到 {len(hole_boundary_points_found)} 个"
+            return result
+
+        # 外边界应该有足够的点
+        if len(outer_boundary_found) < len(outer_boundary_coords) - 2:
+            result['pass'] = False
+            result['issue'] = f"外边界点不足：期望至少 {len(outer_boundary_coords)} 个，实际找到 {len(outer_boundary_found)} 个"
+            return result
+
+        return result
+
+    def _create_bw_config_from_root(self, original_config_path, output_file, enable_boundary_layer=False):
+        """从项目根目录 config/ 文件夹创建 Bowyer-Watson 配置（mesh_type=4）
+
+        参数:
+            original_config_path: 原始配置文件路径（绝对路径）
+            output_file: 输出文件路径
+            enable_boundary_layer: 是否启用边界层网格
+        """
+        import json
+
+        with open(original_config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        # 修改为 Bowyer-Watson 算法
+        config['mesh_type'] = 4
+
+        # 根据参数决定是否启用边界层
+        if enable_boundary_layer:
+            print(f"  - 边界层: 启用")
+            # 保持原始配置中的边界层设置
+        else:
+            print(f"  - 边界层: 禁用")
+            # 关闭边界层生成
+            for part in config.get('parts', []):
+                part['PRISM_SWITCH'] = 'off'
+                part['max_layers'] = 0
+
+        # input_file 已经是绝对路径（在 quad_quad.json 中是相对路径 ./config/input/quad_quad.cas）
+        if 'input_file' in config:
+            input_file_str = config['input_file']
+            input_file = Path(input_file_str)
+            if not input_file.is_absolute():
+                # 相对于项目根目录
+                config['input_file'] = str((project_root / input_file).resolve())
+
+        # 设置输出文件
+        config['output_file'] = str(output_file)
+        config['viz_enabled'] = False
+        config['debug_level'] = 2  # 启用 VERBOSE 输出以查看详细进度
+
+        # 保存到临时文件
+        temp_config_path = project_root / f"temp_bw_{original_config_path.stem}.json"
+        with open(temp_config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+
+        return temp_config_path
+
     def _test_bowyer_watson_with_config(self, config_file, output_file_name, enable_boundary_layer, test_name):
         """通用的 Bowyer-Watson 配置测试方法"""
         from PyMeshGen import PyMeshGen

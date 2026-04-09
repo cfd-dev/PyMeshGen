@@ -1025,6 +1025,37 @@ def point_in_polygon(p, polygon):
     return inside
 
 
+def is_polygon_clockwise(polygon):
+    """
+    判断多边形是否为顺时针方向
+    
+    使用有向面积（Shoelace 公式）判断：
+    - 有向面积 > 0: 逆时针（Counter-Clockwise）
+    - 有向面积 < 0: 顺时针（Clockwise）
+    
+    参数:
+        polygon: 多边形点集，形状为 (N, 2) 或列表的列表
+    
+    返回:
+        True 如果多边形是顺时针方向，False 如果是逆时针方向
+    """
+    if len(polygon) < 3:
+        return False
+    
+    signed_area = 0.0
+    n = len(polygon)
+    
+    for i in range(n):
+        p1 = polygon[i]
+        p2 = polygon[(i + 1) % n]
+        signed_area += (p2[0] - p1[0]) * (p2[1] + p1[1])
+    
+    # 注意：这里的 signed_area 是通常有向面积的 2 倍
+    # 对于逆时针多边形，signed_area < 0
+    # 对于顺时针多边形，signed_area > 0
+    return signed_area > 0
+
+
 def centroid(polygon_points):
     """计算多边形的形心（支持2D/3D坐标）"""
     x = np.mean(polygon_points[:, 0])
