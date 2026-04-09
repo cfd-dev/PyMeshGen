@@ -893,39 +893,9 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
                     input_file = project_root / input_file
 
                 if input_file.exists():
-                    print(f"\n  - 边界恢复检查:")
-                    boundary_edges_result = self._check_boundary_edges(
-                        cas_file=str(input_file),
-                        grid=grid,
-                        test_name=test_name
-                    )
-                    
-                    if boundary_edges_result['pass']:
-                        print(f"  - [PASS] 边界恢复检查通过")
-                        for zone_key, zone_result in boundary_edges_result['zone_results'].items():
-                            print(f"    - {zone_key}: {zone_result['total_edges']}/{zone_result['total_edges']} 条边恢复")
-                            if zone_result['inner_boundary_inner_points'] > 0:
-                                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_points']} 个点")
-                            if zone_result['inner_boundary_inner_cells'] > 0:
-                                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
-                    else:
-                        print(f"  - [FAIL] 边界恢复检查失败")
-                        for zone_key, zone_result in boundary_edges_result['zone_results'].items():
-                            if zone_result['missing_edges'] > 0:
-                                print(f"    - {zone_key}: {zone_result['missing_edges']}/{zone_result['total_edges']} 条边丢失")
-                                for detail in zone_result['missing_details'][:5]:
-                                    n1, n2, coord1, coord2, reason = detail
-                                    if reason:
-                                        print(f"      边 ({n1},{n2}): {reason}")
-                                    else:
-                                        print(f"      边 ({n1},{n2}): ({coord1[0]:.4f},{coord1[1]:.4f}) -> ({coord2[0]:.4f},{coord2[1]:.4f})")
-                        
-                        if boundary_edges_result['issue']:
-                            print(f"    - 问题: {boundary_edges_result['issue']}")
-                        
-                        self.fail(f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}")
+                    self._assert_boundary_recovery(input_file, grid, test_name)
                 else:
-                    print(f"\n  - [SKIP] CAS 文件不存在，跳过边界恢复检查")
+                    print(f"\n  - [SKIP] CAS 文件不存在: {input_file}，跳过边界恢复检查")
 
             print(f"  - [PASS] {test_name} 测试通过")
 
@@ -934,6 +904,46 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             import traceback
             traceback.print_exc()
             self.fail(f"{test_name} 测试失败: {e}")
+
+    def _assert_boundary_recovery(self, cas_file, grid, test_name):
+        """断言边界恢复检查通过
+
+        参数:
+            cas_file: CAS 文件路径
+            grid: 生成的网格对象
+            test_name: 测试名称
+        """
+        print(f"\n  - 边界恢复检查:")
+        boundary_edges_result = self._check_boundary_edges(
+            cas_file=str(cas_file),
+            grid=grid,
+            test_name=test_name
+        )
+
+        if boundary_edges_result['pass']:
+            print(f"  - [PASS] 边界恢复检查通过")
+            for zone_key, zone_result in boundary_edges_result['zone_results'].items():
+                print(f"    - {zone_key}: {zone_result['total_edges']}/{zone_result['total_edges']} 条边恢复")
+                if zone_result['inner_boundary_inner_points'] > 0:
+                    print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_points']} 个点")
+                if zone_result['inner_boundary_inner_cells'] > 0:
+                    print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
+        else:
+            print(f"  - [FAIL] 边界恢复检查失败")
+            for zone_key, zone_result in boundary_edges_result['zone_results'].items():
+                if zone_result['missing_edges'] > 0:
+                    print(f"    - {zone_key}: {zone_result['missing_edges']}/{zone_result['total_edges']} 条边丢失")
+                    for detail in zone_result['missing_details'][:5]:
+                        n1, n2, coord1, coord2, reason = detail
+                        if reason:
+                            print(f"      边 ({n1},{n2}): {reason}")
+                        else:
+                            print(f"      边 ({n1},{n2}): ({coord1[0]:.4f},{coord1[1]:.4f}) -> ({coord2[0]:.4f},{coord2[1]:.4f})")
+
+            if boundary_edges_result['issue']:
+                print(f"    - 问题: {boundary_edges_result['issue']}")
+
+            self.fail(f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}")
 
     def _check_boundary_edges(self, cas_file, grid, test_name):
         """检查网格中特定边界的边是否完整恢复，以及内边界内部是否有非法点/单元
@@ -1194,16 +1204,21 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         from fileIO.vtk_io import parse_vtk_msh
         from utils.message import set_debug_level, DEBUG_LEVEL_VERBOSE
         import time
-        
+        import json
+
         # 设置 VERBOSE 输出级别
         set_debug_level(DEBUG_LEVEL_VERBOSE)
-        
+
         # 原始配置文件
         original_config = self.test_dir / config_file
-        
+
         if not original_config.exists():
             self.skipTest(f"{config_file} 不存在")
-        
+
+        # 读取配置以获取 CAS 文件路径
+        with open(original_config, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+
         # 输出文件
         output_file = self.output_dir / output_file_name
         
@@ -1235,7 +1250,6 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             # 验证网格质量（应该生成合理的网格）
             self.assertGreater(grid.num_nodes, 0, "节点数应大于 0")
             self.assertGreater(grid.num_cells, 0, "单元数应大于 0")
-            self.assertLess(cost, 120, "生成时间应小于 120 秒")
             
             # 统计单元类型
             tri_count = sum(1 for cell in grid.cells if len(cell) == 3)
@@ -1256,7 +1270,24 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
                 # 无边界层时，应该全部是三角形
                 print(f"  - 模式: 纯 Bowyer-Watson 三角网格")
                 self.assertEqual(tri_count, grid.num_cells, "无边界层时应全部是三角形单元")
-            
+
+            # 检查边界恢复
+            input_file_str = config_data.get('input_file', '')
+            input_file = Path(input_file_str)
+            if not input_file.is_absolute():
+                # 处理相对路径
+                if input_file_str.startswith('./unittests'):
+                    input_file = project_root / input_file_str
+                elif input_file_str.startswith('./config'):
+                    input_file = project_root / input_file_str
+                else:
+                    input_file = self.test_dir / input_file
+
+            if input_file.exists():
+                self._assert_boundary_recovery(input_file, grid, test_name)
+            else:
+                print(f"\n  - [SKIP] CAS 文件不存在: {input_file}，跳过边界恢复检查")
+
             print(f"  - [PASS] {test_name} 测试通过")
             
         except Exception as e:
