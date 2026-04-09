@@ -779,7 +779,27 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             test_name="quad_quad Bowyer-Watson（带边界层）",
             check_boundary_recovery=True
         )
-    
+
+    def test_cylinder_bowyer_watson(self):
+        """测试 22: cylinder 使用 Bowyer-Watson 算法（无边界层）"""
+        self._test_bowyer_watson_with_config_from_root(
+            "cylinder.json",
+            "test_cylinder_bw_no_bl.vtk",
+            enable_boundary_layer=False,
+            test_name="cylinder Bowyer-Watson（无边界层）",
+            check_boundary_recovery=True
+        )
+
+    def test_cylinder_bowyer_watson_with_boundary_layer(self):
+        """测试 23: cylinder 使用 Bowyer-Watson 算法（带边界层）"""
+        self._test_bowyer_watson_with_config_from_root(
+            "cylinder.json",
+            "test_cylinder_bw_with_bl.vtk",
+            enable_boundary_layer=True,
+            test_name="cylinder Bowyer-Watson（带边界层）",
+            check_boundary_recovery=True
+        )
+
     def _test_bowyer_watson_with_config_from_root(self, config_file, output_file_name, enable_boundary_layer, test_name, check_boundary_recovery=False):
         """从项目根目录 config/ 文件夹加载配置的 Bowyer-Watson 测试方法
 
