@@ -413,44 +413,25 @@ class BowyerWatsonMeshGenerator:
     # -------------------------------------------------------------------------
 
     def _insert_point_incremental(self, point_idx: int, triangles: List[Triangle]) -> List[Triangle]:
-        """增量式插入单个点，保护边界边不被破坏。
-
-        参考 Gmsh 的 recurFindCavity 算法：
-        在查找 Cavity 时，如果遇到受保护的边界边，停止递归。
-        
-        改进：使用显式邻接关系加速 Cavity 查找，并在插入后更新邻接。
-        """
+        """增量式插入单个点，只更新受影响的三角形。"""
         point = self.points[point_idx]
         bad_triangles = [tri for tri in triangles if self._point_in_circumcircle(point, tri)]
         if not bad_triangles:
             return triangles
 
-        # 查找 Cavity 边界（shell），遇到保护边时停止
-        shell_edges = []
-        cavity_set = set()
-        self._find_cavity_with_protection(bad_triangles[0], point_idx, triangles,
-                                          set(id(t) for t in bad_triangles),
-                                          shell_edges, cavity_set)
+        edge_counter = Counter()
+        for tri in bad_triangles:
+            for edge in tri.get_edges():
+                edge_counter[tuple(sorted(edge))] += 1
 
-        if not shell_edges:
-            return triangles
+        polygon_edges = [edge for edge, count in edge_counter.items() if count == 1]
+        bad_set = set(id(tri) for tri in bad_triangles)
+        triangles = [tri for tri in triangles if id(tri) not in bad_set]
 
-        # 保存旧 Cavity 三角形用于星形性验证（P0-2）
-        old_cavity_tris = [tri for tri in triangles if id(tri) in cavity_set]
-
-        # 删除 Cavity 内的三角形
-        triangles = [tri for tri in triangles if id(tri) not in cavity_set]
-
-        # 用新点与 shell 上的每条边创建新三角形
-        new_triangles = []
-        for v1, v2 in shell_edges:
-            new_tri = Triangle(v1, v2, point_idx)
+        for edge in polygon_edges:
+            new_tri = Triangle(edge[0], edge[1], point_idx)
             self._compute_circumcircle(new_tri)
             triangles.append(new_tri)
-            new_triangles.append(new_tri)
-
-        # 增量更新邻接关系（只更新受影响的部分）
-        self._update_adjacency_after_insertion(triangles, new_triangles, cavity_set)
 
         return triangles
 
@@ -619,8 +600,6 @@ class BowyerWatsonMeshGenerator:
         1. 达到目标三角形数量
         2. 所有三角形都满足尺寸和质量要求
         3. 达到最大节点数限制
-
-        改进：采用简单可靠的遍历检查策略，避免优先级队列无限循环
         """
         boundary_count = self.boundary_count
         initial_point_count = len(self.points)
@@ -636,97 +615,22 @@ class BowyerWatsonMeshGenerator:
         margin = 0.001 * max(x_max - x_min, y_max - y_min)
 
         if len(self.original_points) > 1:
-            # 改进：使用局部特征尺寸而非全局包围盒
-            # 计算边界边的中位长度作为参考
-            boundary_edge_lengths = []
-            for i in range(len(self.original_points)):
-                j = (i + 1) % len(self.original_points)
-                edge_len = float(np.linalg.norm(self.original_points[j] - self.original_points[i]))
-                boundary_edge_lengths.append(edge_len)
-            median_edge = float(np.median(boundary_edge_lengths))
-            # min_dist_threshold 设为边界边中位长度的 0.1%
-            min_dist_threshold = 0.001 * median_edge
+            avg_edge = float(np.linalg.norm(self.original_points[1] - self.original_points[0]))
+            min_dist_threshold = 0.01 * avg_edge if avg_edge > 0 else 0.01
         else:
             min_dist_threshold = 0.01
 
-        # Gmsh bowyerWatson 仅使用两个早停条件：
-        # 1. worst->radius < 0.5*sqrt(2) — 所有三角形满足尺寸要求
-        # 2. 顶点数 > MAXPNT — 超过用户指定上限
-        # 没有 max_iterations，没有 consecutive_failures 限制
-
         max_iterations = 0
-        skipped_triangles = set()
-
-        # 使用优先级队列优化查找（参考 Gmsh std::set<MTri3*, compareTri3Ptr>）
-        heap = []
-        for tri in self.triangles:
-            if not tri.circumcircle_valid:
-                self._compute_circumcircle(tri)
-            circum_radius = tri.circumradius
-            target_size = self._get_target_size_for_triangle(tri)
-            if target_size is not None and target_size > 1e-12:
-                radius_ratio = circum_radius / target_size
-            else:
-                quality = self._compute_triangle_quality(tri)
-                radius_ratio = 1.0 - quality
-            # 负号：最大 radius_ratio 在堆顶（最小堆模拟最大堆）
-            heapq.heappush(heap, (-radius_ratio, id(tri), tri))
-
-        def _rebuild_heap():
-            """重建堆，只添加需要改进的三角形。"""
-            nonlocal heap
-            verbose(f"  [诊断] 开始 rebuild_heap, triangles={len(self.triangles)}, skipped={len(skipped_triangles)}")
-            new_heap = []
-            split_count = 0
-            no_split_count = 0
-
-            for tri in self.triangles:
-                if id(tri) in skipped_triangles:
-                    continue
-                if not tri.circumcircle_valid:
-                    self._compute_circumcircle(tri)
-
-                circum_radius = tri.circumradius
-                target_size = self._get_target_size_for_triangle(tri)
-
-                if target_size is not None and target_size > 1e-12:
-                    radius_ratio = circum_radius / target_size
-                    v0, v1, v2 = tri.vertices
-                    pts = self.points
-                    edge_lengths = [
-                        float(np.linalg.norm(pts[v1] - pts[v0])),
-                        float(np.linalg.norm(pts[v2] - pts[v1])),
-                        float(np.linalg.norm(pts[v0] - pts[v2])),
-                    ]
-                    max_edge = max(edge_lengths)
-                    should_split = (radius_ratio > threshold) or (max_edge > target_size * 2.0)
-                    if should_split:
-                        split_count += 1
-                    else:
-                        no_split_count += 1
-                else:
-                    radius_ratio = 1.0 - self._compute_triangle_quality(tri)
-                    should_split = radius_ratio > threshold
-                    if should_split:
-                        split_count += 1
-                    else:
-                        no_split_count += 1
-
-                # 只将需要改进的三角形加入堆
-                if should_split:
-                    heapq.heappush(new_heap, (-radius_ratio, id(tri), tri))
-
-            # 诊断输出
-            verbose(f"  [诊断] rebuild_heap: total={split_count + no_split_count}, "
-                    f"split={split_count}, no_split={no_split_count}, "
-                    f"heap_size={len(new_heap)}, skipped={len(skipped_triangles)}")
-
-            heap = new_heap
+        kdtree_rebuild_interval = 100
+        last_kdtree_build = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 500
+        failed_triangles = set()
 
         while True:
             max_iterations += 1
 
-            if max_iterations % 100 == 0 or max_iterations == 1:
+            if max_iterations % 10 == 0 or max_iterations == 1:
                 current_triangles = len(self.triangles)
                 current_points = len(self.points)
                 current_inserted = current_points - initial_point_count
@@ -734,16 +638,11 @@ class BowyerWatsonMeshGenerator:
                         f"节点: {current_points} (边界: {boundary_count}, 内部: {current_inserted}) | "
                         f"三角形: {current_triangles}")
 
-            # Gmsh 早停条件 1：顶点数 > MAXPNT
-            if len(self.points) > 50000:
-                verbose("达到最大节点数限制 (50000)，停止插点")
+            if len(self.points) > 100000:
+                verbose("达到最大节点数限制 (100000)，停止插点")
                 break
-            if max_iterations > 20000:
-                verbose("达到最大迭代次数限制 (20000)，停止插点")
-                break
-            # 限制内部点数量（不超过 2000）
-            if (len(self.points) - initial_point_count) > 2000:
-                verbose(f"  [进度] 达到最大内部点限制 (2000)，停止插点")
+            if max_iterations > 50000:
+                verbose("达到最大迭代次数限制 (50000)，停止插点")
                 break
             if target_total_points is not None and len(self.points) >= target_total_points:
                 verbose(f"  [进度] 达到目标节点数: {len(self.points)}")
@@ -751,118 +650,63 @@ class BowyerWatsonMeshGenerator:
             if len(self.triangles) == 0:
                 break
 
-            # Gmsh 做法：使用 circum_radius / local_size 比值判断
-            # 对于等边三角形：circum_radius = edge / √3
-            # 当 edge = lc 时：ratio = 1/√3 ≈ 0.577
-            # Gmsh 阈值：0.5 * √2 ≈ 0.707，对应 edge ≈ 1.225 * lc
-            # 即允许三角形边长比目标尺寸大 22.5%
-
-            # 如果堆空了，重建堆
-            if not heap:
-                _rebuild_heap()
-
+            worst_quality = float('inf')
             worst_triangle = None
-            worst_radius_ratio = 0.0
-            threshold = 0.707  # 稍宽松于 Gmsh 标准（0.70710678...）
+            needs_refinement = False
+            points = self.points
 
-            while heap:
-                neg_ratio, tri_id, tri = heapq.heappop(heap)
-                radius_ratio = -neg_ratio
-
-                # 跳过已删除或已跳过的三角形
-                if id(tri) in skipped_triangles:
-                    continue
-                if tri not in self.triangles:
+            for tri in self.triangles:
+                if tri.vertices in failed_triangles:
                     continue
 
-                # 重新计算以确保准确性
-                if not tri.circumcircle_valid:
-                    self._compute_circumcircle(tri)
-                circum_radius = tri.circumradius
-                target_size = self._get_target_size_for_triangle(tri)
-
-                # Gmsh 早停条件 2：worst->radius < 0.5*sqrt(2)
-                # 但还需额外检查：三角形最大边长是否显著超过尺寸场要求
-                # 即使 radius_ratio < 0.707，如果边长 >> target_size，仍需加密
+                quality = self._compute_triangle_quality(tri)
                 v0, v1, v2 = tri.vertices
-                pts = self.points
                 edge_lengths = [
-                    float(np.linalg.norm(pts[v1] - pts[v0])),
-                    float(np.linalg.norm(pts[v2] - pts[v1])),
-                    float(np.linalg.norm(pts[v0] - pts[v2])),
+                    float(np.linalg.norm(points[v1] - points[v0])),
+                    float(np.linalg.norm(points[v2] - points[v1])),
+                    float(np.linalg.norm(points[v0] - points[v2])),
                 ]
                 max_edge = max(edge_lengths)
+                target_size = self._get_target_size_for_triangle(tri)
 
-                if target_size is not None and target_size > 1e-12:
-                    radius_ratio = circum_radius / target_size
-                    # 双重判据（Gmsh 风格）：
-                    # 1. radius_ratio > 0.707（外接圆半径过大，Gmsh 标准）
-                    # 2. max_edge > target_size * 2.0（边长过大，需要加密）
-                    # 使用 2.0 倍系数平衡网格密度和计算效率
-                    should_split = (radius_ratio > threshold) or (max_edge > target_size * 2.0)
-                    # 诊断：前 20 次迭代输出
-                    if max_iterations <= 20:
-                        verbose(f"    [诊断] tri_check: ratio={radius_ratio:.4f}, max_edge={max_edge:.4f}, "
-                                f"target={target_size:.4f}, split={should_split}")
+                should_split = False
+                if target_size is not None:
+                    if max_edge > target_size * 1.1:
+                        should_split = True
+                    elif quality < 0.3:
+                        should_split = True
                 else:
-                    radius_ratio = 1.0 - self._compute_triangle_quality(tri)
-                    should_split = radius_ratio > threshold
+                    if quality < 0.5:
+                        should_split = True
 
                 if should_split:
-                    worst_triangle = tri
-                    worst_radius_ratio = radius_ratio
-                    break  # 找到需要改进的三角形
-                # 否则继续查找下一个
+                    needs_refinement = True
+                    if quality < worst_quality:
+                        worst_quality = quality
+                        worst_triangle = tri
 
-            # Gmsh 早停条件 2 生效
+            if not needs_refinement:
+                verbose("  [进度] 所有三角形满足尺寸和质量要求")
+                break
             if worst_triangle is None:
-                if not heap:
-                    verbose(f"  [进度] 所有需要改进的三角形都已跳过 ({len(skipped_triangles)} 个)")
-                else:
-                    verbose(f"  [进度] 所有三角形满足尺寸要求 (max radius_ratio < 0.707, max_edge < target_size)")
                 break
 
             if not worst_triangle.circumcircle_valid:
                 self._compute_circumcircle(worst_triangle)
 
-            # 诊断输出
-            if max_iterations <= 20 or max_iterations % 500 == 0:
-                verbose(f"  [诊断] radius_ratio={worst_radius_ratio:.4f}, "
-                        f"skipped={len(skipped_triangles)}, heap={len(heap)}, iter={max_iterations}")
-                # 额外诊断：检查目标尺寸分布
-                if max_iterations <= 5 or max_iterations % 500 == 0:
-                    sample_sizes = []
-                    for tri in list(self.triangles)[:20]:
-                        ts = self._get_target_size_for_triangle(tri)
-                        if tri.circumcircle_valid and ts:
-                            sample_sizes.append(ts)
-                    if sample_sizes:
-                        ss = np.array(sample_sizes)
-                        verbose(f"  [诊断] target_size sample: min={ss.min():.4f}, "
-                                f"max={ss.max():.4f}, avg={ss.mean():.4f}")
+            new_point = worst_triangle.circumcenter.copy()
 
-            # 计算插入点
-            new_point = self._compute_insertion_point(worst_triangle, x_min, x_max, y_min, y_max, margin)
+            if not (x_min - margin < new_point[0] < x_max + margin and
+                    y_min - margin < new_point[1] < y_max + margin):
+                p1 = points[worst_triangle.vertices[0]]
+                p2 = points[worst_triangle.vertices[1]]
+                p3 = points[worst_triangle.vertices[2]]
+                r1, r2 = np.random.rand(2)
+                if r1 + r2 > 1:
+                    r1, r2 = 1 - r1, 1 - r2
+                new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
 
-            # KD 树更新
-            if len(self.points) > 0:
-                should_rebuild_kdtree = (
-                    max_iterations == 1 or
-                    len(self.points) > last_kdtree_points * 1.1 or
-                    (max_iterations - last_kdtree_build) >= 100
-                )
-                if should_rebuild_kdtree:
-                    self._kdtree = KDTree(self.points)
-                    last_kdtree_build = max_iterations
-                    last_kdtree_points = len(self.points)
-                min_dist, _ = self._kdtree.query(new_point)
-            else:
-                min_dist = float('inf')
-
-            # Gmsh insertVertexB 做法：验证并插入
-            inserted = False
-
-            # 检查插入点是否在孔洞内（如果是则跳过）
+            # 检查插入点是否在孔洞内
             in_hole = False
             if self.holes:
                 from utils.geom_toolkit import point_in_polygon
@@ -871,56 +715,37 @@ class BowyerWatsonMeshGenerator:
                         in_hole = True
                         break
 
-            if not in_hole:
-                # 策略 1：使用鲁棒谓词计算的 circumcenter 插入点
-                if min_dist > min_dist_threshold:
-                    if self._validate_new_point(worst_triangle, new_point, min_dist_threshold):
-                        new_point_idx = len(self.points)
-                        self.points = np.vstack([self.points, new_point])
-                        self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-                        inserted = True
+            if in_hole:
+                failed_triangles.add(worst_triangle.vertices)
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
+                    break
+                continue
 
-                # 策略 2：circumcenter 因距离过近被拒绝时，尝试随机采样
-                if not inserted:
-                    v0, v1, v2 = worst_triangle.vertices
-                    pts = self.points
-                    for attempt in range(20):
-                        r1, r2 = np.random.rand(2)
-                        if r1 + r2 > 1:
-                            r1, r2 = 1 - r1, 1 - r2
-                        rand_pt = pts[v0] + r1 * (pts[v1] - pts[v0]) + r2 * (pts[v2] - pts[v0])
+            if len(self.points) > 0:
+                if max_iterations == 1 or (max_iterations - last_kdtree_build) >= kdtree_rebuild_interval:
+                    self._kdtree = KDTree(self.points)
+                    last_kdtree_build = max_iterations
+                if self._kdtree is not None:
+                    min_dist, _ = self._kdtree.query(new_point)
+                else:
+                    min_dist = float('inf')
+            else:
+                min_dist = float('inf')
 
-                        # 检查随机点是否在孔洞内
-                        rand_in_hole = False
-                        if self.holes:
-                            for hole in self.holes:
-                                if point_in_polygon(rand_pt, hole):
-                                    rand_in_hole = True
-                                    break
-
-                        if not rand_in_hole:
-                            rand_min_dist, _ = self._kdtree.query(rand_pt)
-                            if rand_min_dist > min_dist_threshold:
-                                if self._validate_new_point(worst_triangle, rand_pt, min_dist_threshold):
-                                    new_point_idx = len(self.points)
-                                    self.points = np.vstack([self.points, rand_pt])
-                                    self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-                                    inserted = True
-                                    break
-
-            # Gmsh 做法：如果所有策略都失败，跳过该三角形
-            if not inserted:
-                skipped_triangles.add(id(worst_triangle))
-                # 诊断：输出跳过原因（仅前 20 次）
-                if max_iterations <= 20:
-                    if min_dist <= min_dist_threshold:
-                        verbose(f"  [诊断] 跳过：circumcenter 距离过近 ({min_dist:.6f} < {min_dist_threshold:.6f})")
-                    else:
-                        verbose(f"  [诊断] 跳过：validate_new_point 失败 (min_dist={min_dist:.6f})")
-
-            # 定期重建堆（每 50 次迭代）
-            if max_iterations % 50 == 0:
-                _rebuild_heap()
+            if min_dist > min_dist_threshold:
+                new_point_idx = len(self.points)
+                self.points = np.vstack([self.points, new_point])
+                self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
+                consecutive_failures = 0  # 重置失败计数
+            else:
+                failed_triangles.add(worst_triangle.vertices)
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
+                    break
+                continue
 
         final_triangles = len(self.triangles)
         final_points = len(self.points)
