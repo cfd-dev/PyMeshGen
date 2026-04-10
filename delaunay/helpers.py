@@ -112,6 +112,7 @@ def create_bowyer_watson_mesh(
     seed: Optional[int] = None,
     holes: Optional[List[np.ndarray]] = None,
     auto_detect_holes: bool = True,
+    use_gmsh_implementation: bool = True,  # 默认启用 Gmsh 实现
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Bowyer-Watson 网格生成公共接口。
 
@@ -124,13 +125,19 @@ def create_bowyer_watson_mesh(
         seed: 随机种子
         holes: 孔洞边界列表
         auto_detect_holes: 是否自动检测孔洞
+        use_gmsh_implementation: 是否使用 Gmsh 风格实现（默认 True）
 
     返回:
         (points, simplices, boundary_mask)
     """
-    from delaunay.bw_core import BowyerWatsonMeshGenerator
-
-    timer = TimeSpan("开始 Bowyer-Watson 网格生成流程...")
+    if use_gmsh_implementation:
+        from delaunay.bw_core_gmsh import GmshBowyerWatsonMeshGenerator
+        GeneratorClass = GmshBowyerWatsonMeshGenerator
+        timer = TimeSpan("开始 Gmsh Bowyer-Watson 网格生成流程...")
+    else:
+        from delaunay.bw_core import BowyerWatsonMeshGenerator
+        GeneratorClass = BowyerWatsonMeshGenerator
+        timer = TimeSpan("开始 Bowyer-Watson 网格生成流程（旧版）...")
     final_holes = holes or []
 
     if auto_detect_holes:
@@ -165,7 +172,7 @@ def create_bowyer_watson_mesh(
     if final_holes:
         verbose(f"孔洞数: {len(final_holes)}")
 
-    generator = BowyerWatsonMeshGenerator(
+    generator = GeneratorClass(
         boundary_points=boundary_points,
         boundary_edges=boundary_edges,
         sizing_system=sizing_system,
@@ -176,5 +183,9 @@ def create_bowyer_watson_mesh(
     )
 
     points, simplices, boundary_mask = generator.generate_mesh(target_triangle_count=target_triangle_count)
-    timer.show_to_console("Bowyer-Watson 网格生成流程完成")
+    
+    if use_gmsh_implementation:
+        timer.show_to_console("Gmsh Bowyer-Watson 网格生成流程完成")
+    else:
+        timer.show_to_console("Bowyer-Watson 网格生成流程完成")
     return points, simplices, boundary_mask

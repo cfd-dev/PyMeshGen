@@ -157,13 +157,15 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
         
         from data_structure.unstructured_grid import Unstructured_Grid
         from data_structure.basic_elements import Triangle as BWTriangle, NodeElement
-        
+
         # 调用 Bowyer-Watson 算法
+        # 启用自动孔洞检测以正确处理内边界（如翼型内部固体区域）
         points, simplices, boundary_mask = create_bowyer_watson_mesh(
             boundary_front=front_heap,
             sizing_system=sizing_system,
             target_triangle_count=None,  # 可选：指定目标三角形数量
             smoothing_iterations=3,
+            auto_detect_holes=True,  # 启用自动孔洞检测
         )
         
         # 将结果转换为 Unstructured_Grid 对象

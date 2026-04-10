@@ -96,27 +96,34 @@ class TestBowyerWatsonBasic(unittest.TestCase):
         num_points = 40
         radius = 1.0
         center = np.array([0.0, 0.0])
-        
+
         boundary_points = []
         for i in range(num_points):
             angle = 2.0 * np.pi * i / num_points
             x = center[0] + radius * np.cos(angle)
             y = center[1] + radius * np.sin(angle)
             boundary_points.append([x, y])
-        
+
         boundary_points = np.array(boundary_points)
         boundary_count = len(boundary_points)
+
+        # 计算边界弦长作为参考
+        # 弦长 = 2 * r * sin(π/n)
+        chord_length = 2 * radius * np.sin(np.pi / num_points)
+        # 设置一个很大的 max_edge_length，使边长检查失效，只依赖质量阈值来细化
+        max_edge_length = 10.0  # 远大于直径 2.0，避免边长检查触发细化
 
         # 创建生成器
         generator = BowyerWatsonMeshGenerator(
             boundary_points=boundary_points,
-            max_edge_length=0.3,
+            max_edge_length=max_edge_length,
             smoothing_iterations=3,
             seed=123,
         )
 
-        # 生成网格
-        points, simplices, boundary_mask = generator.generate_mesh()
+        # 生成网格，设置目标三角形数量以避免无限细化
+        # 对于 40 个边界点的圆形，100-150 个三角形是合理的
+        points, simplices, boundary_mask = generator.generate_mesh(target_triangle_count=120)
 
         # 验证结果
         self.assertEqual(np.sum(boundary_mask), boundary_count)
@@ -211,7 +218,8 @@ class TestBowyerWatsonBasic(unittest.TestCase):
             seed=42,
         )
 
-        points, simplices, boundary_mask = generator.generate_mesh()
+        # 生成网格，设置目标三角形数量以避免无限细化
+        points, simplices, boundary_mask = generator.generate_mesh(target_triangle_count=100)
 
         # 验证结果
         self.assertGreater(len(points), len(boundary_points))

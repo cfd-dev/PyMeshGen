@@ -1,5 +1,5 @@
 """
-Bowyer-Watson Delaunay 网格生成器 - 核心实现（重构版）
+Bowyer-Watson Delaunay 网格生成器 - 核心实现
 
 基于 Bowyer-Watson 算法的二维三角形网格生成，支持：
 1. 以离散边界网格作为输入
@@ -8,18 +8,11 @@ Bowyer-Watson Delaunay 网格生成器 - 核心实现（重构版）
 4. 边界边保护与恢复
 5. 增量式点插入（避免全量重剖分）
 
-重构特性（参考 Gmsh delaunay/ref/）：
-- Gmsh 风格的数据结构（MTri3、edgeXface）
-- 递归/迭代 Cavity 搜索（recurFindCavityAniso）
-- 鲁棒几何谓词（Shewchuk's predicates）
-- 懒删除优化（避免频繁集合操作）
-- 优先级队列（按外接圆半径排序）
-
 参考: Gmsh delaunay/ref/ 下的 C++ 实现
 """
 
 import numpy as np
-from typing import List, Tuple, Optional, Set
+from typing import List, Tuple, Optional
 from math import sqrt
 from scipy.spatial import KDTree
 from collections import Counter
@@ -27,31 +20,6 @@ import heapq  # 新增：用于优先级队列
 
 from utils.message import debug, verbose
 from utils.geom_toolkit import point_in_polygon, is_polygon_clockwise
-
-# Gmsh 风格的数据结构和算法
-from delaunay.bw_types import (
-    MTri3,
-    EdgeXFace,
-    TriangleComparator,
-    build_adjacency_from_triangles,
-    collect_cavity_shell,
-    compute_cavity_volume,
-)
-from delaunay.bw_cavity import (
-    recur_find_cavity,
-    find_cavity_iterative,
-    validate_star_shaped,
-    validate_edge_lengths,
-    insert_vertex,
-    restore_cavity,
-)
-from delaunay.bw_predicates import (
-    orient2d,
-    incircle,
-    circumcenter_precise,
-    compute_circumcircle,
-    point_in_circumcircle_robust,
-)
 
 
 # =============================================================================
@@ -98,45 +66,6 @@ class Triangle:
 
     def __repr__(self):
         return f"Triangle({self.vertices})"
-    
-    def to_mtri3(self) -> 'MTri3':
-        """转换为 Gmsh MTri3 格式。"""
-        mtri = MTri3(self.vertices[0], self.vertices[1], self.vertices[2], idx=self.idx)
-        if self.circumcircle_valid:
-            mtri.circumcenter = self.circumcenter
-            mtri.circumradius = self.circumradius
-        mtri.quality = self.quality
-        # 复制邻居关系
-        for i in range(3):
-            if self.neighbors[i] is not None:
-                # 注意：这里只是引用，实际需要在转换所有三角形后重建
-                pass
-        return mtri
-
-
-# =============================================================================
-# Triangle -> MTri3 适配器
-# =============================================================================
-
-def triangle_to_mtri3(tri: Triangle) -> MTri3:
-    """将 Triangle 转换为 MTri3。"""
-    mtri = MTri3(tri.vertices[0], tri.vertices[1], tri.vertices[2], idx=tri.idx)
-    if tri.circumcircle_valid:
-        mtri.circumcenter = tri.circumcenter
-        mtri.circumradius = tri.circumradius
-    mtri.quality = tri.quality
-    return mtri
-
-
-def mtri3_to_triangle(mtri: MTri3) -> Triangle:
-    """将 MTri3 转换为 Triangle。"""
-    tri = Triangle(mtri.vertices[0], mtri.vertices[1], mtri.vertices[2], idx=mtri.idx)
-    if mtri.circumcenter is not None:
-        tri.circumcenter = mtri.circumcenter
-        tri.circumradius = mtri.circumradius
-        tri.circumcircle_valid = True
-    tri.quality = mtri.quality
-    return tri
 
 
 # =============================================================================
@@ -665,13 +594,9 @@ class BowyerWatsonMeshGenerator:
     # -------------------------------------------------------------------------
 
     def _insert_points_iteratively(self, target_triangle_count: Optional[int] = None):
-        """迭代插入内部点，使用优先级队列策略。
+        """迭代插入内部点，使用外接圆圆心策略。
 
-        改进（对比原简单遍历）：
-        1. 使用优先级队列（heapq）按"偏离目标尺寸程度"排序
-        2. 每次处理偏离最大的三角形，避免遗漏
-        3. 插入失败时尝试多种策略（外心 → 重心 → 前端法），而非直接标记失败
-        4. 更合理的早停条件：队列中所有三角形都满足要求时才停止
+        采用简单遍历策略，避免复杂堆逻辑导致的性能问题。
         """
         boundary_count = self.boundary_count
         initial_point_count = len(self.points)
@@ -695,174 +620,147 @@ class BowyerWatsonMeshGenerator:
         max_iterations = 0
         kdtree_rebuild_interval = 100
         last_kdtree_build = 0
+        last_kdtree_points = 0
         consecutive_failures = 0
-        max_consecutive_failures = 2000  # 增加阈值
+        max_consecutive_failures = 1000
+        failed_triangles = set()
 
-        # 优先级队列：存储 (-priority, tri_id, tri)
-        # priority 越大（偏离目标越严重）越优先处理
-        # 使用负值因为 heapq 是最小堆
-        candidate_queue = []
-        tri_to_entry = {}  # tri_id -> heap entry 引用，用于更新
-
-        # 初始化：将所有不满足要求的三角形加入队列
-        self._rebuild_candidate_queue(
-            candidate_queue, tri_to_entry, min_dist_threshold
-        )
-
-        while candidate_queue:
+        while True:
             max_iterations += 1
 
             if max_iterations % 50 == 0 or max_iterations == 1:
                 current_triangles = len(self.triangles)
                 current_points = len(self.points)
                 current_inserted = current_points - initial_point_count
-                queue_size = len(candidate_queue)
                 verbose(f"  [进度] 迭代 {max_iterations} | "
                         f"节点: {current_points} (边界: {boundary_count}, 内部: {current_inserted}) | "
-                        f"三角形: {current_triangles} | "
-                        f"候选队列: {queue_size}")
-            
-            # 初始化/更新 KDTree
-            if max_iterations == 1 or (max_iterations - last_kdtree_build) >= kdtree_rebuild_interval:
-                if len(self.points) > 0:
-                    self._kdtree = KDTree(self.points)
-                    last_kdtree_build = max_iterations
+                        f"三角形: {current_triangles}")
 
             # 早停条件
             if len(self.points) > 50000:
                 verbose("达到最大节点数限制 (50000)，停止插点")
                 break
-            if max_iterations > 50000:  # 增加迭代上限
-                verbose("达到最大迭代次数限制 (50000)，停止插点")
+            if max_iterations > 20000:
+                verbose("达到最大迭代次数限制 (20000)，停止插点")
                 break
             if target_total_points is not None and len(self.points) >= target_total_points:
                 verbose(f"  [进度] 达到目标节点数: {len(self.points)}")
                 break
-
-            # 从优先级队列中取出最差三角形
-            if not candidate_queue:
+            if len(self.triangles) == 0:
                 break
 
-            priority, tri_id, worst_triangle = heapq.heappop(candidate_queue)
-            
-            # 检查三角形是否已被删除或细分
-            if worst_triangle not in self.triangles:
+            # 简单遍历查找最差三角形
+            worst_quality = float('inf')
+            worst_triangle = None
+            needs_refinement = False
+
+            for tri in self.triangles:
+                if tri.vertices in failed_triangles:
+                    continue
+
+                quality = self._compute_triangle_quality(tri)
+                v0, v1, v2 = tri.vertices
+                pts = self.points
+                edge_lengths = [
+                    float(np.linalg.norm(pts[v1] - pts[v0])),
+                    float(np.linalg.norm(pts[v2] - pts[v1])),
+                    float(np.linalg.norm(pts[v0] - pts[v2])),
+                ]
+                max_edge = max(edge_lengths)
+                target_size = self._get_target_size_for_triangle(tri)
+
+                should_split = False
+                if target_size is not None:
+                    if max_edge > target_size * 1.1:
+                        should_split = True
+                    elif quality < 0.3:
+                        should_split = True
+                else:
+                    if quality < 0.5:
+                        should_split = True
+
+                if should_split:
+                    needs_refinement = True
+                    if quality < worst_quality:
+                        worst_quality = quality
+                        worst_triangle = tri
+
+            if not needs_refinement:
+                verbose("  [进度] 所有三角形满足尺寸和质量要求")
+                break
+            if worst_triangle is None:
+                break
+
+            # 检查是否是退化三角形（质量接近 0）
+            # 对于退化三角形，外接圆计算会数值不稳定，直接标记为失败
+            if worst_quality < 0.01:
+                failed_triangles.add(worst_triangle.vertices)
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
+                    break
                 continue
 
-            # 重新检查是否仍需要细分（可能在之前的插入中已被改善）
-            if not self._triangle_needs_refinement(worst_triangle, min_dist_threshold):
-                continue
+            if not worst_triangle.circumcircle_valid:
+                self._compute_circumcircle(worst_triangle)
 
-            # 尝试多种插入点策略
-            insertion_successful = False
-            new_point = None
-            insertion_strategy = ""
-            
-            # 计算当前三角形质量
-            tri_quality = self._compute_triangle_quality(worst_triangle)
+            new_point = worst_triangle.circumcenter.copy()
 
-            # 策略 1：外接圆圆心
-            if tri_quality < 0.01:
-                # 退化三角形，跳过外心计算
-                pass
-            else:
-                if not worst_triangle.circumcircle_valid:
-                    self._compute_circumcircle(worst_triangle)
-                candidate_point = worst_triangle.circumcenter.copy()
-                
-                # 检查圆心是否在有效范围内
-                if (x_min - margin < candidate_point[0] < x_max + margin and
-                    y_min - margin < candidate_point[1] < y_max + margin):
-                    # 检查是否在孔洞内
-                    if not self._point_in_hole(candidate_point):
-                        # 验证距离
-                        min_dist = self._compute_min_dist_to_existing_points(candidate_point)
-                        if min_dist > min_dist_threshold:
-                            new_point = candidate_point
-                            insertion_strategy = "外心"
-                            insertion_successful = True
-
-            # 策略 2：重心坐标随机采样
-            if not insertion_successful:
+            # 检查圆心是否在有效范围内
+            if not (x_min - margin < new_point[0] < x_max + margin and
+                    y_min - margin < new_point[1] < y_max + margin):
+                # 超出范围，使用重心坐标随机采样
                 p1 = self.points[worst_triangle.vertices[0]]
                 p2 = self.points[worst_triangle.vertices[1]]
                 p3 = self.points[worst_triangle.vertices[2]]
-                
-                # 尝试多次随机采样
-                for _ in range(10):
-                    r1, r2 = np.random.rand(2)
-                    if r1 + r2 > 1:
-                        r1, r2 = 1 - r1, 1 - r2
-                    candidate_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
-                    
-                    if not (x_min - margin < candidate_point[0] < x_max + margin and
-                            y_min - margin < candidate_point[1] < y_max + margin):
-                        continue
-                    if self._point_in_hole(candidate_point):
-                        continue
-                    
-                    min_dist = self._compute_min_dist_to_existing_points(candidate_point)
-                    if min_dist > min_dist_threshold:
-                        new_point = candidate_point
-                        insertion_strategy = "重心采样"
-                        insertion_successful = True
+                r1, r2 = np.random.rand(2)
+                if r1 + r2 > 1:
+                    r1, r2 = 1 - r1, 1 - r2
+                new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
+
+            # 检查插入点是否在孔洞内
+            in_hole = False
+            if self.holes:
+                from utils.geom_toolkit import point_in_polygon
+                for hole in self.holes:
+                    if point_in_polygon(new_point, hole):
+                        in_hole = True
                         break
 
-            # 策略 3：前端法（最优插入点）
-            if not insertion_successful:
-                candidate_point = self._optimal_point_frontal(worst_triangle)
-                if candidate_point is not None:
-                    if (x_min - margin < candidate_point[0] < x_max + margin and
-                        y_min - margin < candidate_point[1] < y_max + margin):
-                        if not self._point_in_hole(candidate_point):
-                            min_dist = self._compute_min_dist_to_existing_points(candidate_point)
-                            if min_dist > min_dist_threshold * 0.5:  # 前端法允许稍近的距离
-                                new_point = candidate_point
-                                insertion_strategy = "前端法"
-                                insertion_successful = True
+            if in_hole:
+                failed_triangles.add(worst_triangle.vertices)
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
+                    break
+                continue
 
-            if insertion_successful and new_point is not None:
-                # 插入新点
+            # KD树最近邻查询
+            if len(self.points) > 0:
+                if max_iterations == 1 or (max_iterations - last_kdtree_build) >= kdtree_rebuild_interval:
+                    self._kdtree = KDTree(self.points)
+                    last_kdtree_build = max_iterations
+                    last_kdtree_points = len(self.points)
+                if self._kdtree is not None:
+                    min_dist, _ = self._kdtree.query(new_point)
+                else:
+                    min_dist = float('inf')
+            else:
+                min_dist = float('inf')
+
+            # 插入新点
+            if min_dist > min_dist_threshold:
                 new_point_idx = len(self.points)
                 self.points = np.vstack([self.points, new_point])
                 self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-                consecutive_failures = 0
-                
-                # 更新 KDTree
-                self._kdtree = KDTree(self.points)
-                last_kdtree_build = max_iterations
-                
-                # 定期重建候选队列（因为三角形拓扑已改变）
-                # 为了性能，不是每次都重建
-                if max_iterations % kdtree_rebuild_interval == 0:
-                    self._rebuild_candidate_queue(
-                        candidate_queue, tri_to_entry, min_dist_threshold
-                    )
-                else:
-                    # 非重建周期：简单地将所有新三角形加入队列
-                    # 这确保不会遗漏需要细分的三角形
-                    known_tri_ids = set(entry[1] for entry in candidate_queue)
-                    for tri in self.triangles:
-                        if id(tri) not in known_tri_ids:
-                            if self._triangle_needs_refinement(tri, min_dist_threshold):
-                                priority = self._compute_refinement_priority(tri)
-                                if priority > 0:
-                                    entry = [-priority, id(tri), tri]
-                                    heapq.heappush(candidate_queue, entry)
+                consecutive_failures = 0  # 重置失败计数
             else:
-                # 所有策略都失败
+                failed_triangles.add(worst_triangle.vertices)
                 consecutive_failures += 1
-                
-                # 当连续失败次数达到一定阈值时，尝试放宽条件
-                if consecutive_failures == max_consecutive_failures // 2:
-                    verbose(f"  [进度] 连续失败 {consecutive_failures} 次，尝试放宽插入条件...")
-                    min_dist_threshold *= 0.5  # 降低最小距离要求
-                
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
-                    # 输出诊断信息
-                    self._diagnose_failed_triangles(min_dist_threshold)
                     break
+                continue
 
         final_triangles = len(self.triangles)
         final_points = len(self.points)
@@ -870,202 +768,6 @@ class BowyerWatsonMeshGenerator:
         verbose(f"  [完成] 插点完成 | "
                 f"节点: {final_points} (边界: {boundary_count}, 内部: {final_inserted}) | "
                 f"三角形: {final_triangles}")
-        
-        # 最终诊断：检查是否还有不满足要求的三角形
-        self._final_refinement_check(min_dist_threshold)
-
-    def _triangle_needs_refinement(self, tri: Triangle, min_dist_threshold: float) -> bool:
-        """检查三角形是否仍需细分。
-        
-        判断标准（与 _get_target_size_for_triangle 配合）：
-        1. 如果最大边长超过目标尺寸的 120%，需要细分
-        2. 如果质量低于 0.3 且有尺寸场，需要细分
-        3. 如果没有尺寸场，仅基于质量判断
-        """
-        quality = self._compute_triangle_quality(tri)
-        v0, v1, v2 = tri.vertices
-        pts = self.points
-        edge_lengths = [
-            float(np.linalg.norm(pts[v1] - pts[v0])),
-            float(np.linalg.norm(pts[v2] - pts[v1])),
-            float(np.linalg.norm(pts[v0] - pts[v2])),
-        ]
-        max_edge = max(edge_lengths)
-        target_size = self._get_target_size_for_triangle(tri)
-
-        if target_size is not None and target_size > 1e-12:
-            # 尺寸场控制：边长超过目标尺寸的 120% 或质量低于阈值
-            if max_edge > target_size * 1.2:
-                return True
-            if quality < 0.25:
-                return True
-        else:
-            # 无尺寸场：仅基于质量
-            if quality < 0.4:
-                return True
-
-        return False
-
-    def _compute_refinement_priority(self, tri: Triangle) -> float:
-        """计算三角形的细分优先级（值越大越优先处理）。
-        
-        优先级 = 偏离目标尺寸的程度 + 质量惩罚项
-        """
-        v0, v1, v2 = tri.vertices
-        pts = self.points
-        edge_lengths = [
-            float(np.linalg.norm(pts[v1] - pts[v0])),
-            float(np.linalg.norm(pts[v2] - pts[v1])),
-            float(np.linalg.norm(pts[v0] - pts[v2])),
-        ]
-        max_edge = max(edge_lengths)
-        target_size = self._get_target_size_for_triangle(tri)
-        quality = self._compute_triangle_quality(tri)
-
-        if target_size is not None and target_size > 1e-12:
-            size_ratio = max_edge / target_size
-            # 偏离目标越大，优先级越高
-            if size_ratio > 1.2:
-                # 主要基于尺寸偏离
-                priority = (size_ratio - 1.0) * 100.0
-            else:
-                # 尺寸满足但质量差
-                priority = max(0.0, (0.25 - quality) * 10.0)
-        else:
-            # 无尺寸场，仅基于质量
-            priority = max(0.0, (0.4 - quality) * 10.0)
-
-        return priority
-
-    def _rebuild_candidate_queue(self, candidate_queue, tri_to_entry, min_dist_threshold):
-        """重建优先级队列。"""
-        candidate_queue.clear()
-        tri_to_entry.clear()
-
-        for tri in self.triangles:
-            if not self._triangle_needs_refinement(tri, min_dist_threshold):
-                continue
-            
-            priority = self._compute_refinement_priority(tri)
-            if priority > 0:
-                # heapq 是最小堆，使用负 priority 实现最大堆效果
-                entry = [-priority, id(tri), tri]
-                tri_to_entry[id(tri)] = entry
-                heapq.heappush(candidate_queue, entry)
-
-    def _update_candidate_queue(self, candidate_queue, tri_to_entry, min_dist_threshold):
-        """增量更新优先级队列（只添加新三角形）。"""
-        # 清理已不存在的三角形
-        valid_entries = []
-        for entry in candidate_queue:
-            tri_id = entry[1]
-            tri = entry[2]
-            if tri in self.triangles:
-                valid_entries.append(entry)
-        
-        candidate_queue[:] = valid_entries
-        heapq.heapify(candidate_queue)
-
-        # 添加新三角形
-        for tri in self.triangles:
-            if id(tri) in tri_to_entry:
-                continue
-            if not self._triangle_needs_refinement(tri, min_dist_threshold):
-                continue
-            
-            priority = self._compute_refinement_priority(tri)
-            if priority > 0:
-                entry = [-priority, id(tri), tri]
-                tri_to_entry[id(tri)] = entry
-                heapq.heappush(candidate_queue, entry)
-
-    def _point_in_hole(self, point: np.ndarray) -> bool:
-        """检查点是否在孔洞内。"""
-        if not self.holes:
-            return False
-        from utils.geom_toolkit import point_in_polygon
-        for hole in self.holes:
-            if point_in_polygon(point, hole):
-                return True
-        return False
-
-    def _compute_min_dist_to_existing_points(self, point: np.ndarray) -> float:
-        """计算点到已有节点的最小距离。"""
-        if len(self.points) == 0:
-            return float('inf')
-        if self._kdtree is not None:
-            min_dist, _ = self._kdtree.query(point)
-            return float(min_dist)
-        # 回退：暴力计算
-        min_dist = float('inf')
-        for p in self.points:
-            dist = float(np.linalg.norm(point - p))
-            if dist < min_dist:
-                min_dist = dist
-        return min_dist
-
-    def _diagnose_failed_triangles(self, min_dist_threshold: float):
-        """诊断无法细分的三角形。"""
-        verbose("  [诊断] 无法继续插点，检查剩余不满足要求的三角形:")
-        failed_count = 0
-        for tri in self.triangles:
-            if self._triangle_needs_refinement(tri, min_dist_threshold):
-                failed_count += 1
-                if failed_count <= 10:  # 只输出前 10 个
-                    v0, v1, v2 = tri.vertices
-                    pts = self.points
-                    edge_lengths = [
-                        float(np.linalg.norm(pts[v1] - pts[v0])),
-                        float(np.linalg.norm(pts[v2] - pts[v1])),
-                        float(np.linalg.norm(pts[v0] - pts[v2])),
-                    ]
-                    max_edge = max(edge_lengths)
-                    target_size = self._get_target_size_for_triangle(tri)
-                    quality = self._compute_triangle_quality(tri)
-                    target_str = f"{target_size:.4f}" if (target_size is not None and target_size > 1e-12) else "N/A"
-                    verbose(f"    三角形 {tri.vertices}: "
-                           f"最大边={max_edge:.4f}, "
-                           f"目标尺寸={target_str}, "
-                           f"质量={quality:.4f}")
-        if failed_count > 10:
-            verbose(f"    ... 还有 {failed_count - 10} 个三角形未列出")
-        verbose(f"  [诊断] 总计 {failed_count} 个三角形未满足要求")
-
-    def _final_refinement_check(self, min_dist_threshold: float):
-        """最终检查：统计仍有多少三角形不满足要求。"""
-        needs_refinement_count = 0
-        size_violation_count = 0
-        quality_violation_count = 0
-        
-        for tri in self.triangles:
-            quality = self._compute_triangle_quality(tri)
-            v0, v1, v2 = tri.vertices
-            pts = self.points
-            edge_lengths = [
-                float(np.linalg.norm(pts[v1] - pts[v0])),
-                float(np.linalg.norm(pts[v2] - pts[v1])),
-                float(np.linalg.norm(pts[v0] - pts[v2])),
-            ]
-            max_edge = max(edge_lengths)
-            target_size = self._get_target_size_for_triangle(tri)
-
-            if target_size is not None and target_size > 1e-12:
-                if max_edge > target_size * 1.2:
-                    size_violation_count += 1
-                    needs_refinement_count += 1
-                elif quality < 0.25:
-                    quality_violation_count += 1
-                    needs_refinement_count += 1
-            else:
-                if quality < 0.4:
-                    quality_violation_count += 1
-                    needs_refinement_count += 1
-        
-        if needs_refinement_count > 0:
-            verbose(f"  [诊断] 插点结束后，仍有 {needs_refinement_count} 个三角形不满足要求")
-            verbose(f"           尺寸违规: {size_violation_count}, 质量违规: {quality_violation_count}")
-        else:
-            verbose("  [诊断] 所有三角形均满足尺寸和质量要求")
 
     def _compute_insertion_point(self, tri, x_min, x_max, y_min, y_max, margin):
         """计算新插入点的位置。
