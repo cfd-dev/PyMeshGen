@@ -945,6 +945,29 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
 
             self.fail(f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}")
 
+        # 额外检查：孔洞内的点和单元是否完全删除
+        print(f"\n  - 孔洞清理检查:")
+        hole_cleanup_result = self._check_hole_cleanup(
+            cas_file=str(cas_file),
+            grid=grid,
+            test_name=test_name
+        )
+
+        if hole_cleanup_result['pass']:
+            print(f"  - [PASS] 孔洞清理检查通过")
+            for hole_key, hole_result in hole_cleanup_result.get('hole_results', {}).items():
+                print(f"    - {hole_key}: 内部点数={hole_result['points_inside']}, "
+                      f"内部单元数={hole_result['cells_inside']}")
+        else:
+            print(f"  - [FAIL] 孔洞清理检查失败")
+            for hole_key, hole_result in hole_cleanup_result.get('hole_results', {}).items():
+                if hole_result['points_inside'] > 0 or hole_result['cells_inside'] > 0:
+                    print(f"    - {hole_key}: 内部残留 {hole_result['points_inside']} 个点, "
+                          f"{hole_result['cells_inside']} 个单元")
+            if hole_cleanup_result.get('issue'):
+                print(f"    - 问题: {hole_cleanup_result['issue']}")
+            self.fail(f"{test_name} 孔洞清理检查失败: {hole_cleanup_result.get('issue', '孔洞内残留点或单元')}")
+
     def _check_boundary_edges(self, cas_file, grid, test_name):
         """检查网格中特定边界的边是否完整恢复，以及内边界内部是否有非法点/单元
 
@@ -1149,6 +1172,164 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             'pass': all_pass,
             'zone_results': all_results,
             'issue': issue
+        }
+
+    def _check_hole_cleanup(self, cas_file, grid, test_name):
+        """检查孔洞内的点和单元是否完全删除
+
+        参数:
+            cas_file: CAS 文件路径
+            grid: 生成的网格对象
+            test_name: 测试名称
+
+        返回:
+            dict: 包含检查结果的信息
+        """
+        from fileIO.read_cas import parse_fluent_msh
+        from utils.geom_toolkit import point_in_polygon
+
+        try:
+            cas_data = parse_fluent_msh(cas_file)
+        except Exception as e:
+            return {
+                'pass': False,
+                'issue': f'无法解析 CAS 文件: {e}',
+                'hole_results': {}
+            }
+
+        cas_nodes = np.array(cas_data['nodes'])
+        tolerance = 0.01
+        vtk_nodes = np.array(grid.node_coords)
+
+        # 识别所有内边界（孔洞边界）
+        # 内边界定义：不触及全局边界的边界区域
+        global_x_min, global_x_max = np.min(cas_nodes[:, 0]), np.max(cas_nodes[:, 0])
+        global_y_min, global_y_max = np.min(cas_nodes[:, 1]), np.max(cas_nodes[:, 1])
+
+        # 收集所有内边界多边形
+        hole_polygons = []  # 存储 (zone_key, hole_polygon)
+        processed_zones = set()  # 用于去重
+        hole_results = {}
+        all_pass = True
+
+        # 收集所有边界区域
+        zone_data = {}
+        for face in cas_data['faces']:
+            part_name = face.get('part_name', 'unknown')
+            bc_type = face.get('bc_type', 'unknown')
+
+            if bc_type == 'interior':
+                continue
+
+            if len(face['nodes']) != 2:
+                continue
+
+            zone_key = f"{part_name}_{bc_type}"
+            if zone_key not in zone_data:
+                zone_data[zone_key] = {'edges': [], 'nodes': set()}
+
+            n1, n2 = face['nodes'][0] - 1, face['nodes'][1] - 1
+            zone_data[zone_key]['edges'].append((n1, n2))
+            zone_data[zone_key]['nodes'].add(n1)
+            zone_data[zone_key]['nodes'].add(n2)
+
+        # 处理每个区域
+        for zone_key, data in zone_data.items():
+            if zone_key in processed_zones:
+                continue
+            processed_zones.add(zone_key)
+
+            zone_edges = data['edges']
+            zone_nodes = data['nodes']
+
+            # 判断是否为内边界
+            zone_coords = cas_nodes[list(zone_nodes)]
+            x_min, x_max = np.min(zone_coords[:, 0]), np.max(zone_coords[:, 0])
+            y_min, y_max = np.min(zone_coords[:, 1]), np.max(zone_coords[:, 1])
+
+            touches_global_boundary = (
+                abs(x_min - global_x_min) < tolerance or
+                abs(x_max - global_x_max) < tolerance or
+                abs(y_min - global_y_min) < tolerance or
+                abs(y_max - global_y_max) < tolerance
+            )
+
+            if touches_global_boundary:
+                continue  # 外边界，跳过
+
+            # 这是内边界（孔洞），构建多边形
+            if len(zone_edges) < 3:
+                continue
+
+            # 从边构建连续的多边形路径
+            adjacency = {}
+            for n1, n2 in zone_edges:
+                adjacency.setdefault(n1, []).append(n2)
+                adjacency.setdefault(n2, []).append(n1)
+
+            ordered_coords = []
+            visited_edges = set()
+            start_node = list(adjacency.keys())[0]
+            current = start_node
+
+            while True:
+                coord = cas_nodes[current]
+                ordered_coords.append(coord)
+
+                next_node = None
+                for neighbor in adjacency.get(current, []):
+                    edge_key = tuple(sorted([current, neighbor]))
+                    if edge_key not in visited_edges:
+                        next_node = neighbor
+                        break
+
+                if next_node is None:
+                    break
+
+                visited_edges.add(tuple(sorted([current, next_node])))
+                current = next_node
+
+                if current == start_node:
+                    break
+
+            if len(ordered_coords) < 3:
+                continue
+
+            hole_polygon = np.array(ordered_coords)
+            hole_polygons.append((zone_key, hole_polygon))
+
+            # 检查是否有节点在孔洞内部
+            points_inside = 0
+            for vtk_idx in range(len(vtk_nodes)):
+                vtk_coord = vtk_nodes[vtk_idx, :2]
+                if point_in_polygon(vtk_coord, hole_polygon):
+                    points_inside += 1
+
+            # 检查是否有单元的任何顶点在孔洞内部（比质心检查更严格）
+            # 质心可能在孔洞外，但顶点可能在孔洞内，这种情况说明单元未被完全清理
+            cells_inside = 0
+            for cell in grid.cells:
+                cell_has_internal_vertex = False
+                for n in cell:
+                    vtk_coord = vtk_nodes[n, :2]
+                    if point_in_polygon(vtk_coord, hole_polygon):
+                        cell_has_internal_vertex = True
+                        break
+                if cell_has_internal_vertex:
+                    cells_inside += 1
+
+            hole_results[zone_key] = {
+                'points_inside': points_inside,
+                'cells_inside': cells_inside
+            }
+
+            if points_inside > 0 or cells_inside > 0:
+                all_pass = False
+
+        return {
+            'pass': all_pass,
+            'hole_results': hole_results,
+            'issue': None if all_pass else '孔洞内残留点或单元'
         }
 
     def _create_bw_config_from_root(self, original_config_path, output_file, enable_boundary_layer=False):

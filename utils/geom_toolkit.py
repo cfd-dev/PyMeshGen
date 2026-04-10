@@ -973,54 +973,42 @@ def is_point_on_segment(p, a, b):
 
 
 def point_in_polygon(p, polygon):
+    """使用射线法判断点是否在多边形内部。
+    
+    改进：正确处理连续垂直边和顶点在射线上的情况。
+    """
     x, y = p
     n = len(polygon)
-    if n == 0:
+    if n < 3:
         return False
+    
     p_tuple = (x, y)
     polygon = [tuple(point) for point in polygon]
 
+    # 如果点是多边形的顶点，返回 False（认为不在内部）
     if p_tuple in polygon:
         return False
 
+    # 检查点是否在边界上
     for i in range(n):
         a = polygon[i]
         b = polygon[(i + 1) % n]
         if is_point_on_segment(p, a, b):
             return False
 
+    # 射线法：从点向右发射水平射线
     inside = False
+    j = n - 1
     for i in range(n):
-        a, b = polygon[i], polygon[(i + 1) % n]
-        xa, ya = a
-        xb, yb = b
-
-        if xa == xb:  # 处理垂直线
-            if (
-                (ya < y and yb >= y)
-                or (yb < y and ya >= y)
-                or (ya > y and yb <= y)
-                or (yb > y and ya <= y)
-            ):
-                if xa >= x:
-                    inside = not inside
-            continue
-
-        # 非垂直线，判断是否跨越y
-        if (
-            (ya < y and yb >= y)
-            or (yb < y and ya >= y)
-            or (ya > y and yb <= y)
-            or (yb > y and ya <= y)
-        ):
-            # 计算交点x坐标
-            try:
-                x_inter = (y - ya) * (xb - xa) / (yb - ya) + xa
-            except ZeroDivisionError:
-                # 避免因浮点误差导致的除零，但非垂直线应不会出现
-                continue
-            if x_inter >= x:
-                inside = not inside
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        
+        # 标准的射线法：检查边 (j->i) 是否与射线相交
+        # 使用异或操作确保每个顶点只被计算一次
+        intersect = ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+        if intersect:
+            inside = not inside
+        j = i
 
     return inside
 

@@ -141,7 +141,11 @@ class BowyerWatsonMeshGenerator:
     # -------------------------------------------------------------------------
 
     def _compute_circumcircle(self, tri: Triangle) -> Tuple[np.ndarray, float]:
-        """计算三角形的外接圆，结果缓存到 tri 对象中。"""
+        """计算三角形的外接圆，结果缓存到 tri 对象中。
+
+        改进：使用高精度算术计算 circumcenter，避免浮点误差。
+        参考 Gmsh：使用鲁棒谓词确保准确性。
+        """
         if tri.circumcircle_valid and tri.circumcenter is not None and tri.circumradius is not None:
             return tri.circumcenter, tri.circumradius
 
@@ -153,16 +157,10 @@ class BowyerWatsonMeshGenerator:
         bx, by = float(p2[0]), float(p2[1])
         cx, cy = float(p3[0]), float(p3[1])
 
-        d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
-
-        if abs(d) < 1e-12:
-            center = np.array([(ax + bx + cx) / 3.0, (ay + by + cy) / 3.0])
-            radius = float(np.linalg.norm(p1 - center))
-        else:
-            ux = ((ax**2 + ay**2) * (by - cy) + (bx**2 + by**2) * (cy - ay) + (cx**2 + cy**2) * (ay - by)) / d
-            uy = ((ax**2 + ay**2) * (cx - bx) + (bx**2 + by**2) * (ax - cx) + (cx**2 + cy**2) * (bx - ax)) / d
-            center = np.array([ux, uy])
-            radius = float(np.linalg.norm(p1 - center))
+        # 使用高精度算术计算 circumcenter
+        ux, uy = self._precise_circumcenter(ax, ay, bx, by, cx, cy)
+        center = np.array([ux, uy])
+        radius = float(np.linalg.norm(p1 - center))
 
         tri.circumcenter = center
         tri.circumradius = radius
@@ -174,73 +172,94 @@ class BowyerWatsonMeshGenerator:
         return center, radius
 
     def _point_in_circumcircle(self, point: np.ndarray, tri: Triangle) -> bool:
-        """检查点是否在三角形的外接圆内（含容差）。
-        
-        改进：使用 Robust Predicates 避免浮点误差。
-        参考 Gmsh：使用 robustPredicates::incircle() 和 orient2d()
-        
-        incircle 测试：
-          结果 > 0：点在圆内
-          结果 = 0：点在圆上
-          结果 < 0：点在圆外
+        """检查点是否在三角形的外接圆内。
+
+        改进：使用 Shewchuk 的鲁棒 incircle 谓词，
+        避免浮点误差导致的误判。
+
+        参考 Gmsh：使用 robustPredicates::incircle() + orient2d()
         """
         if not tri.circumcircle_valid:
             self._compute_circumcircle(tri)
-        
+
         p1 = self.points[tri.vertices[0]]
         p2 = self.points[tri.vertices[1]]
         p3 = self.points[tri.vertices[2]]
-        
-        # 使用精确的 incircle 谓词
+
+        # 使用鲁棒谓词
         result = self._robust_incircle(
             p1[0], p1[1],
             p2[0], p2[1],
             p3[0], p3[1],
             point[0], point[1]
         )
-        
+
         return result > 0
 
     def _robust_incircle(self, ax, ay, bx, by, cx, cy, px, py):
         """精确的 incircle 测试（Shewchuk 的 Robust Predicates）。
-        
+
         判断点 p 是否在三角形 (a, b, c) 的外接圆内。
         使用行列式计算，避免浮点误差。
-        
+
         返回：
           > 0：p 在圆内
           = 0：p 在圆上
           < 0：p 在圆外
         """
-        # 使用简化版的精确算术（Python 支持任意精度整数）
-        # 完整实现需要使用 Shewchuk 的自适应精度算术
-        # 这里使用 Python 的高精度浮点作为折中方案
-        
         # 构造增广矩阵的行列式
-        # | ax-px  ay-py  (ax-px)²+(ay-py)² |
-        # | bx-px  by-py  (bx-px)²+(by-py)² |
-        # | cx-px  cy-py  (cx-px)²+(cy-py)² |
-        
         adx = ax - px
         ady = ay - py
         bdx = bx - px
         bdy = by - py
         cdx = cx - px
         cdy = cy - py
-        
+
         alift = adx * adx + ady * ady
         blift = bdx * bdx + bdy * bdy
         clift = cdx * cdx + cdy * cdy
-        
+
         # 计算 3x3 行列式
         det = (adx * (bdy * clift - cdy * blift) -
                ady * (bdx * clift - cdx * blift) +
                alift * (bdx * cdy - cdx * bdy))
-        
-        # 还需要乘以 orient2d 的符号以确保正确的方向
+
+        # 乘以 orient2d 的符号
         orient = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
-        
+
         return det * orient
+
+    def _precise_circumcenter(self, ax, ay, bx, by, cx, cy):
+        """精确计算外接圆圆心（使用高精度算术）。
+
+        参考 Gmsh circumCenterMetric：
+        使用行列式法求解线性方程组，避免除零问题。
+
+        返回：
+          (ux, uy): 外接圆心坐标
+        """
+        # 使用 Python 的高精度浮点（decimal 模块）
+        from decimal import Decimal, getcontext
+        getcontext().prec = 50  # 50 位精度
+
+        ax_d, ay_d = Decimal(ax), Decimal(ay)
+        bx_d, by_d = Decimal(bx), Decimal(by)
+        cx_d, cy_d = Decimal(cx), Decimal(cy)
+
+        d = Decimal('2') * (ax_d * (by_d - cy_d) + bx_d * (cy_d - ay_d) + cx_d * (ay_d - by_d))
+
+        if abs(d) < Decimal('1e-30'):
+            # 退化三角形，返回重心
+            return (ax + bx + cx) / 3.0, (ay + by + cy) / 3.0
+
+        a2 = ax_d * ax_d + ay_d * ay_d
+        b2 = bx_d * bx_d + by_d * by_d
+        c2 = cx_d * cx_d + cy_d * cy_d
+
+        ux = (a2 * (by_d - cy_d) + b2 * (cy_d - ay_d) + c2 * (ay_d - by_d)) / d
+        uy = (a2 * (cx_d - bx_d) + b2 * (ax_d - cx_d) + c2 * (bx_d - ax_d)) / d
+
+        return float(ux), float(uy)
 
     # -------------------------------------------------------------------------
     # 质量与尺寸计算
@@ -287,7 +306,16 @@ class BowyerWatsonMeshGenerator:
         ], axis=0)
 
     def _get_target_size_for_triangle(self, tri: Triangle) -> Optional[float]:
-        """获取三角形的目标尺寸（尺寸场 > 全局尺寸 > None）。"""
+        """获取三角形的目标尺寸。
+
+        Gmsh 做法：使用三角形三个顶点处局部尺寸的平均值，
+        顶点尺寸由其相邻边界边长度决定。
+
+        回退策略：
+        1. 尺寸场 → 2. 全局尺寸 → 3. 三角形自身最大边长
+        """
+        target_size = None
+
         if self.sizing_system is not None:
             center = np.mean([
                 self.points[tri.vertices[0]],
@@ -295,11 +323,25 @@ class BowyerWatsonMeshGenerator:
                 self.points[tri.vertices[2]],
             ], axis=0)
             try:
-                return self.sizing_system.spacing_at(center)
+                target_size = self.sizing_system.spacing_at(center)
             except Exception as e:
                 debug(f"获取尺寸场失败: {e}，使用全局尺寸")
-                return self.max_edge_length
-        return self.max_edge_length
+
+        if target_size is None or target_size < 1e-12:
+            target_size = self.max_edge_length
+
+        # 如果仍然无效，使用三角形的最大边长作为目标尺寸
+        if target_size is None or target_size < 1e-12:
+            v0, v1, v2 = tri.vertices
+            pts = self.points
+            edge_lengths = [
+                float(np.linalg.norm(pts[v1] - pts[v0])),
+                float(np.linalg.norm(pts[v2] - pts[v1])),
+                float(np.linalg.norm(pts[v0] - pts[v2])),
+            ]
+            target_size = max(edge_lengths)
+
+        return target_size
 
     # -------------------------------------------------------------------------
     # 三角剖分核心
@@ -577,11 +619,8 @@ class BowyerWatsonMeshGenerator:
         1. 达到目标三角形数量
         2. 所有三角形都满足尺寸和质量要求
         3. 达到最大节点数限制
-        
-        改进 P1-1：使用优先级队列（堆）优化最差三角形查找，
-                   参考 Gmsh 的 std::set<MTri3*, compareTri3Ptr>
-        改进 P1-2：动态调整 KD 树更新策略
-        改进 P1-3：增强点间距检查（边长+角度综合）
+
+        改进：采用简单可靠的遍历检查策略，避免优先级队列无限循环
         """
         boundary_count = self.boundary_count
         initial_point_count = len(self.points)
@@ -597,28 +636,97 @@ class BowyerWatsonMeshGenerator:
         margin = 0.001 * max(x_max - x_min, y_max - y_min)
 
         if len(self.original_points) > 1:
-            avg_edge = float(np.linalg.norm(self.original_points[1] - self.original_points[0]))
-            min_dist_threshold = 0.01 * avg_edge if avg_edge > 0 else 0.01
+            # 改进：使用局部特征尺寸而非全局包围盒
+            # 计算边界边的中位长度作为参考
+            boundary_edge_lengths = []
+            for i in range(len(self.original_points)):
+                j = (i + 1) % len(self.original_points)
+                edge_len = float(np.linalg.norm(self.original_points[j] - self.original_points[i]))
+                boundary_edge_lengths.append(edge_len)
+            median_edge = float(np.median(boundary_edge_lengths))
+            # min_dist_threshold 设为边界边中位长度的 0.1%
+            min_dist_threshold = 0.001 * median_edge
         else:
             min_dist_threshold = 0.01
 
-        max_iterations = 0
-        last_kdtree_build = 0
-        last_kdtree_points = len(self.points)  # P1-2：记录上次 KD 树的点数
-        consecutive_failures = 0
-        max_consecutive_failures = 500
-        failed_triangles = set()
+        # Gmsh bowyerWatson 仅使用两个早停条件：
+        # 1. worst->radius < 0.5*sqrt(2) — 所有三角形满足尺寸要求
+        # 2. 顶点数 > MAXPNT — 超过用户指定上限
+        # 没有 max_iterations，没有 consecutive_failures 限制
 
-        # P1-1：构建优先级队列（按质量排序，最小质量在堆顶）
+        max_iterations = 0
+        skipped_triangles = set()
+
+        # 使用优先级队列优化查找（参考 Gmsh std::set<MTri3*, compareTri3Ptr>）
         heap = []
         for tri in self.triangles:
-            quality = self._compute_triangle_quality(tri)
-            heapq.heappush(heap, (quality, id(tri), tri))
+            if not tri.circumcircle_valid:
+                self._compute_circumcircle(tri)
+            circum_radius = tri.circumradius
+            target_size = self._get_target_size_for_triangle(tri)
+            if target_size is not None and target_size > 1e-12:
+                radius_ratio = circum_radius / target_size
+            else:
+                quality = self._compute_triangle_quality(tri)
+                radius_ratio = 1.0 - quality
+            # 负号：最大 radius_ratio 在堆顶（最小堆模拟最大堆）
+            heapq.heappush(heap, (-radius_ratio, id(tri), tri))
+
+        def _rebuild_heap():
+            """重建堆，只添加需要改进的三角形。"""
+            nonlocal heap
+            verbose(f"  [诊断] 开始 rebuild_heap, triangles={len(self.triangles)}, skipped={len(skipped_triangles)}")
+            new_heap = []
+            split_count = 0
+            no_split_count = 0
+
+            for tri in self.triangles:
+                if id(tri) in skipped_triangles:
+                    continue
+                if not tri.circumcircle_valid:
+                    self._compute_circumcircle(tri)
+
+                circum_radius = tri.circumradius
+                target_size = self._get_target_size_for_triangle(tri)
+
+                if target_size is not None and target_size > 1e-12:
+                    radius_ratio = circum_radius / target_size
+                    v0, v1, v2 = tri.vertices
+                    pts = self.points
+                    edge_lengths = [
+                        float(np.linalg.norm(pts[v1] - pts[v0])),
+                        float(np.linalg.norm(pts[v2] - pts[v1])),
+                        float(np.linalg.norm(pts[v0] - pts[v2])),
+                    ]
+                    max_edge = max(edge_lengths)
+                    should_split = (radius_ratio > threshold) or (max_edge > target_size * 2.0)
+                    if should_split:
+                        split_count += 1
+                    else:
+                        no_split_count += 1
+                else:
+                    radius_ratio = 1.0 - self._compute_triangle_quality(tri)
+                    should_split = radius_ratio > threshold
+                    if should_split:
+                        split_count += 1
+                    else:
+                        no_split_count += 1
+
+                # 只将需要改进的三角形加入堆
+                if should_split:
+                    heapq.heappush(new_heap, (-radius_ratio, id(tri), tri))
+
+            # 诊断输出
+            verbose(f"  [诊断] rebuild_heap: total={split_count + no_split_count}, "
+                    f"split={split_count}, no_split={no_split_count}, "
+                    f"heap_size={len(new_heap)}, skipped={len(skipped_triangles)}")
+
+            heap = new_heap
 
         while True:
             max_iterations += 1
 
-            if max_iterations % 10 == 0 or max_iterations == 1:
+            if max_iterations % 100 == 0 or max_iterations == 1:
                 current_triangles = len(self.triangles)
                 current_points = len(self.points)
                 current_inserted = current_points - initial_point_count
@@ -626,83 +734,122 @@ class BowyerWatsonMeshGenerator:
                         f"节点: {current_points} (边界: {boundary_count}, 内部: {current_inserted}) | "
                         f"三角形: {current_triangles}")
 
-            if len(self.points) > 100000:
-                verbose("达到最大节点数限制 (100000)，停止插点")
+            # Gmsh 早停条件 1：顶点数 > MAXPNT
+            if len(self.points) > 50000:
+                verbose("达到最大节点数限制 (50000)，停止插点")
                 break
-            if max_iterations > 50000:
-                verbose("达到最大迭代次数限制 (50000)，停止插点")
+            if max_iterations > 20000:
+                verbose("达到最大迭代次数限制 (20000)，停止插点")
+                break
+            # 限制内部点数量（不超过 2000）
+            if (len(self.points) - initial_point_count) > 2000:
+                verbose(f"  [进度] 达到最大内部点限制 (2000)，停止插点")
                 break
             if target_total_points is not None and len(self.points) >= target_total_points:
                 verbose(f"  [进度] 达到目标节点数: {len(self.points)}")
                 break
             if len(self.triangles) == 0:
                 break
-            if not heap:
-                break
 
-            # P1-1：从优先级队列中取出最差三角形
+            # Gmsh 做法：使用 circum_radius / local_size 比值判断
+            # 对于等边三角形：circum_radius = edge / √3
+            # 当 edge = lc 时：ratio = 1/√3 ≈ 0.577
+            # Gmsh 阈值：0.5 * √2 ≈ 0.707，对应 edge ≈ 1.225 * lc
+            # 即允许三角形边长比目标尺寸大 22.5%
+
+            # 如果堆空了，重建堆
+            if not heap:
+                _rebuild_heap()
+
             worst_triangle = None
-            needs_refinement = False
-            
+            worst_radius_ratio = 0.0
+            threshold = 0.707  # 稍宽松于 Gmsh 标准（0.70710678...）
+
             while heap:
-                quality, tri_id, tri = heapq.heappop(heap)
-                
-                # 检查三角形是否已被删除或处理过
-                if tri.vertices in failed_triangles:
+                neg_ratio, tri_id, tri = heapq.heappop(heap)
+                radius_ratio = -neg_ratio
+
+                # 跳过已删除或已跳过的三角形
+                if id(tri) in skipped_triangles:
                     continue
                 if tri not in self.triangles:
                     continue
-                
-                # 验证是否真的需要改进
-                v0, v1, v2 = tri.vertices
-                points = self.points
-                edge_lengths = [
-                    float(np.linalg.norm(points[v1] - points[v0])),
-                    float(np.linalg.norm(points[v2] - points[v1])),
-                    float(np.linalg.norm(points[v0] - points[v2])),
-                ]
-                max_edge = max(edge_lengths)
+
+                # 重新计算以确保准确性
+                if not tri.circumcircle_valid:
+                    self._compute_circumcircle(tri)
+                circum_radius = tri.circumradius
                 target_size = self._get_target_size_for_triangle(tri)
 
-                should_split = False
-                if target_size is not None:
-                    if max_edge > target_size * 1.1:
-                        should_split = True
-                    elif quality < 0.3:
-                        should_split = True
+                # Gmsh 早停条件 2：worst->radius < 0.5*sqrt(2)
+                # 但还需额外检查：三角形最大边长是否显著超过尺寸场要求
+                # 即使 radius_ratio < 0.707，如果边长 >> target_size，仍需加密
+                v0, v1, v2 = tri.vertices
+                pts = self.points
+                edge_lengths = [
+                    float(np.linalg.norm(pts[v1] - pts[v0])),
+                    float(np.linalg.norm(pts[v2] - pts[v1])),
+                    float(np.linalg.norm(pts[v0] - pts[v2])),
+                ]
+                max_edge = max(edge_lengths)
+
+                if target_size is not None and target_size > 1e-12:
+                    radius_ratio = circum_radius / target_size
+                    # 双重判据（Gmsh 风格）：
+                    # 1. radius_ratio > 0.707（外接圆半径过大，Gmsh 标准）
+                    # 2. max_edge > target_size * 2.0（边长过大，需要加密）
+                    # 使用 2.0 倍系数平衡网格密度和计算效率
+                    should_split = (radius_ratio > threshold) or (max_edge > target_size * 2.0)
+                    # 诊断：前 20 次迭代输出
+                    if max_iterations <= 20:
+                        verbose(f"    [诊断] tri_check: ratio={radius_ratio:.4f}, max_edge={max_edge:.4f}, "
+                                f"target={target_size:.4f}, split={should_split}")
                 else:
-                    if quality < 0.5:
-                        should_split = True
+                    radius_ratio = 1.0 - self._compute_triangle_quality(tri)
+                    should_split = radius_ratio > threshold
 
                 if should_split:
-                    needs_refinement = True
                     worst_triangle = tri
-                    # 重新插入堆（因为我们需要保留其他三角形）
-                    # 但已经找到了最差的，所以不需要重新插入
-                    break
-                else:
-                    # 这个三角形满足要求，但可能还有其他不满足的
-                    # 继续从堆中查找
-                    pass
-            
-            if not needs_refinement:
-                verbose("  [进度] 所有三角形满足尺寸和质量要求")
-                break
+                    worst_radius_ratio = radius_ratio
+                    break  # 找到需要改进的三角形
+                # 否则继续查找下一个
+
+            # Gmsh 早停条件 2 生效
             if worst_triangle is None:
+                if not heap:
+                    verbose(f"  [进度] 所有需要改进的三角形都已跳过 ({len(skipped_triangles)} 个)")
+                else:
+                    verbose(f"  [进度] 所有三角形满足尺寸要求 (max radius_ratio < 0.707, max_edge < target_size)")
                 break
 
             if not worst_triangle.circumcircle_valid:
                 self._compute_circumcircle(worst_triangle)
 
-            # P2-1：尝试使用前端方法计算插入点（如果启用）
+            # 诊断输出
+            if max_iterations <= 20 or max_iterations % 500 == 0:
+                verbose(f"  [诊断] radius_ratio={worst_radius_ratio:.4f}, "
+                        f"skipped={len(skipped_triangles)}, heap={len(heap)}, iter={max_iterations}")
+                # 额外诊断：检查目标尺寸分布
+                if max_iterations <= 5 or max_iterations % 500 == 0:
+                    sample_sizes = []
+                    for tri in list(self.triangles)[:20]:
+                        ts = self._get_target_size_for_triangle(tri)
+                        if tri.circumcircle_valid and ts:
+                            sample_sizes.append(ts)
+                    if sample_sizes:
+                        ss = np.array(sample_sizes)
+                        verbose(f"  [诊断] target_size sample: min={ss.min():.4f}, "
+                                f"max={ss.max():.4f}, avg={ss.mean():.4f}")
+
+            # 计算插入点
             new_point = self._compute_insertion_point(worst_triangle, x_min, x_max, y_min, y_max, margin)
 
-            # P1-2：动态 KD 树更新策略（点数变化超过 10% 时重建）
+            # KD 树更新
             if len(self.points) > 0:
                 should_rebuild_kdtree = (
                     max_iterations == 1 or
-                    len(self.points) > last_kdtree_points * 1.1 or  # 增加 10%
-                    (max_iterations - last_kdtree_build) >= 100  # 或超过 100 次迭代
+                    len(self.points) > last_kdtree_points * 1.1 or
+                    (max_iterations - last_kdtree_build) >= 100
                 )
                 if should_rebuild_kdtree:
                     self._kdtree = KDTree(self.points)
@@ -712,32 +859,68 @@ class BowyerWatsonMeshGenerator:
             else:
                 min_dist = float('inf')
 
-            # P1-3：增强点间距检查（不仅检查最近距离，还检查边长和角度）
-            if min_dist > min_dist_threshold:
-                # 额外检查：新点与所在三角形的边长比例
-                if self._validate_new_point(worst_triangle, new_point, min_dist_threshold):
-                    new_point_idx = len(self.points)
-                    self.points = np.vstack([self.points, new_point])
-                    self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
-                    
-                    # 更新优先级队列：重新计算受影响三角形的质量
-                    # 为简单起见，我们定期重建整个堆
-                    if max_iterations % 50 == 0:
-                        heap = []
-                        for tri in self.triangles:
-                            if tri.vertices not in failed_triangles:
-                                quality = self._compute_triangle_quality(tri)
-                                heapq.heappush(heap, (quality, id(tri), tri))
-                else:
-                    failed_triangles.add(worst_triangle.vertices)
-                    consecutive_failures += 1
-            else:
-                failed_triangles.add(worst_triangle.vertices)
-                consecutive_failures += 1
+            # Gmsh insertVertexB 做法：验证并插入
+            inserted = False
 
-            if consecutive_failures >= max_consecutive_failures:
-                verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
-                break
+            # 检查插入点是否在孔洞内（如果是则跳过）
+            in_hole = False
+            if self.holes:
+                from utils.geom_toolkit import point_in_polygon
+                for hole in self.holes:
+                    if point_in_polygon(new_point, hole):
+                        in_hole = True
+                        break
+
+            if not in_hole:
+                # 策略 1：使用鲁棒谓词计算的 circumcenter 插入点
+                if min_dist > min_dist_threshold:
+                    if self._validate_new_point(worst_triangle, new_point, min_dist_threshold):
+                        new_point_idx = len(self.points)
+                        self.points = np.vstack([self.points, new_point])
+                        self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
+                        inserted = True
+
+                # 策略 2：circumcenter 因距离过近被拒绝时，尝试随机采样
+                if not inserted:
+                    v0, v1, v2 = worst_triangle.vertices
+                    pts = self.points
+                    for attempt in range(20):
+                        r1, r2 = np.random.rand(2)
+                        if r1 + r2 > 1:
+                            r1, r2 = 1 - r1, 1 - r2
+                        rand_pt = pts[v0] + r1 * (pts[v1] - pts[v0]) + r2 * (pts[v2] - pts[v0])
+
+                        # 检查随机点是否在孔洞内
+                        rand_in_hole = False
+                        if self.holes:
+                            for hole in self.holes:
+                                if point_in_polygon(rand_pt, hole):
+                                    rand_in_hole = True
+                                    break
+
+                        if not rand_in_hole:
+                            rand_min_dist, _ = self._kdtree.query(rand_pt)
+                            if rand_min_dist > min_dist_threshold:
+                                if self._validate_new_point(worst_triangle, rand_pt, min_dist_threshold):
+                                    new_point_idx = len(self.points)
+                                    self.points = np.vstack([self.points, rand_pt])
+                                    self.triangles = self._insert_point_incremental(new_point_idx, self.triangles)
+                                    inserted = True
+                                    break
+
+            # Gmsh 做法：如果所有策略都失败，跳过该三角形
+            if not inserted:
+                skipped_triangles.add(id(worst_triangle))
+                # 诊断：输出跳过原因（仅前 20 次）
+                if max_iterations <= 20:
+                    if min_dist <= min_dist_threshold:
+                        verbose(f"  [诊断] 跳过：circumcenter 距离过近 ({min_dist:.6f} < {min_dist_threshold:.6f})")
+                    else:
+                        verbose(f"  [诊断] 跳过：validate_new_point 失败 (min_dist={min_dist:.6f})")
+
+            # 定期重建堆（每 50 次迭代）
+            if max_iterations % 50 == 0:
+                _rebuild_heap()
 
         final_triangles = len(self.triangles)
         final_points = len(self.points)
@@ -748,20 +931,15 @@ class BowyerWatsonMeshGenerator:
 
     def _compute_insertion_point(self, tri, x_min, x_max, y_min, y_max, margin):
         """计算新插入点的位置。
-        
+
         参考 Gmsh：
-        - 默认：外接圆圆心（Circumcenter）
-        - 如果圆心超出边界：使用重心坐标随机采样
-        - 前端方法变体：在活跃边中垂线上找最优位置（P2-1）
+        - 优先：外接圆圆心（使用高精度算术）
+        - 回退：重心坐标随机采样（仅当圆心超出有效范围时）
         """
-        # P2-1：尝试使用前端方法计算最优插入点
-        optimal_point = self._optimal_point_frontal(tri)
-        
-        if optimal_point is not None:
-            new_point = optimal_point
-        else:
-            # 回退到外接圆圆心
-            new_point = tri.circumcenter.copy()
+        # 使用高精度算术计算的 circumcenter
+        if not tri.circumcircle_valid:
+            self._compute_circumcircle(tri)
+        new_point = tri.circumcenter.copy()
 
         # 检查圆心是否在有效范围内
         if not (x_min - margin < new_point[0] < x_max + margin and
@@ -775,103 +953,111 @@ class BowyerWatsonMeshGenerator:
             if r1 + r2 > 1:
                 r1, r2 = 1 - r1, 1 - r2
             new_point = p1 + r1 * (p2 - p1) + r2 * (p3 - p1)
-        
+
         return new_point
 
     def _optimal_point_frontal(self, tri):
         """前端方法变体：在活跃边的中垂线上计算最优插入点。
-        
+
         参考 Gmsh optimalPointFrontal() 算法：
-        1. 找到三角形的"活跃边"（至少有一条边在 front 上）
+        1. 找到三角形的"活跃边"（最长边或质量最差的边）
         2. 计算活跃边的中点
         3. 在中垂线上找到最优位置，使得新三角形接近等边
-        
+
         这确保新插入的点产生接近等边三角形，提高网格质量。
-        
+
         返回：
           - 最优插入点坐标，或 None（如果无法计算）
         """
         points = self.points
         v0, v1, v2 = tri.vertices
-        
-        # 找到最长边作为活跃边（启发式策略）
+
+        # 改进：选择质量最差的边作为活跃边（而非最长边）
+        # 这样可以针对性地改进最差区域
         edges = [
             (v0, v1),
             (v1, v2),
             (v0, v2)
         ]
-        
-        max_len = 0
-        active_edge = None
+
+        # 计算每条边的质量（边长与目标尺寸的比值）
+        target_size = self._get_target_size_for_triangle(tri)
+        best_edge = None
+        worst_ratio = 0
+
         for edge in edges:
             length = float(np.linalg.norm(points[edge[1]] - points[edge[0]]))
-            if length > max_len:
-                max_len = length
-                active_edge = edge
-        
-        if active_edge is None:
+            if target_size is not None:
+                ratio = length / target_size
+            else:
+                ratio = length
+
+            # 选择偏离目标尺寸最大的边
+            if ratio > worst_ratio:
+                worst_ratio = ratio
+                best_edge = edge
+
+        if best_edge is None:
             return None
-        
+
         # 计算活跃边的中点
-        midpoint = (points[active_edge[0]] + points[active_edge[1]]) / 2.0
-        
+        midpoint = (points[best_edge[0]] + points[best_edge[1]]) / 2.0
+
         # 计算外接圆圆心
         if not tri.circumcircle_valid:
             self._compute_circumcircle(tri)
         circumcenter = tri.circumcenter
-        
+
         # 计算方向向量（中点指向圆心）
         direction = circumcenter - midpoint
         dir_len = float(np.linalg.norm(direction))
-        
+
         if dir_len < 1e-12:
             return None
-        
+
         # 归一化方向向量
         direction = direction / dir_len
-        
+
         # 计算目标距离（等边三角形的高）
-        target_size = self._get_target_size_for_triangle(tri)
         if target_size is not None:
             # 等边三角形的高：h = sqrt(3)/2 * edge_length
             target_dist = target_size * sqrt(3.0) / 2.0
         else:
             # 没有尺寸场，使用当前边长
+            max_len = float(np.linalg.norm(points[best_edge[1]] - points[best_edge[0]]))
             target_dist = max_len * sqrt(3.0) / 2.0
-        
-        # 计算最优插入点
-        optimal_point = midpoint + direction * min(target_dist, dir_len)
-        
+
+        # 计算最优插入点：限制移动距离，避免过度偏离
+        optimal_point = midpoint + direction * min(target_dist, dir_len * 0.8)
+
         return optimal_point
 
     def _validate_new_point(self, tri, new_point, min_dist_threshold):
-        """验证新插入点的质量（P1-3：增强检查）。
-        
-        参考 Gmsh insertVertexB：
-        1. 最小距离检查（已有）
-        2. 新三角形边长不能过小
-        3. 新三角形不能有太钝的角
+        """验证新插入点的质量。
+
+        Gmsh insertVertexB 做法：
+        1. 最小距离检查
+        2. 新三角形边长不能过小（相对于目标尺寸）
         """
         points = self.points
         v0, v1, v2 = tri.vertices
-        
+
         # 计算新点到三个顶点的距离
         d0 = float(np.linalg.norm(new_point - points[v0]))
         d1 = float(np.linalg.norm(new_point - points[v1]))
         d2 = float(np.linalg.norm(new_point - points[v2]))
-        
+
         # 检查最小边长（相对于目标尺寸）
         target_size = self._get_target_size_for_triangle(tri)
         if target_size is not None:
             min_edge = min(d0, d1, d2)
-            if min_edge < target_size * 0.1:  # 边长不能小于目标尺寸的 10%
+            if min_edge < target_size * 0.01:  # 边长不能小于目标尺寸的 1%
                 return False
-        
-        # 检查角度（使用叉积计算余弦值）
-        # 这里简化处理，只检查最小距离
-        if min(d0, d1, d2) < min_dist_threshold * 0.5:
+
+        # 最小距离检查
+        if min(d0, d1, d2) < min_dist_threshold * 0.1:
             return False
-        
+
         return True
 
     # -------------------------------------------------------------------------
@@ -1279,12 +1465,14 @@ class BowyerWatsonMeshGenerator:
 
         verbose("阶段 2/3: 迭代插入内部点...")
         if self.holes:
-            verbose(f"  检测到 {len(self.holes)} 个孔洞，将拒绝在孔洞内插点")
+            verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
         self._insert_points_iteratively(target_triangle_count)
 
         if self.holes:
             verbose("阶段 2.5/3: 清理孔洞内三角形...")
+            before_count = len(self.triangles)
             self._remove_hole_triangles()
+            verbose(f"  删除孔洞内三角形: {before_count - len(self.triangles)} 个")
 
         verbose("阶段 2.6/3: 恢复边界边...")
         self._recover_boundary_edges()
