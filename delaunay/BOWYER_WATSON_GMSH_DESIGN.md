@@ -802,13 +802,13 @@ circum_radius = circumradius / lc
 
 ### 11.1 数据结构优化
 
-| 优化技术 | 实现方式 | 效果 |
-|---------|---------|------|
-| **懒删除** | `deleted` 标记，延迟清理 | 避免频繁集合操作 |
-| **索引访问** | `bidimMeshData::getIndex()` | 提高缓存命中率 |
-| **Hilbert 排序** | `SortHilbert(packed)` | 改善空间局部性 |
-| **增量定位** | `search4Triangle()` 从上次位置开始 | 避免全局搜索 |
-| **优先级队列** | `std::set` 按半径排序 | O(log n) 访问最差三角形 |
+| 优化技术         | 实现方式                           | 效果                    |
+| ---------------- | ---------------------------------- | ----------------------- |
+| **懒删除**       | `deleted` 标记，延迟清理           | 避免频繁集合操作        |
+| **索引访问**     | `bidimMeshData::getIndex()`        | 提高缓存命中率          |
+| **Hilbert 排序** | `SortHilbert(packed)`              | 改善空间局部性          |
+| **增量定位**     | `search4Triangle()` 从上次位置开始 | 避免全局搜索            |
+| **优先级队列**   | `std::set` 按半径排序              | O(log n) 访问最差三角形 |
 
 ### 11.2 计算优化
 
@@ -837,25 +837,25 @@ circum_radius = circumradius / lc
 
 ## 12. 关键参数
 
-| 参数 | 含义 | 默认值 | 影响 |
-|-----|------|--------|------|
-| **LIMIT_** | 目标外接圆半径阈值 | `0.5 * √2` | 网格密度 |
-| **MAXPNT** | 最大顶点数 | 用户指定 | 计算复杂度 |
-| **radiusNorm** | 半径计算模式 | `2` (欧氏) | 质量度量方式 |
-| **EPS** | 星形验证容差 | `1e-12` | 鲁棒性 |
-| **max_layers** | 边界层层数 | `4` / `10000` | 边界层厚度 |
+| 参数           | 含义               | 默认值        | 影响         |
+| -------------- | ------------------ | ------------- | ------------ |
+| **LIMIT_**     | 目标外接圆半径阈值 | `0.5 * √2`    | 网格密度     |
+| **MAXPNT**     | 最大顶点数         | 用户指定      | 计算复杂度   |
+| **radiusNorm** | 半径计算模式       | `2` (欧氏)    | 质量度量方式 |
+| **EPS**        | 星形验证容差       | `1e-12`       | 鲁棒性       |
+| **max_layers** | 边界层层数         | `4` / `10000` | 边界层厚度   |
 
 ---
 
 ## 13. 算法复杂度分析
 
-| 阶段 | 时间复杂度 | 空间复杂度 | 说明 |
-|-----|-----------|-----------|------|
-| **初始构建** | O(n log n) | O(n) | n 为初始顶点数 |
-| **点插入** | O(n · log n) 均摊 | O(n) | 每次插入 O(log n) |
-| **空腔搜索** | O(k) | O(k) | k 为空腔大小 |
-| **连接更新** | O(k log k) | O(k) | k 条边界边排序 |
-| **总体** | O(N · log N) | O(N) | N 为最终顶点数 |
+| 阶段         | 时间复杂度        | 空间复杂度 | 说明              |
+| ------------ | ----------------- | ---------- | ----------------- |
+| **初始构建** | O(n log n)        | O(n)       | n 为初始顶点数    |
+| **点插入**   | O(n · log n) 均摊 | O(n)       | 每次插入 O(log n) |
+| **空腔搜索** | O(k)              | O(k)       | k 为空腔大小      |
+| **连接更新** | O(k log k)        | O(k)       | k 条边界边排序    |
+| **总体**     | O(N · log N)      | O(N)       | N 为最终顶点数    |
 
 **实际性能：**
 - 5000 次迭代输出一次日志
@@ -924,10 +924,212 @@ bowyerWatson()
 ├── splitElementsInBoundaryLayerIfNeeded()
 └── transferDataStructure()
     └── computeEquivalences()
+
+---
+
+## 7. 辅助算法详解
+
+### 7.1 终止条件分析
+
+```cpp
+// 条件1: 网格尺寸达标
+worst->getRadius() < 0.5 * std::sqrt(2.0)
+
+// 条件2: 顶点数量超限
+(int)DATA.vSizes.size() > MAXPNT
+```
+
+**阈值含义**：
+- `0.5 * sqrt(2) ≈ 0.707`
+- 当三角形限定圆半径小于此值时，表示局部网格已足够细
+
+### 7.2 相关变体算法
+
+#### `bowyerWatsonFrontal()` - 前沿算法
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:1289-1475`
+
+使用 Rebay (JCP 1993) 方法，在 Voronoi 边上插入点。
+
+#### `optimalPointFrontal()` - 最优点计算
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:1130-1192`
+
+计算使三角形接近正三角形的最优插入点。
+
+### 7.3 关键算法特点总结
+
+| 特性          | 实现方式                                  |
+| ------------- | ----------------------------------------- |
+| 数据结构      | `std::set<MTri3*, compareTri3Ptr>` 最小堆 |
+| Delaunay 准则 | 各向异性 `inCircumCircleAniso`            |
+| 腔体查找      | 递归 `recurFindCavityAniso`               |
+| 拓扑维护      | 邻接指针 `MTri3::neigh[3]`                |
+| 收敛判断      | 限定圆半径阈值                            |
+| 失败恢复      | 标记重置 + 半径强制置负                   |
+
+---
+
+## 8. 搜索与映射算法
+
+### 8.1 搜索算法 `search4Triangle()`
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:847-920`
+
+用于在 Delaunay 三角网中定位包含给定点的三角形：
+
+```cpp
+static MTri3 *search4Triangle(MTri3 *t, double pt[2], bidimMeshData &data,
+                              std::set<MTri3 *, compareTri3Ptr> &AllTris,
+                              double uv[2], bool force = false)
+{
+    // 首先检查当前三角形
+    bool inside = invMapUV(t->tri(), pt, data, uv, 1.e-8);
+    if(inside) return t;
+
+    // 使用直线段相交搜索穿过三角形的边
+    SPoint3 q1(pt[0], pt[1], 0);
+    int ITER = 0;
+    while(1) {
+        // 计算当前三角形重心
+        int index0 = data.getIndex(t->tri()->getVertex(0));
+        int index1 = data.getIndex(t->tri()->getVertex(1));
+        int index2 = data.getIndex(t->tri()->getVertex(2));
+        SPoint3 q2((data.Us[index0] + data.Us[index1] + data.Us[index2]) / 3.0,
+                   (data.Vs[index0] + data.Vs[index1] + data.Vs[index2]) / 3.0, 0);
+        int i;
+        for(i = 0; i < 3; i++) {
+            int i1 = data.getIndex(t->tri()->getVertex(i == 0 ? 2 : i - 1));
+            int i2 = data.getIndex(t->tri()->getVertex(i));
+            SPoint3 p1(data.Us[i1], data.Vs[i1], 0);
+            SPoint3 p2(data.Us[i2], data.Vs[i2], 0);
+            if(intersection_segments_2(p1, p2, q1, q2)) break;
+        }
+        if(i >= 3) break;
+        t = t->getNeigh(i);
+        if(!t) break;
+        inside = invMapUV(t->tri(), pt, data, uv, 1.e-8);
+        if(inside) return t;
+        if(ITER++ > (int)AllTris.size()) break;
+    }
+
+    // force 模式下穷举搜索
+    if(force) {
+        for(auto itx = AllTris.begin(); itx != AllTris.end(); ++itx) {
+            if(!(*itx)->isDeleted()) {
+                inside = invMapUV((*itx)->tri(), pt, data, uv, 1.e-8);
+                if(inside) return *itx;
+            }
+        }
+    }
+    return nullptr;
+}
+```
+
+### 8.2 逆向参数映射 `invMapUV()`
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:622-641`
+
+将物理空间点映射到参数空间的三角形重心坐标：
+
+```cpp
+static bool invMapUV(MTriangle *t, double *p, bidimMeshData &data,
+                     double *uv, double tol)
+{
+    double mat[2][2], b[2];
+    int index0 = data.getIndex(t->getVertex(0));
+    int index1 = data.getIndex(t->getVertex(1));
+    int index2 = data.getIndex(t->getVertex(2));
+
+    double u0 = data.Us[index0], v0 = data.Vs[index0];
+    double u1 = data.Us[index1], v1 = data.Vs[index1];
+    double u2 = data.Us[index2], v2 = data.Vs[index2];
+
+    mat[0][0] = u1 - u0;
+    mat[0][1] = u2 - u0;
+    mat[1][0] = v1 - v0;
+    mat[1][1] = v2 - v0;
+
+    b[0] = p[0] - u0;
+    b[1] = p[1] - v0;
+    sys2x2(mat, b, uv);
+
+    return uv[0] >= -tol && uv[1] >= -tol &&
+           uv[0] <= 1. + tol && uv[1] <= 1. + tol &&
+           1. - uv[0] - uv[1] > -tol;
+}
+```
+
+### 8.3 体积计算 `getSurfUV()`
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:643-680`
+
+```cpp
+inline double getSurfUV(MTriangle *t, bidimMeshData &data)
+{
+    int index0 = data.getIndex(t->getVertex(0));
+    int index1 = data.getIndex(t->getVertex(1));
+    int index2 = data.getIndex(t->getVertex(2));
+
+    double u1 = data.Us[index0], v1 = data.Vs[index0];
+    double u2 = data.Us[index1], v2 = data.Vs[index1];
+    double u3 = data.Us[index2], v3 = data.Vs[index2];
+
+    return 0.5 * ((u2-u1)*(v3-v1) - (u3-u1)*(v2-v1));
+}
 ```
 
 ---
 
-**文档版本：** v1.0  
-**分析日期：** 2026年4月10日  
+## 9. Delaunay 准则检查
+
+### `inCircumCircleAniso()`
+
+**文件位置**: `meshGFaceDelaunayInsertion.cpp:280-310`
+
+```cpp
+int inCircumCircleAniso(GFace *gf, MTriangle *base, const double *uv,
+                        const double *metricb, bidimMeshData &data)
+{
+    SPoint3 c;
+    double x[2], Radius2;
+    double metric[3];
+    if(!metricb) {
+        int index0 = data.getIndex(base->getVertex(0));
+        int index1 = data.getIndex(base->getVertex(1));
+        int index2 = data.getIndex(base->getVertex(2));
+        double pa[2] = {(data.Us[index0]+data.Us[index1]+data.Us[index2])/3.,
+                        (data.Vs[index0]+data.Vs[index1]+data.Vs[index2])/3.};
+        buildMetric(gf, pa, metric);
+    }
+    else {
+        metric[0] = metricb[0];
+        metric[1] = metricb[1];
+        metric[2] = metricb[2];
+    }
+
+    circumCenterMetric(base, metric, data, x, Radius2);
+
+    const double a = metric[0], b = metric[1], d = metric[2];
+    const double d0 = (x[0] - uv[0]);
+    const double d1 = (x[1] - uv[1]);
+    const double d3 = d0*d0*a + d1*d1*d + 2.0*d0*d1*b;
+
+    return d3 < Radius2;
+}
+```
+
+**容差策略**:
+```cpp
+static double computeTolerance(const double radius) {
+    if (radius <= 1e3) return 1e-12;
+    if (radius <= 1e5) return 1e-11;
+    return 1e-9;
+}
+```
+
+---
+
+**文档版本：** v1.0
+**分析日期：** 2026年4月10日
 **源码版本：** Gmsh (C) 1997-2024 C. Geuzaine, J.-F. Remacle
