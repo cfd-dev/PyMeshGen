@@ -172,6 +172,9 @@ def create_bowyer_watson_mesh(
     if final_holes:
         verbose(f"孔洞数: {len(final_holes)}")
 
+    # 传递外边界信息给生成器（用于删除外边界外的三角形）
+    outer_boundary = outer_loops[0] if outer_loops else None
+
     generator = GeneratorClass(
         boundary_points=boundary_points,
         boundary_edges=boundary_edges,
@@ -180,6 +183,7 @@ def create_bowyer_watson_mesh(
         smoothing_iterations=smoothing_iterations,
         seed=seed,
         holes=final_holes if final_holes else None,
+        outer_boundary=outer_boundary,  # 新增参数
     )
 
     points, simplices, boundary_mask = generator.generate_mesh(target_triangle_count=target_triangle_count)

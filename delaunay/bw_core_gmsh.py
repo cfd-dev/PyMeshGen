@@ -77,9 +77,10 @@ class GmshBowyerWatsonMeshGenerator:
         smoothing_iterations: int = 0,
         seed: Optional[int] = None,
         holes: Optional[List[np.ndarray]] = None,
+        outer_boundary: Optional[np.ndarray] = None,
     ):
         """初始化生成器。
-        
+
         参数:
             boundary_points: 边界点坐标数组，形状 (N, 2)
             boundary_edges: 边界边列表 [(idx1, idx2), ...]
@@ -88,20 +89,22 @@ class GmshBowyerWatsonMeshGenerator:
             smoothing_iterations: Laplacian 平滑迭代次数（默认0）
             seed: 随机种子
             holes: 孔洞边界列表，每个孔洞是点数组 (M, 2)
+            outer_boundary: 外边界点数组，形状 (K, 2)（可选）
         """
         self.original_points = boundary_points.copy()
-        
+
         # 保护的边界边集合
         self.protected_edges: Set[frozenset] = set()
         for edge in (boundary_edges or []):
             self.protected_edges.add(frozenset(edge))
         self.boundary_edges = boundary_edges or []
-        
+
         self.sizing_system = sizing_system
         self.max_edge_length = max_edge_length
         self.smoothing_iterations = smoothing_iterations
         self.seed = seed
         self.holes = holes or []
+        self.outer_boundary = outer_boundary  # 新增：外边界
         
         if seed is not None:
             np.random.seed(seed)
@@ -340,6 +343,26 @@ class GmshBowyerWatsonMeshGenerator:
                     containing_tri = tri
                     break
 
+            # 如果找不到包含点的三角形，尝试查找外接圆包含该点的三角形
+            if containing_tri is None:
+                for tri in triangles:
+                    if not tri.is_deleted() and self._point_in_circumcircle(point, tri):
+                        containing_tri = tri
+                        break
+
+            # 如果仍然找不到，查找距离点最近的三角形
+            if containing_tri is None:
+                min_dist = float('inf')
+                for tri in triangles:
+                    if tri.is_deleted():
+                        continue
+                    # 计算点到三角形质心的距离
+                    centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
+                    dist = float(np.linalg.norm(point - centroid))
+                    if dist < min_dist:
+                        min_dist = dist
+                        containing_tri = tri
+
             if containing_tri is None:
                 if i < 5 or i >= real_point_count - 5:
                     verbose(f"  警告：点 {i} ({point}) 未找到包含三角形")
@@ -351,7 +374,7 @@ class GmshBowyerWatsonMeshGenerator:
                 point,
                 i,
                 self.points,
-                set(),  # 初始时没有保护边
+                self.protected_edges,
                 self._point_in_circumcircle
             )
 
@@ -379,8 +402,40 @@ class GmshBowyerWatsonMeshGenerator:
         # 构建邻接关系
         build_adjacency_from_triangles(self.triangles)
 
+        # 初始三角剖分后，立即恢复所有受保护边界边
+        self._recover_all_protected_edges_initial()
+
         return self.triangles
-    
+
+    def _recover_all_protected_edges_initial(self):
+        """在初始三角剖分后立即恢复所有受保护边界边。
+
+        由于初始三角剖分期间可能某些受保护边界边没有被正确创建，
+        此方法强制确保所有受保护边界边都存在于网格中。
+        """
+        missing_edges = []
+        for edge in self.protected_edges:
+            v1, v2 = list(edge)
+            if not self._is_boundary_edge_in_mesh(v1, v2):
+                missing_edges.append((v1, v2))
+
+        if not missing_edges:
+            return
+
+        verbose(f"  初始三角剖分后检测到 {len(missing_edges)} 条边界边缺失，立即恢复...")
+
+        for v1, v2 in missing_edges:
+            self._force_recover_boundary_edge_by_reconnection(v1, v2)
+
+        still_missing = []
+        for edge in self.protected_edges:
+            v1, v2 = list(edge)
+            if not self._is_boundary_edge_in_mesh(v1, v2):
+                still_missing.append((v1, v2))
+
+        if still_missing:
+            verbose(f"  仍有 {len(still_missing)} 条边界边无法恢复")
+
     # -------------------------------------------------------------------------
     # Gmsh 风格的迭代插点主循环
     # -------------------------------------------------------------------------
@@ -451,7 +506,7 @@ class GmshBowyerWatsonMeshGenerator:
         boundary_quality_threshold = 0.1  # 边界区域低质量要求
         internal_size_tolerance = 1.1  # 内部区域严格阈值
         internal_quality_threshold = 0.15  # 内部区域高质量要求
-        max_iter_limit = 7000  # 介于A(5000)和B(10000)之间
+        max_iter_limit = 15000  # ANW 需要更多迭代
 
         # 预计算边界点集（用于快速距离判断）
         boundary_point_indices = set(range(boundary_count))
@@ -470,15 +525,15 @@ class GmshBowyerWatsonMeshGenerator:
                         f"队列: {queue_size}")
 
             # 早停条件
-            if len(self.points) > 50000:
-                verbose("达到最大节点数限制 (50000)，停止插点")
+            if len(self.points) > 100000:
+                verbose("达到最大节点数限制 (100000)，停止插点")
                 break
 
             # 根据版本设置最大迭代次数
             if refinement_mode == 'A':
-                max_iter_limit = 5000
+                max_iter_limit = 8000
             elif refinement_mode == 'B':
-                max_iter_limit = 10000
+                max_iter_limit = 15000
             # 版本C的max_iter_limit已在上面定义
 
             if max_iterations > max_iter_limit:
@@ -643,18 +698,26 @@ class GmshBowyerWatsonMeshGenerator:
                 p3 = self.points[worst_tri.vertices[2]]
                 new_point = (p1 + p2 + p3) / 3.0
             
-            # 检查插入点是否在孔洞内
+            # 检查插入点是否在孔洞内（增强版）
             in_hole = False
+            hole_debug_info = ""
             if self.holes:
-                for hole in self.holes:
+                for hole_idx, hole in enumerate(self.holes):
                     if point_in_polygon(new_point, hole):
                         in_hole = True
+                        hole_debug_info = f"孔洞 {hole_idx}"
                         break
-            
+
             if in_hole:
+                # 记录失败统计
                 failed_tri_ids.add(id(worst_tri))
                 worst_tri.set_deleted(True)
                 consecutive_failures += 1
+                
+                # 调试信息：前 10 次孔洞拒绝插入
+                if consecutive_failures <= 10:
+                    verbose(f"    [孔洞拒绝] 点 {new_point} 在 {hole_debug_info} 内，拒绝插入")
+                
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
                     break
@@ -721,15 +784,19 @@ class GmshBowyerWatsonMeshGenerator:
     def _remove_hole_triangles(self) -> int:
         """删除孔洞内的三角形。
 
-        关键修复：
-        - 不删除任何包含边界节点的三角形
-        - 不删除任何包含 protected_edges 的三角形（增强保护）
-        - 只删除所有顶点都在孔洞内部的三角形
+        使用种子填充法（Flood Fill / BFS）更精确地区分孔洞内外：
+        1. 从明确在有效区域的种子三角形开始
+        2. BFS 遍历，不跨越孔洞边界（保护边）
+        3. 未遍历到的三角形 = 孔洞内，删除
+
+        如果种子填充法失败，回退到质心测试法。
         """
         if not self.holes:
             return 0
 
-        from utils.geom_toolkit import is_polygon_clockwise
+        from utils.geom_toolkit import is_polygon_clockwise, point_in_polygon
+
+        # 修正孔洞方向
         fixed_holes = []
         for hole in self.holes:
             if is_polygon_clockwise(hole):
@@ -738,67 +805,240 @@ class GmshBowyerWatsonMeshGenerator:
                 fixed_holes.append(hole.copy())
         holes_to_use = fixed_holes
 
-        triangles_to_remove = []
+        # 尝试使用种子填充法
+        removed_count = self._remove_holes_via_seed_fill(holes_to_use)
+
+        # 如果种子填充法没有删除任何三角形（可能失败），回退到质心测试
+        if removed_count == 0:
+            verbose("  种子填充法未删除任何三角形，回退到质心测试法...")
+            removed_count = self._remove_holes_via_centroid_test(holes_to_use)
+
+        return removed_count
+
+    def _remove_holes_via_seed_fill(self, holes_to_use) -> int:
+        """使用种子填充法删除孔洞三角形（更精确）。
+
+        算法：
+        1. 找到种子三角形（质心在所有孔洞外）
+        2. BFS 遍历，不跨越孔洞边界（保护边）
+        3. 未遍历到的三角形 = 孔洞内，删除
+        """
+        from collections import deque
+        from utils.geom_toolkit import point_in_polygon
+
+        # 1. 找到种子三角形（质心在所有孔洞外）
+        seed_tri = None
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
+            in_any_hole = False
+            for hole in holes_to_use:
+                if point_in_polygon(centroid, hole):
+                    in_any_hole = True
+                    break
+            if not in_any_hole:
+                seed_tri = tri
+                break
+
+        if seed_tri is None:
+            verbose("  警告：找不到种子三角形，种子填充法失败")
+            return 0
+
+        # 2. BFS 遍历
+        visited = set()
+        valid_tris = set()
+        queue = deque([seed_tri])
+
+        while queue:
+            tri = queue.popleft()
+            tri_id = id(tri)
+
+            if tri_id in visited:
+                continue
+            visited.add(tri_id)
+            valid_tris.add(tri_id)
+
+            # 遍历邻接三角形
+            for neighbor in tri.neighbors:
+                if neighbor is None or neighbor.is_deleted():
+                    continue
+
+                neighbor_id = id(neighbor)
+                if neighbor_id in visited:
+                    continue
+
+                # 检查共享边是否是孔洞边界（保护边）
+                shared_edge = tri.get_shared_edge(neighbor)
+                if shared_edge is not None:
+                    edge_key = frozenset(shared_edge)
+                    if edge_key in self.protected_edges:
+                        continue  # 不跨越孔洞边界
+
+                queue.append(neighbor)
+
+        # 3. 删除未遍历到的三角形（孔洞内）
+        triangles_to_remove = set()
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            if id(tri) not in valid_tris:
+                triangles_to_remove.add(id(tri))
+                tri.set_deleted(True)
+
+        removed_count = len(triangles_to_remove)
+        if removed_count > 0:
+            verbose(f"  种子填充法删除 {removed_count} 个孔洞内三角形")
+
+        return removed_count
+
+    def _remove_holes_via_centroid_test(self, holes_to_use) -> int:
+        """回退方法：使用质心测试删除孔洞三角形。"""
+        from utils.geom_toolkit import point_in_polygon
+
+        # 保护包含孔洞边界边的三角形
+        boundary_edge_set = set()
+        for edge in self.protected_edges:
+            v1, v2 = list(edge)
+            p1, p2 = self.points[v1], self.points[v2]
+
+            # 检查边的中点是否在孔洞内
+            centroid = (p1 + p2) / 2.0
+            for hole in holes_to_use:
+                if point_in_polygon(centroid, hole):
+                    boundary_edge_set.add(frozenset({v1, v2}))
+                    break
+
+        triangles_to_remove = set()
         for i, tri in enumerate(self.triangles):
             if tri.is_deleted():
                 continue
 
-            # 关键修复1：如果三角形有任何边界节点，跳过
-            # 这些三角形在孔洞边界上，需要保留
-            has_boundary_vertex = any(v < self.boundary_count for v in tri.vertices)
-            if has_boundary_vertex:
-                continue
-
-            # 关键修复2：如果三角形包含 protected_edges 的任何边，跳过
-            # 这是更严格的保护机制，确保边界边不被误删
-            has_protected_edge = False
+            # 保护包含边界边的三角形
+            has_any_boundary_edge = False
             for j in range(3):
                 v1 = tri.vertices[j]
                 v2 = tri.vertices[(j + 1) % 3]
-                if self._is_protected_edge(v1, v2):
-                    has_protected_edge = True
+                edge_key = frozenset({v1, v2})
+                if edge_key in boundary_edge_set:
+                    has_any_boundary_edge = True
                     break
-            if has_protected_edge:
+            if has_any_boundary_edge:
                 continue
 
-            # 所有顶点都是内部节点，且没有保护边，检查是否完全在孔洞内
-            # 需要质心和所有顶点都在孔洞内才删除
+            # 质心测试
             centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
-            centroid_in_hole = False
             for h in holes_to_use:
                 if point_in_polygon(centroid, h):
-                    centroid_in_hole = True
+                    triangles_to_remove.add(i)
                     break
 
-            if not centroid_in_hole:
-                continue
-
-            # 质心在孔洞内，检查顶点（至少一个顶点在孔洞内才删除）
-            any_vert_in_hole = False
-            for vert_idx in tri.vertices:
-                vert = self.points[vert_idx]
-                for h in holes_to_use:
-                    if point_in_polygon(vert, h):
-                        any_vert_in_hole = True
+            # 顶点测试（保护边界点）
+            if i not in triangles_to_remove:
+                any_vert_in_hole = False
+                for vert_idx in tri.vertices:
+                    if vert_idx < self.boundary_count:
+                        continue
+                    vert = self.points[vert_idx]
+                    for h in holes_to_use:
+                        if point_in_polygon(vert, h):
+                            any_vert_in_hole = True
+                            break
+                    if any_vert_in_hole:
                         break
                 if any_vert_in_hole:
+                    triangles_to_remove.add(i)
+
+        for i in triangles_to_remove:
+            self.triangles[i].set_deleted(True)
+
+        removed_count = len(triangles_to_remove)
+        if removed_count > 0:
+            verbose(f"  质心测试法删除 {removed_count} 个孔洞内三角形")
+
+        return removed_count
+
+    def _remove_outer_boundary_triangles(self) -> int:
+        """删除外边界外的三角形。
+
+        标准 CDT 要求：
+        - 删除孔洞内的三角形
+        - 删除外边界外的三角形（凸包区域）
+
+        使用质心测试：如果三角形质心在外边界外，则删除。
+        保护包含外边界边的三角形。
+        """
+        if self.outer_boundary is None or len(self.outer_boundary) < 3:
+            return 0
+
+        from utils.geom_toolkit import point_in_polygon
+
+        # 保护包含外边界边的三角形
+        outer_boundary_edge_set = set()
+        n = len(self.outer_boundary)
+
+        # 找到外边界边的顶点索引
+        # 注意：self.points 中的边界点索引是 0 到 self.boundary_count-1
+        # 需要找到哪些点在 outer_boundary 中
+        outer_boundary_point_indices = set()
+        for i in range(self.boundary_count):
+            pt = self.points[i]
+            for j, ob_pt in enumerate(self.outer_boundary):
+                if np.linalg.norm(pt - ob_pt) < 1e-10:
+                    outer_boundary_point_indices.add(i)
                     break
 
-            if any_vert_in_hole:
-                triangles_to_remove.append(i)
+        # 找到外边界边
+        for i in range(n):
+            p1 = self.outer_boundary[i]
+            p2 = self.outer_boundary[(i + 1) % n]
 
-        for i in reversed(triangles_to_remove):
+            # 找到对应的顶点索引
+            idx1, idx2 = None, None
+            for idx in outer_boundary_point_indices:
+                if np.linalg.norm(self.points[idx] - p1) < 1e-10:
+                    idx1 = idx
+                if np.linalg.norm(self.points[idx] - p2) < 1e-10:
+                    idx2 = idx
+                if idx1 is not None and idx2 is not None:
+                    break
+
+            if idx1 is not None and idx2 is not None:
+                outer_boundary_edge_set.add(frozenset({idx1, idx2}))
+
+        triangles_to_remove = set()
+        for i, tri in enumerate(self.triangles):
+            if tri.is_deleted():
+                continue
+
+            # 保护包含外边界边的三角形
+            has_outer_boundary_edge = False
+            for j in range(3):
+                v1 = tri.vertices[j]
+                v2 = tri.vertices[(j + 1) % 3]
+                edge_key = frozenset({v1, v2})
+                if edge_key in outer_boundary_edge_set:
+                    has_outer_boundary_edge = True
+                    break
+            if has_outer_boundary_edge:
+                continue
+
+            # 质心测试：如果质心在外边界外，删除
+            centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
+            if not point_in_polygon(centroid, self.outer_boundary):
+                triangles_to_remove.add(i)
+
+        for i in triangles_to_remove:
             self.triangles[i].set_deleted(True)
 
         removed_tri_count = len(triangles_to_remove)
         if removed_tri_count > 0:
-            verbose(f"  删除孔洞内三角形: {removed_tri_count} 个")
+            verbose(f"  删除外边界外三角形: {removed_tri_count} 个")
 
-        # 清理已删除的三角形
         self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
 
         return removed_tri_count
-    
+
     # -------------------------------------------------------------------------
     # Constrained Delaunay Triangulation
     # -------------------------------------------------------------------------
@@ -867,124 +1107,491 @@ class GmshBowyerWatsonMeshGenerator:
     
     def _constrained_delaunay_triangulation(self):
         """实现 Constrained Delaunay Triangulation (CDT)。
-        
+
         在主循环插点后调用此方法，确保所有边界边都出现在
         三角剖分中。通过以下步骤实现：
-        
+
         1. 检查每条边界边是否已存在于三角剖分中
         2. 对于缺失的边，通过边翻转让其出现
         3. 不插入 Steiner 点（避免分割边界边）
-        
-        这个方法应该在主循环插点之后调用。
+        4. 多轮迭代直到所有边恢复或无法继续
+        5. **新增**: 在开始恢复前，先修复被隔离的边界点
+        6. **新增**: 对于无法恢复的边，尝试 splitting 策略
         """
         verbose("开始 Constrained Delaunay 边界边恢复...")
+
+        # 新增：在 CDT 前，先修复被隔离的边界点
+        verbose("检查并修复被隔离的边界点...")
+        fixed_count = self._fix_isolated_boundary_points()
+        verbose(f"修复了 {fixed_count} 个被隔离的边界点")
+
+        # 修复：不再使用硬编码的 wall 边界索引
+        # 所有 protected_edges 都是需要恢复的约束边
+        max_passes = 10
+        total_recovered = 0
+        failed_edges_list = []
+
+        for pass_num in range(max_passes):
+            missing_edges = []
+            for edge in self.protected_edges:
+                v1, v2 = list(edge)
+                if not self._is_boundary_edge_in_mesh(v1, v2):
+                    missing_edges.append((v1, v2))
+
+            if not missing_edges:
+                verbose("所有边界边已存在，无需恢复")
+                return
+
+            if pass_num == 0:
+                verbose(f"  检测到 {len(missing_edges)} 条缺失的边界边")
+
+            recovered_count = 0
+            failed_count = 0
+
+            for v1, v2 in missing_edges:
+                if self._recover_single_constrained_edge(v1, v2):
+                    recovered_count += 1
+                else:
+                    failed_count += 1
+
+            total_recovered += recovered_count
+            verbose(f"  第 {pass_num + 1} 轮: 恢复 {recovered_count}, 失败 {failed_count}")
+
+            if recovered_count == 0:
+                # 收集所有仍然失败的边
+                failed_edges_list = []
+                for edge in self.protected_edges:
+                    v1, v2 = list(edge)
+                    if not self._is_boundary_edge_in_mesh(v1, v2):
+                        failed_edges_list.append((v1, v2))
+                break
+
+        # 无法恢复的边记录为警告
+        if failed_edges_list:
+            verbose(f"  [警告] {len(failed_edges_list)} 条边无法恢复:")
+            for v1, v2 in failed_edges_list:
+                p1, p2 = self.points[v1], self.points[v2]
+                verbose(f"    边 ({v1},{v2}): ({p1[0]:.4f},{p1[1]:.4f}) -> ({p2[0]:.4f},{p2[1]:.4f})")
+                # 打印到标准输出以便调试
+                print(f"[DEBUG] 无法恢复: ({v1},{v2})", flush=True)
+                
+                # 详细调试：打印v1和v2的邻居
+                v1_tris = [tri for tri in self.triangles if not tri.is_deleted() and v1 in tri.vertices]
+                v2_tris = [tri for tri in self.triangles if not tri.is_deleted() and v2 in tri.vertices]
+                
+                v1_neighbors = set()
+                for tri in v1_tris:
+                    for v in tri.vertices:
+                        if v != v1:
+                            v1_neighbors.add(v)
+                
+                v2_neighbors = set()
+                for tri in v2_tris:
+                    for v in tri.vertices:
+                        if v != v2:
+                            v2_neighbors.add(v)
+                
+                common = v1_neighbors & v2_neighbors
+
+                # 如果 v1 或 v2 没有三角形，记录警告并尝试简单恢复
+                if len(v1_tris) == 0 or len(v2_tris) == 0:
+                    verbose(f"    [严重] 节点 {v1} 或 {v2} 没有三角形，尝试简单恢复")
+                    # 尝试通过 force_recover 恢复
+                    self._force_recover_boundary_edge_by_reconnection(v1, v2)
+                # 如果邻居数很少（<=4），也尝试简单恢复
+                elif len(v1_neighbors) <= 4 or len(v2_neighbors) <= 4:
+                    verbose(f"    [警告] 节点 {v1} 或 {v2} 邻居很少，尝试简单恢复")
+                    self._force_recover_boundary_edge_by_reconnection(v1, v2)
         
-        recovered_count = 0
-        failed_count = 0
-        missing_count = 0
+        # 新增：对于无法恢复的边，尝试 splitting 策略
+        if failed_edges_list:
+            verbose(f"  [信息] {len(failed_edges_list)} 条边无法通过边翻转恢复，尝试 splitting 策略")
+            recovered_by_splitting = 0
+            for v1, v2 in failed_edges_list:
+                if self._recover_edge_by_splitting(v1, v2):
+                    recovered_by_splitting += 1
+            verbose(f"  通过 splitting 策略恢复 {recovered_by_splitting}/{len(failed_edges_list)} 条边")
         
-        # 先统计缺失的边界边
-        missing_edges = []
+        remaining = []
         for edge in self.protected_edges:
             v1, v2 = list(edge)
             if not self._is_boundary_edge_in_mesh(v1, v2):
-                missing_edges.append((v1, v2))
-                missing_count += 1
+                remaining.append((v1, v2))
+
+        verbose(f"边界边恢复完成: 总恢复 {total_recovered}, 剩余缺失 {len(remaining)}")
+
+    def _try_enhanced_boundary_recovery(self, v1: int, v2: int) -> bool:
+        """增强的边界边恢复方法。
         
-        if missing_count == 0:
-            verbose("所有边界边已存在，无需恢复")
-            return
+        当标准方法失败时使用：
+        1. 找到所有包含v1的三角形
+        2. 找到所有包含v2的三角形
+        3. 找到连接v1和v2路径上的所有三角形
+        4. 删除这些三角形
+        5. 用(v1, v2)边重新三角化
+        """
+        p1, p2 = self.points[v1], self.points[v2]
         
-        verbose(f"  检测到 {missing_count} 条缺失的边界边")
-        
-        # 尝试恢复每条缺失的边
-        for v1, v2 in missing_edges:
-            verbose(f"  尝试恢复边界边 ({v1}, {v2})...")
+        # 找到所有与线段(v1, v2)相交或接近的三角形
+        tris_to_remove = []
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
             
-            # 尝试通过翻转恢复
-            if self._recover_single_constrained_edge(v1, v2):
-                recovered_count += 1
-                verbose(f"    ✓ 成功恢复边界边 ({v1}, {v2})")
-            else:
-                failed_count += 1
-                verbose(f"    ✗ 无法恢复边界边 ({v1}, {v2})")
+            # 检查三角形是否与线段(v1, v2)相交
+            if self._segment_intersects_triangle(p1, p2, tri):
+                tris_to_remove.append(tri)
+                continue
+            
+            # 检查三角形是否包含v1或v2
+            if v1 in tri.vertices or v2 in tri.vertices:
+                # 检查三角形的质心是否接近线段
+                centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
+                dist = self._point_to_segment_distance(centroid, p1, p2)
+                if dist < 0.01:  # 非常接近线段
+                    tris_to_remove.append(tri)
         
-        verbose(f"边界边恢复完成: 成功 {recovered_count}/{missing_count}, 失败 {failed_count}")
-    
+        if not tris_to_remove:
+            return False
+        
+        # 删除三角形
+        for tri in tris_to_remove:
+            tri.set_deleted(True)
+        
+        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+        build_adjacency_from_triangles(self.triangles)
+        
+        # 找到空洞边界
+        cavity_boundary = self._find_cavity_boundary_edges()
+        
+        # 验证空洞边界包含v1和v2
+        cavity_nodes = set()
+        for a, b in cavity_boundary:
+            cavity_nodes.add(a)
+            cavity_nodes.add(b)
+        
+        if v1 not in cavity_nodes or v2 not in cavity_nodes:
+            return False
+        
+        # 对空洞进行三角化
+        # 方法：将v1和v2与空洞边界连接
+        new_triangles = []
+        
+        # 找到空洞边界上与v1和v2相邻的节点
+        v1_cavity_neighbors = []
+        v2_cavity_neighbors = []
+        
+        for a, b in cavity_boundary:
+            if a == v1:
+                v1_cavity_neighbors.append(b)
+            elif b == v1:
+                v1_cavity_neighbors.append(a)
+            if a == v2:
+                v2_cavity_neighbors.append(b)
+            elif b == v2:
+                v2_cavity_neighbors.append(a)
+        
+        # 创建连接v1和v2的三角形
+        # 对于空洞边界的每条边，如果它不包含v1或v2，则创建一个三角形
+        for edge in cavity_boundary:
+            a, b = edge
+            if a in (v1, v2) or b in (v1, v2):
+                continue
+            
+            # 找到离边最近的端点（v1或v2）
+            mid_edge = (self.points[a] + self.points[b]) / 2.0
+            dist_v1 = float(np.linalg.norm(mid_edge - p1))
+            dist_v2 = float(np.linalg.norm(mid_edge - p2))
+            
+            if dist_v1 < dist_v2:
+                new_tri = MTri3(v1, a, b, idx=self._next_tri_id())
+            else:
+                new_tri = MTri3(v2, a, b, idx=self._next_tri_id())
+            
+            self._compute_circumcircle(new_tri)
+            new_triangles.append(new_tri)
+        
+        self.triangles.extend(new_triangles)
+        build_adjacency_from_triangles(self.triangles)
+        
+        return self._is_boundary_edge_in_mesh(v1, v2)
+
+    def _force_connect_edge(self, v1: int, v2: int) -> bool:
+        """强制连接两个有三角形但没有共同邻居的节点。
+        
+        方法：
+        1. 删除v1和v2的所有三角形
+        2. 找到空洞边界
+        3. 用(v1, v2)边重新三角化
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+        
+        # 找到v1和v2的所有三角形
+        tris_to_remove = []
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            if v1 in tri.vertices or v2 in tri.vertices:
+                tris_to_remove.append(tri)
+            else:
+                # 也检查三角形是否与线段(v1, v2)相交
+                if self._segment_intersects_triangle(p1, p2, tri):
+                    tris_to_remove.append(tri)
+        
+        if not tris_to_remove:
+            return False
+        
+        # 删除三角形
+        for tri in tris_to_remove:
+            tri.set_deleted(True)
+        
+        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+        build_adjacency_from_triangles(self.triangles)
+        
+        # 找到空洞边界
+        cavity_boundary = self._find_cavity_boundary_edges()
+        
+        # 验证空洞边界包含v1和v2
+        cavity_nodes = set()
+        for a, b in cavity_boundary:
+            cavity_nodes.add(a)
+            cavity_nodes.add(b)
+        
+        if v1 not in cavity_nodes or v2 not in cavity_nodes:
+            return False
+        
+        # 对空洞进行三角化
+        new_triangles = []
+        
+        # 对于空洞边界的每条边
+        for edge in cavity_boundary:
+            a, b = edge
+            if a in (v1, v2) or b in (v1, v2):
+                continue
+            
+            # 找到离边最近的端点（v1或v2）
+            mid_edge = (self.points[a] + self.points[b]) / 2.0
+            dist_v1 = float(np.linalg.norm(mid_edge - p1))
+            dist_v2 = float(np.linalg.norm(mid_edge - p2))
+            
+            if dist_v1 < dist_v2:
+                new_tri = MTri3(v1, a, b, idx=self._next_tri_id())
+            else:
+                new_tri = MTri3(v2, a, b, idx=self._next_tri_id())
+            
+            self._compute_circumcircle(new_tri)
+            new_triangles.append(new_tri)
+        
+        self.triangles.extend(new_triangles)
+        build_adjacency_from_triangles(self.triangles)
+        
+        return self._is_boundary_edge_in_mesh(v1, v2)
+
     def _recover_single_constrained_edge(self, v1: int, v2: int) -> bool:
         """恢复单条约束边(v1, v2)。
-        
-        使用经典的 CDT 边翻转策略（不插入 Steiner 点）：
-        1. 找到与线段(v1, v2)相交的所有边
-        2. 依次翻转这些边
-        3. 直到(v1, v2)成为三角形的边
-        
-        返回 True 如果成功恢复，False 如果无法恢复。
+
+        使用以下策略：
+        1. 首先尝试边翻转
+        2. 如果翻转无法恢复，使用强制重连
         """
-        # 检查边是否已经存在
         if self._is_boundary_edge_in_mesh(v1, v2):
             return True
-        
-        segment_start = self.points[v1]
-        segment_end = self.points[v2]
-        
-        max_flips = 200  # 防止无限循环
+
+        # 调试：如果是wall边界边，打印信息
+        is_wall = 38 <= min(v1, v2) < 96 and max(v1, v2) <= 95
+        if is_wall:
+            verbose(f"  Wall边 ({v1},{v2}) 缺失，尝试恢复...")
+
+        max_flips = 300
         flip_count = 0
-        
+
         while flip_count < max_flips:
-            # 找到所有与线段(v1, v2)相交的边
-            intersecting_edge = None
+            intersecting_edges = self._find_edges_intersecting_segment(v1, v2)
+
+            if not intersecting_edges:
+                if is_wall:
+                    verbose(f"    无相交边，无法翻转")
+                break
+
+            flipped = False
+            for n1, n2 in intersecting_edges:
+                if self._flip_edge(n1, n2):
+                    flip_count += 1
+                    flipped = True
+                    if self._is_boundary_edge_in_mesh(v1, v2):
+                        if is_wall:
+                            verbose(f"    翻转恢复成功")
+                        return True
+                    break
+
+            if not flipped:
+                if is_wall:
+                    verbose(f"    无法翻转，尝试强制重连")
+                break
+
+        if self._is_boundary_edge_in_mesh(v1, v2):
+            return True
+
+        result = self._force_recover_boundary_edge_by_reconnection(v1, v2)
+        if is_wall:
+            verbose(f"    强制重连结果: {result}")
+        return result
+
+    def _force_recover_boundary_edge_by_reconnection(self, v1: int, v2: int) -> bool:
+        """强制通过局部重连恢复边界边。
+
+        当边翻转无法恢复时使用：
+        1. 找到所有与线段(v1, v2)相交的三角形
+        2. 删除这些三角形
+        3. 使用边界边(v1, v2)和相关顶点重新三角化
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+        dist = float(np.linalg.norm(p1 - p2))
+        if dist < 1e-10:
+            return False
+
+        intersecting_tris = []
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            verts = tri.vertices
+            has_v1 = v1 in verts
+            has_v2 = v2 in verts
+            if has_v1 and has_v2:
+                continue
+            tri_centroid = np.mean([self.points[v] for v in verts], axis=0)
+            if self._segment_intersects_triangle(p1, p2, tri):
+                intersecting_tris.append(tri)
+
+        if not intersecting_tris:
+            # 没有相交的三角形，说明(v1, v2)的路径是"畅通"的
+            # 但这可能意味着：
+            # 1. v1和v2已经在同一个三角形中（但边不存在）- 这不应该发生
+            # 2. v1和v2之间没有三角形，需要创建新的三角形
+            # 3. v1和v2被空洞分隔
+            
+            # 尝试找到包含v1或v2的三角形，并重建三角剖分
+            verbose(f"    无相交三角形，尝试查找并重建...")
+            
+            # 找到所有包含v1或v2的三角形
+            tris_with_v1 = []
+            tris_with_v2 = []
             
             for tri in self.triangles:
                 if tri.is_deleted():
                     continue
-                
-                verts = tri.vertices
-                for i in range(3):
-                    e1 = verts[i]
-                    e2 = verts[(i + 1) % 3]
-                    
-                    # 跳过v1和v2本身
-                    if e1 == v1 or e1 == v2 or e2 == v1 or e2 == v2:
-                        continue
-                    
-                    # 跳过受保护的边界边
-                    if self._is_protected_edge(e1, e2):
-                        continue
-                    
-                    # 检查边(e1, e2)是否与线段(v1, v2)相交
-                    if self._segments_intersect_strict(
-                        segment_start, segment_end,
-                        self.points[e1], self.points[e2]
-                    ):
-                        intersecting_edge = (e1, e2)
-                        break
-                
-                if intersecting_edge:
-                    break
+                if v1 in tri.vertices:
+                    tris_with_v1.append(tri)
+                if v2 in tri.vertices:
+                    tris_with_v2.append(tri)
             
-            if intersecting_edge is None:
-                # 没有相交边，检查是否已恢复
-                return self._is_boundary_edge_in_mesh(v1, v2)
-            
-            n1, n2 = intersecting_edge
-            
-            # 尝试翻转这条边
-            if self._flip_edge(n1, n2):
-                flip_count += 1
-                
-                # 检查边(v1, v2)是否已经出现
-                if self._is_boundary_edge_in_mesh(v1, v2):
-                    return True
+            # 如果两者都有三角形，尝试找到连接路径
+            if tris_with_v1 and tris_with_v2:
+                # 找到v1的其他邻居（除了v2）
+                v1_other_neighbors = set()
+                for tri in tris_with_v1:
+                    for v in tri.vertices:
+                        if v != v1:
+                            v1_other_neighbors.add(v)
+
+                # 找到v2的其他邻居（除了v1）
+                v2_other_neighbors = set()
+                for tri in tris_with_v2:
+                    for v in tri.vertices:
+                        if v != v2:
+                            v2_other_neighbors.add(v)
+
+                # 检查是否有共同的邻居
+                common = v1_other_neighbors & v2_other_neighbors
+
+                if common:
+                    verbose(f"    找到 {len(common)} 个共同邻居，重建三角剖分")
+                    # 删除包含共同邻居和v1或v2的三角形
+                    tris_to_delete = []
+                    for tri in self.triangles:
+                        if tri.is_deleted():
+                            continue
+                        has_common = any(v in common for v in tri.vertices)
+                        has_endpoint = v1 in tri.vertices or v2 in tri.vertices
+                        if has_common and has_endpoint:
+                            tris_to_delete.append(tri)
+
+                    for tri in tris_to_delete:
+                        tri.set_deleted(True)
+
+                    self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+                    build_adjacency_from_triangles(self.triangles)
+
+                    # 用(v1, v2)和共同邻居创建新三角形
+                    for v_common in sorted(list(common)):
+                        new_tri = MTri3(v1, v2, v_common, idx=self._next_tri_id())
+                        self._compute_circumcircle(new_tri)
+                        self.triangles.append(new_tri)
+
+                    build_adjacency_from_triangles(self.triangles)
+                    return self._is_boundary_edge_in_mesh(v1, v2)
+                else:
+                    # 没有共同邻居，恢复失败
+                    return False
             else:
-                # 翻转失败（可能是非凸四边形或保护边）
-                break
-        
-        # 检查最终是否恢复
+                return False
+
+        verts_to_keep = set()
+        for tri in intersecting_tris:
+            for v in tri.vertices:
+                if v != v1 and v != v2:
+                    verts_to_keep.add(v)
+
+        boundary_edge_key = frozenset({v1, v2})
+
+        for tri in intersecting_tris:
+            tri.set_deleted(True)
+
+        build_adjacency_from_triangles(self.triangles)
+
+        if len(verts_to_keep) == 0:
+            return False
+
+        if len(verts_to_keep) == 1:
+            v_other = list(verts_to_keep)[0]
+            new_tri = MTri3(v1, v2, v_other, idx=self._next_tri_id())
+            self._compute_circumcircle(new_tri)
+            self.triangles.append(new_tri)
+        else:
+            verts_list = list(verts_to_keep)
+            verts_list.sort()
+
+            fan_tris = []
+            for i in range(len(verts_list)):
+                v_a = verts_list[i]
+                v_b = verts_list[(i + 1) % len(verts_list)]
+                tri1 = MTri3(v1, v_a, v_b, idx=self._next_tri_id())
+                tri2 = MTri3(v2, v_b, v_a, idx=self._next_tri_id())
+                self._compute_circumcircle(tri1)
+                self._compute_circumcircle(tri2)
+                fan_tris.extend([tri1, tri2])
+
+            self.triangles.extend(fan_tris)
+
+        build_adjacency_from_triangles(self.triangles)
+        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+
         return self._is_boundary_edge_in_mesh(v1, v2)
+
+    def _segment_intersects_triangle(self, p1: np.ndarray, p2: np.ndarray, tri: 'MTri3') -> bool:
+        """检查线段(p1, p2)是否与三角形相交。"""
+        pA = self.points[tri.vertices[0]]
+        pB = self.points[tri.vertices[1]]
+        pC = self.points[tri.vertices[2]]
+
+        for pA_, pB_ in [(pA, pB), (pB, pC), (pC, pA)]:
+            if self._segments_intersect_strict(p1, p2, pA_, pB_):
+                return True
+
+        return False
     
     def _find_edges_intersecting_segment(self, v1: int, v2: int) -> List[Tuple[int, int]]:
-        """找到所有与线段(v1, v2)相交的边。"""
+        """找到所有与线段(v1, v2)相交的边，按距v1的距离排序。"""
         intersecting = []
         segment_start = self.points[v1]
         segment_end = self.points[v2]
@@ -998,18 +1605,25 @@ class GmshBowyerWatsonMeshGenerator:
                 e1 = verts[i]
                 e2 = verts[(i + 1) % 3]
                 
-                # 跳过受保护的边
+                if e1 in (v1, v2) or e2 in (v1, v2):
+                    continue
+                
                 if self._is_protected_edge(e1, e2):
                     continue
                 
-                # 检查边(e1, e2)是否与线段(v1, v2)相交
                 if self._segments_intersect_strict(
                     segment_start, segment_end,
                     self.points[e1], self.points[e2]
                 ):
-                    edge_tuple = (e1, e2) if e1 < e2 else (e2, e1)
+                    edge_tuple = (min(e1, e2), max(e1, e2))
                     if edge_tuple not in intersecting:
                         intersecting.append(edge_tuple)
+        
+        if len(intersecting) > 1:
+            def edge_distance(edge):
+                mid = (self.points[edge[0]] + self.points[edge[1]]) / 2.0
+                return float(np.linalg.norm(mid - segment_start))
+            intersecting.sort(key=edge_distance)
         
         return intersecting
     
@@ -1120,67 +1734,340 @@ class GmshBowyerWatsonMeshGenerator:
 
         return False
 
-    def _insert_steiner_point_on_edge(self, v1: int, v2: int):
-        """在边界边上插入Steiner点（中点），然后尝试恢复。
-
-        这是Gmsh/TetGen中边恢复的最后手段：
-        1. 在边的中点插入新顶点
-        2. 删除与原始边(v1, v2)相交的所有三角形
-        3. 重新三角化空洞区域
-        4. 递归恢复两条子边
+    def _recover_edge_by_bfs(self, v1: int, v2: int) -> bool:
+        """使用BFS路径查找恢复边界边。
+        
+        当共同邻居方法失败时使用：
+        1. 构建邻接图
+        2. 使用BFS找到v1到v2的最短路径
+        3. 删除路径上的所有三角形
+        4. 用(v1, v2)和路径上的节点重新三角化
         """
-        # 计算中点
-        p1, p2 = self.points[v1], self.points[v2]
-        mid_point = (p1 + p2) / 2.0
-
-        # 添加新点
-        mid_idx = len(self.points)
-        self.points = np.vstack([self.points, mid_point])
-
-        verbose(f"    在边({v1},{v2})中点插入Steiner点 #{mid_idx}")
-
-        # 查找所有与线段(v1, v2)相交的三角形
-        triangles_to_remove = []
+        from collections import deque
+        
+        # 构建邻接表
+        adj = {}
         for tri in self.triangles:
             if tri.is_deleted():
                 continue
-            # 检查三角形是否与线段(v1, v2)相交
-            if self._triangle_intersects_segment(tri, v1, v2):
-                triangles_to_remove.append(tri)
+            verts = tri.vertices
+            for i in range(3):
+                a = verts[i]
+                b = verts[(i + 1) % 3]
+                if a not in adj:
+                    adj[a] = set()
+                if b not in adj:
+                    adj[b] = set()
+                adj[a].add(b)
+                adj[b].add(a)
+        
+        # BFS查找v1到v2的最短路径
+        queue = deque([(v1, [v1])])
+        visited = {v1}
+        path = None
+        
+        while queue:
+            current, current_path = queue.popleft()
+            
+            if current == v2:
+                path = current_path
+                break
+            
+            if current not in adj:
+                continue
+            
+            for neighbor in adj[current]:
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, current_path + [neighbor]))
+        
+        if path is None or len(path) < 3:
+            verbose(f"    BFS未找到路径")
+            return False
+        
+        verbose(f"    BFS找到路径，长度={len(path)}个节点")
+        
+        # 找到路径上所有三角形
+        path_set = set(path)
+        tris_on_path = []
+        
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            # 检查三角形是否有至少两个顶点在路径上
+            count = sum(1 for v in tri.vertices if v in path_set)
+            if count >= 2:
+                tris_on_path.append(tri)
+        
+        if not tris_on_path:
+            verbose(f"    路径上无三角形")
+            return False
+        
+        # 删除这些三角形
+        for tri in tris_on_path:
+            tri.set_deleted(True)
+        
+        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+        build_adjacency_from_triangles(self.triangles)
+        
+        # 找到空洞边界
+        cavity_boundary = self._find_cavity_boundary_edges()
+        
+        # 对空洞进行三角化
+        # 方法：找到空洞的"质心"，然后与边界边连接
+        cavity_nodes = set()
+        for a, b in cavity_boundary:
+            cavity_nodes.add(a)
+            cavity_nodes.add(b)
+        
+        if not cavity_nodes:
+            verbose(f"    空洞边界为空")
+            return False
+        
+        # 使用路径上的所有节点作为"中心"，与空洞边界连接
+        new_triangles = []
+        used_edges = set()
+        
+        # 对于空洞边界的每条边，尝试与路径上的节点连接
+        for edge in cavity_boundary:
+            a, b = edge
+            if a in path_set or b in path_set:
+                # 边的一个端点已经在路径上，跳过
+                continue
+            
+            # 找到路径上最近的节点
+            best_node = None
+            best_dist = float('inf')
+            
+            for p_node in path:
+                # 检查是否可以形成有效三角形
+                p_coords = self.points[p_node]
+                a_coords = self.points[a]
+                b_coords = self.points[b]
+                
+                # 简单检查：三角形面积不能太小
+                area = abs(np.cross(b_coords - a_coords, p_coords - a_coords)) / 2.0
+                if area < 1e-10:
+                    continue
+                
+                dist = float(np.linalg.norm(p_coords - (a_coords + b_coords) / 2.0))
+                if dist < best_dist:
+                    best_dist = dist
+                    best_node = p_node
+            
+            if best_node is not None:
+                edge_key = (min(a, b), max(a, b), best_node)
+                if edge_key not in used_edges:
+                    used_edges.add(edge_key)
+                    new_tri = MTri3(best_node, a, b, idx=self._next_tri_id())
+                    self._compute_circumcircle(new_tri)
+                    new_triangles.append(new_tri)
+        
+        self.triangles.extend(new_triangles)
+        build_adjacency_from_triangles(self.triangles)
+        
+        verbose(f"    创建了 {len(new_triangles)} 个新三角形")
+        
+        return self._is_boundary_edge_in_mesh(v1, v2)
 
-        # 删除相交三角形
+    def _insert_steiner_point_on_edge(self, v1: int, v2: int) -> bool:
+        """在边界边上插入Steiner点，然后正确恢复子边。
+        
+        正确的实现步骤：
+        1. 在中点插入Steiner点
+        2. 找到所有与线段(v1, v2)相交的三角形（包括包含v1或v2的）
+        3. 删除这些三角形，形成空洞
+        4. 对空洞进行约束三角化，确保(v1, mid)和(mid, v2)是边
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+        mid_point = (p1 + p2) / 2.0
+        
+        # 添加新点
+        mid_idx = len(self.points)
+        self.points = np.vstack([self.points, mid_point])
+        
+        verbose(f"    在边({v1},{v2})中点插入Steiner点 #{mid_idx}")
+        
+        # 找到所有需要删除的三角形
+        # 关键：必须包含所有与线段(v1, v2)有交集的三角形
+        triangles_to_remove = []
+        
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            
+            # 检查三角形是否与线段(v1, v2)相交
+            should_remove = False
+            
+            # 方法1：检查三角形的边是否与线段相交
+            for i in range(3):
+                a_idx = tri.vertices[i]
+                b_idx = tri.vertices[(i + 1) % 3]
+                # 跳过与v1或v2直接相连的边
+                if a_idx in (v1, v2) and b_idx in (v1, v2):
+                    continue
+                if self._segments_intersect_proper(
+                    p1, p2, 
+                    self.points[a_idx], self.points[b_idx]
+                ):
+                    should_remove = True
+                    break
+            
+            # 方法2：检查线段中点是否在三角形内
+            if not should_remove:
+                mid = (p1 + p2) / 2.0
+                if self._point_in_triangle_strict(mid, tri):
+                    should_remove = True
+            
+            # 方法3：检查三角形是否包含v1或v2，且其外接圆包含中点
+            if not should_remove and (v1 in tri.vertices or v2 in tri.vertices):
+                # 检查三角形是否在v1-v2的"路径"上
+                tri_center = np.mean([self.points[v] for v in tri.vertices], axis=0)
+                dist_to_segment = self._point_to_segment_distance(tri_center, p1, p2)
+                if dist_to_segment < 0.001:  # 非常接近线段
+                    should_remove = True
+            
+            if should_remove:
+                triangles_to_remove.append(tri)
+        
+        if not triangles_to_remove:
+            verbose(f"    [警告] 初始检测未找到三角形，尝试删除包含 v1 或 v2 的所有三角形")
+            # 尝试更宽松的条件：删除所有包含 v1 或 v2 的三角形
+            for tri in self.triangles:
+                if tri.is_deleted():
+                    continue
+                if v1 in tri.vertices or v2 in tri.vertices:
+                    triangles_to_remove.append(tri)
+
+        if not triangles_to_remove:
+            verbose(f"    [严重] 仍未找到需要删除的三角形，v1 和 v2 可能已隔离")
+            return False
+        
+        # 删除三角形
         for tri in triangles_to_remove:
             tri.set_deleted(True)
-
-        # 清理已删除三角形
+        
         self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
-
-        # 找到空洞边界（只出现一次的边）
+        build_adjacency_from_triangles(self.triangles)
+        
+        # 找到空洞边界
         cavity_boundary = self._find_cavity_boundary_edges()
-
-        # 创建新三角形：将中点与空洞边界的每条边连接
+        
+        # 验证空洞边界
+        cavity_nodes = set()
+        for a, b in cavity_boundary:
+            cavity_nodes.add(a)
+            cavity_nodes.add(b)
+        
+        if v1 not in cavity_nodes or v2 not in cavity_nodes:
+            verbose(f"    [警告] 空洞边界不完整: v1={v1 in cavity_nodes}, v2={v2 in cavity_nodes}")
+            # 尝试恢复：手动添加缺失的边界边
+            if v1 not in cavity_nodes:
+                # 找到离v1最近的空洞边界节点
+                closest = min(cavity_nodes, key=lambda n: float(np.linalg.norm(self.points[n] - p1)))
+                cavity_boundary.append((min(v1, closest), max(v1, closest)))
+            if v2 not in cavity_nodes:
+                closest = min(cavity_nodes, key=lambda n: float(np.linalg.norm(self.points[n] - p2)))
+                cavity_boundary.append((min(v2, closest), max(v2, closest)))
+        
+        # 对空洞进行三角化
+        # 方法：将mid_idx与空洞边界的每条边连接
         new_triangles = []
         for edge in cavity_boundary:
             a, b = edge
-            # 跳过已经包含中点的边
             if a == mid_idx or b == mid_idx:
                 continue
-            # 创建新三角形
+            # 创建三角形
             new_tri = MTri3(mid_idx, a, b, idx=self._next_tri_id())
             self._compute_circumcircle(new_tri)
             new_triangles.append(new_tri)
-
+        
         self.triangles.extend(new_triangles)
-
-        # 重建邻接关系
-        from delaunay.bw_types import build_adjacency_from_triangles
         build_adjacency_from_triangles(self.triangles)
-
+        
         verbose(f"    创建了 {len(new_triangles)} 个新三角形")
+        
+        # 递归恢复子边
+        success1 = self._recover_single_edge_enhanced(v1, mid_idx)
+        success2 = self._recover_single_edge_enhanced(mid_idx, v2)
+        
+        return success1 and success2
+    
+    def _point_to_segment_distance(self, point: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
+        """计算点到线段的最短距离。"""
+        segment = p2 - p1
+        segment_length = np.linalg.norm(segment)
+        if segment_length < 1e-10:
+            return float(np.linalg.norm(point - p1))
+        
+        segment_dir = segment / segment_length
+        projection = np.dot(point - p1, segment_dir)
+        
+        if projection < 0:
+            return float(np.linalg.norm(point - p1))
+        elif projection > segment_length:
+            return float(np.linalg.norm(point - p2))
+        else:
+            closest = p1 + projection * segment_dir
+            return float(np.linalg.norm(point - closest))
+    
+    def _segments_intersect_proper(self, p1: np.ndarray, p2: np.ndarray, 
+                                    p3: np.ndarray, p4: np.ndarray) -> bool:
+        """检查两条线段是否真正相交（不包括端点接触）。"""
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+        
+        d1 = cross(p3, p4, p1)
+        d2 = cross(p3, p4, p2)
+        d3 = cross(p1, p2, p3)
+        d4 = cross(p1, p2, p4)
+        
+        # 严格相交
+        if ((d1 > 1e-12 and d2 < -1e-12) or (d1 < -1e-12 and d2 > 1e-12)) and \
+           ((d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12)):
+            return True
+        
+        return False
 
-        # 递归恢复两条子边
-        self._recover_single_edge_enhanced(v1, mid_idx)
-        self._recover_single_edge_enhanced(mid_idx, v2)
+    def _triangle_intersects_segment_for_steiner(self, tri, v1: int, v2: int) -> bool:
+        """检查三角形是否与线段(v1, v2)相交（用于Steiner点插入）。
+        
+        与 _triangle_intersects_segment 不同，这个函数会包含所有
+        阻碍 (v1, v2) 连线的三角形，包括那些包含 v1 或 v2 的三角形。
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+
+        # 检查三角形的每条边
+        for i in range(3):
+            a_idx = tri.vertices[i]
+            b_idx = tri.vertices[(i + 1) % 3]
+            # 检查线段相交（包括端点接触）
+            if self._segments_intersect_inclusive(p1, p2, self.points[a_idx], self.points[b_idx]):
+                return True
+
+        # 也检查三角形是否包含线段的中点
+        mid = (p1 + p2) / 2.0
+        if self._point_in_triangle_strict(mid, tri):
+            return True
+
+        return False
+    
+    def _segments_intersect_inclusive(self, p1, p2, p3, p4) -> bool:
+        """检查两条线段是否相交（包括端点接触）。"""
+        def cross(o, a, b):
+            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+        d1 = cross(p3, p4, p1)
+        d2 = cross(p3, p4, p2)
+        d3 = cross(p1, p2, p3)
+        d4 = cross(p1, p2, p4)
+
+        # 相交（包括端点接触）
+        if ((d1 >= -1e-12 and d2 <= 1e-12) or (d1 <= 1e-12 and d2 >= -1e-12)) and \
+           ((d3 >= -1e-12 and d4 <= 1e-12) or (d3 <= 1e-12 and d4 >= -1e-12)):
+            return True
+
+        return False
 
     def _triangle_intersects_segment(self, tri, v1: int, v2: int) -> bool:
         """检查三角形是否与线段(v1, v2)严格相交（不包括端点）。"""
@@ -1324,8 +2211,9 @@ class GmshBowyerWatsonMeshGenerator:
         c2 = cross(a_pt, n2_pt, b_pt)
         c3 = cross(n2_pt, b_pt, n1_pt)
         c4 = cross(b_pt, n1_pt, a_pt)
-        is_convex = (c1 > 0 and c2 > 0 and c3 > 0 and c4 > 0) or \
-                    (c1 < 0 and c2 < 0 and c3 < 0 and c4 < 0)
+        eps = -1e-10
+        is_convex = (c1 > eps and c2 > eps and c3 > eps and c4 > eps) or \
+                    (c1 < -eps and c2 < -eps and c3 < -eps and c4 < -eps)
         if not is_convex:
             return False
         
@@ -1446,6 +2334,9 @@ class GmshBowyerWatsonMeshGenerator:
         verbose("阶段 2/3: Gmsh 风格迭代插入内部点...")
         if self.holes:
             verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
+            for i, hole in enumerate(self.holes):
+                hole_center = np.mean(hole, axis=0)
+                verbose(f"    孔洞 {i}: {len(hole)} 个点，中心 {hole_center}")
         self._insert_points_iteratively_gmsh(target_triangle_count)
 
         # 关键修复：根据Gmsh/TetGen的正确顺序
@@ -1467,7 +2358,14 @@ class GmshBowyerWatsonMeshGenerator:
             before_count = len(self.triangles)
             self._remove_hole_triangles()
             verbose(f"  删除孔洞内三角形: {before_count - len(self.triangles)} 个")
-        
+
+        # 新增：删除外边界外的三角形（标准 CDT 要求）
+        if self.outer_boundary is not None:
+            verbose("阶段 2.7/3: 清理外边界外三角形...")
+            before_count = len(self.triangles)
+            self._remove_outer_boundary_triangles()
+            verbose(f"  删除外边界外三角形: {before_count - len(self.triangles)} 个")
+
         if self.smoothing_iterations > 0:
             verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
             current_point_count = len(self.points)
@@ -1480,17 +2378,517 @@ class GmshBowyerWatsonMeshGenerator:
         
         # 清理已删除的三角形
         self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
-        
+
+        # 检测并修复重叠三角形
+        verbose("阶段 3.5/3: 检测并修复重叠三角形...")
+        self._remove_overlapping_triangles()
+
         points = self.points.copy()
         simplices = np.array([tri.vertices for tri in self.triangles])
         boundary_mask = np.zeros(len(points), dtype=bool)
         boundary_mask[:self.boundary_count] = True
+
+        # 关键修复：确保所有边界点和 Steiner 点都被保留
+        used_nodes = set()
+        for simplex in simplices:
+            for v in simplex:
+                used_nodes.add(v)
+
+        # 添加所有边界点到 used_nodes（包括原始边界点和 Steiner 点）
+        for i in range(len(points)):
+            if boundary_mask[i]:
+                used_nodes.add(i)
+
+        # 关键修复：原始边界点索引保持不变（0 到 boundary_count-1）
+        # Steiner 点和内部点重新分配索引
+        if len(used_nodes) < len(points):
+            # 原始边界点保持原索引（0 到 boundary_count-1）
+            # Steiner 点和内部点重新分配索引从 boundary_count 开始
+            old_to_new = {}
+            new_points = []
+            new_boundary_mask = []
+            
+            # 首先添加所有原始边界点（保持原索引）
+            for i in range(self.boundary_count):
+                old_to_new[i] = i
+                new_points.append(points[i])
+                new_boundary_mask.append(True)
+            
+            # 然后添加被使用的 Steiner 点和内部点
+            new_internal_idx = self.boundary_count
+            for old_idx in sorted(used_nodes):
+                if old_idx >= self.boundary_count:  # Steiner 点或内部点
+                    old_to_new[old_idx] = new_internal_idx
+                    new_points.append(points[old_idx])
+                    new_boundary_mask.append(boundary_mask[old_idx])  # 保留 Steiner 点的边界标记
+                    new_internal_idx += 1
+
+            new_simplices = []
+            for simplex in simplices:
+                new_simplices.append([old_to_new[v] for v in simplex])
+
+            points = np.array(new_points)
+            simplices = np.array(new_simplices)
+            boundary_mask = np.array(new_boundary_mask)
         
         verbose("网格生成完成:")
         verbose(f"  - 总节点数: {len(points)}")
         verbose(f"  - 边界节点: {np.sum(boundary_mask)}")
         verbose(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
         verbose(f"  - 三角形数: {len(simplices)}")
-        
+
         timer.show_to_console("Gmsh Bowyer-Watson 网格生成完成")
         return points, simplices, boundary_mask
+
+    def _remove_overlapping_triangles(self) -> int:
+        """检测并修复重叠三角形。
+
+        标准 Bowyer-Watson 算法不应产生重叠三角形。
+        如果检测到重叠，自动删除质量最差的三角形。
+
+        返回:
+            删除的三角形数量
+        """
+        # 构建边到三角形的映射
+        edge_to_tris = {}
+        for tri_idx, tri in enumerate(self.triangles):
+            if tri.is_deleted():
+                continue
+            verts = tri.vertices
+            for i in range(3):
+                v1 = verts[i]
+                v2 = verts[(i + 1) % 3]
+                edge = (min(v1, v2), max(v1, v2))
+                if edge not in edge_to_tris:
+                    edge_to_tris[edge] = []
+                edge_to_tris[edge].append((tri_idx, tri))
+
+        # 查找重叠边（超过2个三角形共享的边）
+        overlapping_edges = {edge: tris for edge, tris in edge_to_tris.items() if len(tris) > 2}
+
+        if not overlapping_edges:
+            verbose("  无重叠三角形（符合 Delaunay 性质）")
+            return 0
+
+        verbose(f"  检测到 {len(overlapping_edges)} 条重叠边，开始修复...")
+
+        triangles_to_remove = set()
+
+        for edge, tris in overlapping_edges.items():
+            if len(tris) <= 2:
+                continue
+
+            # 对三角形按质量排序（使用外接圆半径作为质量指标）
+            tri_with_quality = []
+            for tri_idx, tri in tris:
+                if tri.circumradius is None:
+                    self._compute_circumcircle(tri)
+                tri_with_quality.append((tri.circumradius, tri_idx, tri))
+
+            tri_with_quality.sort(reverse=True)  # 半径最大的质量最差
+
+            # 保留2个质量最好的三角形，删除其余的
+            for circumradius, tri_idx, tri in tri_with_quality[2:]:
+                triangles_to_remove.add(tri_idx)
+
+        # 标记删除
+        for tri_idx in triangles_to_remove:
+            self.triangles[tri_idx].set_deleted(True)
+
+        removed_count = len(triangles_to_remove)
+        if removed_count > 0:
+            verbose(f"  删除 {removed_count} 个重叠三角形")
+            self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+
+        return removed_count
+
+
+    # --========================================================================
+    # Splitting Strategy - 参考 Triangle spliteredge
+    # --========================================================================
+
+    def _recover_edge_by_splitting(self, v1: int, v2: int) -> bool:
+        """通过 splitting 策略恢复约束边。
+
+        参考 Triangle spliteredge 算法：
+        1. 找到所有与线段 (v1,v2) 相交的三角形
+        2. 删除这些三角形，形成空洞
+        3. 在空洞边界上使用 (v1,v2) 重新三角化
+        4. 递归处理被分割的子边
+
+        参数:
+            v1, v2: 约束边的两个端点
+            
+        返回:
+            True 如果成功恢复
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+        
+        # 步骤 0: 检查边是否已存在
+        if self._is_boundary_edge_in_mesh(v1, v2):
+            verbose(f"    [信息] 边 ({v1},{v2}) 已存在")
+            return True
+        
+        # 步骤 1: 找到所有相交的三角形
+        intersecting_tris = []
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            if self._segment_intersects_triangle(p1, p2, tri):
+                intersecting_tris.append(tri)
+        
+        if not intersecting_tris:
+            # 没有相交的三角形，边可能已经存在
+            verbose(f"    [警告] 没有找到与边 ({v1},{v2}) 相交的三角形，检查边是否已存在")
+            if self._is_boundary_edge_in_mesh(v1, v2):
+                verbose(f"    [信息] 边 ({v1},{v2}) 已存在")
+                return True
+            else:
+                # 边不存在且没有相交三角形，尝试使用 Steiner 点
+                verbose(f"    [信息] 边 ({v1},{v2}) 不存在，尝试使用 Steiner 点恢复")
+                return self._recover_edge_with_steiner_point(v1, v2)
+        
+        verbose(f"    [信息] 找到 {len(intersecting_tris)} 个与边 ({v1},{v2}) 相交的三角形")
+        
+        # 步骤 2: 删除相交三角形
+        for tri in intersecting_tris:
+            tri.set_deleted(True)
+        
+        self.triangles = [t for t in self.triangles if not t.is_deleted()]
+        build_adjacency_from_triangles(self.triangles)
+        
+        # 步骤 3: 找到空洞边界
+        cavity_boundary = self._find_cavity_boundary_edges()
+        
+        if not cavity_boundary:
+            verbose(f"    [错误] 无法找到空洞边界")
+            return False
+        
+        # 步骤 4: 使用 (v1,v2) 重新三角化空洞
+        return self._retriangulate_cavity_with_edge(cavity_boundary, v1, v2)
+
+    def _retriangulate_cavity_with_edge(self, cavity_boundary, v1: int, v2: int) -> bool:
+        """使用约束边 (v1,v2) 重新三角化空洞。
+
+        参考 Triangle triangulatepolygon 逻辑：
+        - 从 v1 开始，沿着空洞边界走到 v2
+        - 创建三角形扇 (v1, vi, vi+1)
+        - 从 v2 开始，沿着空洞边界回到 v1
+        - 创建三角形扇 (v2, vi, vi+1)
+
+        参数:
+            cavity_boundary: 空洞边界边列表 [(a,b), ...]
+            v1, v2: 约束边的两个端点
+            
+        返回:
+            True 如果成功创建约束边
+        """
+        # 验证 v1 和 v2 都在空洞边界上
+        boundary_nodes = set()
+        for edge in cavity_boundary:
+            boundary_nodes.add(edge[0])
+            boundary_nodes.add(edge[1])
+        
+        if v1 not in boundary_nodes or v2 not in boundary_nodes:
+            verbose(f"    [警告] v1={v1} 或 v2={v2} 不在空洞边界上")
+            return False
+        
+        # 构建空洞边界的邻接表
+        adjacency = {}
+        for a, b in cavity_boundary:
+            adjacency.setdefault(a, []).append(b)
+            adjacency.setdefault(b, []).append(a)
+        
+        # 从 v1 走到 v2，创建三角形扇
+        new_triangles = []
+        
+        # 找到从 v1 到 v2 的两条路径
+        path1 = self._find_path_in_boundary(adjacency, v1, v2)
+        path2 = self._find_path_in_boundary(adjacency, v1, v2, exclude=path1)
+        
+        if not path1 or not path2:
+            verbose(f"    [警告] 无法找到从 v1 到 v2 的两条路径")
+            return False
+        
+        verbose(f"    [信息] 找到两条路径：path1={len(path1)} 个点，path2={len(path2)} 个点")
+        
+        # 沿着 path1 创建三角形扇 (v1, vi, vi+1)
+        for i in range(len(path1) - 2):
+            vi = path1[i + 1]
+            vi1 = path1[i + 2]
+            new_tri = MTri3(v1, vi, vi1, idx=self._next_tri_id())
+            self._compute_circumcircle(new_tri)
+            new_triangles.append(new_tri)
+        
+        # 沿着 path2 创建三角形扇 (v2, vi, vi+1)
+        for i in range(len(path2) - 2):
+            vi = path2[i + 1]
+            vi1 = path2[i + 2]
+            new_tri = MTri3(v2, vi, vi1, idx=self._next_tri_id())
+            self._compute_circumcircle(new_tri)
+            new_triangles.append(new_tri)
+        
+        self.triangles.extend(new_triangles)
+        build_adjacency_from_triangles(self.triangles)
+        
+        verbose(f"    [信息] 创建了 {len(new_triangles)} 个新三角形")
+        
+        # 验证约束边是否已创建
+        if self._is_boundary_edge_in_mesh(v1, v2):
+            verbose(f"    [成功] 约束边 ({v1},{v2}) 已成功创建")
+            return True
+        else:
+            verbose(f"    [警告] 约束边 ({v1},{v2}) 创建失败")
+            return False
+
+    def _find_path_in_boundary(self, adjacency, start, end, exclude=None):
+        """在边界上找到从 start 到 end 的路径。
+        
+        使用简单的 BFS 路径查找。
+
+        参数:
+            adjacency: 邻接表 {node: [neighbors]}
+            start: 起始节点
+            end: 结束节点
+            exclude: 排除的节点列表
+            
+        返回:
+            路径节点列表 [start, ..., end]
+        """
+        from collections import deque
+        
+        if exclude is None:
+            exclude = set()
+        
+        # 简单的 BFS 路径查找
+        queue = deque([(start, [start])])
+        visited = {start}
+        
+        while queue:
+            current, path = queue.popleft()
+            
+            if current == end:
+                return path
+            
+            for neighbor in adjacency.get(current, []):
+                if neighbor in visited:
+                    continue
+                
+                # 跳过被排除的节点
+                if neighbor in exclude:
+                    continue
+                
+                visited.add(neighbor)
+                queue.append((neighbor, path + [neighbor]))
+        
+        return None
+
+
+
+
+    # --========================================================================
+    # Fix Isolated Boundary Points - 修复被隔离的边界点
+    # --========================================================================
+
+    def _fix_isolated_boundary_points(self):
+        """修复被隔离的边界点。
+
+        算法：
+        1. 找到所有被隔离的边界点
+        2. 对于每个被隔离的点，找到最近的三角形
+        3. 删除该三角形，使用边界点重新三角化
+        """
+        # 找到所有连接到三角形的点
+        connected = set()
+        for tri in self.triangles:
+            if not tri.is_deleted():
+                connected.update(tri.vertices)
+
+        # 找到被隔离的边界点
+        isolated_boundary_points = [i for i in range(self.boundary_count) if i not in connected]
+
+        if not isolated_boundary_points:
+            verbose(f"  [信息] 没有发现被隔离的边界点")
+            return 0
+
+        verbose(f"  [信息] 找到 {len(isolated_boundary_points)} 个被隔离的边界点")
+
+        # 修复每个被隔离的点
+        fixed_count = 0
+        for point_idx in isolated_boundary_points:
+            if self._fix_isolated_boundary_point(point_idx):
+                fixed_count += 1
+
+        verbose(f"  [信息] 修复了 {fixed_count}/{len(isolated_boundary_points)} 个被隔离的边界点")
+        return fixed_count
+
+    def _fix_isolated_boundary_point(self, point_idx: int) -> bool:
+        """修复一个被隔离的边界点。
+
+        算法：
+        1. 找到离该点最近的三角形
+        2. 删除该三角形
+        3. 使用边界点和三角形顶点重新三角化
+
+        参数:
+            point_idx: 被隔离的边界点索引
+
+        返回:
+            True 如果修复成功
+        """
+        point = self.points[point_idx]
+
+        # 找到最近的三角形
+        min_dist = float('inf')
+        closest_tri = None
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+
+            # 计算点到三角形的距离
+            dist = self._point_to_triangle_distance(point, tri)
+            if dist < min_dist:
+                min_dist = dist
+                closest_tri = tri
+
+        if closest_tri is None:
+            verbose(f"    [警告] 没有找到最近的三角形，无法修复点 {point_idx}")
+            return False
+
+        verbose(f"    [信息] 修复点 {point_idx}, 最近三角形 {closest_tri.idx}, 距离 {min_dist:.4f}")
+
+        # 删除最近的三角形
+        closest_tri.set_deleted(True)
+        self.triangles = [t for t in self.triangles if not t.is_deleted()]
+
+        # 使用边界点和三角形顶点重新三角化
+        v0, v1, v2 = closest_tri.vertices
+
+        # 创建 3 个新三角形：(point, v0, v1), (point, v1, v2), (point, v2, v0)
+        new_tris = [
+            MTri3(point_idx, v0, v1, idx=self._next_tri_id()),
+            MTri3(point_idx, v1, v2, idx=self._next_tri_id()),
+            MTri3(point_idx, v2, v0, idx=self._next_tri_id())
+        ]
+
+        for tri in new_tris:
+            self._compute_circumcircle(tri)
+
+        self.triangles.extend(new_tris)
+        build_adjacency_from_triangles(self.triangles)
+
+        return True
+
+    def _point_to_triangle_distance(self, point: np.ndarray, tri: MTri3) -> float:
+        """计算点到三角形的距离（到三条边的最小距离）。"""
+        v0, v1, v2 = tri.vertices
+        p0, p1, p2 = self.points[v0], self.points[v1], self.points[v2]
+
+        dist0 = self._point_to_segment_distance(point, p0, p1)
+        dist1 = self._point_to_segment_distance(point, p1, p2)
+        dist2 = self._point_to_segment_distance(point, p0, p2)
+
+        return min(dist0, dist1, dist2)
+
+    def _point_to_segment_distance(self, point: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
+        """计算点到线段的距离。"""
+        ab = b - a
+        ap = point - a
+
+        t = np.dot(ap, ab) / np.dot(ab, ab)
+        t = max(0, min(1, t))
+
+        projection = a + t * ab
+        return np.linalg.norm(point - projection)
+
+
+
+
+    def _recover_edge_with_steiner_point(self, v1: int, v2: int) -> bool:
+        """使用 Steiner 点恢复丢失的边界边。
+
+        当边 (v1,v2) 缺失且没有相交三角形时，在边的中点插入 Steiner 点。
+
+        算法：
+        1. 计算边的中点
+        2. 找到离中点最近的三角形
+        3. 删除该三角形
+        4. 在中点创建 Steiner 点
+        5. 使用 Steiner 点和边界点重新三角化，确保边界边被恢复
+
+        参数:
+            v1, v2: 缺失边界边的两个端点
+
+        返回:
+            True 如果成功恢复
+        """
+        p1, p2 = self.points[v1], self.points[v2]
+        mid_point = (p1 + p2) / 2
+
+        # 找到离中点最近的三角形
+        min_dist = float('inf')
+        closest_tri = None
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+
+            dist = self._point_to_triangle_distance(mid_point, tri)
+            if dist < min_dist:
+                min_dist = dist
+                closest_tri = tri
+
+        if closest_tri is None:
+            verbose(f"    [警告] 没有找到最近的三角形，无法使用 Steiner 点恢复边 ({v1},{v2})")
+            return False
+
+        verbose(f"    [信息] 使用 Steiner 点恢复边 ({v1},{v2}), 最近三角形 {closest_tri.idx}, 距离 {min_dist:.4f}")
+
+        # 删除最近的三角形
+        closest_tri.set_deleted(True)
+        self.triangles = [t for t in self.triangles if not t.is_deleted()]
+
+        # 在中点创建 Steiner 点
+        mid_idx = len(self.points)
+        self.points = np.vstack([self.points, mid_point])
+        
+        # 关键修复：标记 Steiner 点为边界点，防止在后续处理中被删除或移动
+        if len(self.boundary_mask) <= mid_idx:
+            # 扩展 boundary_mask
+            new_mask = np.zeros(len(self.points), dtype=bool)
+            new_mask[:len(self.boundary_mask)] = self.boundary_mask
+            self.boundary_mask = new_mask
+        self.boundary_mask[mid_idx] = True  # 标记 Steiner 点为边界点
+
+        # 获取原三角形的顶点
+        orig_v0, orig_v1, orig_v2 = closest_tri.vertices
+
+        # 创建新三角形，确保包含边 (v1, v2)
+        # 策略：创建 (v1, v2, mid) 三角形，确保边界边存在
+        new_tris = [
+            MTri3(v1, v2, mid_idx, idx=self._next_tri_id()),
+        ]
+
+        # 还需要填充剩余的空洞
+        # 找到原三角形中与 Steiner 点不冲突的顶点
+        other_vertices = [orig_v0, orig_v1, orig_v2]
+        for other_v in other_vertices:
+            if other_v not in [v1, v2]:
+                # 创建连接其他顶点的三角形
+                new_tris.append(MTri3(v1, other_v, mid_idx, idx=self._next_tri_id()))
+                new_tris.append(MTri3(v2, other_v, mid_idx, idx=self._next_tri_id()))
+                break
+
+        for tri in new_tris:
+            self._compute_circumcircle(tri)
+
+        self.triangles.extend(new_tris)
+        build_adjacency_from_triangles(self.triangles)
+
+        # 验证边是否恢复
+        if self._is_boundary_edge_in_mesh(v1, v2):
+            verbose(f"    [成功] Steiner 点成功恢复边 ({v1},{v2})")
+            return True
+        else:
+            verbose(f"    [错误] Steiner 点未能恢复边 ({v1},{v2})")
+            return False
+

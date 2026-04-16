@@ -125,43 +125,64 @@ class NACA4DigitFoil:
         plt.grid(True)
         plt.show(block=False)
 
-    def write_foil(self, filename):
+    def write_foil(self, filename, title=True):
         """将翼型坐标写入文件"""
         total_points = len(self.coords)
         with open(filename, "w") as f:
-            f.write(f"# NACA {self.number} Airfoil\n")
-            f.write(f"# {total_points} points\n")
+            if title:
+                f.write(f"# NACA {self.number} Airfoil\n")
+                f.write(f"# {total_points} points\n")
+
+            f.write(f"{total_points}\n")
             for x, y in self.coords:
                 f.write(f"{x} {y} 0\n")
         print(f"翼型坐标已写入文件 {filename}")
 
 
-def generate_naca_serials(save_folder: str = "naca_serials"):
+def generate_naca_series(save_folder: str = "naca_series"):
     """
-    生成 NACA 翼型的所有可能序列
+    采用整数枚举列表生成 NACA 4位翼型序列
     """
-    save_folder = Path(save_folder)  # 转为Path对象
+    save_folder = Path(save_folder)
+    save_folder.mkdir(parents=True, exist_ok=True)
+    print(f"输出目录已就绪: {save_folder.absolute()}")
 
-    if not save_folder.exists():
-        save_folder.mkdir(parents=True)
-        print(f"文件夹 {save_folder} 已创建")
+    # 1. 纯整数枚举列表，彻底规避浮点迭代与精度隐患
+    M_DIGITS = list(range(0, 10))       # 弯度数字 0~9 (对应 0%~9%)
+    # P_DIGITS = [0] + list(range(1, 7))        # 位置数字 1~7
+    T_DIGITS = list(range(4, 41, 2))  # 厚度数字 
 
-    # m取值范围0.00-0.09，p取值范围0.3-0.6，t取值范围0.10-0.40
-    m_values = np.arange(0, 10, 1) / 100
-    p_values = np.arange(3, 7, 1) / 10
-    t_values = np.arange(10, 41, 10) / 100
+    # # 完整标准参数集（共 140 个经典组合）
+    # M_DIGITS = list(range(0, 10))
+    # # M=0 时 P 必须为 0；M>0 时 P 取 1~7
+    # P_DIGITS = [0] + list(range(1, 7))  
+    # # 航空常用厚度离散值（%）
+    # T_DIGITS = [0, 4, 6, 8, 9, 10, 12, 15, 18, 20, 24, 30, 35, 40]
 
     count = 0
-    for m in m_values:
-        for p in p_values:
-            for t in t_values:
-                foil = NACA4DigitFoil(m=m, p=p, t=t, c=1.0, num_points=100)
-                file_name = save_folder / f"NACA{foil.number}.dat"
-                foil.write_foil(file_name)
+    for m_d in M_DIGITS:
+        if m_d == 0:
+            p_digits = [0]
+        else:
+            p_digits = list(range(1, 7))
+        
+        for p_d in p_digits:                
+            for t_d in T_DIGITS:
+                # 3. 循环内按需转为浮点比例，保持类接口兼容
+                m_val = m_d / 100.0
+                p_val = p_d / 10.0
+                t_val = t_d / 100.0
+
+                foil = NACA4DigitFoil(m=m_val, p=p_val, t=t_val, c=1.0, num_points=100)
+                
+                # 4. 严格格式化4位编号 (如 2412, 0312, 2410)
+                foil_id = f"{m_d}{p_d}{t_d:02d}"
+                file_path = save_folder / f"NACA{foil_id}.dat"
+                
+                foil.write_foil(file_path, False)
                 count += 1
 
-    print(f"共生成 {count} 个翼型文件")
-
+    print(f"✅ 批量生成完毕，共创建 {count} 个翼型文件。")
 
 if __name__ == "__main__":
     # 示例调用1
@@ -172,4 +193,4 @@ if __name__ == "__main__":
 
     # naca_foil.plot_foil()
 
-    generate_naca_serials()
+    generate_naca_series()

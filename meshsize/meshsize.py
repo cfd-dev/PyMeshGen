@@ -110,7 +110,7 @@ class QuadtreeSizing:
         self.depth = None  # 叉树深度
         self.bg_divisions = [1, 1]  # 背景网格维度
 
-        self.ax = visual_obj.ax
+        self.ax = visual_obj.ax if visual_obj else None
 
         self.generate_bg_mesh()
 
