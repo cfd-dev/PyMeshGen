@@ -1,3 +1,4 @@
+import os
 import numpy as np
 
 from utils.message import info
@@ -20,6 +21,7 @@ def write_vtk(
         cell_type_container (list): 单元类型列表，每个元素为一个整数。
         cell_part_names (list, optional): 单元部件名称列表，每个元素为一个字符串。
     """
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
 
     num_nodes = len(node_coords)
     num_cells = len(cell_idx_container)
