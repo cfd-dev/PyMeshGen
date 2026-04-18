@@ -126,6 +126,49 @@ class GmshBowyerWatsonMeshGenerator:
     # 边界保护
     # -------------------------------------------------------------------------
     
+
+    def _is_edge_split_by_steiner(self, v1: int, v2: int) -> Tuple[bool, Optional[int]]:
+        """检查边 (v1, v2) 是否被 Steiner 点分割。
+
+        返回：
+            (is_split, steiner_idx): 是否被分割，以及 Steiner 点索引（如果存在）
+        """
+        # 找到所有包含 v1 的三角形
+        tris_with_v1 = [tri for tri in self.triangles if v1 in tri.vertices and not tri.is_deleted()]
+        
+        # 检查是否有三角形同时包含 v1 和 v2
+        for tri in tris_with_v1:
+            if v2 in tri.vertices:
+                return False, None  # 边存在，未被分割
+        
+        # 找到所有与 v1 相连的点
+        neighbors_of_v1 = set()
+        for tri in tris_with_v1:
+            for v in tri.vertices:
+                if v != v1:
+                    neighbors_of_v1.add(v)
+        
+        # 检查是否有 Steiner 点在 v1-v2 连线上
+        for neighbor in neighbors_of_v1:
+            if neighbor == v2 or neighbor < self.boundary_count:
+                continue  # 跳过 v2 本身和原始边界点
+            
+            # 检查 neighbor 是否在 v1-v2 连线上
+            p1 = self.points[v1]
+            p2 = self.points[v2]
+            pn = self.points[neighbor]
+            
+            # 检查三点共线
+            cross_product = (p2[0] - p1[0]) * (pn[1] - p1[1]) - (p2[1] - p1[1]) * (pn[0] - p1[0])
+            if abs(cross_product) < 1e-10:
+                # 三点共线，检查 neighbor 是否在 v1-v2 之间
+                dot_product = (pn[0] - p1[0]) * (p2[0] - p1[0]) + (pn[1] - p1[1]) * (p2[1] - p1[1])
+                segment_length_sq = (p2[0] - p1[0])**2 + (p2[1] - p1[1])**2
+                if 0 < dot_product < segment_length_sq:
+                    return True, neighbor  # 被 Steiner 点分割
+        
+        return False, None
+
     def _is_protected_edge(self, v1: int, v2: int) -> bool:
         """检查边是否是受保护的边界边。"""
         return frozenset({v1, v2}) in self.protected_edges

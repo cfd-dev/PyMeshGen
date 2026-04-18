@@ -8,6 +8,7 @@ __pycache__/
 .vscode/
 .trae/
 .qwen/
+.claude/
 
 # 打包输出目录
 dist/
