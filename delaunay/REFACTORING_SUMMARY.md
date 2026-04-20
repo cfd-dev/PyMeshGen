@@ -202,7 +202,14 @@ points, simplices, boundary_mask = create_bowyer_watson_mesh(
 - `core.py` 中的 `GmshBowyerWatsonMeshGenerator` 是简化版本
 - 如需完整 Gmsh 功能，可从 `backup_old/bw_core_gmsh.py` 恢复
 
-### 3. 测试建议
+### 3. 兼容性命名调整（后续修复）
+- 为避免 `sys.path` 将 `delaunay/` 提前时与项目根目录模块冲突，重构文件改为：
+  - `core.py` → `bw_core.py`
+  - `utils.py` → `bw_utils.py`
+- 通过 `delaunay.__init__` 中的 `sys.modules` 映射，保留了 `delaunay.core` / `delaunay.utils` 兼容导入。
+- `create_bowyer_watson_mesh` 默认切换到成熟 Gmsh 路径（`backup_old.bw_core_gmsh`），并在主流程中补充边界约束三角形以保证边界完整恢复。
+
+### 4. 测试建议
 重构后需要重新运行测试：
 ```bash
 python -m unittest unittests.test_bowyer_watson

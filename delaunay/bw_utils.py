@@ -8,7 +8,10 @@ Bowyer-Watson 网格生成器 - 辅助函数
 
 import numpy as np
 from typing import List, Tuple, Optional
-from utils.geom_toolkit import point_in_polygon
+try:
+    from utils.geom_toolkit import point_in_polygon
+except ModuleNotFoundError:
+    from geom_toolkit import point_in_polygon
 
 
 def extract_boundary_loops(fronts) -> Tuple[List[np.ndarray], List[np.ndarray]]:
@@ -128,10 +131,14 @@ def create_bowyer_watson_mesh(
     Returns:
         (points, simplices, boundary_mask)
     """
-    from delaunay.core import BowyerWatsonMeshGenerator, GmshBowyerWatsonMeshGenerator
-    
-    # 选择实现
-    GeneratorClass = GmshBowyerWatsonMeshGenerator if use_gmsh_implementation else BowyerWatsonMeshGenerator
+    from delaunay.bw_core import BowyerWatsonMeshGenerator
+
+    # 选择实现：默认走更成熟的 Gmsh 版本以保证边界恢复与质量稳定
+    if use_gmsh_implementation:
+        from delaunay.backup_old.bw_core_gmsh import GmshBowyerWatsonMeshGenerator
+        GeneratorClass = GmshBowyerWatsonMeshGenerator
+    else:
+        GeneratorClass = BowyerWatsonMeshGenerator
     
     # 自动检测孔洞
     final_holes = list(holes) if holes else []

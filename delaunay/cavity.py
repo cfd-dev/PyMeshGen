@@ -129,22 +129,23 @@ def insert_vertex(
     
     new_tris = []
     point = points[point_idx]
-    
+
     # 创建新三角形
     for edge_face in shell_edges:
         v0, v1 = edge_face.vertices()
         new_tri = MTri3(v0, v1, point_idx, idx=next_tri_id_func())
         compute_circumcircle_func(new_tri)
-        
+
         # 边长验证
         if validate_edges:
             d0 = np.linalg.norm(points[v0] - point)
             d1 = np.linalg.norm(points[v1] - point)
             if d0 < 1e-10 or d1 < 1e-10:
                 return [], False
-        
+
         new_tris.append(new_tri)
-    
+        triangles.append(new_tri)  # 添加新三角形到列表
+
     return new_tris, True
 
 

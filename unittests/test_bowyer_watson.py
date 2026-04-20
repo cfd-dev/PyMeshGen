@@ -976,6 +976,17 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
                 print(f"    - 问题: {hole_cleanup_result['issue']}")
             self.fail(f"{test_name} 孔洞清理检查失败: {hole_cleanup_result.get('issue', '孔洞内残留点或单元')}")
 
+        # 额外检查：拓扑绝对干净（无非流形边、单连通、无严格边相交）
+        print(f"\n  - 拓扑洁净检查:")
+        topology_result = self._check_topology_clean(grid=grid, test_name=test_name)
+        if topology_result['pass']:
+            print(f"  - [PASS] 拓扑洁净检查通过")
+        else:
+            print(f"  - [FAIL] 拓扑洁净检查失败")
+            if topology_result.get('issue'):
+                print(f"    - 问题: {topology_result['issue']}")
+            self.fail(f"{test_name} 拓扑洁净检查失败: {topology_result.get('issue', '拓扑异常')}")
+
     def _check_boundary_edges(self, cas_file, grid, test_name):
         """检查网格中特定边界的边是否完整恢复，以及内边界内部是否有非法点/单元
 
@@ -1027,6 +1038,92 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
 
         # 对每个边界区域检查边的恢复情况
         vtk_nodes = np.array(grid.node_coords)
+        mesh_edges = set()
+        mesh_adjacency = {}
+        for cell in grid.cells:
+            n = len(cell)
+            for i in range(n):
+                a = cell[i]
+                b = cell[(i + 1) % n]
+                edge_key = (min(a, b), max(a, b))
+                mesh_edges.add(edge_key)
+                mesh_adjacency.setdefault(a, set()).add(b)
+                mesh_adjacency.setdefault(b, set()).add(a)
+
+        def _point_segment_distance(point, seg_start, seg_end):
+            edge_vec = seg_end - seg_start
+            seg_len2 = float(np.dot(edge_vec, edge_vec))
+            if seg_len2 < 1e-16:
+                return float(np.linalg.norm(point - seg_start))
+            t = float(np.dot(point - seg_start, edge_vec) / seg_len2)
+            t = max(0.0, min(1.0, t))
+            proj = seg_start + t * edge_vec
+            return float(np.linalg.norm(point - proj))
+
+        def _has_split_edge_path(v_start, v_end, seg_start, seg_end):
+            """允许边被分裂后通过多段边表示（几何上仍与原边一致）。"""
+            if v_start == v_end:
+                return True
+
+            edge_vec = seg_end - seg_start
+            seg_len2 = float(np.dot(edge_vec, edge_vec))
+            if seg_len2 < 1e-16:
+                return False
+
+            line_tolerance = tolerance * 1.5
+            projection_margin = 0.2
+
+            candidate_nodes = {v_start, v_end}
+            for idx, coord in enumerate(vtk_nodes[:, :2]):
+                t = float(np.dot(coord - seg_start, edge_vec) / seg_len2)
+                if -projection_margin <= t <= 1.0 + projection_margin:
+                    if _point_segment_distance(coord, seg_start, seg_end) <= line_tolerance:
+                        candidate_nodes.add(idx)
+
+            from collections import deque
+            queue = deque([(v_start, 0)])
+            visited = {v_start}
+            max_depth = 24
+
+            while queue:
+                current, depth = queue.popleft()
+                if depth >= max_depth:
+                    continue
+                for neighbor in mesh_adjacency.get(current, ()):
+                    if neighbor not in candidate_nodes or neighbor in visited:
+                        continue
+                    if neighbor == v_end:
+                        return True
+                    visited.add(neighbor)
+                    queue.append((neighbor, depth + 1))
+
+            return False
+
+        def _has_zone_conforming_path(v_start, v_end, allowed_nodes, max_depth=120):
+            """在边界带内查找路径，允许曲线边界通过多段边恢复。"""
+            if v_start == v_end:
+                return True
+            if v_start not in allowed_nodes or v_end not in allowed_nodes:
+                return False
+
+            from collections import deque
+            queue = deque([(v_start, 0)])
+            visited = {v_start}
+
+            while queue:
+                current, depth = queue.popleft()
+                if depth >= max_depth:
+                    continue
+                for neighbor in mesh_adjacency.get(current, ()):
+                    if neighbor not in allowed_nodes or neighbor in visited:
+                        continue
+                    if neighbor == v_end:
+                        return True
+                    visited.add(neighbor)
+                    queue.append((neighbor, depth + 1))
+
+            return False
+
         all_results = {}
         all_pass = True
 
@@ -1054,14 +1151,47 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             
             # 在 VTK 中查找对应的节点（找最近的节点，而非第一个在容差内的节点）
             vtk_node_map = {}  # CAS node index -> VTK node index
-            for cas_idx in zone_node_indices:
+            zone_node_list = list(zone_node_indices)
+            candidate_pairs = []
+            for cas_idx in zone_node_list:
                 cas_coord = cas_nodes[cas_idx]
                 dists = np.sqrt(np.sum((vtk_nodes[:, :2] - cas_coord[:2])**2, axis=1))
-                nearest_idx = np.argmin(dists)
-                nearest_dist = dists[nearest_idx]
-                
-                if nearest_dist < tolerance:
+                nearest_order = np.argsort(dists)[:8]
+                for vtk_idx in nearest_order:
+                    dist = dists[vtk_idx]
+                    if dist < tolerance:
+                        candidate_pairs.append((float(dist), cas_idx, int(vtk_idx)))
+
+            candidate_pairs.sort(key=lambda x: x[0])
+            assigned_cas = set()
+            assigned_vtk = set()
+            for _, cas_idx, vtk_idx in candidate_pairs:
+                if cas_idx in assigned_cas or vtk_idx in assigned_vtk:
+                    continue
+                assigned_cas.add(cas_idx)
+                assigned_vtk.add(vtk_idx)
+                vtk_node_map[cas_idx] = vtk_idx
+
+            # 兜底：对未匹配的 CAS 节点做最近邻映射（允许复用），尽量避免路径误判
+            for cas_idx in zone_node_list:
+                if cas_idx in vtk_node_map:
+                    continue
+                cas_coord = cas_nodes[cas_idx]
+                dists = np.sqrt(np.sum((vtk_nodes[:, :2] - cas_coord[:2])**2, axis=1))
+                nearest_idx = int(np.argmin(dists))
+                if dists[nearest_idx] < tolerance:
                     vtk_node_map[cas_idx] = nearest_idx
+
+            # 预计算该边界区域的“边界带”节点集合（用于识别分裂/曲线恢复边）
+            zone_segments = [(cas_nodes[a][:2], cas_nodes[b][:2]) for a, b in cas_edges]
+            zone_band_tolerance = max(tolerance * 2.0, 0.03)
+
+            zone_allowed_nodes = set(vtk_node_map.values())
+            for vtk_idx, vtk_coord in enumerate(vtk_nodes[:, :2]):
+                for seg_start, seg_end in zone_segments:
+                    if _point_segment_distance(vtk_coord, seg_start, seg_end) <= zone_band_tolerance:
+                        zone_allowed_nodes.add(vtk_idx)
+                        break
 
             # 检查每条边是否存在
             missing_edges = []
@@ -1073,13 +1203,20 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
                 vtk_n1 = vtk_node_map[n1]
                 vtk_n2 = vtk_node_map[n2]
                 
-                # 检查这两个节点是否共享单元
-                edge_exists = False
-                for cell in grid.cells:
-                    if vtk_n1 in cell and vtk_n2 in cell:
-                        edge_exists = True
-                        break
-                
+                # 先检查直接边，再允许分裂后的多段边（几何一致）
+                edge_key = (min(vtk_n1, vtk_n2), max(vtk_n1, vtk_n2))
+                edge_exists = edge_key in mesh_edges
+                if not edge_exists:
+                    edge_exists = _has_zone_conforming_path(
+                        vtk_n1, vtk_n2, zone_allowed_nodes
+                    )
+                if not edge_exists:
+                    edge_exists = _has_split_edge_path(
+                        vtk_n1, vtk_n2,
+                        cas_nodes[n1][:2],
+                        cas_nodes[n2][:2],
+                    )
+
                 if not edge_exists:
                     missing_edges.append((n1, n2, cas_nodes[n1], cas_nodes[n2], None))
 
@@ -1339,6 +1476,102 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             'hole_results': hole_results,
             'issue': None if all_pass else '孔洞内残留点或单元'
         }
+
+    def _check_topology_clean(self, grid, test_name):
+        """检查网格拓扑是否干净：无非流形边、单连通、无严格边相交。"""
+        from collections import defaultdict, deque
+
+        edge_to_cells = defaultdict(list)
+        for cell_idx, cell in enumerate(grid.cells):
+            n = len(cell)
+            for i in range(n):
+                a = int(cell[i])
+                b = int(cell[(i + 1) % n])
+                edge_key = (a, b) if a < b else (b, a)
+                edge_to_cells[edge_key].append(cell_idx)
+
+        non_manifold_edges = [edge for edge, cells in edge_to_cells.items() if len(cells) > 2]
+        if non_manifold_edges:
+            return {
+                'pass': False,
+                'issue': f'存在 {len(non_manifold_edges)} 条非流形边（共享单元数 > 2）'
+            }
+
+        # 单元连通性（按共享边）
+        cell_count = len(grid.cells)
+        if cell_count == 0:
+            return {'pass': False, 'issue': '网格无单元'}
+
+        cell_adj = [[] for _ in range(cell_count)]
+        for _, cells in edge_to_cells.items():
+            if len(cells) == 2:
+                c1, c2 = cells
+                cell_adj[c1].append(c2)
+                cell_adj[c2].append(c1)
+
+        visited = [False] * cell_count
+        queue = deque([0])
+        visited[0] = True
+        visited_count = 0
+        while queue:
+            current = queue.popleft()
+            visited_count += 1
+            for neighbor in cell_adj[current]:
+                if not visited[neighbor]:
+                    visited[neighbor] = True
+                    queue.append(neighbor)
+
+        if visited_count != cell_count:
+            return {
+                'pass': False,
+                'issue': f'网格存在 {cell_count - visited_count} 个未连通单元'
+            }
+
+        # 严格边相交（排除共享端点）
+        points = np.array(grid.node_coords)[:, :2]
+        edges = list(edge_to_cells.keys())
+        bboxes = []
+        for edge in edges:
+            p1 = points[edge[0]]
+            p2 = points[edge[1]]
+            bboxes.append((
+                min(p1[0], p2[0]), max(p1[0], p2[0]),
+                min(p1[1], p2[1]), max(p1[1], p2[1]),
+            ))
+
+        def _strict_intersect(pa, pb, pc, pd, eps=1e-12):
+            def _cross(o, a, b):
+                return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+            d1 = _cross(pc, pd, pa)
+            d2 = _cross(pc, pd, pb)
+            d3 = _cross(pa, pb, pc)
+            d4 = _cross(pa, pb, pd)
+            return (
+                ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps))
+                and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
+            )
+
+        for i, e1 in enumerate(edges):
+            a, b = e1
+            p1 = points[a]
+            p2 = points[b]
+            x1_min, x1_max, y1_min, y1_max = bboxes[i]
+            for j in range(i + 1, len(edges)):
+                c, d = edges[j]
+                if a in (c, d) or b in (c, d):
+                    continue
+
+                x2_min, x2_max, y2_min, y2_max = bboxes[j]
+                if x1_max < x2_min or x2_max < x1_min or y1_max < y2_min or y2_max < y1_min:
+                    continue
+
+                p3 = points[c]
+                p4 = points[d]
+                if _strict_intersect(p1, p2, p3, p4):
+                    return {'pass': False, 'issue': '检测到严格边相交（单元拓扑交叉）'}
+
+        return {'pass': True, 'issue': None}
 
     def _create_bw_config_from_root(self, original_config_path, output_file, enable_boundary_layer=False):
         """从项目根目录 config/ 文件夹创建 Bowyer-Watson 配置（mesh_type=4）

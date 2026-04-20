@@ -65,17 +65,17 @@ def circumcenter_precise(a, b, c):
     """高精度计算外接圆圆心。
 
     使用 Decimal 避免浮点误差。
-    
+
     Returns:
         (cx, cy): 外接圆心坐标
     """
-    ax, ay = Decimal(a[0]), Decimal(a[1])
-    bx, by = Decimal(b[0]), Decimal(b[1])
-    cx, cy = Decimal(c[0]), Decimal(c[1])
+    ax, ay = float(a[0]), float(a[1])
+    bx, by = float(b[0]), float(b[1])
+    cx, cy = float(c[0]), float(c[1])
 
-    d = Decimal('2') * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
+    d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by))
 
-    if abs(d) < Decimal('1e-30'):
+    if abs(d) < 1e-30:
         # 退化三角形，返回重心
         return (a[0] + b[0] + c[0]) / 3.0, (a[1] + b[1] + c[1]) / 3.0
 

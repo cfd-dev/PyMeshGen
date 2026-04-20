@@ -40,6 +40,7 @@ class Parameters:
         self.output_file = []
         self.mesh_type = 1 # 1-三角形triangular，2-直角三角形right_trianglar，3-三角形/四边形混合2d_mixed
         self.triangle_to_quad_method = "q_morph"
+        self.sizing_decay = 1.2
         self.viz_enabled = False
         self.auto_output = True  # 是否自动输出网格
 
@@ -114,6 +115,8 @@ class Parameters:
         self.triangle_to_quad_method = config.get(
             "triangle_to_quad_method", "q_morph"
         )
+        default_sizing_decay = 1.25 if self.mesh_type == 4 else 1.2
+        self.sizing_decay = config.get("sizing_decay", default_sizing_decay)
         self.viz_enabled = config["viz_enabled"]
         self.auto_output = config.get("auto_output", True)
 
@@ -144,6 +147,7 @@ class Parameters:
         params.output_file = []
         params.mesh_type = 1
         params.triangle_to_quad_method = "q_morph"
+        params.sizing_decay = 1.2
         params.viz_enabled = False
         params.auto_output = True
         params.load_config_data(config)
@@ -257,6 +261,8 @@ class Parameters:
         self.triangle_to_quad_method = config.get(
             "triangle_to_quad_method", self.triangle_to_quad_method
         )
+        default_sizing_decay = 1.25 if self.mesh_type == 4 else 1.2
+        self.sizing_decay = config.get("sizing_decay", default_sizing_decay)
         self.viz_enabled = config.get("viz_enabled", self.viz_enabled)
         self.auto_output = config.get("auto_output", self.auto_output)
         set_debug_level(self.debug_level)

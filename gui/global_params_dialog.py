@@ -181,6 +181,7 @@ class GlobalParamsDialog(QDialog):
 
         # 三角形合并算法（从下拉框获取当前选择的值）
         params["triangle_to_quad_method"] = self.triangle_to_quad_combo.currentText()
+        params["sizing_decay"] = self.params.get("sizing_decay", 1.2)
 
         # 4. 全局网格尺寸设置
         try:

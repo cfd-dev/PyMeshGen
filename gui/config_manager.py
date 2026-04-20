@@ -85,6 +85,7 @@ class ConfigManager:
                     "output_file": getattr(self.gui.params, 'output_file', ''),
                     "mesh_type": getattr(self.gui.params, 'mesh_type', 1),
                     "triangle_to_quad_method": getattr(self.gui.params, 'triangle_to_quad_method', 'q_morph'),
+                    "sizing_decay": getattr(self.gui.params, 'sizing_decay', 1.2),
                     "auto_output": getattr(self.gui.params, 'auto_output', True),
                     "viz_enabled": getattr(self.gui.params, 'viz_enabled', False)
                 }
@@ -248,6 +249,7 @@ class ConfigManager:
             current_params["mesh_type"] = self.gui.params.mesh_type
             current_params["auto_output"] = getattr(self.gui.params, 'auto_output', True)
             current_params["triangle_to_quad_method"] = getattr(self.gui.params, 'triangle_to_quad_method', 'q_morph')
+            current_params["sizing_decay"] = getattr(self.gui.params, 'sizing_decay', 1.2)
 
             # 从部件参数中获取全局最大尺寸（如果有）
             if hasattr(self.gui.params, 'part_params') and self.gui.params.part_params:
@@ -286,6 +288,7 @@ class ConfigManager:
                     "output_file": new_params["output_file"],
                     "mesh_type": new_params["mesh_type"],
                     "triangle_to_quad_method": new_params.get("triangle_to_quad_method", "q_morph"),
+                    "sizing_decay": new_params.get("sizing_decay", 1.2),
                     "auto_output": new_params["auto_output"],
                     "viz_enabled": False,
                     "parts": []
@@ -311,6 +314,7 @@ class ConfigManager:
             self.gui.params.mesh_type = new_params["mesh_type"]
             self.gui.params.auto_output = new_params["auto_output"]
             self.gui.params.triangle_to_quad_method = new_params["triangle_to_quad_method"]
+            self.gui.params.sizing_decay = new_params.get("sizing_decay", getattr(self.gui.params, 'sizing_decay', 1.2))
             
             # 更新所有部件的最大尺寸为全局尺寸
             if hasattr(self.gui.params, 'part_params') and self.gui.params.part_params:
@@ -330,4 +334,3 @@ class ConfigManager:
                 f"网格类型={new_params['mesh_type']}, 合并算法={new_params['triangle_to_quad_method']}, 输出路径={new_params['output_file'][0]}"
             )
             self.gui.update_status("全局参数已更新")
-
