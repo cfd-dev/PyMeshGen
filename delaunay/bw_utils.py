@@ -113,7 +113,8 @@ def create_bowyer_watson_mesh(
     seed: Optional[int] = None,
     holes: Optional[List[np.ndarray]] = None,
     auto_detect_holes: bool = True,
-    use_gmsh_implementation: bool = True
+    use_gmsh_implementation: bool = True,
+    backend: str = "bowyer_watson",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Bowyer-Watson 网格生成公共接口。
 
@@ -127,21 +128,11 @@ def create_bowyer_watson_mesh(
         holes: 孔洞边界
         auto_detect_holes: 自动检测孔洞
         use_gmsh_implementation: 使用 Gmsh 实现
+        backend: Delaunay 后端，"bowyer_watson" 或 "triangle"
     
     Returns:
         (points, simplices, boundary_mask)
     """
-    from delaunay.bw_core_stable import (
-        BowyerWatsonMeshGenerator,
-        GmshBowyerWatsonMeshGenerator,
-    )
-
-    # 选择实现：默认走更成熟的 Gmsh 版本以保证边界恢复与质量稳定
-    if use_gmsh_implementation:
-        GeneratorClass = GmshBowyerWatsonMeshGenerator
-    else:
-        GeneratorClass = BowyerWatsonMeshGenerator
-    
     # 自动检测孔洞
     final_holes = list(holes) if holes else []
     outer_boundary = None
@@ -173,6 +164,30 @@ def create_bowyer_watson_mesh(
             boundary_edges.append((idx1, idx2))
     
     boundary_points = np.array(boundary_points)
+
+    normalized_backend = str(backend).strip().lower()
+    if normalized_backend == "triangle":
+        from delaunay.triangle_backend import create_triangle_mesh
+
+        return create_triangle_mesh(
+            boundary_points=boundary_points,
+            boundary_edges=boundary_edges,
+            sizing_system=sizing_system,
+            holes=final_holes if final_holes else None,
+            outer_boundary=outer_boundary,
+            seed=seed,
+        )
+
+    from delaunay.bw_core_stable import (
+        BowyerWatsonMeshGenerator,
+        GmshBowyerWatsonMeshGenerator,
+    )
+
+    # 选择实现：默认走更成熟的 Gmsh 版本以保证边界恢复与质量稳定
+    if use_gmsh_implementation:
+        GeneratorClass = GmshBowyerWatsonMeshGenerator
+    else:
+        GeneratorClass = BowyerWatsonMeshGenerator
     
     # 创建生成器并生成网格
     generator = GeneratorClass(

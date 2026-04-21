@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-import numpy as np
 
 # 获取项目根目录
 project_root = str(Path(__file__).parent)
@@ -31,30 +30,12 @@ from utils.core_io import (
     merge_generated_grids,
     output_and_finalize,
 )
-
-
-def _deduplicate_grid_cells(unstructured_grid):
-    """按节点集合去重单元，清理优化阶段偶发产生的重复单元。"""
-    cells = unstructured_grid.cells
-    if not cells:
-        return 0
-
-    unique_cells = []
-    seen = set()
-    removed = 0
-
-    for cell in cells:
-        key = tuple(sorted(cell))
-        if key in seen:
-            removed += 1
-            continue
-        seen.add(key)
-        unique_cells.append(list(cell))
-
-    if removed > 0:
-        unstructured_grid.set_cells(unique_cells, grid_dimension=unstructured_grid.dimension)
-
-    return removed
+from utils.delaunay_postprocess import (
+    collect_boundary_edges_from_fronts,
+    is_topology_valid,
+    recover_boundary_edges_by_swaps,
+)
+from utils.mesh_utils import deduplicate_grid_cells
 
 
 def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
@@ -178,12 +159,13 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # Bowyer-Watson Delaunay 网格生成分支
     if parameters.mesh_type == 4:
-        info("Bowyer-Watson 模式：使用 Delaunay 三角剖分生成网格")
+        delaunay_backend = getattr(parameters, "delaunay_backend", "bowyer_watson")
+        info(f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格")
         
         from data_structure.unstructured_grid import Unstructured_Grid
         from data_structure.basic_elements import Triangle as BWTriangle, NodeElement
 
-        # 调用 Bowyer-Watson 算法
+        # 调用 Delaunay 后端
         # 启用自动孔洞检测以正确处理内边界（如翼型内部固体区域）
         points, simplices, boundary_mask = create_bowyer_watson_mesh(
             boundary_front=front_heap,
@@ -191,246 +173,22 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
             target_triangle_count=None,  # 可选：指定目标三角形数量
             smoothing_iterations=3,
             auto_detect_holes=True,  # 启用自动孔洞检测
+            backend=delaunay_backend,
         )
 
-        def _triangle_quality(p0, p1, p2):
-            a = float(np.linalg.norm(p1 - p0))
-            b = float(np.linalg.norm(p2 - p1))
-            c = float(np.linalg.norm(p0 - p2))
-            s = 0.5 * (a + b + c)
-            area_sq = s * (s - a) * (s - b) * (s - c)
-            if area_sq <= 1e-24:
-                return 0.0
-            area = float(np.sqrt(area_sq))
-            r_in = area / s if s > 1e-12 else 0.0
-            r_out = (a * b * c) / (4.0 * area) if area > 1e-12 else 0.0
-            return min(2.0 * r_in / r_out, 1.0) if r_out > 1e-12 else 0.0
-
-        def _collect_boundary_edges_from_fronts(boundary_front):
-            node_index_map = {}
-            edges = []
-            next_idx = 0
-            for front in boundary_front:
-                for node_elem in front.node_elems:
-                    node_hash = node_elem.hash
-                    if node_hash not in node_index_map:
-                        node_index_map[node_hash] = next_idx
-                        next_idx += 1
-                if len(front.node_elems) >= 2:
-                    idx1 = node_index_map[front.node_elems[0].hash]
-                    idx2 = node_index_map[front.node_elems[1].hash]
-                    edges.append((idx1, idx2))
-            return edges
-
-        def _recover_boundary_edges_by_swaps(points_arr, simplices_arr, boundary_edges, max_iter_per_edge=400):
-            triangles = [list(map(int, tri)) for tri in simplices_arr.tolist()]
-            protected = {(a, b) if a < b else (b, a) for a, b in boundary_edges}
-
-            def _edge_key(a, b):
-                return (a, b) if a < b else (b, a)
-
-            def _build_edge_to_tris(tris):
-                edge_map = {}
-                for ti, tri in enumerate(tris):
-                    a, b, c = tri
-                    for u, v in ((a, b), (b, c), (c, a)):
-                        k = _edge_key(u, v)
-                        edge_map.setdefault(k, []).append(ti)
-                return edge_map
-
-            def _edge_exists(tris, a, b):
-                target = _edge_key(a, b)
-                for tri in tris:
-                    x, y, z = tri
-                    if _edge_key(x, y) == target or _edge_key(y, z) == target or _edge_key(z, x) == target:
-                        return True
-                return False
-
-            def _seg_intersect_strict(p1, p2, p3, p4, eps=1e-12):
-                def _cross(o, a, b):
-                    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-                d1 = _cross(p3, p4, p1)
-                d2 = _cross(p3, p4, p2)
-                d3 = _cross(p1, p2, p3)
-                d4 = _cross(p1, p2, p4)
-                return (
-                    ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps))
-                    and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
-                )
-
-            recovered = 0
-            for v1, v2 in boundary_edges:
-                if _edge_exists(triangles, v1, v2):
-                    continue
-
-                for _ in range(max_iter_per_edge):
-                    if _edge_exists(triangles, v1, v2):
-                        recovered += 1
-                        break
-
-                    edge_map = _build_edge_to_tris(triangles)
-                    p1 = points_arr[v1, :2]
-                    p2 = points_arr[v2, :2]
-
-                    intersecting = []
-                    for (a, b), tri_ids in edge_map.items():
-                        if (a == v1 or a == v2 or b == v1 or b == v2):
-                            continue
-                        if (a, b) in protected:
-                            continue
-                        p3 = points_arr[a, :2]
-                        p4 = points_arr[b, :2]
-                        if _seg_intersect_strict(p1, p2, p3, p4):
-                            mid = 0.5 * (p3 + p4)
-                            dist = float(np.linalg.norm(mid - 0.5 * (p1 + p2)))
-                            intersecting.append((dist, a, b, tri_ids))
-
-                    if not intersecting:
-                        break
-
-                    intersecting.sort(key=lambda x: x[0])
-                    flipped = False
-
-                    for _, a, b, tri_ids in intersecting:
-                        if len(tri_ids) != 2:
-                            continue
-                        t1_idx, t2_idx = tri_ids
-                        t1 = triangles[t1_idx]
-                        t2 = triangles[t2_idx]
-
-                        c = next((x for x in t1 if x != a and x != b), None)
-                        d = next((x for x in t2 if x != a and x != b), None)
-                        if c is None or d is None or c == d:
-                            continue
-
-                        new_edge = _edge_key(c, d)
-                        existing = edge_map.get(new_edge, [])
-                        if any(idx not in (t1_idx, t2_idx) for idx in existing):
-                            continue
-
-                        pc = points_arr[c, :2]
-                        pd = points_arr[d, :2]
-                        pa = points_arr[a, :2]
-                        pb = points_arr[b, :2]
-
-                        if not _seg_intersect_strict(pa, pb, pc, pd):
-                            continue
-
-                        q1 = _triangle_quality(pc, pd, pa)
-                        q2 = _triangle_quality(pc, pd, pb)
-                        if q1 < 1e-6 or q2 < 1e-6:
-                            continue
-
-                        triangles[t1_idx] = [c, d, a]
-                        triangles[t2_idx] = [c, d, b]
-                        flipped = True
-                        break
-
-                    if not flipped:
-                        break
-
-            remaining = []
-            for v1, v2 in boundary_edges:
-                if not _edge_exists(triangles, v1, v2):
-                    remaining.append((v1, v2))
-
-            return np.array(triangles, dtype=int), recovered, remaining
-
-        def _is_topology_valid(points_arr, simplices_arr):
-            """快速拓扑体检：拒绝非流形边、断裂连通域和严格边相交。"""
-            from collections import defaultdict, deque
-
-            edge_to_cells = defaultdict(list)
-            for ci, tri in enumerate(simplices_arr):
-                a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
-                for u, v in ((a, b), (b, c), (c, a)):
-                    e = (u, v) if u < v else (v, u)
-                    edge_to_cells[e].append(ci)
-
-            # 非流形边
-            if any(len(cells) > 2 for cells in edge_to_cells.values()):
-                return False
-
-            # 连通性检查（避免生成孤立小块）
-            tri_count = len(simplices_arr)
-            if tri_count == 0:
-                return False
-            adjacency = [[] for _ in range(tri_count)]
-            for _, cells in edge_to_cells.items():
-                if len(cells) == 2:
-                    c1, c2 = cells
-                    adjacency[c1].append(c2)
-                    adjacency[c2].append(c1)
-            visited = [False] * tri_count
-            queue = deque([0])
-            visited[0] = True
-            visited_count = 0
-            while queue:
-                u = queue.popleft()
-                visited_count += 1
-                for v in adjacency[u]:
-                    if not visited[v]:
-                        visited[v] = True
-                        queue.append(v)
-            if visited_count != tri_count:
-                return False
-
-            # 严格边相交检查（排除共享端点）
-            edges = list(edge_to_cells.keys())
-            bboxes = []
-            for e in edges:
-                p1 = points_arr[e[0], :2]
-                p2 = points_arr[e[1], :2]
-                bboxes.append((
-                    min(p1[0], p2[0]), max(p1[0], p2[0]),
-                    min(p1[1], p2[1]), max(p1[1], p2[1]),
-                ))
-
-            def _strict_intersect(pa, pb, pc, pd, eps=1e-12):
-                def _cross(o, a, b):
-                    return (a[0]-o[0]) * (b[1]-o[1]) - (a[1]-o[1]) * (b[0]-o[0])
-
-                d1 = _cross(pc, pd, pa)
-                d2 = _cross(pc, pd, pb)
-                d3 = _cross(pa, pb, pc)
-                d4 = _cross(pa, pb, pd)
-                return (
-                    ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps))
-                    and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
-                )
-
-            for i, e1 in enumerate(edges):
-                a, b = e1
-                x1, x2, y1, y2 = bboxes[i]
-                p1 = points_arr[a, :2]
-                p2 = points_arr[b, :2]
-                for j in range(i + 1, len(edges)):
-                    c, d = edges[j]
-                    if a in (c, d) or b in (c, d):
-                        continue
-                    u1, u2, v1, v2 = bboxes[j]
-                    if x2 < u1 or u2 < x1 or y2 < v1 or v2 < y1:
-                        continue
-                    p3 = points_arr[c, :2]
-                    p4 = points_arr[d, :2]
-                    if _strict_intersect(p1, p2, p3, p4):
-                        return False
-
-            return True
-
-        boundary_edges = _collect_boundary_edges_from_fronts(front_heap)
-        swapped_simplices, recovered_edges, remaining_edges = _recover_boundary_edges_by_swaps(
-            points, simplices, boundary_edges
-        )
-        if recovered_edges > 0:
-            if _is_topology_valid(points, swapped_simplices):
-                simplices = swapped_simplices
-                info(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
-            else:
-                info("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
-        if remaining_edges:
-            info(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
+        if delaunay_backend != "triangle":
+            boundary_edges = collect_boundary_edges_from_fronts(front_heap)
+            swapped_simplices, recovered_edges, remaining_edges = recover_boundary_edges_by_swaps(
+                points, simplices, boundary_edges
+            )
+            if recovered_edges > 0:
+                if is_topology_valid(points, swapped_simplices):
+                    simplices = swapped_simplices
+                    info(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
+                else:
+                    info("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
+            if remaining_edges:
+                info(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
         
         # 将结果转换为 Unstructured_Grid 对象
         node_coords = points.tolist()
@@ -496,7 +254,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     if parameters.mesh_type != 4:
         triangular_grid = edge_swap(triangular_grid)
-        removed_duplicates = _deduplicate_grid_cells(triangular_grid)
+        removed_duplicates = deduplicate_grid_cells(triangular_grid)
         if removed_duplicates > 0:
             info(f"优化后去重: 删除了 {removed_duplicates} 个重复单元")
         triangular_grid = edge_collapse(triangular_grid)
@@ -522,7 +280,7 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     else:  # 三角形网格
         if parameters.mesh_type != 4:
             triangular_grid = laplacian_smooth(triangular_grid, 3)
-            removed_duplicates = _deduplicate_grid_cells(triangular_grid)
+            removed_duplicates = deduplicate_grid_cells(triangular_grid)
             if removed_duplicates > 0:
                 info(f"平滑后去重: 删除了 {removed_duplicates} 个重复单元")
         unstr_grid_list.append(triangular_grid)

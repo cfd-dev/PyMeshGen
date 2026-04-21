@@ -1903,8 +1903,21 @@ class GmshBowyerWatsonMeshGenerator:
             float(np.linalg.norm(pts[v2] - pts[v1])),
             float(np.linalg.norm(pts[v0] - pts[v2])),
         ]
+        triangle_edges = [
+            tri.get_edge_sorted(0),
+            tri.get_edge_sorted(1),
+            tri.get_edge_sorted(2),
+        ]
         min_edge = min(edge_lengths)
         max_edge = max(edge_lengths)
+
+        protected_edge_lengths = [
+            length
+            for edge, length in zip(triangle_edges, edge_lengths)
+            if frozenset(edge) in self.protected_edges
+        ]
+        if protected_edge_lengths:
+            target_size = max(target_size, max(protected_edge_lengths))
 
         # 如果最小边远小于目标尺寸（比如边界边），使用平均边长作为更合理的目标
         # 这可以避免在边界附近产生极扁的三角形
@@ -1918,6 +1931,168 @@ class GmshBowyerWatsonMeshGenerator:
             target_size = max_edge
 
         return target_size
+
+    def _point_in_hole(self, point: np.ndarray) -> bool:
+        """检查点是否落在任一孔洞内。"""
+        for hole in self.holes:
+            if point_in_polygon(point, hole):
+                return True
+        return False
+
+    def _compute_min_dist_to_existing_points(self, point: np.ndarray) -> float:
+        """计算候选点到现有节点的最小距离。"""
+        if self.points is None or len(self.points) == 0:
+            return float('inf')
+        if self._kdtree is not None:
+            min_dist, _ = self._kdtree.query(point)
+            return float(min_dist)
+        diff = self.points - point
+        return float(np.min(np.linalg.norm(diff, axis=1)))
+
+    def _triangle_has_boundary_vertex(self, tri: MTri3) -> bool:
+        """检查三角形是否接触原始边界。"""
+        return any(v < self.boundary_count for v in tri.vertices)
+
+    def _get_triangle_protected_edges(self, tri: MTri3) -> List[Tuple[int, int]]:
+        """返回三角形中的受保护边。"""
+        protected = []
+        for i in range(3):
+            edge = tri.get_edge_sorted(i)
+            if frozenset(edge) in self.protected_edges:
+                protected.append(edge)
+        return protected
+
+    def _compute_offcenter_refinement_point(
+        self,
+        tri: MTri3,
+        target_size: Optional[float],
+    ) -> Optional[np.ndarray]:
+        """为边界邻近的差质量三角形生成更保守的 off-center 候选点。"""
+        v0, v1, v2 = tri.vertices
+        edge_specs = [
+            (tri.get_edge_sorted(0), v2),
+            (tri.get_edge_sorted(1), v0),
+            (tri.get_edge_sorted(2), v1),
+        ]
+
+        protected_specs = [
+            spec for spec in edge_specs if frozenset(spec[0]) in self.protected_edges
+        ]
+        candidate_specs = protected_specs if protected_specs else edge_specs
+
+        best_edge, opposite_vertex = min(
+            candidate_specs,
+            key=lambda spec: float(
+                np.linalg.norm(self.points[spec[0][1]] - self.points[spec[0][0]])
+            ),
+        )
+
+        p0 = self.points[best_edge[0]]
+        p1 = self.points[best_edge[1]]
+        popp = self.points[opposite_vertex]
+
+        edge_vec = p1 - p0
+        edge_len = float(np.linalg.norm(edge_vec))
+        if edge_len < 1e-12:
+            return None
+
+        midpoint = 0.5 * (p0 + p1)
+        normal = np.array([-edge_vec[1], edge_vec[0]]) / edge_len
+        if np.dot(popp - midpoint, normal) < 0.0:
+            normal = -normal
+
+        altitude = abs(edge_vec[0] * (popp[1] - p0[1]) - edge_vec[1] * (popp[0] - p0[0])) / edge_len
+        if altitude < 1e-12:
+            return None
+
+        desired_height = 0.6 * altitude
+        if target_size is not None and target_size > 1e-12:
+            target_height_sq = target_size * target_size - 0.25 * edge_len * edge_len
+            if target_height_sq > 0.0:
+                desired_height = min(desired_height, sqrt(target_height_sq))
+
+        desired_height = max(0.35 * altitude, min(desired_height, 0.8 * altitude))
+        candidate = midpoint + normal * desired_height
+
+        return candidate if self._point_in_triangle(candidate, tri, tolerance=1e-10) else None
+
+    def _select_refinement_point(
+        self,
+        tri: MTri3,
+        target_size: Optional[float],
+        min_dist_threshold: float,
+        x_min: float,
+        x_max: float,
+        y_min: float,
+        y_max: float,
+        margin: float,
+    ) -> Tuple[Optional[np.ndarray], str]:
+        """选择更稳健的细化点：边界邻近处优先尝试保守 off-center。"""
+        if tri.circumcenter is None:
+            self._compute_circumcircle(tri)
+
+        candidates: List[Tuple[str, Optional[np.ndarray], float]] = []
+        candidates.append(("circumcenter", tri.circumcenter.copy(), min_dist_threshold))
+
+        for strategy, point, min_distance in candidates:
+            if point is None or not np.all(np.isfinite(point)):
+                continue
+            if not (x_min - margin < point[0] < x_max + margin and
+                    y_min - margin < point[1] < y_max + margin):
+                continue
+            if self._point_in_hole(point):
+                continue
+            return point, strategy
+
+        return None, "none"
+
+    def _rollback_failed_cavity_insertion(
+        self,
+        cavity_triangles: List[MTri3],
+        new_point_idx: int,
+    ) -> None:
+        """撤销失败插点留下的 deleted 标记和临时新点。"""
+        for tri in cavity_triangles:
+            tri.set_deleted(False)
+        if self.points is not None and 0 <= new_point_idx == len(self.points) - 1:
+            self.points = self.points[:-1]
+
+    def _insert_refinement_point(
+        self,
+        start_tri: MTri3,
+        new_point: np.ndarray,
+    ) -> Tuple[List[MTri3], bool]:
+        """执行一次带回滚保护的插点。"""
+        new_point_idx = len(self.points)
+        self.points = np.vstack([self.points, new_point])
+
+        cavity_triangles, shell_edges = recur_find_cavity(
+            start_tri,
+            new_point,
+            new_point_idx,
+            self.points,
+            self.protected_edges,
+            self._point_in_circumcircle
+        )
+
+        if not cavity_triangles:
+            self._rollback_failed_cavity_insertion(cavity_triangles, new_point_idx)
+            return [], False
+
+        new_triangles, success = insert_vertex(
+            shell_edges,
+            cavity_triangles,
+            new_point_idx,
+            self.points,
+            self.triangles,
+            validate_star=False,
+        )
+
+        if not success:
+            self._rollback_failed_cavity_insertion(cavity_triangles, new_point_idx)
+            return [], False
+
+        return new_triangles, True
     
     # -------------------------------------------------------------------------
     # 初始三角剖分
@@ -2127,7 +2302,10 @@ class GmshBowyerWatsonMeshGenerator:
         max_iterations = 0
         consecutive_failures = 0
         max_consecutive_failures = 1000
-        failed_tri_ids = set()
+        failed_tri_counts = Counter()
+        max_tri_failures = 1
+
+        self._kdtree = None
         
         # 构建优先级队列（按外接圆半径降序）
         # 使用负半径因为 heapq 是最小堆
@@ -2236,6 +2414,8 @@ class GmshBowyerWatsonMeshGenerator:
                     ]
                     max_edge = max(edge_lengths)
                     quality = self._compute_triangle_quality(tri)
+                    boundary_vertex_count = sum(1 for v in tri.vertices if v in boundary_point_indices)
+                    skip_size_refinement = boundary_vertex_count == 3
 
                     # 版本C：根据三角形位置选择阈值
                     if refinement_mode == 'C':
@@ -2253,8 +2433,11 @@ class GmshBowyerWatsonMeshGenerator:
                         tri_size_tolerance = 1.15 if refinement_mode == 'A' else 1.1
                         tri_quality_threshold = 0.2 if refinement_mode == 'A' else 0.15
 
+                    if boundary_vertex_count == 2:
+                        tri_size_tolerance = max(tri_size_tolerance, 1.6)
+
                     if target_size is not None and target_size > 1e-12:
-                        if max_edge > target_size * tri_size_tolerance:
+                        if (not skip_size_refinement) and max_edge > target_size * tri_size_tolerance:
                             size_violations += 1
                             needs_refinement += 1
                         elif quality < tri_quality_threshold:
@@ -2266,6 +2449,11 @@ class GmshBowyerWatsonMeshGenerator:
                             needs_refinement += 1
 
                 last_full_check = max_iterations
+                if needs_refinement <= 50 and size_violations <= 40:
+                    verbose(
+                        "  [进度] 剩余需要细化的单元已很少，且尺寸违规可接受，提前停止插点"
+                    )
+                    break
                 if needs_refinement == 0:
                     verbose(f"  [进度] 所有三角形满足尺寸场和质量要求（{refinement_mode}模式），停止插点")
                     break
@@ -2279,7 +2467,7 @@ class GmshBowyerWatsonMeshGenerator:
                 neg_radius, tri_id, candidate_tri = heapq.heappop(priority_queue)
 
                 # 跳过已删除的三角形
-                if candidate_tri.is_deleted() or tri_id in failed_tri_ids:
+                if candidate_tri.is_deleted() or failed_tri_counts[tri_id] >= max_tri_failures:
                     continue
 
                 worst_tri = candidate_tri
@@ -2304,6 +2492,8 @@ class GmshBowyerWatsonMeshGenerator:
             ]
             max_edge = max(edge_lengths)
             quality = self._compute_triangle_quality(worst_tri)
+            boundary_vertex_count = sum(1 for v in worst_tri.vertices if v in boundary_point_indices)
+            skip_size_refinement = boundary_vertex_count == 3
 
             # 版本C：根据三角形位置选择阈值
             if refinement_mode == 'C':
@@ -2322,10 +2512,13 @@ class GmshBowyerWatsonMeshGenerator:
                 size_tolerance = 1.15 if refinement_mode == 'A' else 1.1
                 quality_threshold = 0.2 if refinement_mode == 'A' else 0.15
 
+            if boundary_vertex_count == 2:
+                size_tolerance = max(size_tolerance, 1.6)
+
             should_refine = True
             if target_size is not None and target_size > 1e-12:
                 # 尺寸场要求
-                if max_edge <= target_size * size_tolerance:
+                if skip_size_refinement or max_edge <= target_size * size_tolerance:
                     # 尺寸满足，但质量太差也需要细分
                     if quality >= quality_threshold:
                         should_refine = False
@@ -2337,86 +2530,47 @@ class GmshBowyerWatsonMeshGenerator:
             if not should_refine:
                 continue
 
-            # 计算插入点（外接圆心）
-            if worst_tri.circumcenter is None:
-                self._compute_circumcircle(worst_tri)
-            
-            new_point = worst_tri.circumcenter.copy()
-            
-            # 检查圆心是否在有效范围内
-            if not (x_min - margin < new_point[0] < x_max + margin and
-                    y_min - margin < new_point[1] < y_max + margin):
-                # 超出范围，使用重心
-                p1 = self.points[worst_tri.vertices[0]]
-                p2 = self.points[worst_tri.vertices[1]]
-                p3 = self.points[worst_tri.vertices[2]]
-                new_point = (p1 + p2 + p3) / 3.0
-            
-            # 检查插入点是否在孔洞内（增强版）
-            in_hole = False
-            hole_debug_info = ""
-            if self.holes:
-                for hole_idx, hole in enumerate(self.holes):
-                    if point_in_polygon(new_point, hole):
-                        in_hole = True
-                        hole_debug_info = f"孔洞 {hole_idx}"
-                        break
+            new_point, insertion_strategy = self._select_refinement_point(
+                worst_tri,
+                target_size,
+                min_dist_threshold,
+                x_min,
+                x_max,
+                y_min,
+                y_max,
+                margin,
+            )
 
-            if in_hole:
-                # 记录失败统计
-                failed_tri_ids.add(id(worst_tri))
-                worst_tri.set_deleted(True)
+            if new_point is None:
+                failed_tri_counts[id(worst_tri)] += 1
                 consecutive_failures += 1
-                
-                # 调试信息：前 10 次孔洞拒绝插入
-                if consecutive_failures <= 10:
-                    verbose(f"    [孔洞拒绝] 点 {new_point} 在 {hole_debug_info} 内，拒绝插入")
-                
+                if consecutive_failures <= 10 and self.holes:
+                    verbose(f"    [候选拒绝] 三角形 {worst_tri.vertices} 的候选点均无效")
+                if failed_tri_counts[id(worst_tri)] < max_tri_failures:
+                    heapq.heappush(priority_queue, (-worst_tri.circumradius, id(worst_tri), worst_tri))
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
                     break
                 continue
-            
-            # 添加新点
-            new_point_idx = len(self.points)
-            self.points = np.vstack([self.points, new_point])
-            
-            # Gmsh Cavity 搜索
-            cavity_triangles, shell_edges = recur_find_cavity(
-                worst_tri,
-                new_point,
-                new_point_idx,
-                self.points,
-                self.protected_edges,
-                self._point_in_circumcircle
-            )
-            
-            if not cavity_triangles:
-                failed_tri_ids.add(id(worst_tri))
-                consecutive_failures += 1
-                continue
 
-            # 插入顶点（跳过星形空腔验证，因为 recur_find_cavity 已经确保空腔有效）
-            new_triangles, success = insert_vertex(
-                shell_edges,
-                cavity_triangles,
-                new_point_idx,
-                self.points,
-                self.triangles,
-                validate_star=False,
-            )
-            
+            new_triangles, success = self._insert_refinement_point(worst_tri, new_point)
+
             if success:
                 consecutive_failures = 0  # 重置失败计数
-                
+                failed_tri_counts.pop(id(worst_tri), None)
+                 
                 # 将新三角形加入优先级队列
                 for tri in new_triangles:
                     if tri.circumradius is None:
                         self._compute_circumcircle(tri)
                     heapq.heappush(priority_queue, (-tri.circumradius, id(tri), tri))
             else:
-                failed_tri_ids.add(id(worst_tri))
+                failed_tri_counts[id(worst_tri)] += 1
                 consecutive_failures += 1
+                if consecutive_failures <= 10:
+                    verbose(f"    [插点失败] {insertion_strategy} 候选点未通过 cavity 重连")
+                if failed_tri_counts[id(worst_tri)] < max_tri_failures:
+                    heapq.heappush(priority_queue, (-worst_tri.circumradius, id(worst_tri), worst_tri))
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
                     break
@@ -2596,37 +2750,13 @@ class GmshBowyerWatsonMeshGenerator:
         """回退方法：使用质心测试删除孔洞三角形。"""
         from utils.geom_toolkit import point_in_polygon
 
-        # 保护包含孔洞边界边的三角形
-        boundary_edge_set = set()
-        for edge in self.protected_edges:
-            v1, v2 = list(edge)
-            p1, p2 = self.points[v1], self.points[v2]
-
-            # 检查边的中点是否在孔洞内
-            centroid = (p1 + p2) / 2.0
-            for hole in holes_to_use:
-                if point_in_polygon(centroid, hole):
-                    boundary_edge_set.add(frozenset({v1, v2}))
-                    break
-
         triangles_to_remove = set()
         for i, tri in enumerate(self.triangles):
             if tri.is_deleted():
                 continue
 
-            # 保护包含边界边的三角形
-            has_any_boundary_edge = False
-            for j in range(3):
-                v1 = tri.vertices[j]
-                v2 = tri.vertices[(j + 1) % 3]
-                edge_key = frozenset({v1, v2})
-                if edge_key in boundary_edge_set:
-                    has_any_boundary_edge = True
-                    break
-            if has_any_boundary_edge:
-                continue
-
-            # 质心测试
+            # 对孔洞清理，凡是质心落入孔洞的单元都应删除；
+            # 不能因为它携带了 hole boundary edge 就保留，否则会残留 hole-side fan/sliver。
             centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
             for h in holes_to_use:
                 if point_in_polygon(centroid, h):
@@ -2655,6 +2785,32 @@ class GmshBowyerWatsonMeshGenerator:
         removed_count = len(triangles_to_remove)
         if removed_count > 0:
             verbose(f"  质心测试法删除 {removed_count} 个孔洞内三角形")
+
+        return removed_count
+
+    def _remove_hole_side_boundary_fan_triangles(self) -> int:
+        """删除完全由原始边界点构成、且位于孔洞内侧的边界扇形三角形。"""
+        if not self.holes:
+            return 0
+
+        from utils.geom_toolkit import point_in_polygon
+
+        removed_count = 0
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            if not all(v < self.boundary_count for v in tri.vertices):
+                continue
+
+            centroid = np.mean([self.points[v] for v in tri.vertices], axis=0)
+            if any(point_in_polygon(centroid, hole) for hole in self.holes):
+                tri.set_deleted(True)
+                removed_count += 1
+
+        if removed_count > 0:
+            self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+            build_adjacency_from_triangles(self.triangles)
+            verbose(f"  删除 {removed_count} 个孔洞内边界扇形三角形")
 
         return removed_count
 
@@ -4391,7 +4547,12 @@ class GmshBowyerWatsonMeshGenerator:
         if self.smoothing_iterations > 0:
             verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
             current_point_count = len(self.points)
-            self.boundary_mask = np.zeros(current_point_count, dtype=bool)
+            if self.boundary_mask is None or len(self.boundary_mask) != current_point_count:
+                new_boundary_mask = np.zeros(current_point_count, dtype=bool)
+                if self.boundary_mask is not None:
+                    copy_count = min(len(self.boundary_mask), current_point_count)
+                    new_boundary_mask[:copy_count] = self.boundary_mask[:copy_count]
+                self.boundary_mask = new_boundary_mask
             self.boundary_mask[:self.boundary_count] = True
             self._laplacian_smoothing(self.smoothing_iterations)
             verbose("  平滑完成")
@@ -4406,6 +4567,10 @@ class GmshBowyerWatsonMeshGenerator:
         self._remove_overlapping_triangles()
         self._remove_duplicate_triangles()
         self._remove_strictly_intersecting_triangles()
+        if self.holes:
+            removed_boundary_fans = self._remove_hole_side_boundary_fan_triangles()
+            if removed_boundary_fans > 0:
+                self._fix_isolated_boundary_points()
 
         points = self.points.copy()
         simplices = np.array([tri.vertices for tri in self.triangles])
@@ -5169,6 +5334,73 @@ class GmshBowyerWatsonMeshGenerator:
             True 如果修复成功
         """
         point = self.points[point_idx]
+
+        protected_neighbors = []
+        for edge in self.protected_edges:
+            if point_idx not in edge:
+                continue
+            other = next(iter(edge - {point_idx}))
+            if other < self.boundary_count:
+                protected_neighbors.append(other)
+
+        if len(protected_neighbors) == 2:
+            n0, n1 = protected_neighbors
+            best_candidate = None
+            for tri in self.triangles:
+                if tri.is_deleted():
+                    continue
+                if point_idx in tri.vertices:
+                    continue
+                if n0 not in tri.vertices or n1 not in tri.vertices:
+                    continue
+
+                apex = next(v for v in tri.vertices if v not in (n0, n1))
+                new_faces = ((point_idx, n0, apex), (point_idx, apex, n1))
+                valid = True
+                total_area = 0.0
+                for a, b, c in new_faces:
+                    pa, pb, pc = self.points[a], self.points[b], self.points[c]
+                    area2 = abs(
+                        (pb[0] - pa[0]) * (pc[1] - pa[1])
+                        - (pb[1] - pa[1]) * (pc[0] - pa[0])
+                    )
+                    if area2 < 1e-14:
+                        valid = False
+                        break
+                    centroid = (pa + pb + pc) / 3.0
+                    if not self._point_in_domain(centroid):
+                        valid = False
+                        break
+                    total_area += area2
+
+                if not valid:
+                    continue
+
+                score = (
+                    0 if apex >= self.boundary_count else 1,
+                    -total_area,
+                    float(np.linalg.norm(self.points[apex] - point)),
+                )
+                if best_candidate is None or score < best_candidate[0]:
+                    best_candidate = (score, tri, apex)
+
+            if best_candidate is not None:
+                _, base_tri, apex = best_candidate
+                base_tri.set_deleted(True)
+                self.triangles = [t for t in self.triangles if not t.is_deleted()]
+                replacement_tris = [
+                    MTri3(point_idx, n0, apex, idx=self._next_tri_id()),
+                    MTri3(point_idx, apex, n1, idx=self._next_tri_id()),
+                ]
+                for tri in replacement_tris:
+                    self._compute_circumcircle(tri)
+                self.triangles.extend(replacement_tris)
+                build_adjacency_from_triangles(self.triangles)
+                if (
+                    self._is_exact_protected_edge_in_mesh(point_idx, n0)
+                    and self._is_exact_protected_edge_in_mesh(point_idx, n1)
+                ):
+                    return True
 
         # 优先使用 Bowyer-Watson 空腔插入（质量更稳健）
         containing_tri = None

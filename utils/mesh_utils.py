@@ -20,6 +20,28 @@ Q_MORPH_FILL_QUALITY_FLOOR = 0.15
 Q_MORPH_FILL_QUALITY_RATIO = 0.7
 
 
+def deduplicate_grid_cells(unstructured_grid):
+    """Remove duplicate cells identified by the same node set."""
+    cells = unstructured_grid.cells
+    if not cells:
+        return 0
+
+    unique_cells = []
+    seen = set()
+    removed = 0
+    for cell in cells:
+        key = tuple(sorted(int(node) for node in cell))
+        if key in seen:
+            removed += 1
+            continue
+        seen.add(key)
+        unique_cells.append(list(cell))
+
+    if removed > 0:
+        unstructured_grid.set_cells(unique_cells)
+    return removed
+
+
 def _build_triangle_edge_map(cell_container):
     edge_map = defaultdict(list)
     for cell_idx, cell in enumerate(cell_container):
