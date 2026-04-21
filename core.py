@@ -30,7 +30,7 @@ from utils.core_io import (
     merge_generated_grids,
     output_and_finalize,
 )
-from utils.delaunay_postprocess import (
+from delaunay.postprocess import (
     collect_boundary_edges_from_fronts,
     is_topology_valid,
     recover_boundary_edges_by_swaps,

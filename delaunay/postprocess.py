@@ -1,18 +1,9 @@
+from collections import defaultdict, deque
+
 import numpy as np
 
-
-def triangle_quality(p0, p1, p2):
-    a = float(np.linalg.norm(p1 - p0))
-    b = float(np.linalg.norm(p2 - p1))
-    c = float(np.linalg.norm(p0 - p2))
-    s = 0.5 * (a + b + c)
-    area_sq = s * (s - a) * (s - b) * (s - c)
-    if area_sq <= 1e-24:
-        return 0.0
-    area = float(np.sqrt(area_sq))
-    r_in = area / s if s > 1e-12 else 0.0
-    r_out = (a * b * c) / (4.0 * area) if area > 1e-12 else 0.0
-    return min(2.0 * r_in / r_out, 1.0) if r_out > 1e-12 else 0.0
+from optimize.mesh_quality import triangle_shape_quality
+from utils.geom_toolkit import segments_intersect_strict
 
 
 def collect_boundary_edges_from_fronts(boundary_front):
@@ -59,21 +50,6 @@ def _edge_exists(tris, a, b):
     return False
 
 
-def _cross(o, a, b):
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-
-def _seg_intersect_strict(p1, p2, p3, p4, eps=1e-12):
-    d1 = _cross(p3, p4, p1)
-    d2 = _cross(p3, p4, p2)
-    d3 = _cross(p1, p2, p3)
-    d4 = _cross(p1, p2, p4)
-    return (
-        ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps))
-        and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
-    )
-
-
 def recover_boundary_edges_by_swaps(
     points_arr,
     simplices_arr,
@@ -105,7 +81,7 @@ def recover_boundary_edges_by_swaps(
                     continue
                 p3 = points_arr[a, :2]
                 p4 = points_arr[b, :2]
-                if _seg_intersect_strict(p1, p2, p3, p4):
+                if segments_intersect_strict(p1, p2, p3, p4):
                     mid = 0.5 * (p3 + p4)
                     dist = float(np.linalg.norm(mid - 0.5 * (p1 + p2)))
                     intersecting.append((dist, a, b, tri_ids))
@@ -113,7 +89,7 @@ def recover_boundary_edges_by_swaps(
             if not intersecting:
                 break
 
-            intersecting.sort(key=lambda x: x[0])
+            intersecting.sort(key=lambda item: item[0])
             flipped = False
 
             for _, a, b, tri_ids in intersecting:
@@ -138,11 +114,11 @@ def recover_boundary_edges_by_swaps(
                 pa = points_arr[a, :2]
                 pb = points_arr[b, :2]
 
-                if not _seg_intersect_strict(pa, pb, pc, pd):
+                if not segments_intersect_strict(pa, pb, pc, pd):
                     continue
 
-                q1 = triangle_quality(pc, pd, pa)
-                q2 = triangle_quality(pc, pd, pb)
+                q1 = triangle_shape_quality(pc, pd, pa)
+                q2 = triangle_shape_quality(pc, pd, pb)
                 if q1 < 1e-6 or q2 < 1e-6:
                     continue
 
@@ -164,8 +140,6 @@ def recover_boundary_edges_by_swaps(
 
 def is_topology_valid(points_arr, simplices_arr):
     """Quick topology validation for triangle connectivity and strict edge crossings."""
-    from collections import defaultdict, deque
-
     edge_to_cells = defaultdict(list)
     for cell_idx, tri in enumerate(simplices_arr):
         a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
@@ -228,7 +202,7 @@ def is_topology_valid(points_arr, simplices_arr):
                 continue
             p3 = points_arr[c, :2]
             p4 = points_arr[d, :2]
-            if _seg_intersect_strict(p1, p2, p3, p4):
+            if segments_intersect_strict(p1, p2, p3, p4):
                 return False
 
     return True

@@ -26,7 +26,11 @@ from collections import Counter
 import heapq  # 新增：用于优先级队列
 
 from utils.message import debug, verbose
-from utils.geom_toolkit import point_in_polygon, is_polygon_clockwise
+from utils.geom_toolkit import (
+    point_in_polygon,
+    is_polygon_clockwise,
+    segments_intersect_strict,
+)
 from utils.timer import TimeSpan
 
 from .bw_cavity import insert_vertex, recur_find_cavity
@@ -3448,7 +3452,7 @@ class GmshBowyerWatsonMeshGenerator:
         pC = self.points[tri.vertices[2]]
 
         for pA_, pB_ in [(pA, pB), (pB, pC), (pC, pA)]:
-            if self._segments_intersect_strict(p1, p2, pA_, pB_):
+            if segments_intersect_strict(p1, p2, pA_, pB_):
                 return True
 
         return False
@@ -3474,7 +3478,7 @@ class GmshBowyerWatsonMeshGenerator:
                 if self._is_protected_edge(e1, e2):
                     continue
                 
-                if self._segments_intersect_strict(
+                if segments_intersect_strict(
                     segment_start, segment_end,
                     self.points[e1], self.points[e2]
                 ):
@@ -3944,29 +3948,12 @@ class GmshBowyerWatsonMeshGenerator:
             if a_idx in (v1, v2) or b_idx in (v1, v2):
                 continue
             # 检查线段相交
-            if self._segments_intersect_strict(p1, p2, self.points[a_idx], self.points[b_idx]):
+            if segments_intersect_strict(p1, p2, self.points[a_idx], self.points[b_idx]):
                 return True
 
         # 也检查三角形是否包含线段的中点
         mid = (p1 + p2) / 2.0
         if self._point_in_triangle_strict(mid, tri):
-            return True
-
-        return False
-
-    def _segments_intersect_strict(self, p1, p2, p3, p4) -> bool:
-        """检查两条线段是否严格相交（不包括端点接触）。"""
-        def cross(o, a, b):
-            return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-        d1 = cross(p3, p4, p1)
-        d2 = cross(p3, p4, p2)
-        d3 = cross(p1, p2, p3)
-        d4 = cross(p1, p2, p4)
-
-        # 严格相交（不包括端点）
-        if ((d1 > 1e-12 and d2 < -1e-12) or (d1 < -1e-12 and d2 > 1e-12)) and \
-           ((d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12)):
             return True
 
         return False

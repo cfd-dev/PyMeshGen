@@ -95,6 +95,49 @@ def point_to_segment_distance(point, segment_start, segment_end):
     return np.linalg.norm(point - projection)
 
 
+def cross_2d(origin, point_a, point_b):
+    """计算二维向量 OA 和 OB 的叉积 z 分量。"""
+    return (point_a[0] - origin[0]) * (point_b[1] - origin[1]) - (
+        point_a[1] - origin[1]
+    ) * (point_b[0] - origin[0])
+
+
+def _segments_bbox_overlap_2d(a1, a2, b1, b2, eps=0.0):
+    return not (
+        max(a1[0], a2[0]) < min(b1[0], b2[0]) - eps
+        or max(b1[0], b2[0]) < min(a1[0], a2[0]) - eps
+        or max(a1[1], a2[1]) < min(b1[1], b2[1]) - eps
+        or max(b1[1], b2[1]) < min(a1[1], a2[1]) - eps
+    )
+
+
+def _segment_cross_values_2d(a1, a2, b1, b2):
+    return (
+        cross_2d(a1, a2, b1),
+        cross_2d(a1, a2, b2),
+        cross_2d(b1, b2, a1),
+        cross_2d(b1, b2, a2),
+    )
+
+
+def segments_intersect_strict(a1, a2, b1, b2, eps=1e-12):
+    """判断两个二维线段是否发生严格穿越。
+
+    与 ``segments_intersect()`` 的区别：
+    1. 仅当两条线段在各自内部发生真正交叉时返回 ``True``；
+    2. 共享端点、端点落在另一条线段上、共线重叠、完全共线都返回 ``False``；
+    3. 适用于拓扑检查、约束边恢复、edge swap 等“只关心真正交叉”的场景。
+    """
+    if not _segments_bbox_overlap_2d(a1, a2, b1, b2):
+        return False
+
+    c1, c2, c3, c4 = _segment_cross_values_2d(a1, a2, b1, b2)
+    return (
+        ((c1 > eps and c2 < -eps) or (c1 < -eps and c2 > eps))
+        and ((c3 > eps and c4 < -eps) or (c3 < -eps and c4 > eps))
+    )
+
+
 def segments_closest_distance(A, B, C, D):
     """
     计算两条线段的最小距离（使用numpy）
@@ -456,51 +499,25 @@ def points_equal(p1, p2, epsilon=1e-6):
 
 
 def segments_intersect(a1, a2, b1, b2):
-    """判断两个二维线段是否相交（包含共线部分重叠但不包含端点重合的情况）
+    """判断两个二维线段是否相交（宽松判定）。
 
-    参数：
-        a1, a2: 线段A的端点坐标 (x, y)
-        b1, b2: 线段B的端点坐标 (x, y)
-
-    返回值：
-        bool: 是否相交（True表示相交）
+    与 ``segments_intersect_strict()`` 的区别：
+    1. 中部穿越返回 ``True``；
+    2. 共线且区间有重叠返回 ``True``；
+    3. 仅共享端点返回 ``False``；
+    4. 适用于一般几何重叠检查，尤其是“共线重叠也应视为冲突”的场景。
     """
     # 阶段1：快速排除端点重合的情况
     if any(points_equal(a, b) for a in (a1, a2) for b in (b1, b2)):
         return False
 
     # 阶段2：轴对齐包围盒（AABB）快速排斥实验
-    # 计算线段A的包围盒
-    a_min_x = min(a1[0], a2[0])
-    a_max_x = max(a1[0], a2[0])
-    a_min_y = min(a1[1], a2[1])
-    a_max_y = max(a1[1], a2[1])
-
-    # 计算线段B的包围盒
-    b_min_x = min(b1[0], b2[0])
-    b_max_x = max(b1[0], b2[0])
-    b_min_y = min(b1[1], b2[1])
-    b_max_y = max(b1[1], b2[1])
-
-    # 包围盒不相交则直接返回False
-    if (
-        (a_max_x < b_min_x)
-        or (b_max_x < a_min_x)
-        or (a_max_y < b_min_y)
-        or (b_max_y < a_min_y)
-    ):
+    if not _segments_bbox_overlap_2d(a1, a2, b1, b2):
         return False
 
     # 阶段3：跨立实验（使用向量叉积判断线段相对位置）
-    def cross(o, a, b):
-        """计算向量oa和ob的叉积（z分量）"""
-        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
     # 计算四个关键叉积值
-    c1 = cross(a1, a2, b1)  # b1相对a1a2的位置
-    c2 = cross(a1, a2, b2)  # b2相对a1a2的位置
-    c3 = cross(b1, b2, a1)  # a1相对b1b2的位置
-    c4 = cross(b1, b2, a2)  # a2相对b1b2的位置
+    c1, c2, c3, c4 = _segment_cross_values_2d(a1, a2, b1, b2)
 
     # 标准相交情况：线段AB相互跨立
     if (c1 * c2 < 0) and (c3 * c4 < 0):
@@ -514,11 +531,7 @@ def segments_intersect(a1, a2, b1, b2):
     #     return x_overlap and y_overlap
     epsilon = 1e-8
     if all(abs(val) < epsilon for val in [c1, c2, c3, c4]):
-        # 检查坐标轴投影是否有重叠（允许部分重叠但不完全重合）
-        # 改用更精确的浮点数比较
-        x_overlap = (a_max_x >= b_min_x - epsilon) and (a_min_x <= b_max_x + epsilon)
-        y_overlap = (a_max_y >= b_min_y - epsilon) and (a_min_y <= b_max_y + epsilon)
-        return x_overlap and y_overlap
+        return _segments_bbox_overlap_2d(a1, a2, b1, b2, eps=epsilon)
 
     return False
 
@@ -528,12 +541,9 @@ def is_point_inside_or_on(p, a, b, c):
     if any(points_equal(p, vtx) for vtx in [a, b, c]):
         return False  # 共享顶点，视为不相交
 
-    def cross_sign(p1, p2, p3):
-        return (p2[0] - p1[0]) * (p3[1] - p1[1]) - (p2[1] - p1[1]) * (p3[0] - p1[0])
-
-    d1 = cross_sign(a, b, p)
-    d2 = cross_sign(b, c, p)
-    d3 = cross_sign(c, a, p)
+    d1 = cross_2d(a, b, p)
+    d2 = cross_2d(b, c, p)
+    d3 = cross_2d(c, a, p)
 
     has_neg = (d1 < -1e-8) or (d2 < -1e-8) or (d3 < -1e-8)
     has_pos = (d1 > 1e-8) or (d2 > 1e-8) or (d3 > 1e-8)
