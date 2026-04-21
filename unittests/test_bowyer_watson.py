@@ -27,7 +27,7 @@ for subdir in ["fileIO", "data_structure", "meshsize", "delaunay", "optimize", "
     if subdir_path.exists():
         sys.path.insert(0, str(subdir_path))
 
-from delaunay.bowyer_watson import BowyerWatsonMeshGenerator, create_bowyer_watson_mesh
+from delaunay import BowyerWatsonMeshGenerator, create_bowyer_watson_mesh
 from meshsize import QuadtreeSizing
 from data_structure.front2d import Front
 from data_structure.basic_elements import NodeElement

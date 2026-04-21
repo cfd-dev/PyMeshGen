@@ -11,7 +11,7 @@ sys.path.insert(0, project_root)  # Add project root first
 # Now import modules using proper package structure
 from meshsize import QuadtreeSizing
 from adfront2.adlayers2 import Adlayers2
-from delaunay.bowyer_watson import create_bowyer_watson_mesh
+from delaunay import create_bowyer_watson_mesh
 from data_structure.parameters import Parameters
 from optimize.optimize import edge_swap, edge_collapse, laplacian_smooth
 from utils.timer import TimeSpan
