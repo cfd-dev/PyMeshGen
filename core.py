@@ -189,6 +189,11 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
             smoothing_iterations=3,
             auto_detect_holes=True,  # 启用自动孔洞检测
             backend=delaunay_backend,
+            triangle_point_strategy=getattr(
+                parameters,
+                "triangle_point_strategy",
+                "equilateral",
+            ),
         )
 
         if delaunay_backend != "triangle":
@@ -258,7 +263,8 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # ------------------------------------------------------------------
     # 5) 网格质量优化与单元类型后处理
-    #    - Bowyer-Watson：跳过后续优化（已经是 Delaunay 最优网格）
+    #    - Bowyer-Watson：默认跳过后续优化（已经是 Delaunay 最优网格）
+    #    - Triangle 后端(mesh_type == 4)：允许轻量 laplacian 平滑
     #    - 公共：edge_swap
     #    - q_morph混合：先laplacian预平滑，再q_morph合并
     #    - 非q_morph混合：直接按配置方法合并（默认greedy）
@@ -276,6 +282,10 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # triangular_grid.save_to_vtkfile("./out/debug.vtk")
     
+    if parameters.mesh_type == 4 and delaunay_backend == "triangle":
+        triangular_grid = laplacian_smooth(triangular_grid, 3)
+        info("Triangle 后端：已执行 3 轮 laplacian 平滑")
+
     # Q-morph算法执行前先确保三角形网格质量
     if use_triangle_pipeline_for_qmorph(parameters):
         triangular_grid = laplacian_smooth(triangular_grid, 3)

@@ -115,6 +115,7 @@ def create_bowyer_watson_mesh(
     auto_detect_holes: bool = True,
     use_gmsh_implementation: bool = True,
     backend: str = "bowyer_watson",
+    triangle_point_strategy: str = "equilateral",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Bowyer-Watson 网格生成公共接口。
 
@@ -129,6 +130,7 @@ def create_bowyer_watson_mesh(
         auto_detect_holes: 自动检测孔洞
         use_gmsh_implementation: 使用 Gmsh 实现
         backend: Delaunay 后端，"bowyer_watson" 或 "triangle"
+        triangle_point_strategy: Triangle 后端内部点生成策略
     
     Returns:
         (points, simplices, boundary_mask)
@@ -176,6 +178,7 @@ def create_bowyer_watson_mesh(
             holes=final_holes if final_holes else None,
             outer_boundary=outer_boundary,
             seed=seed,
+            point_strategy=triangle_point_strategy,
         )
 
     from delaunay.bw_core_stable import (

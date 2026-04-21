@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from math import ceil, floor, sqrt
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Tuple
 
@@ -128,7 +129,78 @@ def _compute_hole_seed(hole: np.ndarray) -> np.ndarray:
     return np.mean(hole[: min(len(hole), 3)], axis=0)
 
 
-def _sample_interior_points(
+def _normalize_point_strategy(point_strategy: str) -> str:
+    normalized = str(point_strategy).strip().lower()
+    if normalized in {"equilateral", "triangular", "hexagonal", "hex"}:
+        return "equilateral"
+    if normalized in {"cartesian", "grid", "rectilinear"}:
+        return "cartesian"
+    return "equilateral"
+
+
+def _candidate_boundary_distance(
+    candidate: np.ndarray,
+    boundary_points: np.ndarray,
+    boundary_edges: Sequence[Tuple[int, int]],
+) -> float:
+    min_boundary_distance = float("inf")
+    for edge_start, edge_end in boundary_edges:
+        dist = _point_to_segment_distance(
+            candidate,
+            boundary_points[edge_start],
+            boundary_points[edge_end],
+        )
+        min_boundary_distance = min(min_boundary_distance, dist)
+    return min_boundary_distance
+
+
+def _accept_candidate(
+    candidate: np.ndarray,
+    sizing_system,
+    outer_boundary: Optional[np.ndarray],
+    holes: Sequence[np.ndarray],
+    boundary_points: np.ndarray,
+    boundary_edges: Sequence[Tuple[int, int]],
+    accepted: List[np.ndarray],
+    accepted_sizes: List[float],
+    min_spacing_factor: float,
+) -> Optional[float]:
+    if not _point_in_domain(candidate, outer_boundary, holes):
+        return None
+
+    local_size = max(float(sizing_system.spacing_at(candidate)), 1e-8)
+    min_boundary_distance = _candidate_boundary_distance(
+        candidate,
+        boundary_points,
+        boundary_edges,
+    )
+    if min_boundary_distance < 0.3 * local_size:
+        return None
+
+    for existing, existing_size in zip(accepted, accepted_sizes):
+        if np.linalg.norm(candidate - existing) < min_spacing_factor * min(
+            local_size,
+            existing_size,
+        ):
+            return None
+
+    accepted.append(candidate)
+    accepted_sizes.append(local_size)
+    return local_size
+
+
+def _iter_sorted_leaf_bounds(sizing_system) -> List[Tuple[Tuple[float, float, float, float], float]]:
+    leaf_records = []
+    for leaf in _iter_leaf_nodes(sizing_system.quad_tree):
+        x_min, y_min, x_max, y_max = leaf.bounds
+        center = np.array([(x_min + x_max) * 0.5, (y_min + y_max) * 0.5], dtype=float)
+        local_size = max(float(sizing_system.spacing_at(center)), 1e-8)
+        leaf_records.append((leaf.bounds, local_size))
+    leaf_records.sort(key=lambda item: item[1])
+    return leaf_records
+
+
+def _sample_interior_points_cartesian(
     sizing_system,
     outer_boundary: Optional[np.ndarray],
     holes: Sequence[np.ndarray],
@@ -138,14 +210,14 @@ def _sample_interior_points(
     accepted: List[np.ndarray] = []
     accepted_sizes: List[float] = []
 
-    for leaf in _iter_leaf_nodes(sizing_system.quad_tree):
-        x_min, y_min, x_max, y_max = leaf.bounds
+    for bounds, local_size in _iter_sorted_leaf_bounds(sizing_system):
+        x_min, y_min, x_max, y_max = bounds
         dx = x_max - x_min
         dy = y_max - y_min
         candidate_points = [
             np.array([(x_min + x_max) * 0.5, (y_min + y_max) * 0.5], dtype=float)
         ]
-        if max(dx, dy) > 1.5 * max(leaf.spacing):
+        if max(dx, dy) > 1.5 * local_size:
             candidate_points.extend(
                 [
                     np.array([x_min + 0.25 * dx, y_min + 0.25 * dy], dtype=float),
@@ -154,37 +226,126 @@ def _sample_interior_points(
             )
 
         for candidate in candidate_points:
-            if not _point_in_domain(candidate, outer_boundary, holes):
-                continue
-
-            local_size = max(float(sizing_system.spacing_at(candidate)), 1e-8)
-
-            min_boundary_distance = float("inf")
-            for edge_start, edge_end in boundary_edges:
-                dist = _point_to_segment_distance(
-                    candidate,
-                    boundary_points[edge_start],
-                    boundary_points[edge_end],
-                )
-                min_boundary_distance = min(min_boundary_distance, dist)
-
-            if min_boundary_distance < 0.3 * local_size:
-                continue
-
-            too_close = False
-            for existing, existing_size in zip(accepted, accepted_sizes):
-                if np.linalg.norm(candidate - existing) < 0.45 * min(local_size, existing_size):
-                    too_close = True
-                    break
-            if too_close:
-                continue
-
-            accepted.append(candidate)
-            accepted_sizes.append(local_size)
+            _accept_candidate(
+                candidate=candidate,
+                sizing_system=sizing_system,
+                outer_boundary=outer_boundary,
+                holes=holes,
+                boundary_points=boundary_points,
+                boundary_edges=boundary_edges,
+                accepted=accepted,
+                accepted_sizes=accepted_sizes,
+                min_spacing_factor=0.45,
+            )
 
     if not accepted:
         return np.empty((0, 2), dtype=float)
     return np.asarray(accepted, dtype=float)
+
+
+def _sample_interior_points_equilateral(
+    sizing_system,
+    outer_boundary: Optional[np.ndarray],
+    holes: Sequence[np.ndarray],
+    boundary_points: np.ndarray,
+    boundary_edges: Sequence[Tuple[int, int]],
+) -> np.ndarray:
+    accepted: List[np.ndarray] = []
+    accepted_sizes: List[float] = []
+    if hasattr(sizing_system, "bg_bounds") and len(sizing_system.bg_bounds) == 4:
+        origin_x = float(sizing_system.bg_bounds[0])
+        origin_y = float(sizing_system.bg_bounds[1])
+    elif len(boundary_points) > 0:
+        origin_x = float(np.min(boundary_points[:, 0]))
+        origin_y = float(np.min(boundary_points[:, 1]))
+    else:
+        origin_x = 0.0
+        origin_y = 0.0
+
+    eps = 1e-12
+    for bounds, local_size in _iter_sorted_leaf_bounds(sizing_system):
+        x_min, y_min, x_max, y_max = bounds
+        row_step = 0.5 * sqrt(3.0) * local_size
+        if row_step <= eps:
+            continue
+
+        accepted_in_leaf = 0
+        row_min = floor((y_min - origin_y) / row_step) - 1
+        row_max = ceil((y_max - origin_y) / row_step) + 1
+
+        for row_idx in range(row_min, row_max + 1):
+            y = origin_y + row_idx * row_step
+            if y < y_min - eps or y > y_max + eps:
+                continue
+
+            row_offset = 0.5 * local_size if (row_idx & 1) else 0.0
+            col_min = floor((x_min - origin_x - row_offset) / local_size) - 1
+            col_max = ceil((x_max - origin_x - row_offset) / local_size) + 1
+
+            for col_idx in range(col_min, col_max + 1):
+                x = origin_x + row_offset + col_idx * local_size
+                if x < x_min - eps or x > x_max + eps:
+                    continue
+
+                inserted = _accept_candidate(
+                    candidate=np.array([x, y], dtype=float),
+                    sizing_system=sizing_system,
+                    outer_boundary=outer_boundary,
+                    holes=holes,
+                    boundary_points=boundary_points,
+                    boundary_edges=boundary_edges,
+                    accepted=accepted,
+                    accepted_sizes=accepted_sizes,
+                    min_spacing_factor=0.60,
+                )
+                if inserted is not None:
+                    accepted_in_leaf += 1
+
+        if accepted_in_leaf == 0:
+            _accept_candidate(
+                candidate=np.array(
+                    [(x_min + x_max) * 0.5, (y_min + y_max) * 0.5],
+                    dtype=float,
+                ),
+                sizing_system=sizing_system,
+                outer_boundary=outer_boundary,
+                holes=holes,
+                boundary_points=boundary_points,
+                boundary_edges=boundary_edges,
+                accepted=accepted,
+                accepted_sizes=accepted_sizes,
+                min_spacing_factor=0.45,
+            )
+
+    if not accepted:
+        return np.empty((0, 2), dtype=float)
+    return np.asarray(accepted, dtype=float)
+
+
+def _sample_interior_points(
+    sizing_system,
+    outer_boundary: Optional[np.ndarray],
+    holes: Sequence[np.ndarray],
+    boundary_points: np.ndarray,
+    boundary_edges: Sequence[Tuple[int, int]],
+    point_strategy: str,
+) -> np.ndarray:
+    strategy = _normalize_point_strategy(point_strategy)
+    if strategy == "cartesian":
+        return _sample_interior_points_cartesian(
+            sizing_system=sizing_system,
+            outer_boundary=outer_boundary,
+            holes=holes,
+            boundary_points=boundary_points,
+            boundary_edges=boundary_edges,
+        )
+    return _sample_interior_points_equilateral(
+        sizing_system=sizing_system,
+        outer_boundary=outer_boundary,
+        holes=holes,
+        boundary_points=boundary_points,
+        boundary_edges=boundary_edges,
+    )
 
 
 def _write_poly_file(
@@ -261,6 +422,7 @@ def create_triangle_mesh(
     holes: Optional[List[np.ndarray]] = None,
     outer_boundary: Optional[np.ndarray] = None,
     seed: Optional[int] = None,
+    point_strategy: str = "equilateral",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Create a mesh using Jonathan Shewchuk's Triangle executable."""
     del seed
@@ -274,6 +436,7 @@ def create_triangle_mesh(
         holes=holes,
         boundary_points=boundary_points,
         boundary_edges=boundary_edges,
+        point_strategy=point_strategy,
     )
 
     all_points = np.asarray(boundary_points, dtype=float)

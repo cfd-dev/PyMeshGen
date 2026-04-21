@@ -40,6 +40,7 @@ class Parameters:
         self.output_file = []
         self.mesh_type = 1 # 1-三角形triangular，2-直角三角形right_trianglar，3-三角形/四边形混合2d_mixed
         self.delaunay_backend = "bowyer_watson"
+        self.triangle_point_strategy = "equilateral"
         self.triangle_to_quad_method = "q_morph"
         self.sizing_decay = 1.2
         self.viz_enabled = False
@@ -114,6 +115,9 @@ class Parameters:
         self.output_file = config["output_file"]
         self.mesh_type = config.get("mesh_type", 1)
         self.delaunay_backend = config.get("delaunay_backend", "bowyer_watson")
+        self.triangle_point_strategy = config.get(
+            "triangle_point_strategy", "equilateral"
+        )
         self.triangle_to_quad_method = config.get(
             "triangle_to_quad_method", "q_morph"
         )
@@ -149,6 +153,7 @@ class Parameters:
         params.output_file = []
         params.mesh_type = 1
         params.delaunay_backend = "bowyer_watson"
+        params.triangle_point_strategy = "equilateral"
         params.triangle_to_quad_method = "q_morph"
         params.sizing_decay = 1.2
         params.viz_enabled = False
