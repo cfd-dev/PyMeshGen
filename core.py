@@ -20,6 +20,7 @@ from optimize.optimize import optimize_hybrid_grid
 from utils.core_helpers import (
     is_mixed_mesh,
     use_triangle_pipeline_for_qmorph,
+    select_delaunay_backend,
     create_interior_generator,
     log_parameters_debug_summary,
     log_mesh_debug_summary,
@@ -159,8 +160,22 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # Bowyer-Watson Delaunay 网格生成分支
     if parameters.mesh_type == 4:
-        delaunay_backend = getattr(parameters, "delaunay_backend", "bowyer_watson")
-        info(f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格")
+        configured_backend = str(
+            getattr(parameters, "delaunay_backend", "bowyer_watson")
+        ).strip().lower()
+        delaunay_backend = select_delaunay_backend(
+            parameters,
+            has_boundary_layer=has_boundary_layer,
+        )
+        if has_boundary_layer and delaunay_backend != configured_backend:
+            info(
+                "Bowyer-Watson 模式：检测到边界层，"
+                f"内层三角剖分从 {configured_backend} 切换为 triangle 后端"
+            )
+        else:
+            info(
+                f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格"
+            )
         
         from data_structure.unstructured_grid import Unstructured_Grid
         from data_structure.basic_elements import Triangle as BWTriangle, NodeElement

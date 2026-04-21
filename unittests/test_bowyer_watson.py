@@ -50,6 +50,15 @@ def resolve_case_input_path(input_file_str, project_root, fallback_input_dir=Non
     return (project_root / input_file).resolve()
 
 
+def resolve_effective_delaunay_backend(delaunay_backend, enable_boundary_layer):
+    backend = str(delaunay_backend).strip().lower()
+    if backend not in {"bowyer_watson", "triangle"}:
+        backend = "bowyer_watson"
+    if enable_boundary_layer:
+        return "triangle"
+    return backend
+
+
 def create_delaunay_case_config(
     original_config_path,
     output_file,
@@ -225,10 +234,18 @@ def run_delaunay_config_test(
         print(f"  - 其他单元: {other_count}")
 
         if enable_boundary_layer:
-            print(f"  - 模式: {delaunay_backend} + 边界层")
+            effective_backend = resolve_effective_delaunay_backend(
+                delaunay_backend,
+                enable_boundary_layer=True,
+            )
+            print(f"  - 模式: {effective_backend} + 边界层")
             testcase.assertGreater(tri_count, 0, "应该有三角形单元")
         else:
-            print(f"  - 模式: 纯 {delaunay_backend} 三角网格")
+            effective_backend = resolve_effective_delaunay_backend(
+                delaunay_backend,
+                enable_boundary_layer=False,
+            )
+            print(f"  - 模式: 纯 {effective_backend} 三角网格")
             testcase.assertEqual(tri_count, grid.num_cells, "无边界层时应全部是三角形单元")
 
         if check_boundary_recovery:

@@ -294,25 +294,76 @@ class Unstructured_Grid:
 
         合并后保留 self 的部件信息；若 other_grid 有新增部件则补充。
         """
-        # 合并单元容器
-        self.cell_container.extend(other_grid.cell_container)
+        from data_structure.basic_elements import NodeElement
 
-        # 节点坐标已经合并过，但是laplacian优化后，节点坐标有更新，此处应采用优化后的节点坐标
-        self.node_coords = other_grid.node_coords
+        def coord_key(coord):
+            return tuple(f"{float(value):.6f}" for value in coord)
 
-        # 更新边界点
-        self.boundary_nodes.extend(other_grid.boundary_nodes)
-        merged_boundary_nodes = set()
-        node_hash_list = set()
-        for node_elem in self.boundary_nodes:
-            if node_elem.bc_type == "interior":
+        if not self.node_coords:
+            self.node_coords = []
+        if not self.boundary_nodes:
+            self.boundary_nodes = []
+
+        coord_to_idx = {}
+        for idx, coord in enumerate(self.node_coords):
+            coord_to_idx.setdefault(coord_key(coord), idx)
+
+        node_mapping = {}
+        for other_idx, coord in enumerate(other_grid.node_coords):
+            key = coord_key(coord)
+            mapped_idx = coord_to_idx.get(key)
+            if mapped_idx is None:
+                mapped_idx = len(self.node_coords)
+                self.node_coords.append(list(coord))
+                coord_to_idx[key] = mapped_idx
+            node_mapping[other_idx] = mapped_idx
+
+        remapped_cells = []
+        source_cells = []
+        for cell in other_grid.cell_container:
+            if cell is None or not hasattr(cell, "node_ids") or cell.node_ids is None:
                 continue
+            remapped_cells.append([node_mapping[node_idx] for node_idx in cell.node_ids])
+            source_cells.append(cell)
 
-            if node_elem.hash not in node_hash_list:
-                merged_boundary_nodes.add(node_elem)
-                node_hash_list.add(node_elem.hash)
+        merged_cells = self._build_cell_objects(
+            self.node_coords,
+            remapped_cells,
+            other_grid.dimension,
+        )
+        next_cell_idx = len(self.cell_container)
+        for src_cell, new_cell in zip(source_cells, merged_cells):
+            new_cell.idx = next_cell_idx
+            next_cell_idx += 1
+            if hasattr(src_cell, "part_name"):
+                new_cell.part_name = src_cell.part_name
+            if hasattr(src_cell, "layer"):
+                new_cell.layer = src_cell.layer
+            self.cell_container.append(new_cell)
 
-        self.boundary_nodes = list(merged_boundary_nodes)
+        existing_boundary_hashes = {
+            node_elem.hash
+            for node_elem in self.boundary_nodes
+            if getattr(node_elem, "bc_type", None) != "interior"
+        }
+        for node_elem in other_grid.boundary_nodes:
+            if getattr(node_elem, "bc_type", None) == "interior":
+                continue
+            remapped_idx = node_mapping.get(node_elem.idx)
+            if remapped_idx is None:
+                continue
+            merged_node = NodeElement(
+                self.node_coords[remapped_idx],
+                remapped_idx,
+                part_name=getattr(node_elem, "part_name", None),
+                bc_type=getattr(node_elem, "bc_type", None),
+            )
+            if merged_node.hash in existing_boundary_hashes:
+                continue
+            self.boundary_nodes.append(merged_node)
+            existing_boundary_hashes.add(merged_node.hash)
+
+        self._bbox_dirty = True
 
         # 保留原始的parts_info信息（如果存在）
         if hasattr(other_grid, 'parts_info') and other_grid.parts_info:

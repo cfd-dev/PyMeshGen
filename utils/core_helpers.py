@@ -14,6 +14,22 @@ def use_triangle_pipeline_for_qmorph(parameters):
     )
 
 
+def select_delaunay_backend(parameters, has_boundary_layer=False):
+    """选择 mesh_type=4 的 Delaunay 后端。
+
+    当前策略：带边界层时优先使用 Triangle 生成内层三角形，
+    以避免 Bowyer-Watson 在复杂近壁前沿上的拓扑不稳定问题。
+    """
+    configured_backend = str(
+        getattr(parameters, "delaunay_backend", "bowyer_watson")
+    ).strip().lower()
+    if configured_backend not in {"bowyer_watson", "triangle"}:
+        configured_backend = "bowyer_watson"
+    if has_boundary_layer:
+        return "triangle"
+    return configured_backend
+
+
 def create_interior_generator(
     parameters, front_heap, sizing_system, boundary_grid, visual_obj
 ):
