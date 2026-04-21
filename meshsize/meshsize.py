@@ -1,6 +1,8 @@
 from math import log
 import math
 import matplotlib.pyplot as plt
+from collections import defaultdict
+import numpy as np
 
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose
@@ -103,6 +105,7 @@ class QuadtreeSizing:
         self.resolution = resolution  # 分辨率
         self.decay = decay  # 网格尺寸场的decay
         self.initial_front = initial_front  # 阵面列表
+        self.decay_source_floor = self._build_decay_source_floor()
 
         self.quad_tree = None  # 四叉树
         self.bg_bounds = []  # 背景网格边界
@@ -113,6 +116,49 @@ class QuadtreeSizing:
         self.ax = visual_obj.ax if visual_obj else None
 
         self.generate_bg_mesh()
+
+    @staticmethod
+    def _front_source_key(front):
+        part_name = getattr(front, "part_name", None)
+        if part_name:
+            return ("part", str(part_name))
+        bc_type = getattr(front, "bc_type", None)
+        if bc_type:
+            return ("bc", str(bc_type))
+        return ("all", "default")
+
+    def _build_decay_source_floor(self):
+        """为尺寸场传播构建按边界分组的最小源尺度。
+
+        仅在 decay 传播阶段对极短边做平滑，避免少量异常短边把壁面附近
+        的尺寸场拉得过细、过陡；几何边界本身仍按原始 front.length 参与解析。
+        """
+        if not self.initial_front:
+            return {}
+
+        grouped_lengths = defaultdict(list)
+        for front in self.initial_front:
+            grouped_lengths[self._front_source_key(front)].append(front.length)
+
+        source_floor = {}
+        for key, lengths in grouped_lengths.items():
+            if len(lengths) < 8:
+                continue
+
+            lengths = np.asarray(lengths, dtype=float)
+            p25 = float(np.percentile(lengths, 25))
+            median = float(np.percentile(lengths, 50))
+            # 用分组内的下四分位数抬高极短边的传播源尺度，只修正最短一截。
+            source_floor[key] = min(p25, 0.25 * median + 0.75 * p25)
+
+        return source_floor
+
+    def _get_decay_source_size(self, front):
+        base_size = front.length
+        floor = self.decay_source_floor.get(self._front_source_key(front))
+        if floor is None:
+            return base_size
+        return max(base_size, floor)
 
     def draw_bgmesh(self):
         draw_quadtree(self.quad_tree, self.ax)
@@ -457,7 +503,7 @@ class QuadtreeSizing:
             # 遍历所有表面节点
             for front in self.initial_front:
                 face_center = front.center
-                target_size = front.length
+                target_size = self._get_decay_source_size(front)
 
                 # 计算子节点中心到表面节点的距离
                 dx = x_center - face_center[0]

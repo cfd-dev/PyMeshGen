@@ -131,11 +131,11 @@ def create_bowyer_watson_mesh(
     Returns:
         (points, simplices, boundary_mask)
     """
-    from delaunay.bw_core import BowyerWatsonMeshGenerator
+    from delaunay.bw_core_stable import BowyerWatsonMeshGenerator
 
     # 选择实现：默认走更成熟的 Gmsh 版本以保证边界恢复与质量稳定
     if use_gmsh_implementation:
-        from delaunay.backup_old.bw_core_gmsh import GmshBowyerWatsonMeshGenerator
+        from delaunay.bw_core_gmsh import GmshBowyerWatsonMeshGenerator
         GeneratorClass = GmshBowyerWatsonMeshGenerator
     else:
         GeneratorClass = BowyerWatsonMeshGenerator
