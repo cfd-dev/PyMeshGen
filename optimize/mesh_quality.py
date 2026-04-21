@@ -77,6 +77,17 @@ def triangle_skewness(p1, p2, p3):
     return skewness
 
 
+def triangle_aspect_ratio(p1, p2, p3):
+    """计算三角形的最大最小边长比（长宽比）"""
+    a = calculate_distance(p1, p2)
+    b = calculate_distance(p2, p3)
+    c = calculate_distance(p3, p1)
+
+    max_edge = max(a, b, c)
+    min_edge = min(a, b, c)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
+
+
 def prism_shape_quality(p1, p2, p3, p4, p5, p6):
     """计算三棱柱网格质量（基于体积与棱长平方比）
     三棱柱由两个三角形底面和三个矩形侧面组成
@@ -191,6 +202,41 @@ def prism_skewness(p1, p2, p3, p4, p5, p6):
     return skewness
 
 
+def pyramid_aspect_ratio(p1, p2, p3, p4, p5):
+    """计算金字塔的最大最小边长比（长宽比）"""
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p4),
+        calculate_distance(p4, p1),
+        calculate_distance(p1, p5),
+        calculate_distance(p2, p5),
+        calculate_distance(p3, p5),
+        calculate_distance(p4, p5),
+    ]
+    max_edge = max(edges)
+    min_edge = min(edges)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
+
+
+def prism_aspect_ratio(p1, p2, p3, p4, p5, p6):
+    """计算三棱柱的最大最小边长比（长宽比）"""
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p1),
+        calculate_distance(p4, p5),
+        calculate_distance(p5, p6),
+        calculate_distance(p6, p4),
+        calculate_distance(p1, p4),
+        calculate_distance(p2, p5),
+        calculate_distance(p3, p6),
+    ]
+    max_edge = max(edges)
+    min_edge = min(edges)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
+
+
 def hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8):
     """计算六面体网格质量（基于体积与棱长平方比）
     六面体由8个顶点组成，可以分解为6个四面体计算体积
@@ -239,6 +285,27 @@ def hexahedron_shape_quality(p1, p2, p3, p4, p5, p6, p7, p8):
         )
 
     return quality
+
+
+def hexahedron_aspect_ratio(p1, p2, p3, p4, p5, p6, p7, p8):
+    """计算六面体的最大最小边长比（长宽比）"""
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p4),
+        calculate_distance(p4, p1),
+        calculate_distance(p5, p6),
+        calculate_distance(p6, p7),
+        calculate_distance(p7, p8),
+        calculate_distance(p8, p5),
+        calculate_distance(p1, p5),
+        calculate_distance(p2, p6),
+        calculate_distance(p3, p7),
+        calculate_distance(p4, p8),
+    ]
+    max_edge = max(edges)
+    min_edge = min(edges)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
 
 
 def hexahedron_skewness(p1, p2, p3, p4, p5, p6, p7, p8):
@@ -556,6 +623,21 @@ def tetrahedron_skewness(p1, p2, p3, p4):
     skewness = max(0.0, min(1.0, skewness))
 
     return skewness
+
+
+def tetrahedron_aspect_ratio(p1, p2, p3, p4):
+    """计算四面体的最大最小边长比（长宽比）"""
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p1),
+        calculate_distance(p1, p4),
+        calculate_distance(p2, p4),
+        calculate_distance(p3, p4),
+    ]
+    max_edge = max(edges)
+    min_edge = min(edges)
+    return max_edge / min_edge if min_edge > 1e-12 else 0.0
 
 
 def pyramid_shape_quality(p1, p2, p3, p4, p5):
