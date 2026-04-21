@@ -1,232 +1,13 @@
-import json
-import time
 from collections import defaultdict, deque
-from pathlib import Path
 
 import numpy as np
 
-
-def resolve_case_input_path(input_file_str, project_root, fallback_input_dir=None):
-    input_file = Path(input_file_str)
-    if input_file.is_absolute():
-        return input_file
-    if input_file_str.startswith("./unittests") or input_file_str.startswith("./config"):
-        return (project_root / input_file).resolve()
-    if fallback_input_dir is not None:
-        return (fallback_input_dir / input_file.name).resolve()
-    return (project_root / input_file).resolve()
-
-
-def create_delaunay_case_config(
-    original_config_path,
-    output_file,
-    project_root,
-    enable_boundary_layer=False,
-    delaunay_backend="bowyer_watson",
-    fallback_input_dir=None,
-):
-    with open(original_config_path, "r", encoding="utf-8") as handle:
-        config = json.load(handle)
-
-    config["mesh_type"] = 4
-    config["delaunay_backend"] = delaunay_backend
-
-    if enable_boundary_layer:
-        print("  - 边界层: 启用")
-    else:
-        print("  - 边界层: 禁用")
-        for part in config.get("parts", []):
-            part["PRISM_SWITCH"] = "off"
-            part["max_layers"] = 0
-
-    if "input_file" in config:
-        config["input_file"] = str(
-            resolve_case_input_path(
-                config["input_file"],
-                project_root=project_root,
-                fallback_input_dir=fallback_input_dir,
-            )
-        )
-
-    config["output_file"] = str(output_file)
-    config["viz_enabled"] = False
-    config["debug_level"] = 0
-
-    prefix = "temp_triangle" if delaunay_backend == "triangle" else "temp_bw"
-    temp_config_path = project_root / f"{prefix}_{original_config_path.stem}.json"
-    with open(temp_config_path, "w", encoding="utf-8") as handle:
-        json.dump(config, handle, indent=4, ensure_ascii=False)
-
-    return temp_config_path
-
-
-def run_delaunay_config_test(
-    testcase,
-    original_config,
-    output_file,
-    project_root,
-    test_name,
-    enable_boundary_layer,
-    delaunay_backend="bowyer_watson",
-    fallback_input_dir=None,
-    check_boundary_recovery=True,
-):
-    from PyMeshGen import PyMeshGen
-    from data_structure.parameters import Parameters
-    from fileIO.vtk_io import parse_vtk_msh
-    from utils.message import DEBUG_LEVEL_VERBOSE, set_debug_level
-
-    if not original_config.exists():
-        testcase.skipTest(f"{original_config.name} 不存在")
-
-    with open(original_config, "r", encoding="utf-8") as handle:
-        config_data = json.load(handle)
-
-    set_debug_level(DEBUG_LEVEL_VERBOSE)
-
-    try:
-        bw_config = create_delaunay_case_config(
-            original_config_path=original_config,
-            output_file=output_file,
-            project_root=project_root,
-            enable_boundary_layer=enable_boundary_layer,
-            delaunay_backend=delaunay_backend,
-            fallback_input_dir=fallback_input_dir,
-        )
-
-        print(f"\n{test_name}:")
-        print(f"  - 配置文件: {bw_config.name}")
-        print(f"  - 输出文件: {output_file.name}")
-
-        start = time.time()
-        parameters = Parameters("FROM_CASE_JSON", str(bw_config))
-        PyMeshGen(parameters)
-        cost = time.time() - start
-
-        testcase.assertTrue(output_file.exists(), "输出文件应该存在")
-        grid = parse_vtk_msh(str(output_file))
-
-        print(f"  - 生成时间: {cost:.2f}秒")
-        print(f"  - 节点数: {grid.num_nodes}")
-        print(f"  - 单元数: {grid.num_cells}")
-
-        testcase.assertGreater(grid.num_nodes, 0, "节点数应大于 0")
-        testcase.assertGreater(grid.num_cells, 0, "单元数应大于 0")
-        testcase.assertLess(cost, 120, "生成时间应小于 120 秒")
-
-        tri_count = sum(1 for cell in grid.cells if len(cell) == 3)
-        quad_count = sum(1 for cell in grid.cells if len(cell) == 4)
-        other_count = grid.num_cells - tri_count - quad_count
-
-        print(f"  - 三角形数: {tri_count}")
-        print(f"  - 四边形数: {quad_count}")
-        print(f"  - 其他单元: {other_count}")
-
-        if enable_boundary_layer:
-            print(f"  - 模式: {delaunay_backend} + 边界层")
-            testcase.assertGreater(tri_count, 0, "应该有三角形单元")
-        else:
-            print(f"  - 模式: 纯 {delaunay_backend} 三角网格")
-            testcase.assertEqual(tri_count, grid.num_cells, "无边界层时应全部是三角形单元")
-
-        if check_boundary_recovery:
-            input_file = resolve_case_input_path(
-                config_data.get("input_file", ""),
-                project_root=project_root,
-                fallback_input_dir=fallback_input_dir,
-            )
-            if input_file.exists():
-                assert_boundary_recovery(testcase, input_file, grid, test_name)
-            else:
-                print(f"\n  - [SKIP] CAS 文件不存在: {input_file}，跳过边界恢复检查")
-
-        print(f"  - [PASS] {test_name} 测试通过")
-    except Exception as exc:
-        print(f"  - [FAIL] {test_name} 测试失败: {exc}")
-        import traceback
-
-        traceback.print_exc()
-        testcase.fail(f"{test_name} 测试失败: {exc}")
-
-
-def assert_boundary_recovery(testcase, cas_file, grid, test_name):
-    print("\n  - 边界恢复检查:")
-    boundary_edges_result = check_boundary_edges(str(cas_file), grid, test_name)
-
-    if boundary_edges_result["pass"]:
-        print("  - [PASS] 边界恢复检查通过")
-        for zone_key, zone_result in boundary_edges_result["zone_results"].items():
-            print(f"    - {zone_key}: {zone_result['total_edges']}/{zone_result['total_edges']} 条边恢复")
-            if zone_result["inner_boundary_inner_points"] > 0:
-                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_points']} 个点")
-            if zone_result["inner_boundary_inner_cells"] > 0:
-                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
-    else:
-        print("  - [FAIL] 边界恢复检查失败")
-        for zone_key, zone_result in boundary_edges_result["zone_results"].items():
-            if zone_result["missing_edges"] > 0:
-                print(f"    - {zone_key}: {zone_result['missing_edges']}/{zone_result['total_edges']} 条边丢失")
-                for detail in zone_result["missing_details"][:5]:
-                    n1, n2, coord1, coord2, reason = detail
-                    if reason:
-                        print(f"      边 ({n1},{n2}): {reason}")
-                    else:
-                        print(
-                            f"      边 ({n1},{n2}): "
-                            f"({coord1[0]:.4f},{coord1[1]:.4f}) -> ({coord2[0]:.4f},{coord2[1]:.4f})"
-                        )
-        if boundary_edges_result["issue"]:
-            print(f"    - 问题: {boundary_edges_result['issue']}")
-        testcase.fail(
-            f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}"
-        )
-
-    print("\n  - 孔洞清理检查:")
-    hole_cleanup_result = check_hole_cleanup(str(cas_file), grid, test_name)
-    if hole_cleanup_result["pass"]:
-        print("  - [PASS] 孔洞清理检查通过")
-        for hole_key, hole_result in hole_cleanup_result.get("hole_results", {}).items():
-            print(
-                f"    - {hole_key}: 内部点数={hole_result['points_inside']}, "
-                f"内部单元数={hole_result['cells_inside']}"
-            )
-    else:
-        print("  - [FAIL] 孔洞清理检查失败")
-        for hole_key, hole_result in hole_cleanup_result.get("hole_results", {}).items():
-            if hole_result["points_inside"] > 0 or hole_result["cells_inside"] > 0:
-                print(
-                    f"    - {hole_key}: 内部残留 {hole_result['points_inside']} 个点, "
-                    f"{hole_result['cells_inside']} 个单元"
-                )
-        if hole_cleanup_result.get("issue"):
-            print(f"    - 问题: {hole_cleanup_result['issue']}")
-        testcase.fail(
-            f"{test_name} 孔洞清理检查失败: "
-            f"{hole_cleanup_result.get('issue', '孔洞内残留点或单元')}"
-        )
-
-    print("\n  - 拓扑洁净检查:")
-    topology_result = check_topology_clean(grid, test_name)
-    if topology_result["pass"]:
-        print("  - [PASS] 拓扑洁净检查通过")
-    else:
-        print("  - [FAIL] 拓扑洁净检查失败")
-        if topology_result.get("issue"):
-            print(f"    - 问题: {topology_result['issue']}")
-        testcase.fail(
-            f"{test_name} 拓扑洁净检查失败: {topology_result.get('issue', '拓扑异常')}"
-        )
-
-
-def _point_segment_distance(point, seg_start, seg_end):
-    edge_vec = seg_end - seg_start
-    seg_len2 = float(np.dot(edge_vec, edge_vec))
-    if seg_len2 < 1e-16:
-        return float(np.linalg.norm(point - seg_start))
-    t = float(np.dot(point - seg_start, edge_vec) / seg_len2)
-    t = max(0.0, min(1.0, t))
-    proj = seg_start + t * edge_vec
-    return float(np.linalg.norm(point - proj))
+from fileIO.read_cas import parse_fluent_msh
+from utils.geom_toolkit import (
+    point_in_polygon,
+    point_to_segment_distance,
+    segments_intersect_strict,
+)
 
 
 def _has_split_edge_path(v_start, v_end, seg_start, seg_end, vtk_nodes, mesh_adjacency, tolerance):
@@ -245,7 +26,7 @@ def _has_split_edge_path(v_start, v_end, seg_start, seg_end, vtk_nodes, mesh_adj
     for idx, coord in enumerate(vtk_nodes[:, :2]):
         t = float(np.dot(coord - seg_start, edge_vec) / seg_len2)
         if -projection_margin <= t <= 1.0 + projection_margin:
-            if _point_segment_distance(coord, seg_start, seg_end) <= line_tolerance:
+            if point_to_segment_distance(coord, seg_start, seg_end) <= line_tolerance:
                 candidate_nodes.add(idx)
 
     queue = deque([(v_start, 0)])
@@ -320,10 +101,7 @@ def _build_ordered_polygon(cas_nodes, edges):
     return np.array(ordered_coords)
 
 
-def check_boundary_edges(cas_file, grid, test_name):
-    from fileIO.read_cas import parse_fluent_msh
-    from utils.geom_toolkit import point_in_polygon
-
+def check_boundary_edges(cas_file, grid, test_name=None, tolerance=0.01):
     try:
         cas_data = parse_fluent_msh(cas_file)
     except Exception as exc:
@@ -331,7 +109,6 @@ def check_boundary_edges(cas_file, grid, test_name):
 
     cas_nodes = np.array(cas_data["nodes"])
     vtk_nodes = np.array(grid.node_coords)
-    tolerance = 0.01
 
     boundary_edges_by_zone = {}
     for face in cas_data["faces"]:
@@ -414,7 +191,7 @@ def check_boundary_edges(cas_file, grid, test_name):
         zone_band_tolerance = max(tolerance * 2.0, 0.03)
         for vtk_idx, vtk_coord in enumerate(vtk_nodes[:, :2]):
             for seg_start, seg_end in zone_segments:
-                if _point_segment_distance(vtk_coord, seg_start, seg_end) <= zone_band_tolerance:
+                if point_to_segment_distance(vtk_coord, seg_start, seg_end) <= zone_band_tolerance:
                     zone_allowed_nodes.add(vtk_idx)
                     break
 
@@ -484,10 +261,7 @@ def check_boundary_edges(cas_file, grid, test_name):
     return {"pass": all_pass, "zone_results": all_results, "issue": issue}
 
 
-def check_hole_cleanup(cas_file, grid, test_name):
-    from fileIO.read_cas import parse_fluent_msh
-    from utils.geom_toolkit import point_in_polygon
-
+def check_hole_cleanup(cas_file, grid, test_name=None, tolerance=0.01):
     try:
         cas_data = parse_fluent_msh(cas_file)
     except Exception as exc:
@@ -495,7 +269,6 @@ def check_hole_cleanup(cas_file, grid, test_name):
 
     cas_nodes = np.array(cas_data["nodes"])
     vtk_nodes = np.array(grid.node_coords)
-    tolerance = 0.01
 
     global_x_min, global_x_max = np.min(cas_nodes[:, 0]), np.max(cas_nodes[:, 0])
     global_y_min, global_y_max = np.min(cas_nodes[:, 1]), np.max(cas_nodes[:, 1])
@@ -553,22 +326,7 @@ def check_hole_cleanup(cas_file, grid, test_name):
     }
 
 
-def _cross(o, a, b):
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-
-
-def _strict_intersect(pa, pb, pc, pd, eps=1e-12):
-    d1 = _cross(pc, pd, pa)
-    d2 = _cross(pc, pd, pb)
-    d3 = _cross(pa, pb, pc)
-    d4 = _cross(pa, pb, pd)
-    return (
-        ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps))
-        and ((d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps))
-    )
-
-
-def check_topology_clean(grid, test_name):
+def check_topology_clean(grid, test_name=None):
     edge_to_cells = defaultdict(list)
     for cell_idx, cell in enumerate(grid.cells):
         for i in range(len(cell)):
@@ -627,7 +385,7 @@ def check_topology_clean(grid, test_name):
                 continue
             p3 = points[c]
             p4 = points[d]
-            if _strict_intersect(p1, p2, p3, p4):
+            if segments_intersect_strict(p1, p2, p3, p4):
                 return {"pass": False, "issue": "检测到严格边相交（单元拓扑交叉）"}
 
     return {"pass": True, "issue": None}

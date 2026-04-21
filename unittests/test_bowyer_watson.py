@@ -12,6 +12,8 @@ Bowyer-Watson Delaunay 网格生成器单元测试
 """
 
 import sys
+import json
+import time
 from pathlib import Path
 import unittest
 import numpy as np
@@ -27,13 +29,226 @@ for subdir in ["fileIO", "data_structure", "meshsize", "delaunay", "optimize", "
         sys.path.insert(0, str(subdir_path))
 
 from delaunay import BowyerWatsonMeshGenerator, create_bowyer_watson_mesh
+from delaunay.validation import (
+    check_boundary_edges,
+    check_hole_cleanup,
+    check_topology_clean,
+)
 from meshsize import QuadtreeSizing
 from data_structure.front2d import Front
 from data_structure.basic_elements import NodeElement
-try:
-    from bw_test_utils import run_delaunay_config_test
-except ImportError:
-    from unittests.bw_test_utils import run_delaunay_config_test
+
+
+def resolve_case_input_path(input_file_str, project_root, fallback_input_dir=None):
+    input_file = Path(input_file_str)
+    if input_file.is_absolute():
+        return input_file
+    if input_file_str.startswith("./unittests") or input_file_str.startswith("./config"):
+        return (project_root / input_file).resolve()
+    if fallback_input_dir is not None:
+        return (fallback_input_dir / input_file.name).resolve()
+    return (project_root / input_file).resolve()
+
+
+def create_delaunay_case_config(
+    original_config_path,
+    output_file,
+    project_root,
+    enable_boundary_layer=False,
+    delaunay_backend="bowyer_watson",
+    fallback_input_dir=None,
+):
+    with open(original_config_path, "r", encoding="utf-8") as handle:
+        config = json.load(handle)
+
+    config["mesh_type"] = 4
+    config["delaunay_backend"] = delaunay_backend
+
+    if enable_boundary_layer:
+        print("  - 边界层: 启用")
+    else:
+        print("  - 边界层: 禁用")
+        for part in config.get("parts", []):
+            part["PRISM_SWITCH"] = "off"
+            part["max_layers"] = 0
+
+    if "input_file" in config:
+        config["input_file"] = str(
+            resolve_case_input_path(
+                config["input_file"],
+                project_root=project_root,
+                fallback_input_dir=fallback_input_dir,
+            )
+        )
+
+    config["output_file"] = str(output_file)
+    config["viz_enabled"] = False
+    config["debug_level"] = 0
+
+    prefix = "temp_triangle" if delaunay_backend == "triangle" else "temp_bw"
+    temp_config_path = project_root / f"{prefix}_{original_config_path.stem}.json"
+    with open(temp_config_path, "w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=4, ensure_ascii=False)
+
+    return temp_config_path
+
+
+def assert_boundary_recovery(testcase, cas_file, grid, test_name):
+    print("\n  - 边界恢复检查:")
+    boundary_edges_result = check_boundary_edges(str(cas_file), grid, test_name)
+
+    if boundary_edges_result["pass"]:
+        print("  - [PASS] 边界恢复检查通过")
+        for zone_key, zone_result in boundary_edges_result["zone_results"].items():
+            print(f"    - {zone_key}: {zone_result['total_edges']}/{zone_result['total_edges']} 条边恢复")
+            if zone_result["inner_boundary_inner_points"] > 0:
+                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_points']} 个点")
+            if zone_result["inner_boundary_inner_cells"] > 0:
+                print(f"      警告: 内边界内部发现 {zone_result['inner_boundary_inner_cells']} 个单元")
+    else:
+        print("  - [FAIL] 边界恢复检查失败")
+        for zone_key, zone_result in boundary_edges_result["zone_results"].items():
+            if zone_result["missing_edges"] > 0:
+                print(f"    - {zone_key}: {zone_result['missing_edges']}/{zone_result['total_edges']} 条边丢失")
+                for detail in zone_result["missing_details"][:5]:
+                    n1, n2, coord1, coord2, reason = detail
+                    if reason:
+                        print(f"      边 ({n1},{n2}): {reason}")
+                    else:
+                        print(
+                            f"      边 ({n1},{n2}): "
+                            f"({coord1[0]:.4f},{coord1[1]:.4f}) -> ({coord2[0]:.4f},{coord2[1]:.4f})"
+                        )
+        if boundary_edges_result["issue"]:
+            print(f"    - 问题: {boundary_edges_result['issue']}")
+        testcase.fail(
+            f"{test_name} 边界恢复检查失败: {boundary_edges_result['issue'] or '边界边丢失'}"
+        )
+
+    print("\n  - 孔洞清理检查:")
+    hole_cleanup_result = check_hole_cleanup(str(cas_file), grid, test_name)
+    if hole_cleanup_result["pass"]:
+        print("  - [PASS] 孔洞清理检查通过")
+        for hole_key, hole_result in hole_cleanup_result.get("hole_results", {}).items():
+            print(
+                f"    - {hole_key}: 内部点数={hole_result['points_inside']}, "
+                f"内部单元数={hole_result['cells_inside']}"
+            )
+    else:
+        print("  - [FAIL] 孔洞清理检查失败")
+        for hole_key, hole_result in hole_cleanup_result.get("hole_results", {}).items():
+            if hole_result["points_inside"] > 0 or hole_result["cells_inside"] > 0:
+                print(
+                    f"    - {hole_key}: 内部残留 {hole_result['points_inside']} 个点, "
+                    f"{hole_result['cells_inside']} 个单元"
+                )
+        if hole_cleanup_result.get("issue"):
+            print(f"    - 问题: {hole_cleanup_result['issue']}")
+        testcase.fail(
+            f"{test_name} 孔洞清理检查失败: "
+            f"{hole_cleanup_result.get('issue', '孔洞内残留点或单元')}"
+        )
+
+    print("\n  - 拓扑洁净检查:")
+    topology_result = check_topology_clean(grid, test_name)
+    if topology_result["pass"]:
+        print("  - [PASS] 拓扑洁净检查通过")
+    else:
+        print("  - [FAIL] 拓扑洁净检查失败")
+        if topology_result.get("issue"):
+            print(f"    - 问题: {topology_result['issue']}")
+        testcase.fail(
+            f"{test_name} 拓扑洁净检查失败: {topology_result.get('issue', '拓扑异常')}"
+        )
+
+
+def run_delaunay_config_test(
+    testcase,
+    original_config,
+    output_file,
+    project_root,
+    test_name,
+    enable_boundary_layer,
+    delaunay_backend="bowyer_watson",
+    fallback_input_dir=None,
+    check_boundary_recovery=True,
+):
+    from PyMeshGen import PyMeshGen
+    from data_structure.parameters import Parameters
+    from fileIO.vtk_io import parse_vtk_msh
+    from utils.message import DEBUG_LEVEL_VERBOSE, set_debug_level
+
+    if not original_config.exists():
+        testcase.skipTest(f"{original_config.name} 不存在")
+
+    with open(original_config, "r", encoding="utf-8") as handle:
+        config_data = json.load(handle)
+
+    set_debug_level(DEBUG_LEVEL_VERBOSE)
+
+    try:
+        bw_config = create_delaunay_case_config(
+            original_config_path=original_config,
+            output_file=output_file,
+            project_root=project_root,
+            enable_boundary_layer=enable_boundary_layer,
+            delaunay_backend=delaunay_backend,
+            fallback_input_dir=fallback_input_dir,
+        )
+
+        print(f"\n{test_name}:")
+        print(f"  - 配置文件: {bw_config.name}")
+        print(f"  - 输出文件: {output_file.name}")
+
+        start = time.time()
+        parameters = Parameters("FROM_CASE_JSON", str(bw_config))
+        PyMeshGen(parameters)
+        cost = time.time() - start
+
+        testcase.assertTrue(output_file.exists(), "输出文件应该存在")
+        grid = parse_vtk_msh(str(output_file))
+
+        print(f"  - 生成时间: {cost:.2f}秒")
+        print(f"  - 节点数: {grid.num_nodes}")
+        print(f"  - 单元数: {grid.num_cells}")
+
+        testcase.assertGreater(grid.num_nodes, 0, "节点数应大于 0")
+        testcase.assertGreater(grid.num_cells, 0, "单元数应大于 0")
+        testcase.assertLess(cost, 120, "生成时间应小于 120 秒")
+
+        tri_count = sum(1 for cell in grid.cells if len(cell) == 3)
+        quad_count = sum(1 for cell in grid.cells if len(cell) == 4)
+        other_count = grid.num_cells - tri_count - quad_count
+
+        print(f"  - 三角形数: {tri_count}")
+        print(f"  - 四边形数: {quad_count}")
+        print(f"  - 其他单元: {other_count}")
+
+        if enable_boundary_layer:
+            print(f"  - 模式: {delaunay_backend} + 边界层")
+            testcase.assertGreater(tri_count, 0, "应该有三角形单元")
+        else:
+            print(f"  - 模式: 纯 {delaunay_backend} 三角网格")
+            testcase.assertEqual(tri_count, grid.num_cells, "无边界层时应全部是三角形单元")
+
+        if check_boundary_recovery:
+            input_file = resolve_case_input_path(
+                config_data.get("input_file", ""),
+                project_root=project_root,
+                fallback_input_dir=fallback_input_dir,
+            )
+            if input_file.exists():
+                assert_boundary_recovery(testcase, input_file, grid, test_name)
+            else:
+                print(f"\n  - [SKIP] CAS 文件不存在: {input_file}，跳过边界恢复检查")
+
+        print(f"  - [PASS] {test_name} 测试通过")
+    except Exception as exc:
+        print(f"  - [FAIL] {test_name} 测试失败: {exc}")
+        import traceback
+
+        traceback.print_exc()
+        testcase.fail(f"{test_name} 测试失败: {exc}")
 
 
 class TestBowyerWatsonBasic(unittest.TestCase):
