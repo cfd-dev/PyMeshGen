@@ -1565,6 +1565,34 @@ class BowyerWatsonMeshGenerator:
             tri.circumcenter = None
             tri.circumradius = None
 
+    def _estimate_target_triangle_count(self) -> Optional[int]:
+        """Estimate a bounded refinement target for legacy no-sizing runs."""
+        if (
+            self.sizing_system is not None
+            or self.max_edge_length is None
+            or self.max_edge_length <= 1e-12
+            or len(self.original_points) < 3
+        ):
+            return None
+
+        x_coords = self.original_points[:, 0]
+        y_coords = self.original_points[:, 1]
+        area = 0.5 * abs(
+            float(
+                np.dot(x_coords, np.roll(y_coords, -1))
+                - np.dot(y_coords, np.roll(x_coords, -1))
+            )
+        )
+        if area <= 1e-12:
+            return None
+
+        ideal_triangle_area = sqrt(3.0) * 0.25 * self.max_edge_length * self.max_edge_length
+        if ideal_triangle_area <= 1e-12:
+            return None
+
+        estimated = int(np.ceil(1.5 * area / ideal_triangle_area))
+        return max(estimated, max(len(self.original_points) - 2, 1))
+
     # -------------------------------------------------------------------------
     # 公共入口：generate_mesh
     # -------------------------------------------------------------------------
@@ -1584,6 +1612,35 @@ class BowyerWatsonMeshGenerator:
                 - simplices: 三角形索引数组 (M, 3)
                 - boundary_mask: 边界点掩码 (N,)
         """
+        use_gmsh_delegate = (
+            not self.boundary_edges
+            and not self.holes
+            and self.sizing_system is None
+            and len(self.original_points) >= 40
+        )
+        if use_gmsh_delegate:
+            delegate = GmshBowyerWatsonMeshGenerator(
+                boundary_points=self.original_points,
+                boundary_edges=self.boundary_edges,
+                sizing_system=self.sizing_system,
+                max_edge_length=self.max_edge_length,
+                smoothing_iterations=self.smoothing_iterations,
+                seed=self.seed,
+                holes=self.holes,
+                outer_boundary=self.original_points.copy(),
+            )
+
+            points, simplices, boundary_mask = delegate.generate_mesh(
+                target_triangle_count=target_triangle_count,
+            )
+
+            self.points = points.copy()
+            self.boundary_mask = boundary_mask.copy()
+            self.boundary_count = delegate.boundary_count
+            self.triangles = [mtri3_to_triangle(tri) for tri in delegate.triangles]
+            self._kdtree = delegate._kdtree
+            return points, simplices, boundary_mask
+
         timer = TimeSpan("开始 Bowyer-Watson 网格生成...")
 
         self.boundary_count = len(self.original_points)
@@ -1596,10 +1653,19 @@ class BowyerWatsonMeshGenerator:
         self._triangulate()
         verbose(f"  初始三角形数量: {len(self.triangles)}")
 
+        effective_target_triangle_count = target_triangle_count
+        if effective_target_triangle_count is None:
+            effective_target_triangle_count = self._estimate_target_triangle_count()
+            if effective_target_triangle_count is not None:
+                verbose(
+                    "阶段 2/3: 为无尺寸场 legacy 用例估算目标三角形数..."
+                    f" {effective_target_triangle_count}"
+                )
+
         verbose("阶段 2/3: 迭代插入内部点...")
         if self.holes:
             verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
-        self._insert_points_iteratively(target_triangle_count)
+        self._insert_points_iteratively(effective_target_triangle_count)
 
         if self.holes:
             verbose("阶段 2.5/3: 清理孔洞内三角形...")
@@ -1616,9 +1682,6 @@ class BowyerWatsonMeshGenerator:
             self.boundary_mask = np.zeros(current_point_count, dtype=bool)
             self.boundary_mask[:self.boundary_count] = True
             self._laplacian_smoothing(self.smoothing_iterations)
-
-            # Laplacian 平滑只移动点位置，不改变拓扑连接
-            # 因此不需要重新三角剖分，保持原有的三角形连接即可
             verbose("  平滑完成（保持原有三角连接）")
         else:
             verbose("阶段 3/3: 跳过平滑（未启用）")

@@ -39,6 +39,156 @@ from delaunay.postprocess import (
 from utils.mesh_utils import deduplicate_grid_cells
 
 
+def _has_boundary_layer(parameters):
+    """Return True when any part enables prism-layer growth."""
+    for part_obj in parameters.part_params:
+        mesh_param = getattr(part_obj, "part_params", None)
+        if getattr(mesh_param, "PRISM_SWITCH", "off") != "off":
+            return True
+    return False
+
+
+def _generate_boundary_layer_grid(parameters, front_heap, sizing_system, visual_obj, gui_instance):
+    """Generate the boundary-layer grid when enabled."""
+    has_boundary_layer = _has_boundary_layer(parameters)
+    if not has_boundary_layer:
+        if parameters.mesh_type == 4:
+            info("Bowyer-Watson 模式：无边界层配置，跳过边界层生成")
+        gui_log(gui_instance, "无边界层配置")
+        return None, front_heap, False
+
+    gui_log(gui_instance, "开始生成边界层网格...")
+    gui_progress(gui_instance, 4)
+
+    adlayers = Adlayers2(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        param_obj=parameters,
+        visual_obj=visual_obj,
+    )
+    boundary_grid, updated_front_heap = adlayers.generate_elements()
+    log_mesh_debug_summary(boundary_grid, "边界层网格")
+    gui_log(gui_instance, "边界层网格生成完成")
+    return boundary_grid, updated_front_heap, True
+
+
+def _resolve_delaunay_backend(parameters, has_boundary_layer):
+    """Select and log the effective mesh_type=4 Delaunay backend."""
+    configured_backend = str(
+        getattr(parameters, "delaunay_backend", "bowyer_watson")
+    ).strip().lower()
+    delaunay_backend = select_delaunay_backend(
+        parameters,
+        has_boundary_layer=has_boundary_layer,
+    )
+    if has_boundary_layer and delaunay_backend != configured_backend:
+        info(
+            "Bowyer-Watson 模式：检测到边界层，"
+            f"内层三角剖分从 {configured_backend} 切换为 triangle 后端"
+        )
+    else:
+        info(
+            f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格"
+        )
+    return delaunay_backend
+
+
+def _recover_delaunay_boundary_edges(points, simplices, front_heap):
+    """Run the lightweight swap-based boundary recovery used after BW meshing."""
+    boundary_edges = collect_boundary_edges_from_fronts(front_heap)
+    swapped_simplices, recovered_edges, remaining_edges = recover_boundary_edges_by_swaps(
+        points,
+        simplices,
+        boundary_edges,
+    )
+    if recovered_edges > 0:
+        if is_topology_valid(points, swapped_simplices):
+            simplices = swapped_simplices
+            info(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
+        else:
+            info("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
+    if remaining_edges:
+        info(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
+    return simplices
+
+
+def _build_delaunay_unstructured_grid(points, simplices, boundary_mask):
+    """Convert raw triangulation arrays into an Unstructured_Grid."""
+    from data_structure.unstructured_grid import Unstructured_Grid
+
+    boundary_nodes_idx = [
+        idx for idx, is_boundary in enumerate(boundary_mask) if is_boundary
+    ]
+    return Unstructured_Grid.from_cells(
+        node_coords=points.tolist(),
+        cells=simplices.tolist(),
+        boundary_nodes_idx=boundary_nodes_idx,
+        grid_dimension=2,
+    )
+
+
+def _generate_delaunay_triangular_grid(
+    parameters,
+    front_heap,
+    sizing_system,
+    has_boundary_layer,
+    gui_instance,
+):
+    """Generate the mesh_type=4 interior triangular grid."""
+    delaunay_backend = _resolve_delaunay_backend(
+        parameters,
+        has_boundary_layer=has_boundary_layer,
+    )
+    points, simplices, boundary_mask = create_bowyer_watson_mesh(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        target_triangle_count=None,
+        smoothing_iterations=3,
+        auto_detect_holes=True,
+        backend=delaunay_backend,
+        triangle_point_strategy=getattr(
+            parameters,
+            "triangle_point_strategy",
+            "equilateral",
+        ),
+    )
+
+    if delaunay_backend != "triangle":
+        simplices = _recover_delaunay_boundary_edges(points, simplices, front_heap)
+
+    triangular_grid = _build_delaunay_unstructured_grid(
+        points,
+        simplices,
+        boundary_mask,
+    )
+    gui_log(gui_instance, "Bowyer-Watson 网格生成完成")
+    return triangular_grid, delaunay_backend
+
+
+def _generate_advancing_front_grid(
+    parameters,
+    front_heap,
+    sizing_system,
+    boundary_grid,
+    visual_obj,
+    gui_instance,
+):
+    """Generate the non-Delaunay interior grid path."""
+    if use_triangle_pipeline_for_qmorph(parameters):
+        info("q-morph模式：先生成纯三角形网格，再进行q-morph四边形合并")
+
+    adfront2 = create_interior_generator(
+        parameters=parameters,
+        front_heap=front_heap,
+        sizing_system=sizing_system,
+        boundary_grid=boundary_grid,
+        visual_obj=visual_obj,
+    )
+    triangular_grid = adfront2.generate_elements()
+    gui_log(gui_instance, "网格生成完成")
+    return triangular_grid
+
+
 def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     """核心网格生成流程（统一入口）。
 
@@ -115,38 +265,15 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
     #    - Bowyer-Watson 模式（mesh_type == 4）也支持边界层
     # ------------------------------------------------------------------
     unstr_grid_list = []
-    
-    # 检查是否开启了边界层（任何 part 的 PRISM_SWITCH 不是 'off'）
-    # part_params 中存储的是 Part 对象，Part 对象有 part_params 属性（MeshParameters）
-    has_boundary_layer = False
-    for part_obj in parameters.part_params:
-        # Part 对象有 part_params 属性
-        if hasattr(part_obj, 'part_params'):
-            mesh_param = part_obj.part_params
-            if hasattr(mesh_param, 'PRISM_SWITCH') and mesh_param.PRISM_SWITCH != 'off':
-                has_boundary_layer = True
-                break
-    
-    if has_boundary_layer:
-        gui_log(gui_instance, "开始生成边界层网格...")
-        gui_progress(gui_instance, 4)  # 开始生成边界层网格
-
-        adlayers = Adlayers2(
-            boundary_front=front_heap,
-            sizing_system=sizing_system,
-            param_obj=parameters,
-            visual_obj=visual_obj,
-        )
-        boundary_grid, front_heap = adlayers.generate_elements()
-        log_mesh_debug_summary(boundary_grid, "边界层网格")
+    boundary_grid, front_heap, has_boundary_layer = _generate_boundary_layer_grid(
+        parameters=parameters,
+        front_heap=front_heap,
+        sizing_system=sizing_system,
+        visual_obj=visual_obj,
+        gui_instance=gui_instance,
+    )
+    if boundary_grid is not None:
         unstr_grid_list.append(boundary_grid)
-
-        gui_log(gui_instance, "边界层网格生成完成")
-    else:
-        if parameters.mesh_type == 4:
-            info("Bowyer-Watson 模式：无边界层配置，跳过边界层生成")
-        boundary_grid = None
-        gui_log(gui_instance, "无边界层配置")
 
     # ------------------------------------------------------------------
     # 4) 生成内层网格
@@ -160,106 +287,22 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # Bowyer-Watson Delaunay 网格生成分支
     if parameters.mesh_type == 4:
-        configured_backend = str(
-            getattr(parameters, "delaunay_backend", "bowyer_watson")
-        ).strip().lower()
-        delaunay_backend = select_delaunay_backend(
+        triangular_grid, delaunay_backend = _generate_delaunay_triangular_grid(
             parameters,
-            has_boundary_layer=has_boundary_layer,
-        )
-        if has_boundary_layer and delaunay_backend != configured_backend:
-            info(
-                "Bowyer-Watson 模式：检测到边界层，"
-                f"内层三角剖分从 {configured_backend} 切换为 triangle 后端"
-            )
-        else:
-            info(
-                f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格"
-            )
-        
-        from data_structure.unstructured_grid import Unstructured_Grid
-        from data_structure.basic_elements import Triangle as BWTriangle, NodeElement
-
-        # 调用 Delaunay 后端
-        # 启用自动孔洞检测以正确处理内边界（如翼型内部固体区域）
-        points, simplices, boundary_mask = create_bowyer_watson_mesh(
-            boundary_front=front_heap,
             sizing_system=sizing_system,
-            target_triangle_count=None,  # 可选：指定目标三角形数量
-            smoothing_iterations=3,
-            auto_detect_holes=True,  # 启用自动孔洞检测
-            backend=delaunay_backend,
-            triangle_point_strategy=getattr(
-                parameters,
-                "triangle_point_strategy",
-                "equilateral",
-            ),
+            front_heap=front_heap,
+            has_boundary_layer=has_boundary_layer,
+            gui_instance=gui_instance,
         )
-
-        if delaunay_backend != "triangle":
-            boundary_edges = collect_boundary_edges_from_fronts(front_heap)
-            swapped_simplices, recovered_edges, remaining_edges = recover_boundary_edges_by_swaps(
-                points, simplices, boundary_edges
-            )
-            if recovered_edges > 0:
-                if is_topology_valid(points, swapped_simplices):
-                    simplices = swapped_simplices
-                    info(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
-                else:
-                    info("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
-            if remaining_edges:
-                info(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
-        
-        # 将结果转换为 Unstructured_Grid 对象
-        node_coords = points.tolist()
-        cell_container = []
-        boundary_nodes = set()
-        
-        for i, simplex in enumerate(simplices):
-            # 创建 NodeElement 对象
-            nodes = []
-            for node_idx in simplex:
-                node = NodeElement(
-                    coords=node_coords[node_idx],
-                    idx=int(node_idx),
-                    part_name="interior-node",
-                    bc_type="boundary" if boundary_mask[node_idx] else "interior",
-                )
-                nodes.append(node)
-                if boundary_mask[node_idx]:
-                    boundary_nodes.add(node)
-            
-            # 创建 Triangle 对象
-            triangle = BWTriangle(
-                p1=nodes[0],
-                p2=nodes[1],
-                p3=nodes[2],
-                part_name="interior-triangle",
-                idx=i,
-            )
-            cell_container.append(triangle)
-        
-        triangular_grid = Unstructured_Grid(
-            cell_container=cell_container,
-            node_coords=node_coords,
-            boundary_nodes=boundary_nodes,
-        )
-        
-        gui_log(gui_instance, "Bowyer-Watson 网格生成完成")
     else:
-        if use_triangle_pipeline_for_qmorph(parameters):
-            info("q-morph模式：先生成纯三角形网格，再进行q-morph四边形合并")
-
-        adfront2 = create_interior_generator(
+        triangular_grid = _generate_advancing_front_grid(
             parameters=parameters,
             front_heap=front_heap,
             sizing_system=sizing_system,
             boundary_grid=boundary_grid,
             visual_obj=visual_obj,
+            gui_instance=gui_instance,
         )
-        triangular_grid = adfront2.generate_elements()
-
-        gui_log(gui_instance, "网格生成完成")
 
     # ------------------------------------------------------------------
     # 5) 网格质量优化与单元类型后处理
