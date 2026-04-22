@@ -22,6 +22,7 @@ temp*
 out/
 meshes
 backup*
+mesh/
 
 # 测试输出
 test_outputs/

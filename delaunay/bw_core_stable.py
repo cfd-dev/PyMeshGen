@@ -2020,6 +2020,45 @@ class GmshBowyerWatsonMeshGenerator:
 
         return candidate if self._point_in_triangle(candidate, tri, tolerance=1e-10) else None
 
+    def _compute_centroid_refinement_point(self, tri: MTri3) -> np.ndarray:
+        """计算三角形重心，作为最保守的兜底候选点。"""
+        return np.mean([self.points[v] for v in tri.vertices], axis=0)
+
+    def _is_valid_refinement_candidate(
+        self,
+        point: np.ndarray,
+        tri: MTri3,
+        target_size: Optional[float],
+        min_dist_threshold: float,
+        x_min: float,
+        x_max: float,
+        y_min: float,
+        y_max: float,
+        margin: float,
+        require_inside_triangle: bool = False,
+        enforce_min_distance: bool = False,
+    ) -> bool:
+        """检查细化候选点是否位于合法域内且不与现有点过近。"""
+        if point is None or not np.all(np.isfinite(point)):
+            return False
+        if not (x_min - margin < point[0] < x_max + margin and
+                y_min - margin < point[1] < y_max + margin):
+            return False
+        if self._point_in_hole(point):
+            return False
+        if require_inside_triangle and not self._point_in_triangle(point, tri, tolerance=1e-10):
+            return False
+
+        if enforce_min_distance:
+            min_allowed_dist = min_dist_threshold
+            if target_size is not None and target_size > 1e-12:
+                min_allowed_dist = min(min_allowed_dist, 0.2 * target_size)
+            existing_min_dist = self._compute_min_dist_to_existing_points(point)
+            if existing_min_dist < max(min_allowed_dist, 1e-10):
+                return False
+
+        return True
+
     def _select_refinement_point(
         self,
         tri: MTri3,
@@ -2035,16 +2074,34 @@ class GmshBowyerWatsonMeshGenerator:
         if tri.circumcenter is None:
             self._compute_circumcircle(tri)
 
-        candidates: List[Tuple[str, Optional[np.ndarray], float]] = []
-        candidates.append(("circumcenter", tri.circumcenter.copy(), min_dist_threshold))
+        candidates: List[Tuple[str, Optional[np.ndarray], float, bool, bool]] = []
+        protected_edges = self._get_triangle_protected_edges(tri)
+        has_protected_edge = bool(protected_edges)
+        tri_quality = self._compute_triangle_quality(tri)
+        if has_protected_edge and len(protected_edges) >= 2 and tri_quality < 0.08:
+            candidates.append((
+                "offcenter",
+                self._compute_offcenter_refinement_point(tri, target_size),
+                min_dist_threshold,
+                True,
+                True,
+            ))
+        candidates.append(("circumcenter", tri.circumcenter.copy(), min_dist_threshold, False, False))
 
-        for strategy, point, min_distance in candidates:
-            if point is None or not np.all(np.isfinite(point)):
-                continue
-            if not (x_min - margin < point[0] < x_max + margin and
-                    y_min - margin < point[1] < y_max + margin):
-                continue
-            if self._point_in_hole(point):
+        for strategy, point, min_distance, require_inside_triangle, enforce_min_distance in candidates:
+            if not self._is_valid_refinement_candidate(
+                point=point,
+                tri=tri,
+                target_size=target_size,
+                min_dist_threshold=min_distance,
+                x_min=x_min,
+                x_max=x_max,
+                y_min=y_min,
+                y_max=y_max,
+                margin=margin,
+                require_inside_triangle=require_inside_triangle,
+                enforce_min_distance=enforce_min_distance,
+            ):
                 continue
             return point, strategy
 
@@ -2346,12 +2403,24 @@ class GmshBowyerWatsonMeshGenerator:
 
         # 预计算边界点集（用于快速距离判断）
         boundary_point_indices = set(range(boundary_count))
+        progress_interval = 250
+        early_stop_needs_refinement = 50
+        early_stop_size_violations = 40
+
+        if boundary_count >= 180:
+            boundary_size_tolerance = 1.4
+            internal_size_tolerance = 1.22
+            internal_quality_threshold = 0.12
+            progress_interval = 500
+            early_stop_needs_refinement = 180
+            early_stop_size_violations = 140
 
         while True:
             max_iterations += 1
 
-            if max_iterations % 50 == 0 or max_iterations == 1:
-                current_triangles = len([t for t in self.triangles if not t.is_deleted()])
+            if max_iterations % progress_interval == 0 or max_iterations == 1:
+                active_triangles = [t for t in self.triangles if not t.is_deleted()]
+                current_triangles = len(active_triangles)
                 current_points = len(self.points)
                 current_inserted = current_points - initial_point_count
                 queue_size = len(priority_queue)
@@ -2359,6 +2428,23 @@ class GmshBowyerWatsonMeshGenerator:
                         f"节点: {current_points} (边界: {boundary_count}, 内部: {current_inserted}) | "
                         f"三角形: {current_triangles} | "
                         f"队列: {queue_size}")
+
+                total_triangles = len(self.triangles)
+                if total_triangles > max(int(2.5 * max(current_triangles, 1)), current_triangles + 4000):
+                    self.triangles = active_triangles
+                    build_adjacency_from_triangles(self.triangles)
+                    priority_queue = []
+                    for tri in self.triangles:
+                        tri_id = id(tri)
+                        if failed_tri_counts[tri_id] >= max_tri_failures:
+                            continue
+                        if tri.circumradius is None:
+                            self._compute_circumcircle(tri)
+                        heapq.heappush(priority_queue, (-tri.circumradius, tri_id, tri))
+                    verbose(
+                        f"  [清理] 压缩已删除三角形: {total_triangles} -> {current_triangles}, "
+                        f"重建队列 {len(priority_queue)} 项"
+                    )
 
             # 早停条件
             if len(self.points) > 100000:
@@ -2453,7 +2539,10 @@ class GmshBowyerWatsonMeshGenerator:
                             needs_refinement += 1
 
                 last_full_check = max_iterations
-                if needs_refinement <= 50 and size_violations <= 40:
+                if (
+                    needs_refinement <= early_stop_needs_refinement
+                    and size_violations <= early_stop_size_violations
+                ):
                     verbose(
                         "  [进度] 剩余需要细化的单元已很少，且尺寸违规可接受，提前停止插点"
                     )
@@ -2461,7 +2550,7 @@ class GmshBowyerWatsonMeshGenerator:
                 if needs_refinement == 0:
                     verbose(f"  [进度] 所有三角形满足尺寸场和质量要求（{refinement_mode}模式），停止插点")
                     break
-                elif max_iterations % 100 == 0:
+                elif max_iterations % (2 * progress_interval) == 0:
                     verbose(f"  [进度] 全量检查：{needs_refinement} 个三角形不满足要求 "
                            f"(尺寸:{size_violations}, 质量:{quality_violations})")
 
@@ -3032,7 +3121,7 @@ class GmshBowyerWatsonMeshGenerator:
         for pass_num in range(max_passes):
             missing_edges = []
             for edge in self.protected_edges:
-                v1, v2 = list(edge)
+                v1, v2 = sorted(list(edge))
                 if not self._is_exact_protected_edge_in_mesh(v1, v2):
                     missing_edges.append((v1, v2))
 
@@ -3040,13 +3129,24 @@ class GmshBowyerWatsonMeshGenerator:
                 verbose("所有边界边已存在，无需恢复")
                 return
 
+            missing_edges.sort(
+                key=lambda e: float(np.linalg.norm(self.points[e[1]] - self.points[e[0]]))
+            )
+
             if pass_num == 0:
                 verbose(f"  检测到 {len(missing_edges)} 条缺失的边界边")
 
             recovered_count = 0
             failed_count = 0
+            unresolved_edges = []
 
             for v1, v2 in missing_edges:
+                if self._recover_single_edge_enhanced(v1, v2):
+                    recovered_count += 1
+                else:
+                    unresolved_edges.append((v1, v2))
+
+            for v1, v2 in unresolved_edges:
                 if self._recover_single_constrained_edge(v1, v2):
                     recovered_count += 1
                 else:
@@ -3553,20 +3653,30 @@ class GmshBowyerWatsonMeshGenerator:
         if not missing_edges:
             return 0
 
+        missing_edges.sort(
+            key=lambda edge: float(np.linalg.norm(self.points[edge[1]] - self.points[edge[0]]))
+        )
+
         verbose(f"  检测到 {len(missing_edges)} 条丢失的边界边")
         recovered_count = 0
-        failed_edges = []
+        unresolved_edges = []
 
         for v1, v2 in missing_edges:
-            # 使用增强的恢复策略：边交换 + Steiner点插入
             success = self._recover_single_edge_enhanced(v1, v2)
             if success:
                 recovered_count += 1
             else:
-                failed_edges.append((v1, v2))
+                unresolved_edges.append((v1, v2))
 
         if recovered_count > 0:
             verbose(f"  成功恢复 {recovered_count}/{len(missing_edges)} 条边界边")
+
+        failed_edges = []
+        for v1, v2 in unresolved_edges:
+            if self._recover_single_constrained_edge(v1, v2):
+                recovered_count += 1
+            else:
+                failed_edges.append((v1, v2))
 
         if failed_edges:
             verbose(f"  [警告] {len(failed_edges)} 条边无法恢复，将插入Steiner点")
@@ -4554,10 +4664,36 @@ class GmshBowyerWatsonMeshGenerator:
         self._remove_overlapping_triangles()
         self._remove_duplicate_triangles()
         self._remove_strictly_intersecting_triangles()
-        if self.holes:
-            removed_boundary_fans = self._remove_hole_side_boundary_fan_triangles()
-            if removed_boundary_fans > 0:
-                self._fix_isolated_boundary_points()
+        for _ in range(3):
+            changed = False
+
+            removed_overlapping = self._remove_overlapping_triangles()
+            if removed_overlapping > 0:
+                changed = True
+
+            removed_duplicate = self._remove_duplicate_triangles()
+            if removed_duplicate > 0:
+                changed = True
+
+            removed_intersections = self._remove_strictly_intersecting_triangles()
+            if removed_intersections > 0:
+                changed = True
+
+            removed_degenerate = self._remove_degenerate_triangles()
+            if removed_degenerate > 0:
+                changed = True
+
+            fixed_isolated = self._fix_isolated_boundary_points()
+            if fixed_isolated > 0:
+                changed = True
+
+            if self.holes:
+                removed_boundary_fans = self._remove_hole_side_boundary_fan_triangles()
+                if removed_boundary_fans > 0:
+                    changed = True
+
+            if not changed:
+                break
 
         points = self.points.copy()
         simplices = np.array([tri.vertices for tri in self.triangles])
@@ -4750,8 +4886,16 @@ class GmshBowyerWatsonMeshGenerator:
                     a, b = verts[i], verts[(i + 1) % 3]
                     if self._is_protected_edge(a, b):
                         protected_count += 1
+                boundary_vertex_count = sum(v < self.boundary_count for v in verts)
+                centroid = np.mean([self.points[v] for v in verts], axis=0)
+                inside_domain = self._point_in_domain(centroid)
                 quality = self._compute_triangle_quality(tri)
-                return (protected_count, quality)
+                return (
+                    1 if inside_domain else 0,
+                    protected_count,
+                    boundary_vertex_count,
+                    quality,
+                )
 
             found_crossing = False
             for i, e1 in enumerate(edges):
@@ -4794,6 +4938,32 @@ class GmshBowyerWatsonMeshGenerator:
             verbose(f"  删除 {total_removed} 个严格相交相关三角形")
 
         return total_removed
+
+    def _remove_degenerate_triangles(self) -> int:
+        """删除面积退化到近零的三角形，避免输出非法单元。"""
+        removed_count = 0
+
+        for tri in self.triangles:
+            if tri.is_deleted():
+                continue
+            v0, v1, v2 = tri.vertices
+            p0 = self.points[v0]
+            p1 = self.points[v1]
+            p2 = self.points[v2]
+            area = 0.5 * abs(
+                (p1[0] - p0[0]) * (p2[1] - p0[1]) -
+                (p1[1] - p0[1]) * (p2[0] - p0[0])
+            )
+            if area <= 1e-12:
+                tri.set_deleted(True)
+                removed_count += 1
+
+        if removed_count > 0:
+            self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+            build_adjacency_from_triangles(self.triangles)
+            verbose(f"  删除 {removed_count} 个退化三角形")
+
+        return removed_count
 
     # --========================================================================
     # Splitting Strategy - 参考 Triangle spliteredge
@@ -4988,7 +5158,7 @@ class GmshBowyerWatsonMeshGenerator:
         # 对受保护边，目标是恢复“真正的一侧边界边”，
         # 因此只对域内侧 path 重三角化；当前被 split 的边界链应被直接替换掉。
         fill_paths = [path1, path2]
-        if self._is_protected_edge(v1, v2) and not getattr(self, '_in_initial_boundary_recovery', False):
+        if self._is_protected_edge(v1, v2):
             fill_paths = [self._choose_boundary_fill_path(path1, path2)]
 
         def triangulate_path(path):
@@ -5442,35 +5612,53 @@ class GmshBowyerWatsonMeshGenerator:
                 build_adjacency_from_triangles(self.triangles)
                 return True
 
-        # 兜底：简单扇形重连（仅在空腔插入失败时）
-        min_dist = float('inf')
-        closest_tri = None
+        # 兜底：尝试对最近的合法三角形做简单扇形重连（仅在空腔插入失败时）
+        fallback_candidates = []
         for tri in self.triangles:
             if tri.is_deleted():
                 continue
-            dist = self._point_to_triangle_distance(point, tri)
-            if dist < min_dist:
-                min_dist = dist
-                closest_tri = tri
+            fallback_candidates.append((self._point_to_triangle_distance(point, tri), tri))
 
-        if closest_tri is None:
-            verbose(f"    [警告] 空腔插入失败且无兜底三角形，无法修复点 {point_idx}")
-            return False
+        fallback_candidates.sort(key=lambda item: item[0])
 
-        closest_tri.set_deleted(True)
-        self.triangles = [t for t in self.triangles if not t.is_deleted()]
+        for _, closest_tri in fallback_candidates:
+            v0, v1, v2 = closest_tri.vertices
+            candidate_faces = (
+                (point_idx, v0, v1),
+                (point_idx, v1, v2),
+                (point_idx, v2, v0),
+            )
 
-        v0, v1, v2 = closest_tri.vertices
-        new_tris = [
-            MTri3(point_idx, v0, v1, idx=self._next_tri_id()),
-            MTri3(point_idx, v1, v2, idx=self._next_tri_id()),
-            MTri3(point_idx, v2, v0, idx=self._next_tri_id())
-        ]
-        for tri in new_tris:
-            self._compute_circumcircle(tri)
-        self.triangles.extend(new_tris)
-        build_adjacency_from_triangles(self.triangles)
-        return True
+            valid = True
+            for a, b, c in candidate_faces:
+                pa, pb, pc = self.points[a], self.points[b], self.points[c]
+                area2 = abs(
+                    (pb[0] - pa[0]) * (pc[1] - pa[1]) -
+                    (pb[1] - pa[1]) * (pc[0] - pa[0])
+                )
+                if area2 < 1e-14:
+                    valid = False
+                    break
+                centroid = (pa + pb + pc) / 3.0
+                if not self._point_in_domain(centroid):
+                    valid = False
+                    break
+
+            if not valid:
+                continue
+
+            closest_tri.set_deleted(True)
+            self.triangles = [t for t in self.triangles if not t.is_deleted()]
+
+            new_tris = [MTri3(a, b, c, idx=self._next_tri_id()) for a, b, c in candidate_faces]
+            for tri in new_tris:
+                self._compute_circumcircle(tri)
+            self.triangles.extend(new_tris)
+            build_adjacency_from_triangles(self.triangles)
+            return True
+
+        verbose(f"    [警告] 空腔插入失败且无合法兜底三角形，无法修复点 {point_idx}")
+        return False
 
     def _point_to_triangle_distance(self, point: np.ndarray, tri: MTri3) -> float:
         """计算点到三角形的距离（到三条边的最小距离）。"""

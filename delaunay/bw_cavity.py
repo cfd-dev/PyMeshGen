@@ -318,6 +318,15 @@ def insert_vertex(
     
     for edge_xface in shell_edges:
         v1, v2 = edge_xface.get_edge()
+        p1, p2 = points[v1], points[v2]
+        p_new = points[new_point_idx]
+
+        tri_area = 0.5 * abs(
+            (p2[0] - p1[0]) * (p_new[1] - p1[1]) -
+            (p2[1] - p1[1]) * (p_new[0] - p1[0])
+        )
+        if tri_area <= 1e-14:
+            return [], False
         
         # 创建新三角形
         new_tri = MTri3(v1, v2, new_point_idx)
