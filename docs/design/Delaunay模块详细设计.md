@@ -141,7 +141,7 @@ from delaunay import create_bowyer_watson_mesh
 
 ### 4.3 核心设计原则
 
-- 上层不需要知道 Bowyer-Watson 内部使用 `Triangle` 还是 `MTri3`
+- 上层不需要知道 Bowyer-Watson 内部使用 `LegacyBWTriangle` 还是 `MTri3`
 - 后端切换不改变返回格式
 - 外边界 / 孔洞识别在进入核心算法前完成，避免后端重复做 front 级解析
 
@@ -194,9 +194,9 @@ boundary_front
 
 ## 6. 核心数据结构设计
 
-### 6.1 `Triangle`（legacy 路径）
+### 6.1 `LegacyBWTriangle`（legacy 路径）
 
-`bw_core_stable.py` 中的 `Triangle` 服务于 legacy `BowyerWatsonMeshGenerator`，但当前实现已收敛为 `MTri3` 的兼容薄层：
+`bw_core_stable.py` 中的 `LegacyBWTriangle` 服务于 legacy `BowyerWatsonMeshGenerator`，但当前实现已收敛为 `MTri3` 的兼容薄层：
 
 - 顶点索引按升序存储
 - 缓存外接圆
@@ -207,11 +207,11 @@ boundary_front
 这样做的目的是：
 
 1. **统一热路径数据模型**
-   - legacy `Triangle` 与 Gmsh `MTri3` 不再维护两套完全独立的三角形槽位
-2. **保留旧接口**
-   - legacy 路径和历史单测仍可继续使用 `Triangle`
+   - legacy `LegacyBWTriangle` 与 Gmsh `MTri3` 不再维护两套完全独立的三角形槽位
+2. **明确内部命名**
+   - 用 `LegacyBWTriangle` 与 `data_structure.basic_elements.Triangle` 做清晰区分，避免算法层与网格单元层混淆
 3. **降低转换成本**
-   - `Triangle -> MTri3` / `MTri3 -> Triangle` 只剩兼容字段拷贝，而非两套结构之间的深度切换
+   - `LegacyBWTriangle -> MTri3` / `MTri3 -> LegacyBWTriangle` 只剩兼容字段拷贝，而非两套结构之间的深度切换
 
 ### 6.2 `MTri3`（Gmsh 风格主结构）
 

@@ -42,19 +42,17 @@ from .bw_predicates import (
 from .bw_types import MTri3, TriangulationState, build_adjacency_from_triangles
 
 __all__ = [
-    "Triangle",
-    "triangle_to_mtri3",
-    "mtri3_to_triangle",
+    "LegacyBWTriangle",
     "BowyerWatsonMeshGenerator",
     "GmshBowyerWatsonMeshGenerator",
 ]
 
 
 # =============================================================================
-# Triangle 数据结构
+# LegacyBWTriangle 数据结构
 # =============================================================================
 
-class Triangle(MTri3):
+class LegacyBWTriangle(MTri3):
     """三角形单元，带外接圆缓存和质量缓存。
 
     顶点索引始终按升序存储，便于去重和比较。
@@ -72,7 +70,7 @@ class Triangle(MTri3):
         self.circumcircle_bbox = None
 
     def __eq__(self, other):
-        return isinstance(other, Triangle) and self.vertices == other.vertices
+        return isinstance(other, LegacyBWTriangle) and self.vertices == other.vertices
 
     def __hash__(self):
         return hash(self.vertices)
@@ -86,7 +84,7 @@ class Triangle(MTri3):
         return [(v0, v1), (v1, v2), (v0, v2)]
 
     def __repr__(self):
-        return f"Triangle({self.vertices})"
+        return f"LegacyBWTriangle({self.vertices})"
     
     def to_mtri3(self) -> 'MTri3':
         """转换为 Gmsh MTri3 格式。"""
@@ -101,33 +99,6 @@ class Triangle(MTri3):
                 # 注意：这里只是引用，实际需要在转换所有三角形后重建
                 pass
         return mtri
-
-
-# =============================================================================
-# Triangle -> MTri3 适配器
-# =============================================================================
-
-def triangle_to_mtri3(tri: Triangle) -> MTri3:
-    """将 Triangle 转换为 MTri3。"""
-    mtri = MTri3(tri.vertices[0], tri.vertices[1], tri.vertices[2], idx=tri.idx)
-    if tri.circumcircle_valid:
-        mtri.circumcenter = tri.circumcenter
-        mtri.circumradius = tri.circumradius
-    mtri.quality = tri.quality
-    mtri.deleted = tri.deleted
-    return mtri
-
-
-def mtri3_to_triangle(mtri: MTri3) -> Triangle:
-    """将 MTri3 转换为 Triangle。"""
-    tri = Triangle(mtri.vertices[0], mtri.vertices[1], mtri.vertices[2], idx=mtri.idx)
-    if mtri.circumcenter is not None:
-        tri.circumcenter = mtri.circumcenter
-        tri.circumradius = mtri.circumradius
-        tri.circumcircle_valid = True
-    tri.quality = mtri.quality
-    tri.deleted = mtri.deleted
-    return tri
 
 
 def _create_boundary_mask(
@@ -228,7 +199,7 @@ class BowyerWatsonMeshGenerator:
 
         # 工作状态变量
         self.points = None
-        self.triangles: List[Triangle] = []
+        self.triangles: List[LegacyBWTriangle] = []
         self.boundary_mask = None
         self.boundary_count = 0
         self._kdtree = None
@@ -245,7 +216,7 @@ class BowyerWatsonMeshGenerator:
     # 外接圆计算（带缓存）
     # -------------------------------------------------------------------------
 
-    def _compute_circumcircle(self, tri: Triangle) -> Tuple[np.ndarray, float]:
+    def _compute_circumcircle(self, tri: LegacyBWTriangle) -> Tuple[np.ndarray, float]:
         """计算三角形的外接圆，结果缓存到 tri 对象中。
 
         改进：使用高精度算术计算 circumcenter，避免浮点误差。
@@ -276,7 +247,7 @@ class BowyerWatsonMeshGenerator:
         )
         return center, radius
 
-    def _point_in_circumcircle(self, point: np.ndarray, tri: Triangle) -> bool:
+    def _point_in_circumcircle(self, point: np.ndarray, tri: LegacyBWTriangle) -> bool:
         """检查点是否在三角形的外接圆内。
 
         改进：使用 Shewchuk 的鲁棒 incircle 谓词，
@@ -370,7 +341,7 @@ class BowyerWatsonMeshGenerator:
     # 质量与尺寸计算
     # -------------------------------------------------------------------------
 
-    def _compute_triangle_quality(self, tri: Triangle) -> float:
+    def _compute_triangle_quality(self, tri: LegacyBWTriangle) -> float:
         """计算三角形质量（2 * r_inscribed / r_circumscribed）。"""
         if tri.quality_valid:
             return tri.quality
@@ -402,7 +373,7 @@ class BowyerWatsonMeshGenerator:
         tri.quality_valid = True
         return quality
 
-    def _compute_triangle_centroid(self, tri: Triangle) -> np.ndarray:
+    def _compute_triangle_centroid(self, tri: LegacyBWTriangle) -> np.ndarray:
         """计算三角形的质心。"""
         return np.mean([
             self.points[tri.vertices[0]],
@@ -410,7 +381,7 @@ class BowyerWatsonMeshGenerator:
             self.points[tri.vertices[2]],
         ], axis=0)
 
-    def _get_target_size_for_triangle(self, tri: Triangle) -> Optional[float]:
+    def _get_target_size_for_triangle(self, tri: LegacyBWTriangle) -> Optional[float]:
         """获取三角形的目标尺寸。
 
         Gmsh 做法：使用三角形三个顶点处局部尺寸的平均值，
@@ -452,7 +423,7 @@ class BowyerWatsonMeshGenerator:
     # 三角剖分核心
     # -------------------------------------------------------------------------
 
-    def _create_super_triangle(self) -> Triangle:
+    def _create_super_triangle(self) -> LegacyBWTriangle:
         """创建包含所有点的超级三角形。"""
         min_x = np.min(self.points[:, 0])
         max_x = np.max(self.points[:, 0])
@@ -473,9 +444,9 @@ class BowyerWatsonMeshGenerator:
             [(min_x + max_x) / 2.0, max_y + 3.0 * delta],
         ])
         self.points = np.vstack([self.points, super_verts])
-        return Triangle(p1, p2, p3)
+        return LegacyBWTriangle(p1, p2, p3)
 
-    def _triangulate(self) -> List[Triangle]:
+    def _triangulate(self) -> List[LegacyBWTriangle]:
         """执行 Bowyer-Watson 三角剖分。
 
         流程：超级三角形 → 逐点插入 → 删除超级三角形
@@ -500,7 +471,7 @@ class BowyerWatsonMeshGenerator:
             triangles = [tri for tri in triangles if id(tri) not in bad_set]
 
             for edge in polygon_edges:
-                new_tri = Triangle(edge[0], edge[1], i)
+                new_tri = LegacyBWTriangle(edge[0], edge[1], i)
                 self._compute_circumcircle(new_tri)
                 triangles.append(new_tri)
 
@@ -517,7 +488,7 @@ class BowyerWatsonMeshGenerator:
     # 增量式点插入
     # -------------------------------------------------------------------------
 
-    def _insert_point_incremental(self, point_idx: int, triangles: List[Triangle]) -> List[Triangle]:
+    def _insert_point_incremental(self, point_idx: int, triangles: List[LegacyBWTriangle]) -> List[LegacyBWTriangle]:
         """增量式插入单个点，只更新受影响的三角形。"""
         point = self.points[point_idx]
         bad_triangles = [tri for tri in triangles if self._point_in_circumcircle(point, tri)]
@@ -534,7 +505,7 @@ class BowyerWatsonMeshGenerator:
         triangles = [tri for tri in triangles if id(tri) not in bad_set]
 
         for edge in polygon_edges:
-            new_tri = Triangle(edge[0], edge[1], point_idx)
+            new_tri = LegacyBWTriangle(edge[0], edge[1], point_idx)
             self._compute_circumcircle(new_tri)
             triangles.append(new_tri)
 
@@ -592,7 +563,7 @@ class BowyerWatsonMeshGenerator:
                 return other
         return None
 
-    def _build_adjacency(self, triangles: List[Triangle]):
+    def _build_adjacency(self, triangles: List[LegacyBWTriangle]):
         """构建所有三角形的邻接关系。
         
         参考 Gmsh connectTris：通过边匹配建立双向邻接关系。
@@ -890,7 +861,7 @@ class BowyerWatsonMeshGenerator:
         # 最终诊断：检查是否还有不满足要求的三角形
         self._final_refinement_check(min_dist_threshold)
 
-    def _triangle_needs_refinement(self, tri: Triangle, min_dist_threshold: float) -> bool:
+    def _triangle_needs_refinement(self, tri: LegacyBWTriangle, min_dist_threshold: float) -> bool:
         """检查三角形是否仍需细分。
         
         判断标准（与 _get_target_size_for_triangle 配合）：
@@ -922,7 +893,7 @@ class BowyerWatsonMeshGenerator:
 
         return False
 
-    def _compute_refinement_priority(self, tri: Triangle) -> float:
+    def _compute_refinement_priority(self, tri: LegacyBWTriangle) -> float:
         """计算三角形的细分优先级（值越大越优先处理）。
         
         优先级 = 偏离目标尺寸的程度 + 质量惩罚项
@@ -1534,8 +1505,8 @@ class BowyerWatsonMeshGenerator:
         self.triangles.remove(t1)
         self.triangles.remove(t2)
 
-        new_tri1 = Triangle(n1, a_idx, b_idx)
-        new_tri2 = Triangle(n2, b_idx, a_idx)
+        new_tri1 = LegacyBWTriangle(n1, a_idx, b_idx)
+        new_tri2 = LegacyBWTriangle(n2, b_idx, a_idx)
         self._compute_circumcircle(new_tri1)
         self._compute_circumcircle(new_tri2)
         self.triangles.append(new_tri1)
@@ -1644,7 +1615,16 @@ class BowyerWatsonMeshGenerator:
         self.points = points.copy()
         self.boundary_mask = boundary_mask.copy()
         self.boundary_count = delegate.boundary_count
-        self.triangles = [mtri3_to_triangle(tri) for tri in delegate.triangles]
+        self.triangles = []
+        for tri in delegate.triangles:
+            legacy_tri = LegacyBWTriangle(tri.vertices[0], tri.vertices[1], tri.vertices[2], idx=tri.idx)
+            if tri.circumcenter is not None:
+                legacy_tri.circumcenter = tri.circumcenter
+                legacy_tri.circumradius = tri.circumradius
+                legacy_tri.circumcircle_valid = True
+            legacy_tri.quality = tri.quality
+            legacy_tri.deleted = tri.deleted
+            self.triangles.append(legacy_tri)
         self._kdtree = delegate._kdtree
         return points, simplices, boundary_mask
 
