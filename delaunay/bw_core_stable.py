@@ -1831,11 +1831,52 @@ class GmshBowyerWatsonMeshGenerator:
         self.boundary_count: int = 0
         self._kdtree = None
         self._tri_id_counter = 0
+        self._boundary_component_ids = self._build_boundary_component_ids()
     
     def _next_tri_id(self) -> int:
         """生成唯一的三角形 ID。"""
         self._tri_id_counter += 1
         return self._tri_id_counter
+
+    def _build_boundary_component_ids(self) -> dict:
+        """Build connected-component ids for original boundary loops.
+
+        This lets refinement distinguish same-loop boundary fans from
+        triangles that bridge multiple boundary loops (e.g. annulus-like cases).
+        """
+        component_ids = {}
+        boundary_count = len(self.original_points)
+        if boundary_count <= 0:
+            return component_ids
+
+        adjacency = {idx: set() for idx in range(boundary_count)}
+        for v1, v2 in self.boundary_edges:
+            if 0 <= v1 < boundary_count and 0 <= v2 < boundary_count:
+                adjacency[v1].add(v2)
+                adjacency[v2].add(v1)
+
+        component_id = 0
+        for start in range(boundary_count):
+            if start in component_ids:
+                continue
+
+            if not adjacency[start]:
+                component_ids[start] = component_id
+                component_id += 1
+                continue
+
+            stack = [start]
+            component_ids[start] = component_id
+            while stack:
+                current = stack.pop()
+                for neighbor in adjacency[current]:
+                    if neighbor in component_ids:
+                        continue
+                    component_ids[neighbor] = component_id
+                    stack.append(neighbor)
+            component_id += 1
+
+        return component_ids
     
     # -------------------------------------------------------------------------
     # 边界保护
@@ -2080,6 +2121,31 @@ class GmshBowyerWatsonMeshGenerator:
     def _triangle_has_boundary_vertex(self, tri: MTri3) -> bool:
         """检查三角形是否接触原始边界。"""
         return any(v < self.boundary_count for v in tri.vertices)
+
+    def _get_triangle_boundary_components(self, tri: MTri3) -> Set[int]:
+        """Return which original boundary loops contribute vertices to a triangle."""
+        return {
+            self._boundary_component_ids[v]
+            for v in tri.vertices
+            if v < self.boundary_count and v in self._boundary_component_ids
+        }
+
+    def _should_skip_size_refinement(
+        self,
+        tri: MTri3,
+        boundary_vertex_count: int,
+    ) -> bool:
+        """Skip size-driven refinement only for same-loop boundary fans.
+
+        For multi-loop domains such as annuli, triangles may initially use only
+        boundary vertices while still spanning from one boundary component to
+        another. Those triangles must remain eligible for size refinement.
+        """
+        if boundary_vertex_count != 3:
+            return False
+
+        boundary_components = self._get_triangle_boundary_components(tri)
+        return len(boundary_components) <= 1
 
     def _get_triangle_protected_edges(self, tri: MTri3) -> List[Tuple[int, int]]:
         """返回三角形中的受保护边。"""
@@ -2629,7 +2695,10 @@ class GmshBowyerWatsonMeshGenerator:
                     max_edge = max(edge_lengths)
                     quality = self._compute_triangle_quality(tri)
                     boundary_vertex_count = sum(1 for v in tri.vertices if v in boundary_point_indices)
-                    skip_size_refinement = boundary_vertex_count == 3
+                    skip_size_refinement = self._should_skip_size_refinement(
+                        tri,
+                        boundary_vertex_count,
+                    )
 
                     # 版本C：根据三角形位置选择阈值
                     if refinement_mode == 'C':
@@ -2710,7 +2779,10 @@ class GmshBowyerWatsonMeshGenerator:
             max_edge = max(edge_lengths)
             quality = self._compute_triangle_quality(worst_tri)
             boundary_vertex_count = sum(1 for v in worst_tri.vertices if v in boundary_point_indices)
-            skip_size_refinement = boundary_vertex_count == 3
+            skip_size_refinement = self._should_skip_size_refinement(
+                worst_tri,
+                boundary_vertex_count,
+            )
 
             # 版本C：根据三角形位置选择阈值
             if refinement_mode == 'C':
