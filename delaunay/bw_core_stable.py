@@ -135,6 +135,49 @@ def mtri3_to_triangle(mtri: MTri3) -> Triangle:
     return tri
 
 
+def _create_boundary_mask(
+    point_count: int,
+    boundary_count: int,
+    existing_mask: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Create a boundary mask while preserving any existing Steiner-edge marks."""
+    mask = np.zeros(point_count, dtype=bool)
+    if existing_mask is not None:
+        copy_count = min(len(existing_mask), point_count)
+        mask[:copy_count] = existing_mask[:copy_count]
+    mask[:min(boundary_count, point_count)] = True
+    return mask
+
+
+def _build_mesh_arrays(
+    points: np.ndarray,
+    triangles,
+    boundary_count: int,
+    existing_boundary_mask: Optional[np.ndarray] = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Convert the in-memory triangulation state into exported arrays."""
+    simplices = np.array([tri.vertices for tri in triangles], dtype=int)
+    boundary_mask = _create_boundary_mask(
+        len(points),
+        boundary_count,
+        existing_boundary_mask,
+    )
+    return points.copy(), simplices, boundary_mask
+
+
+def _log_mesh_summary(
+    points: np.ndarray,
+    simplices: np.ndarray,
+    boundary_mask: np.ndarray,
+) -> None:
+    """Emit the common mesh summary used by both BW entry points."""
+    verbose("网格生成完成:")
+    verbose(f"  - 总节点数: {len(points)}")
+    verbose(f"  - 边界节点: {np.sum(boundary_mask)}")
+    verbose(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
+    verbose(f"  - 三角形数: {len(simplices)}")
+
+
 # =============================================================================
 # BowyerWatsonMeshGenerator 主类
 # =============================================================================
@@ -1593,6 +1636,75 @@ class BowyerWatsonMeshGenerator:
         estimated = int(np.ceil(1.5 * area / ideal_triangle_area))
         return max(estimated, max(len(self.original_points) - 2, 1))
 
+    def _should_delegate_to_gmsh(self) -> bool:
+        """Use the higher-quality Gmsh-style path for large unconstrained loops."""
+        return (
+            not self.boundary_edges
+            and not self.holes
+            and self.sizing_system is None
+            and len(self.original_points) >= 40
+        )
+
+    def _build_gmsh_delegate(self):
+        return GmshBowyerWatsonMeshGenerator(
+            boundary_points=self.original_points,
+            boundary_edges=self.boundary_edges,
+            sizing_system=self.sizing_system,
+            max_edge_length=self.max_edge_length,
+            smoothing_iterations=self.smoothing_iterations,
+            seed=self.seed,
+            holes=self.holes,
+            outer_boundary=self.original_points.copy(),
+        )
+
+    def _sync_from_gmsh_delegate(
+        self,
+        delegate,
+        points: np.ndarray,
+        simplices: np.ndarray,
+        boundary_mask: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        self.points = points.copy()
+        self.boundary_mask = boundary_mask.copy()
+        self.boundary_count = delegate.boundary_count
+        self.triangles = [mtri3_to_triangle(tri) for tri in delegate.triangles]
+        self._kdtree = delegate._kdtree
+        return points, simplices, boundary_mask
+
+    def _initialize_generation_state(self) -> None:
+        self.boundary_count = len(self.original_points)
+        self.points = self.original_points.copy()
+        self.boundary_mask = _create_boundary_mask(len(self.points), self.boundary_count)
+        verbose(f"边界点数量: {self.boundary_count}")
+
+    def _resolve_target_triangle_count(
+        self,
+        target_triangle_count: Optional[int],
+    ) -> Optional[int]:
+        if target_triangle_count is not None:
+            return target_triangle_count
+
+        estimated_target = self._estimate_target_triangle_count()
+        if estimated_target is not None:
+            verbose(
+                "阶段 2/3: 为无尺寸场 legacy 用例估算目标三角形数..."
+                f" {estimated_target}"
+            )
+        return estimated_target
+
+    def _apply_final_smoothing(self) -> None:
+        if self.smoothing_iterations > 0:
+            verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
+            self.boundary_mask = _create_boundary_mask(len(self.points), self.boundary_count)
+            self._laplacian_smoothing(self.smoothing_iterations)
+            verbose("  平滑完成（保持原有三角连接）")
+            return
+
+        verbose("阶段 3/3: 跳过平滑（未启用）")
+
+    def _collect_mesh_output(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        return _build_mesh_arrays(self.points, self.triangles, self.boundary_count)
+
     # -------------------------------------------------------------------------
     # 公共入口：generate_mesh
     # -------------------------------------------------------------------------
@@ -1612,56 +1724,23 @@ class BowyerWatsonMeshGenerator:
                 - simplices: 三角形索引数组 (M, 3)
                 - boundary_mask: 边界点掩码 (N,)
         """
-        use_gmsh_delegate = (
-            not self.boundary_edges
-            and not self.holes
-            and self.sizing_system is None
-            and len(self.original_points) >= 40
-        )
-        if use_gmsh_delegate:
-            delegate = GmshBowyerWatsonMeshGenerator(
-                boundary_points=self.original_points,
-                boundary_edges=self.boundary_edges,
-                sizing_system=self.sizing_system,
-                max_edge_length=self.max_edge_length,
-                smoothing_iterations=self.smoothing_iterations,
-                seed=self.seed,
-                holes=self.holes,
-                outer_boundary=self.original_points.copy(),
+        if self._should_delegate_to_gmsh():
+            delegate = self._build_gmsh_delegate()
+            return self._sync_from_gmsh_delegate(
+                delegate,
+                *delegate.generate_mesh(
+                    target_triangle_count=target_triangle_count,
+                ),
             )
-
-            points, simplices, boundary_mask = delegate.generate_mesh(
-                target_triangle_count=target_triangle_count,
-            )
-
-            self.points = points.copy()
-            self.boundary_mask = boundary_mask.copy()
-            self.boundary_count = delegate.boundary_count
-            self.triangles = [mtri3_to_triangle(tri) for tri in delegate.triangles]
-            self._kdtree = delegate._kdtree
-            return points, simplices, boundary_mask
 
         timer = TimeSpan("开始 Bowyer-Watson 网格生成...")
-
-        self.boundary_count = len(self.original_points)
-        self.points = self.original_points.copy()
-        self.boundary_mask = np.zeros(len(self.points), dtype=bool)
-        self.boundary_mask[:self.boundary_count] = True
-        verbose(f"边界点数量: {self.boundary_count}")
+        self._initialize_generation_state()
 
         verbose("阶段 1/3: 初始三角剖分...")
         self._triangulate()
         verbose(f"  初始三角形数量: {len(self.triangles)}")
 
-        effective_target_triangle_count = target_triangle_count
-        if effective_target_triangle_count is None:
-            effective_target_triangle_count = self._estimate_target_triangle_count()
-            if effective_target_triangle_count is not None:
-                verbose(
-                    "阶段 2/3: 为无尺寸场 legacy 用例估算目标三角形数..."
-                    f" {effective_target_triangle_count}"
-                )
-
+        effective_target_triangle_count = self._resolve_target_triangle_count(target_triangle_count)
         verbose("阶段 2/3: 迭代插入内部点...")
         if self.holes:
             verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
@@ -1676,27 +1755,9 @@ class BowyerWatsonMeshGenerator:
         verbose("阶段 2.6/3: 恢复边界边...")
         self._recover_boundary_edges()
 
-        if self.smoothing_iterations > 0:
-            verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
-            current_point_count = len(self.points)
-            self.boundary_mask = np.zeros(current_point_count, dtype=bool)
-            self.boundary_mask[:self.boundary_count] = True
-            self._laplacian_smoothing(self.smoothing_iterations)
-            verbose("  平滑完成（保持原有三角连接）")
-        else:
-            verbose("阶段 3/3: 跳过平滑（未启用）")
-
-        points = self.points.copy()
-        simplices = np.array([tri.vertices for tri in self.triangles])
-        boundary_mask = np.zeros(len(points), dtype=bool)
-        boundary_mask[:self.boundary_count] = True
-
-        verbose("网格生成完成:")
-        verbose(f"  - 总节点数: {len(points)}")
-        verbose(f"  - 边界节点: {np.sum(boundary_mask)}")
-        verbose(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
-        verbose(f"  - 三角形数: {len(simplices)}")
-
+        self._apply_final_smoothing()
+        points, simplices, boundary_mask = self._collect_mesh_output()
+        _log_mesh_summary(points, simplices, boundary_mask)
         timer.show_to_console("Bowyer-Watson 网格生成完成")
         return points, simplices, boundary_mask
 
@@ -4609,87 +4670,38 @@ class GmshBowyerWatsonMeshGenerator:
                 new_points[v] = trial_pos
             
             smoothed_points = new_points
-        
+
         self.points = smoothed_points
-    
-    # -------------------------------------------------------------------------
-    # 公共入口：generate_mesh
-    # -------------------------------------------------------------------------
-    
-    def generate_mesh(
-        self,
-        target_triangle_count: Optional[int] = None,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """生成三角形网格。
-        
-        参数:
-            target_triangle_count: 目标三角形数量（可选）
-        
-        返回:
-            (points, simplices, boundary_mask)
-        """
-        timer = TimeSpan("开始 Gmsh Bowyer-Watson 网格生成...")
-        
+
+    def _initialize_generation_state(self) -> None:
         self.boundary_count = len(self.original_points)
         self.points = self.original_points.copy()
-        self.boundary_mask = np.zeros(len(self.points), dtype=bool)
-        self.boundary_mask[:self.boundary_count] = True
+        self.boundary_mask = _create_boundary_mask(len(self.points), self.boundary_count)
         verbose(f"边界点数量: {self.boundary_count}")
-        
-        verbose("阶段 1/3: 初始三角剖分...")
-        self._triangulate()
-        verbose(f"  初始三角形数量: {len(self.triangles)}")
 
-        verbose("阶段 2/3: Gmsh 风格迭代插入内部点...")
-        if self.holes:
-            verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
-            for i, hole in enumerate(self.holes):
-                hole_center = np.mean(hole, axis=0)
-                verbose(f"    孔洞 {i}: {len(hole)} 个点，中心 {hole_center}")
-        self._insert_points_iteratively_gmsh(target_triangle_count)
-
-        # 关键修复：根据Gmsh/TetGen的正确顺序
-        # 1. 先恢复边界边（在完整三角网上操作）
-        # 2. 再删除孔洞三角形（此时边界边已经被保护）
-        # 参考 Gmsh / TetGen 的典型顺序：
-        #   5. 恢复边界
-        #   6. 挖洞
-
-        verbose("阶段 2.5/3: Constrained Delaunay 边界恢复...")
-        self._constrained_delaunay_triangulation()
-
-        # 注意：不再调用 _recover_boundary_edges()
-        # 因为 CDT 已经通过纯边翻转恢复了边界边
-        # 避免插入 Steiner 点分割边界边
-
+    def _run_initial_domain_cleanup(self) -> None:
         if self.holes:
             verbose("阶段 2.6/3: 清理孔洞内三角形（Gmsh顺序：后删除孔洞）...")
             before_count = len(self.triangles)
             self._remove_hole_triangles()
             verbose(f"  删除孔洞内三角形: {before_count - len(self.triangles)} 个")
 
-        # 新增：删除外边界外的三角形（标准 CDT 要求）
         if self.outer_boundary is not None:
             verbose("阶段 2.7/3: 清理外边界外三角形...")
             before_count = len(self.triangles)
             self._remove_outer_boundary_triangles()
             verbose(f"  删除外边界外三角形: {before_count - len(self.triangles)} 个")
 
-        # 清理孔洞/外边界后，局部 cavity 已只剩真实计算域，再做一次 exact boundary 恢复，
-        # 避免首次恢复落在错误一侧的三角形被后续清理删除后，原始边再次丢失。
-        verbose("阶段 2.8/3: 清理后重新执行 Constrained Delaunay 边界恢复...")
-        self._constrained_delaunay_triangulation()
+    def _run_final_domain_cleanup(self) -> Tuple[int, int]:
+        final_hole_removed = 0
+        final_outer_removed = 0
 
-        # 第二次 CDT 之后仍可能在孔洞/域外补回少量三角形；
-        # 在进入最终平滑前再做一次最终域清理，避免残留非法单元进入导出结果。
         if self.holes:
             verbose("阶段 2.9/3: 二次恢复后再次清理孔洞内三角形...")
             before_count = len(self.triangles)
             self._remove_hole_triangles()
             final_hole_removed = before_count - len(self.triangles)
             verbose(f"  删除孔洞内三角形: {final_hole_removed} 个")
-        else:
-            final_hole_removed = 0
 
         if self.outer_boundary is not None:
             verbose("阶段 2.95/3: 二次恢复后再次清理外边界外三角形...")
@@ -4697,32 +4709,26 @@ class GmshBowyerWatsonMeshGenerator:
             self._remove_outer_boundary_triangles()
             final_outer_removed = before_count - len(self.triangles)
             verbose(f"  删除外边界外三角形: {final_outer_removed} 个")
-        else:
-            final_outer_removed = 0
 
-        if final_hole_removed > 0 or final_outer_removed > 0:
-            verbose("阶段 2.98/3: 最终域清理后再次刷新精确边界...")
-            self._constrained_delaunay_triangulation()
+        return final_hole_removed, final_outer_removed
 
+    def _apply_final_smoothing(self) -> None:
         if self.smoothing_iterations > 0:
             verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
-            current_point_count = len(self.points)
-            if self.boundary_mask is None or len(self.boundary_mask) != current_point_count:
-                new_boundary_mask = np.zeros(current_point_count, dtype=bool)
-                if self.boundary_mask is not None:
-                    copy_count = min(len(self.boundary_mask), current_point_count)
-                    new_boundary_mask[:copy_count] = self.boundary_mask[:copy_count]
-                self.boundary_mask = new_boundary_mask
-            self.boundary_mask[:self.boundary_count] = True
+            self.boundary_mask = _create_boundary_mask(
+                len(self.points),
+                self.boundary_count,
+                self.boundary_mask,
+            )
             self._laplacian_smoothing(self.smoothing_iterations)
             verbose("  平滑完成")
-        else:
-            verbose("阶段 3/3: 跳过平滑（未启用）")
-        
-        # 清理已删除的三角形
+            return
+
+        verbose("阶段 3/3: 跳过平滑（未启用）")
+
+    def _run_topology_cleanup_passes(self) -> None:
         self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
 
-        # 检测并修复重叠三角形
         verbose("阶段 3.5/3: 检测并修复重叠三角形...")
         self._remove_overlapping_triangles()
         self._remove_duplicate_triangles()
@@ -4758,60 +4764,122 @@ class GmshBowyerWatsonMeshGenerator:
             if not changed:
                 break
 
-        points = self.points.copy()
-        simplices = np.array([tri.vertices for tri in self.triangles])
-        boundary_mask = np.zeros(len(points), dtype=bool)
-        boundary_mask[:self.boundary_count] = True
-
-        # 关键修复：确保所有边界点和 Steiner 点都被保留
+    def _compact_output_nodes(
+        self,
+        points: np.ndarray,
+        simplices: np.ndarray,
+        boundary_mask: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         used_nodes = set()
         for simplex in simplices:
             for v in simplex:
                 used_nodes.add(v)
 
-        # 添加所有边界点到 used_nodes（包括原始边界点和 Steiner 点）
         for i in range(len(points)):
             if boundary_mask[i]:
                 used_nodes.add(i)
 
-        # 关键修复：原始边界点索引保持不变（0 到 boundary_count-1）
-        # Steiner 点和内部点重新分配索引
-        if len(used_nodes) < len(points):
-            # 原始边界点保持原索引（0 到 boundary_count-1）
-            # Steiner 点和内部点重新分配索引从 boundary_count 开始
-            old_to_new = {}
-            new_points = []
-            new_boundary_mask = []
-            
-            # 首先添加所有原始边界点（保持原索引）
-            for i in range(self.boundary_count):
-                old_to_new[i] = i
-                new_points.append(points[i])
-                new_boundary_mask.append(True)
-            
-            # 然后添加被使用的 Steiner 点和内部点
-            new_internal_idx = self.boundary_count
-            for old_idx in sorted(used_nodes):
-                if old_idx >= self.boundary_count:  # Steiner 点或内部点
-                    old_to_new[old_idx] = new_internal_idx
-                    new_points.append(points[old_idx])
-                    new_boundary_mask.append(boundary_mask[old_idx])  # 保留 Steiner 点的边界标记
-                    new_internal_idx += 1
+        if len(used_nodes) >= len(points):
+            return points, simplices, boundary_mask
 
-            new_simplices = []
-            for simplex in simplices:
-                new_simplices.append([old_to_new[v] for v in simplex])
+        old_to_new = {}
+        new_points = []
+        new_boundary_mask = []
 
-            points = np.array(new_points)
-            simplices = np.array(new_simplices)
-            boundary_mask = np.array(new_boundary_mask)
+        for i in range(self.boundary_count):
+            old_to_new[i] = i
+            new_points.append(points[i])
+            new_boundary_mask.append(True)
+
+        new_internal_idx = self.boundary_count
+        for old_idx in sorted(used_nodes):
+            if old_idx < self.boundary_count:
+                continue
+            old_to_new[old_idx] = new_internal_idx
+            new_points.append(points[old_idx])
+            new_boundary_mask.append(boundary_mask[old_idx])
+            new_internal_idx += 1
+
+        new_simplices = [[old_to_new[v] for v in simplex] for simplex in simplices]
+        return (
+            np.array(new_points),
+            np.array(new_simplices, dtype=int),
+            np.array(new_boundary_mask, dtype=bool),
+        )
+
+    def _collect_mesh_output(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        points, simplices, boundary_mask = _build_mesh_arrays(
+            self.points,
+            self.triangles,
+            self.boundary_count,
+            self.boundary_mask,
+        )
+        return self._compact_output_nodes(points, simplices, boundary_mask)
+    
+    # -------------------------------------------------------------------------
+    # 公共入口：generate_mesh
+    # -------------------------------------------------------------------------
+    
+    def generate_mesh(
+        self,
+        target_triangle_count: Optional[int] = None,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """生成三角形网格。
         
-        verbose("网格生成完成:")
-        verbose(f"  - 总节点数: {len(points)}")
-        verbose(f"  - 边界节点: {np.sum(boundary_mask)}")
-        verbose(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
-        verbose(f"  - 三角形数: {len(simplices)}")
+        参数:
+            target_triangle_count: 目标三角形数量（可选）
+        
+        返回:
+            (points, simplices, boundary_mask)
+        """
+        timer = TimeSpan("开始 Gmsh Bowyer-Watson 网格生成...")
+        self._initialize_generation_state()
+        
+        verbose("阶段 1/3: 初始三角剖分...")
+        self._triangulate()
+        verbose(f"  初始三角形数量: {len(self.triangles)}")
 
+        verbose("阶段 2/3: Gmsh 风格迭代插入内部点...")
+        if self.holes:
+            verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
+            for i, hole in enumerate(self.holes):
+                hole_center = np.mean(hole, axis=0)
+                verbose(f"    孔洞 {i}: {len(hole)} 个点，中心 {hole_center}")
+        self._insert_points_iteratively_gmsh(target_triangle_count)
+
+        # 关键修复：根据Gmsh/TetGen的正确顺序
+        # 1. 先恢复边界边（在完整三角网上操作）
+        # 2. 再删除孔洞三角形（此时边界边已经被保护）
+        # 参考 Gmsh / TetGen 的典型顺序：
+        #   5. 恢复边界
+        #   6. 挖洞
+
+        verbose("阶段 2.5/3: Constrained Delaunay 边界恢复...")
+        self._constrained_delaunay_triangulation()
+
+        # 注意：不再调用 _recover_boundary_edges()
+        # 因为 CDT 已经通过纯边翻转恢复了边界边
+        # 避免插入 Steiner 点分割边界边
+
+        self._run_initial_domain_cleanup()
+
+        # 清理孔洞/外边界后，局部 cavity 已只剩真实计算域，再做一次 exact boundary 恢复，
+        # 避免首次恢复落在错误一侧的三角形被后续清理删除后，原始边再次丢失。
+        verbose("阶段 2.8/3: 清理后重新执行 Constrained Delaunay 边界恢复...")
+        self._constrained_delaunay_triangulation()
+
+        # 第二次 CDT 之后仍可能在孔洞/域外补回少量三角形；
+        # 在进入最终平滑前再做一次最终域清理，避免残留非法单元进入导出结果。
+        final_hole_removed, final_outer_removed = self._run_final_domain_cleanup()
+
+        if final_hole_removed > 0 or final_outer_removed > 0:
+            verbose("阶段 2.98/3: 最终域清理后再次刷新精确边界...")
+            self._constrained_delaunay_triangulation()
+
+        self._apply_final_smoothing()
+        self._run_topology_cleanup_passes()
+        points, simplices, boundary_mask = self._collect_mesh_output()
+        _log_mesh_summary(points, simplices, boundary_mask)
         timer.show_to_console("Gmsh Bowyer-Watson 网格生成完成")
         return points, simplices, boundary_mask
 
