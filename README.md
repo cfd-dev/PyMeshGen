@@ -26,6 +26,27 @@ pip install -r requirements.txt
 
 Some optional workflows, especially GUI and geometry import/export, rely on heavyweight packages such as VTK, PyQt5, and `pythonocc-core`.
 
+## Installation
+
+### PyPI (preferred after publication)
+
+```bash
+pip install pymeshgen
+```
+
+Available entry points after installation:
+
+```bash
+pymeshgen --case ".\config\30p30n.json"
+pymeshgen-gui
+```
+
+### Local development
+
+```bash
+pip install -e .
+```
+
 ## Quick start
 
 ### Command line
@@ -123,6 +144,8 @@ python -m unittest unittests.test_bowyer_watson.TestBowyerWatsonJSONConfig.test_
 
 ## Packaging
 
+PyMeshGen now prioritizes **Python package distribution through PyPI**.
+
 For standard Python source and wheel builds:
 
 ```bash
@@ -130,7 +153,7 @@ python -m pip install build
 python -m build
 ```
 
-For Windows executable packaging, see [`README_PACKAGING.md`](./README_PACKAGING.md).
+For PyPI publishing and release workflow details, see [`README_PACKAGING.md`](./README_PACKAGING.md). Windows executable packaging remains available as an optional secondary path.
 
 ## License
 

@@ -10,6 +10,7 @@
 - Run a named test module: `cd unittests; python run_tests.py cas_file_io`
 - Run one unittest target from repo root: `python -m unittest unittests.test_bowyer_watson.TestBowyerWatsonJSONConfig.test_anw_bowyer_watson`
 - Build source and wheel distributions: `python -m pip install build && python -m build`
+- Preferred distribution path is Python packaging to PyPI; `build_app.py` is only for optional Windows desktop packaging
 - There is no repo-root lint configuration checked in; do not invent Ruff/Flake8/Pylint commands. Prefer the existing unittest scripts and focused unittest targets.
 
 ## High-level architecture

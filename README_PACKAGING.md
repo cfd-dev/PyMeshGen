@@ -1,90 +1,126 @@
-# PyMeshGen 打包工具使用说明
+# PyMeshGen Packaging and Publishing Guide
 
-## 🚀 快速开始
+## Preferred distribution path
 
-### 标准 Python 分发构建
+PyMeshGen now treats **Python packaging as the primary release path**:
+
+1. build `sdist` + `wheel`
+2. validate the distributions
+3. publish to **PyPI**
+4. keep Windows executable packaging as an optional secondary path
+
+For most users, the intended installation target is:
 
 ```bash
-python -m pip install build
-python -m build
+pip install pymeshgen
 ```
 
-构建产物会输出到 `dist/`，这是当前推荐的源码包 / wheel 构建方式。`setup.py` 仅保留为兼容层，不再作为主要入口。
+## Standard Python package build
 
-### 一键打包（推荐）
-
-**Windows 用户**：双击运行 `build.bat`
-
-**命令行方式**：
 ```bash
-# 基本打包（仅生成可执行文件）
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+```
+
+Artifacts are written to `dist/`:
+
+| File | Description |
+|------|-------------|
+| `dist/pymeshgen-<version>.tar.gz` | Source distribution |
+| `dist/pymeshgen-<version>-py3-none-any.whl` | Wheel |
+
+Versioning is sourced from the repository `VERSION` file. Update `VERSION` before creating a release tag.
+
+## PyPI publishing
+
+### Recommended: GitHub Actions + Trusted Publisher
+
+This repository now includes:
+
+- `.github/workflows/python-package.yml` — builds and validates the Python package on push / pull request
+- `.github/workflows/publish-pypi.yml` — publishes to TestPyPI or PyPI through GitHub Actions
+
+### One-time PyPI setup
+
+In **PyPI** and **TestPyPI**, configure a Trusted Publisher for this repository:
+
+- **Owner**: `cfd-dev`
+- **Repository**: `PyMeshGen`
+- **Workflow**: `publish-pypi.yml`
+- **Environment**:
+  - `testpypi` for TestPyPI
+  - `pypi` for PyPI
+
+After that:
+
+- **Manual TestPyPI publish**: run the `Publish Python package` workflow with `repository = testpypi`
+- **Official PyPI publish**: create a GitHub Release from a version tag such as `v1.0.1`
+
+### Release flow
+
+1. Update `VERSION`
+2. Commit changes
+3. Tag the release
+   ```bash
+   git tag v1.0.1
+   git push origin master --tags
+   ```
+4. Draft / publish the GitHub Release
+5. GitHub Actions publishes the wheel and sdist to PyPI
+
+## Manual fallback publishing
+
+If you need to publish from a local machine instead of GitHub Actions:
+
+```bash
+python -m pip install --upgrade build twine
+python -m build
+python -m twine check dist/*
+python -m twine upload dist/*
+```
+
+For TestPyPI:
+
+```bash
+python -m twine upload --repository testpypi dist/*
+```
+
+If you use a local `.pypirc`, keep it out of the repository. `.gitignore` already excludes it.
+
+## Installing the published package
+
+### CLI
+
+```bash
+pip install pymeshgen
+pymeshgen --case ".\config\30p30n.json"
+```
+
+### GUI
+
+```bash
+pip install pymeshgen
+pymeshgen-gui
+```
+
+GUI usage still depends on GUI/runtime dependencies such as `PyQt5`, `vtk`, and `pythonocc-core`.
+
+## Optional Windows application packaging
+
+Windows executable packaging is still available, but it is no longer the primary distribution mechanism.
+
+```bash
 python build_app.py
-
-# 清理后打包并创建 ZIP 便携版
-python build_app.py --clean --zip
-
-# 创建所有格式（可执行文件 + 安装包 + ZIP）
 python build_app.py --all
 ```
 
-## 📦 输出文件
+Typical outputs:
 
-| 文件 | 位置 | 说明 |
-|------|------|------|
-| Python 源码包 / Wheel | `dist/` | 标准 Python 分发产物（`python -m build`） |
-| 可执行文件 | `dist/PyMeshGen.exe` | 独立运行的程序 |
-| ZIP 便携版 | `releases/PyMeshGen-v*.zip` | 压缩的便携版本 |
-| Windows 安装包 | `installer/PyMeshGen-Setup-*.exe` | 标准安装程序（需 Inno Setup） |
+| File | Location |
+|------|----------|
+| Executable | `dist/PyMeshGen.exe` |
+| Portable ZIP | `releases/PyMeshGen-v*.zip` |
+| Windows installer | `installer/PyMeshGen-Setup-*.exe` |
 
-## 🔧 命令行参数
-
-| 参数 | 说明 |
-|------|------|
-| `--clean` | 清理之前的构建文件 |
-| `--debug` | 启用调试模式（显示控制台窗口） |
-| `--installer` | 创建 Inno Setup 安装包 |
-| `--zip` | 创建 ZIP 便携版 |
-| `--all` | 创建所有输出格式 |
-| `--skip-clean` | 跳过清理步骤 |
-
-## 📋 前置要求
-
-### 必需
-- Python 3.8+
-- pip 包管理器
-- `build`（用于标准 Python 包构建）
-
-### 可选
-- **Inno Setup**：用于创建 Windows 安装包（如不需要安装包可忽略）
-
-## 🛠️ 配置文件
-
-### PyInstaller 配置
-编辑 `PyMeshGen.spec` 文件自定义：
-- 包含的模块和数据文件
-- 图标
-- 版本信息
-
-### Python 包构建配置
-标准 Python 包构建配置位于：
-- `pyproject.toml`：PEP 517/518/621 元数据与构建入口
-- `setup.py`：仅保留非包资源收集的兼容层
-- `MANIFEST.in`：源码分发时需要包含的附加资源
-
-### Inno Setup 配置
-编辑 `PyMeshGen.iss` 文件自定义：
-- 安装程序界面
-- 安装目录
-- 快捷方式
-
-## ⚠️ 注意事项
-
-1. **打包时间**：首次打包约需 15-20 分钟（依赖大量科学计算库）
-2. **文件大小**：可执行文件约 2-3GB（包含所有依赖）
-3. **Inno Setup**：如未安装，脚本会自动跳过安装包创建
-
-## 📖 详细文档
-
-- PyInstaller 文档：https://pyinstaller.org/
-- build 文档：https://build.pypa.io/
-- Inno Setup 文档：https://jrsoftware.org/ishelp/
+This path depends on a fully prepared local Python environment plus PyInstaller, and is best treated as an optional desktop-delivery workflow rather than the main release channel.

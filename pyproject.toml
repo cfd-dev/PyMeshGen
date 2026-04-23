@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "PyMeshGen"
-version = "1.0.0"
 description = "Python-based unstructured mesh generator for CFD/FEA preprocessing and algorithm research"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.8"
@@ -24,7 +23,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
-dynamic = ["dependencies"]
+dynamic = ["dependencies", "version"]
 
 [project.urls]
 Homepage = "https://github.com/cfd-dev/PyMeshGen"
@@ -65,6 +64,7 @@ exclude = [
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }
+version = { file = ["VERSION"] }
 
 [tool.setuptools.package-data]
 "*" = ["*.txt", "*.md", "*.json", "*.cas"]
