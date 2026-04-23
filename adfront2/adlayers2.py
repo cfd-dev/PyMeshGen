@@ -846,7 +846,17 @@ class Adlayers2:
         visited_nodes = set()  # 已访问的节点 hash
         queue = deque()  # BFS 队列
         
+        # 共享端点的 prism-cap 也是“0 条 interior 链”的相邻阵面
+        for node in front.node_elems:
+            for other_front in node.node2front:
+                if other_front.bc_type == "prism-cap" and other_front.hash != front.hash:
+                    if other_front.hash not in neighbor_prism_caps:
+                        neighbor_prism_caps.add(other_front.hash)
+                        neighbor_layers.add(other_front.layer_count)
+                        neighbor_fronts_info.append((other_front.node_ids, other_front.layer_count))
+
         # 从当前 prism_cap 的两个节点开始 BFS
+        # 继续搜索通过 interior 阵面链可达的其它 prism-cap
         for node in front.node_elems:
             visited_nodes.add(node.hash)
             queue.append(node)
@@ -896,11 +906,18 @@ class Adlayers2:
 
         # 检查层数差
         current_layer = front.layer_count
-        debug(f"[层数差检查] 阵面{front.node_ids} (层={current_layer}): 相邻prism_cap阵面信息={neighbor_fronts_info}")
+        next_layer = current_layer + 1
+        debug(
+            f"[层数差检查] 阵面{front.node_ids} (当前层={current_layer}, 目标层={next_layer}): "
+            f"相邻prism_cap阵面信息={neighbor_fronts_info}"
+        )
         
         for neighbor_layer in neighbor_layers:
-            if abs(current_layer - neighbor_layer) > max_layer_diff:
-                debug(f"[层数差检查] 阵面{front.node_ids} 层数差超限：当前层={current_layer}, 相邻层={neighbor_layer}, 差值={abs(current_layer - neighbor_layer)}")
+            if abs(next_layer - neighbor_layer) > max_layer_diff:
+                debug(
+                    f"[层数差检查] 阵面{front.node_ids} 推进后层数差超限："
+                    f"目标层={next_layer}, 相邻层={neighbor_layer}, 差值={abs(next_layer - neighbor_layer)}"
+                )
                 return True
 
         return False
