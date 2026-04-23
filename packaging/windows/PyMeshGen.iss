@@ -2,11 +2,12 @@
 ; PyMeshGen Inno Setup 安装脚本
 ; ============================================================================
 ; 使用方法:
-;   1. 先运行 build.bat 构建可执行文件
+;   1. 先运行 packaging\windows\build.bat 构建可执行文件
 ;   2. 安装 Inno Setup: https://jrsoftware.org/isdl.php
-;   3. 运行: iscc.exe PyMeshGen.iss
+;   3. 运行: iscc.exe packaging\windows\PyMeshGen.iss
 ; ============================================================================
 
+#define RepoRoot "..\.."
 #define MyAppName "PyMeshGen"
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "PyMeshGen Team"
@@ -25,10 +26,10 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-LicenseFile=LICENSE.txt
-OutputDir=installer
+LicenseFile={#RepoRoot}\LICENSE.txt
+OutputDir={#RepoRoot}\installer
 OutputBaseFilename=PyMeshGen-Setup-{#MyAppVersion}
-SetupIconFile=docs\icon.ico
+SetupIconFile={#RepoRoot}\docs\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
@@ -49,8 +50,8 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 
 [Files]
 ; 主程序文件
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#RepoRoot}\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}\dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; 注意：不要复制以下目录，它们已经包含在 dist 中
 ; Source: "config\*"; DestDir: "{app}\config"; Flags: ignoreversion recursesubdirs createallsubdirs

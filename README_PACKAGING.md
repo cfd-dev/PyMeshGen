@@ -111,8 +111,8 @@ GUI usage still depends on GUI/runtime dependencies such as `PyQt5`, `vtk`, and 
 Windows executable packaging is still available, but it is no longer the primary distribution mechanism.
 
 ```bash
-python build_app.py
-python build_app.py --all
+python packaging\windows\build_app.py
+python packaging\windows\build_app.py --all
 ```
 
 Typical outputs:
@@ -124,3 +124,16 @@ Typical outputs:
 | Windows installer | `installer/PyMeshGen-Setup-*.exe` |
 
 This path depends on a fully prepared local Python environment plus PyInstaller, and is best treated as an optional desktop-delivery workflow rather than the main release channel.
+
+The optional Windows packaging files now live under `packaging/windows/`:
+
+- `packaging/windows/build_app.py`
+- `packaging/windows/build.bat`
+- `packaging/windows/PyMeshGen.spec`
+- `packaging/windows/PyMeshGen.iss`
+
+You can also invoke the optional Windows wrapper directly:
+
+```bash
+packaging\windows\build.bat
+```

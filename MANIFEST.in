@@ -3,10 +3,6 @@ include VERSION
 include README.md
 include README_zh.md
 include README_PACKAGING.md
-include PyMeshGen.spec
-include PyMeshGen.iss
-include build.bat
-include build_app.py
 graft config
 graft docs
 graft 3rd_party/meshio/src

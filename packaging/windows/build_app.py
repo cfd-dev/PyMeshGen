@@ -11,7 +11,7 @@ PyMeshGen 一键打包工具
     - 可选：创建便携版 ZIP 压缩包
 
 使用方法:
-    python build_app.py [--clean] [--debug] [--installer] [--zip]
+    python packaging\\windows\\build_app.py [--clean] [--debug] [--installer] [--zip]
 
 参数:
     --clean       清理之前的构建文件
@@ -43,7 +43,7 @@ class Config:
     BIN_DIR = "bin"
     INSTALLER_DIR = "installer"
     ZIP_DIR = "releases"
-    SPEC_FILE = "PyMeshGen.spec"
+    SPEC_FILE = Path(__file__).with_name("PyMeshGen.spec")
     MAIN_SCRIPT = "start_gui.py"
 
 
@@ -52,7 +52,7 @@ class Config:
 # ============================================================================
 def get_project_root():
     """获取项目根目录"""
-    return Path(__file__).parent.absolute()
+    return Path(__file__).resolve().parents[2]
 
 
 def get_version(project_root):
@@ -189,9 +189,9 @@ def clean_build_dirs(project_root):
             shutil.rmtree(dir_path)
             cleaned = True
     
-    # 删除多余的 .spec 文件
+    # 删除项目根目录下误放的 .spec 文件
     for spec_file in project_root.glob('*.spec'):
-        if spec_file.name != Config.SPEC_FILE:
+        if spec_file.resolve() != Config.SPEC_FILE.resolve():
             spec_file.unlink()
             print(f"  删除文件：{spec_file}")
             cleaned = True
@@ -211,7 +211,7 @@ def build_executable(project_root, debug=False):
     """使用 PyInstaller 打包"""
     print_section("步骤 4: PyInstaller 打包")
     
-    spec_file = project_root / Config.SPEC_FILE
+    spec_file = Config.SPEC_FILE
     
     if not spec_file.exists():
         print(f"[ERR] Spec 文件不存在：{spec_file}")
@@ -295,7 +295,7 @@ def build_installer(project_root, iscc_path):
     """使用 Inno Setup 构建安装包"""
     print_section("步骤 5: 创建安装包 (Inno Setup)")
     
-    iss_file = project_root / f"{Config.APP_NAME}.iss"
+    iss_file = Path(__file__).with_name(f"{Config.APP_NAME}.iss")
     
     if not iss_file.exists():
         print(f"[ERR] Inno Setup 脚本不存在：{iss_file}")
@@ -433,11 +433,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python build_app.py              基本构建（仅可执行文件）
-  python build_app.py --clean      清理后构建
-  python build_app.py --installer  创建安装包（需要 Inno Setup）
-  python build_app.py --zip        创建便携版 ZIP
-  python build_app.py --all        创建所有输出
+  python packaging\\windows\\build_app.py              基本构建（仅可执行文件）
+  python packaging\\windows\\build_app.py --clean      清理后构建
+  python packaging\\windows\\build_app.py --installer  创建安装包（需要 Inno Setup）
+  python packaging\\windows\\build_app.py --zip        创建便携版 ZIP
+  python packaging\\windows\\build_app.py --all        创建所有输出
         """
     )
     

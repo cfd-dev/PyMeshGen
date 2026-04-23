@@ -153,7 +153,7 @@ python -m pip install build
 python -m build
 ```
 
-For PyPI publishing and release workflow details, see [`README_PACKAGING.md`](./README_PACKAGING.md). Windows executable packaging remains available as an optional secondary path.
+For PyPI publishing and release workflow details, see [`README_PACKAGING.md`](./README_PACKAGING.md). Optional Windows desktop packaging tools now live under `packaging/windows/`.
 
 ## License
 

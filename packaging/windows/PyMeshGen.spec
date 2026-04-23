@@ -4,7 +4,7 @@ PyMeshGen PyInstaller 打包配置文件
 用于生成 PyMeshGen GUI 应用程序的独立可执行文件
 
 使用方法:
-    pyinstaller PyMeshGen.spec
+    pyinstaller packaging\windows\PyMeshGen.spec
 """
 
 import os
@@ -13,7 +13,8 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 
 # 项目根目录
 block_cipher = None
-project_root = os.path.dirname(os.path.abspath(SPEC))
+spec_root = os.path.dirname(os.path.abspath(SPEC))
+project_root = os.path.abspath(os.path.join(spec_root, "..", ".."))
 
 # 核心依赖 - 只收集必要的模块
 hiddenimports = [
