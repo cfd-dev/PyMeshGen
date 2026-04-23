@@ -191,7 +191,6 @@ def create_bowyer_watson_mesh(
     seed: Optional[int] = None,
     holes: Optional[List[np.ndarray]] = None,
     auto_detect_holes: bool = True,
-    use_gmsh_implementation: bool = True,
     backend: str = "bowyer_watson",
     triangle_point_strategy: str = "equilateral",
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -206,7 +205,6 @@ def create_bowyer_watson_mesh(
         seed: 随机种子
         holes: 孔洞边界
         auto_detect_holes: 自动检测孔洞
-        use_gmsh_implementation: 使用 Gmsh 实现
         backend: Delaunay 后端，"bowyer_watson" 或 "triangle"
         triangle_point_strategy: Triangle 后端内部点生成策略
     
@@ -232,17 +230,9 @@ def create_bowyer_watson_mesh(
             point_strategy=triangle_point_strategy,
         )
 
-    from .bw_core_stable import (
-        BowyerWatsonMeshGenerator,
-        GmshBowyerWatsonMeshGenerator,
-    )
+    from .bw_core_stable import GmshBowyerWatsonMeshGenerator
 
-    generator_class = (
-        GmshBowyerWatsonMeshGenerator
-        if use_gmsh_implementation
-        else BowyerWatsonMeshGenerator
-    )
-    generator = generator_class(
+    generator = GmshBowyerWatsonMeshGenerator(
         boundary_points=boundary_input.boundary_points,
         boundary_edges=boundary_input.boundary_edges,
         sizing_system=sizing_system,

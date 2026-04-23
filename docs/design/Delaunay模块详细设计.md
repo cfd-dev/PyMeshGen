@@ -56,7 +56,6 @@ core.generate_mesh()
       -> bw_utils._build_boundary_input()   # front -> 点/边/孔洞
       -> backend dispatch
          -> GmshBowyerWatsonMeshGenerator
-         -> BowyerWatsonMeshGenerator
          -> create_triangle_mesh
   -> core._recover_delaunay_boundary_edges()  # 轻量边翻转补恢复（非 Triangle）
   -> Unstructured_Grid.from_cells()           # 统一转网格对象
@@ -89,9 +88,9 @@ core.generate_mesh()
 
 | 文件 | 角色 | 主要职责 |
 | --- | --- | --- |
-| `__init__.py` | 包入口 | 暴露 `BowyerWatsonMeshGenerator`、`MTri3`、`create_bowyer_watson_mesh` |
+| `__init__.py` | 包入口 | 暴露 `GmshBowyerWatsonMeshGenerator`、`MTri3`、`create_bowyer_watson_mesh` |
 | `bw_utils.py` | 输入归一化与后端分发 | 从 `front` 提取边界点、边界边、外边界和孔洞；按配置选择 Bowyer-Watson 或 Triangle |
-| `bw_core_stable.py` | 主算法实现 | legacy Bowyer-Watson、Gmsh 风格 Bowyer-Watson、边界恢复、孔洞/域清理、拓扑清理 |
+| `bw_core_stable.py` | 主算法实现 | Gmsh 风格 Bowyer-Watson、边界恢复、孔洞/域清理、拓扑清理 |
 | `bw_cavity.py` | 空腔搜索与重连 | Cavity 搜索、star-shaped 校验、插点后重连、失败恢复 |
 | `bw_predicates.py` | 几何谓词 | `orient2d`、`incircle`、外接圆、各向异性外接圆辅助 |
 | `bw_types.py` | Gmsh 风格数据结构 | `MTri3`、`EdgeXFace`、`TriangulationState`、邻接构建、cavity shell 收集 |
@@ -114,7 +113,7 @@ core.generate_mesh()
 
 `delaunay\__init__.py` 当前公开：
 
-- `BowyerWatsonMeshGenerator`
+- `GmshBowyerWatsonMeshGenerator`
 - `MTri3`
 - `create_bowyer_watson_mesh`
 
@@ -133,15 +132,15 @@ from delaunay import create_bowyer_watson_mesh
 3. 自动识别孔洞与外边界
 4. 根据 `backend` 选择：
    - `triangle`
-   - `bowyer_watson` + `use_gmsh_implementation`
+   - `bowyer_watson` -> `GmshBowyerWatsonMeshGenerator`
 5. 统一返回：
-   - `points: np.ndarray`
-   - `simplices: np.ndarray`
-   - `boundary_mask: np.ndarray`
+    - `points: np.ndarray`
+    - `simplices: np.ndarray`
+    - `boundary_mask: np.ndarray`
 
 ### 4.3 核心设计原则
 
-- 上层不需要知道 Bowyer-Watson 内部使用 `LegacyBWTriangle` 还是 `MTri3`
+- 上层不需要知道 Bowyer-Watson 内部拓扑如何组织，只关心统一数组输出
 - 后端切换不改变返回格式
 - 外边界 / 孔洞识别在进入核心算法前完成，避免后端重复做 front 级解析
 
@@ -194,26 +193,7 @@ boundary_front
 
 ## 6. 核心数据结构设计
 
-### 6.1 `LegacyBWTriangle`（legacy 路径）
-
-`bw_core_stable.py` 中的 `LegacyBWTriangle` 服务于 legacy `BowyerWatsonMeshGenerator`，但当前实现已收敛为 `MTri3` 的兼容薄层：
-
-- 顶点索引按升序存储
-- 缓存外接圆
-- 缓存质量
-- 保存邻接引用
-- 仅补充 legacy 路径仍然使用的 `circumcircle_valid` / `quality_valid` 等兼容字段
-
-这样做的目的是：
-
-1. **统一热路径数据模型**
-   - legacy `LegacyBWTriangle` 与 Gmsh `MTri3` 不再维护两套完全独立的三角形槽位
-2. **明确内部命名**
-   - 用 `LegacyBWTriangle` 与 `data_structure.basic_elements.Triangle` 做清晰区分，避免算法层与网格单元层混淆
-3. **降低转换成本**
-   - `LegacyBWTriangle -> MTri3` / `MTri3 -> LegacyBWTriangle` 只剩兼容字段拷贝，而非两套结构之间的深度切换
-
-### 6.2 `MTri3`（Gmsh 风格主结构）
+### 6.1 `MTri3`（Gmsh 风格主结构）
 
 `bw_types.py` 中的 `MTri3` 是当前主路径的核心结构：
 
@@ -234,7 +214,7 @@ boundary_front
 3. **缓存几何量**
    - 避免重复计算外接圆与质量
 
-### 6.2.1 `TriangulationState`（常驻拓扑索引层）
+### 6.1.1 `TriangulationState`（常驻拓扑索引层）
 
 `TriangulationState` 是在 `MTri3` 之上的常驻索引缓存，用于替代反复现建现用的临时 edge map / vertex map：
 
@@ -259,7 +239,7 @@ boundary_front
 - edge use count / incident triangle 查询
 - boundary vertex 邻域查询
 
-### 6.3 `EdgeXFace`
+### 6.2 `EdgeXFace`
 
 `EdgeXFace` 表示“边 - 面”关系，主要用于：
 
@@ -267,15 +247,18 @@ boundary_front
 - 约束边标识
 - 局部重连时的边界表示
 
-### 6.4 邻接构建
+### 6.3 邻接构建
 
-`build_adjacency_from_triangles()` 现在不只是“重建邻接”，而是统一委托给 `TriangulationState` 完成：
+当前邻接构建分成两层：
 
-- 双向邻接回填
-- 边到三角形索引构建
-- 顶点到三角形/邻点索引构建
+1. `build_adjacency_from_triangles()`
+   - 负责轻量级的三角形邻接回填
+   - 适合高频、只需要 `neighbors` 的局部重建
+2. `TriangulationState`
+   - 负责显式构建 `edge_to_tris`、`vertex_to_tris`、`vertex_to_neighbors`
+   - 只在需要拓扑索引的热点路径按需刷新
 
-这是整个模块中最关键的基础设施之一，几乎所有局部操作都依赖它：
+这套分层是为了兼顾性能与一致性，几乎所有局部操作都依赖它：
 
 - cavity 扩张
 - 边翻转
@@ -285,7 +268,7 @@ boundary_front
 这样设计的好处是：
 
 1. **减少重复全表扫描**
-2. **让“邻接真相”和“边索引真相”来自同一次构建**
+2. **让轻量邻接与重型拓扑索引各自承担合适的成本**
 3. **便于后续继续向稳定 id / 更扁平的索引表示演进**
 
 ---
@@ -319,37 +302,9 @@ boundary_front
 
 ## 8. Bowyer-Watson 核心算法设计
 
-## 8.1 两条 Bowyer-Watson 路径
+### 8.1 `GmshBowyerWatsonMeshGenerator`
 
-### 8.1.1 `BowyerWatsonMeshGenerator`
-
-这是 legacy 直接路径，主要用于：
-
-- 基础单测
-- 边界较简单的直接构造输入
-- 无尺寸场或轻量场景
-
-其入口流程较短：
-
-```text
-初始化状态
-  -> 初始三角剖分
-  -> 迭代插入内部点
-  -> 孔洞清理
-  -> 边界恢复
-  -> 平滑
-  -> 导出数组
-```
-
-它还包含一个重要策略：
-
-- 当输入是**大规模、无显式边界边、无孔洞、无尺寸场**的简单 loop 时，
-  会委托给 `GmshBowyerWatsonMeshGenerator`
-- 目的是兼顾 legacy 接口兼容与更高质量/更快的大 case 表现
-
-### 8.1.2 `GmshBowyerWatsonMeshGenerator`
-
-这是当前 mesh_type=4 的主实现，设计上更接近 Gmsh `meshGFaceDelaunayInsertion.cpp` 的二维思路。
+这是当前 `backend="bowyer_watson"` 的唯一实现，设计上更接近 Gmsh `meshGFaceDelaunayInsertion.cpp` 的二维思路。
 
 主入口阶段顺序：
 
@@ -625,7 +580,6 @@ Triangle 后端本质上是：
 行为上的补充规则：
 
 - 带边界层时，上层可能强制切换到 Triangle 后端
-- legacy 直接调用在大简单环场景下可能委托给 Gmsh 风格实现
 
 ---
 
