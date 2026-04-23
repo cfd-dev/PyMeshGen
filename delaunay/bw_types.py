@@ -9,7 +9,8 @@ Bowyer-Watson Delaunay 网格生成器 - Gmsh 风格数据结构
 这些数据结构是 Gmsh Bowyer-Watson 实现的基础。
 """
 
-from typing import Tuple, Optional, List
+from collections import defaultdict
+from typing import Dict, Iterable, List, Optional, Tuple
 import numpy as np
 
 
@@ -218,6 +219,155 @@ class TriangleComparator:
         if a.circumradius != b.circumradius:
             return a.circumradius > b.circumradius  # 半径大的在前
         return id(a) < id(b)  # 指针地址作为次级排序键
+
+
+class TriangulationState:
+    """Persistent topology/index cache for a triangle list.
+
+    The active Bowyer-Watson path mutates `self.triangles` frequently. Repeatedly
+    rebuilding one-off edge maps and scanning the full list makes those hot paths
+    harder to reason about. This cache keeps the common edge/vertex indices
+    together and rebuilds adjacency from the same pass.
+    """
+
+    __slots__ = [
+        'triangles',
+        'triangle_by_id',
+        'edge_to_tris',
+        'vertex_to_tris',
+        'vertex_to_neighbors',
+        '_source_len',
+    ]
+
+    def __init__(self, triangles: Optional[List[MTri3]] = None):
+        self.triangles: List[MTri3] = []
+        self.triangle_by_id: Dict[int, MTri3] = {}
+        self.edge_to_tris: Dict[Tuple[int, int], List[Tuple[MTri3, int]]] = {}
+        self.vertex_to_tris: Dict[int, List[MTri3]] = {}
+        self.vertex_to_neighbors: Dict[int, set] = {}
+        self._source_len = 0
+        if triangles is not None:
+            self.rebuild(triangles)
+
+    def ensure(self, triangles: List[MTri3]) -> 'TriangulationState':
+        if triangles is not self.triangles or len(triangles) != self._source_len:
+            self.rebuild(triangles)
+        return self
+
+    def rebuild(self, triangles: List[MTri3]) -> 'TriangulationState':
+        self.triangles = triangles
+        self._source_len = len(triangles)
+        self.triangle_by_id = {}
+        self.edge_to_tris = defaultdict(list)
+        self.vertex_to_tris = defaultdict(list)
+        self.vertex_to_neighbors = defaultdict(set)
+
+        for tri in triangles:
+            tri.neighbors = [None, None, None]
+
+        for tri in triangles:
+            if tri.is_deleted():
+                continue
+
+            self.triangle_by_id[tri.idx] = tri
+
+            v0, v1, v2 = tri.vertices
+            self.vertex_to_tris[v0].append(tri)
+            self.vertex_to_tris[v1].append(tri)
+            self.vertex_to_tris[v2].append(tri)
+
+            self.vertex_to_neighbors[v0].update((v1, v2))
+            self.vertex_to_neighbors[v1].update((v0, v2))
+            self.vertex_to_neighbors[v2].update((v0, v1))
+
+            for i in range(3):
+                edge_key = tri.get_edge_sorted(i)
+                entries = self.edge_to_tris[edge_key]
+                if entries:
+                    other_tri, other_local_idx = entries[0]
+                    tri.neighbors[i] = other_tri
+                    other_tri.neighbors[other_local_idx] = tri
+                entries.append((tri, i))
+
+        self.edge_to_tris = dict(self.edge_to_tris)
+        self.vertex_to_tris = dict(self.vertex_to_tris)
+        self.vertex_to_neighbors = {
+            vertex: set(neighbors)
+            for vertex, neighbors in self.vertex_to_neighbors.items()
+        }
+        return self
+
+    def _filter_deleted_entries(
+        self,
+        edge_key: Tuple[int, int],
+    ) -> List[Tuple[MTri3, int]]:
+        entries = self.edge_to_tris.get(edge_key, [])
+        if not entries:
+            return []
+
+        active_entries = [(tri, local_idx) for tri, local_idx in entries if not tri.is_deleted()]
+        if len(active_entries) != len(entries):
+            if active_entries:
+                self.edge_to_tris[edge_key] = active_entries
+            else:
+                self.edge_to_tris.pop(edge_key, None)
+        return active_entries
+
+    def active_triangles(self) -> List[MTri3]:
+        return [tri for tri in self.triangles if not tri.is_deleted()]
+
+    def active_triangle_count(self) -> int:
+        return sum(1 for tri in self.triangles if not tri.is_deleted())
+
+    def edge_entries(self, v1: int, v2: int) -> List[Tuple[MTri3, int]]:
+        edge_key = (min(v1, v2), max(v1, v2))
+        return self._filter_deleted_entries(edge_key)
+
+    def incident_triangles(self, v1: int, v2: int) -> List[MTri3]:
+        return [tri for tri, _ in self.edge_entries(v1, v2)]
+
+    def edge_use_count(self, v1: int, v2: int) -> int:
+        return len(self.edge_entries(v1, v2))
+
+    def has_edge(self, v1: int, v2: int) -> bool:
+        return self.edge_use_count(v1, v2) > 0
+
+    def triangles_with_vertex(self, vertex: int) -> List[MTri3]:
+        triangles = self.vertex_to_tris.get(vertex, [])
+        active_triangles = [tri for tri in triangles if not tri.is_deleted()]
+        if len(active_triangles) != len(triangles):
+            if active_triangles:
+                self.vertex_to_tris[vertex] = active_triangles
+            else:
+                self.vertex_to_tris.pop(vertex, None)
+        return active_triangles
+
+    def vertex_neighbors_for(self, vertex: int) -> set:
+        triangles = self.triangles_with_vertex(vertex)
+        if not triangles:
+            return set()
+
+        neighbors = set()
+        for tri in triangles:
+            for other_vertex in tri.vertices:
+                if other_vertex != vertex:
+                    neighbors.add(other_vertex)
+        self.vertex_to_neighbors[vertex] = neighbors
+        return neighbors
+
+    def active_vertices(self) -> set:
+        active = set()
+        for tri in self.active_triangles():
+            active.update(tri.vertices)
+        return active
+
+    def compact_deleted(self) -> List[MTri3]:
+        if all(not tri.is_deleted() for tri in self.triangles):
+            return self.triangles
+
+        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+        self.rebuild(self.triangles)
+        return self.triangles
 
 
 # =============================================================================

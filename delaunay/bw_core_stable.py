@@ -39,7 +39,7 @@ from .bw_predicates import (
     orient2d_fast,
     point_in_circumcircle_robust,
 )
-from .bw_types import MTri3, build_adjacency_from_triangles
+from .bw_types import MTri3, TriangulationState, build_adjacency_from_triangles
 
 __all__ = [
     "Triangle",
@@ -54,7 +54,7 @@ __all__ = [
 # Triangle 数据结构
 # =============================================================================
 
-class Triangle:
+class Triangle(MTri3):
     """三角形单元，带外接圆缓存和质量缓存。
 
     顶点索引始终按升序存储，便于去重和比较。
@@ -62,21 +62,14 @@ class Triangle:
     """
 
     __slots__ = [
-        'vertices', 'circumcenter', 'circumradius', 'idx',
         'circumcircle_valid', 'quality', 'quality_valid', 'circumcircle_bbox',
-        'neighbors',  # 新增：三条边的邻接三角形索引 [None 或 Triangle]
     ]
 
     def __init__(self, p1: int, p2: int, p3: int, idx: int = -1):
-        self.vertices = tuple(sorted([p1, p2, p3]))
-        self.circumcenter = None
-        self.circumradius = None
-        self.idx = idx
+        super().__init__(p1, p2, p3, idx=idx)
         self.circumcircle_valid = False
-        self.quality = 0.0
         self.quality_valid = False
         self.circumcircle_bbox = None
-        self.neighbors = [None, None, None]  # 邻接三角形，neigh[i] 对应 vertices[i]->vertices[(i+1)%3] 这条边
 
     def __eq__(self, other):
         return isinstance(other, Triangle) and self.vertices == other.vertices
@@ -121,6 +114,7 @@ def triangle_to_mtri3(tri: Triangle) -> MTri3:
         mtri.circumcenter = tri.circumcenter
         mtri.circumradius = tri.circumradius
     mtri.quality = tri.quality
+    mtri.deleted = tri.deleted
     return mtri
 
 
@@ -132,6 +126,7 @@ def mtri3_to_triangle(mtri: MTri3) -> Triangle:
         tri.circumradius = mtri.circumradius
         tri.circumcircle_valid = True
     tri.quality = mtri.quality
+    tri.deleted = mtri.deleted
     return tri
 
 
@@ -603,25 +598,7 @@ class BowyerWatsonMeshGenerator:
         参考 Gmsh connectTris：通过边匹配建立双向邻接关系。
         时间复杂度：O(n log n)，30% 的时间花在这里（Gmsh 统计）
         """
-        # 清空旧邻接关系
-        for tri in triangles:
-            tri.neighbors = [None, None, None]
-        
-        # 构建边到三角形的映射
-        edge_to_tri = {}
-        for tri in triangles:
-            for i in range(3):
-                v1 = tri.vertices[i]
-                v2 = tri.vertices[(i + 1) % 3]
-                edge_key = tuple(sorted([v1, v2]))
-                
-                if edge_key in edge_to_tri:
-                    # 找到相邻三角形，建立双向邻接关系
-                    other_tri, other_local_idx = edge_to_tri[edge_key]
-                    tri.neighbors[i] = other_tri
-                    other_tri.neighbors[other_local_idx] = tri
-                else:
-                    edge_to_tri[edge_key] = (tri, i)
+        build_adjacency_from_triangles(triangles)
 
     def _update_adjacency_after_insertion(self, triangles, new_triangles, cavity_set):
         """插入新点后增量更新邻接关系。
@@ -1832,11 +1809,47 @@ class GmshBowyerWatsonMeshGenerator:
         self._kdtree = None
         self._tri_id_counter = 0
         self._boundary_component_ids = self._build_boundary_component_ids()
+        self._topology = TriangulationState()
     
     def _next_tri_id(self) -> int:
         """生成唯一的三角形 ID。"""
         self._tri_id_counter += 1
         return self._tri_id_counter
+
+    def _ensure_triangle_ids(self, triangles: Optional[List[MTri3]] = None) -> None:
+        triangles = self.triangles if triangles is None else triangles
+        for tri in triangles:
+            if tri.idx < 0:
+                tri.idx = self._next_tri_id()
+
+    def _triangle_state(self) -> TriangulationState:
+        self._ensure_triangle_ids()
+        return self._topology.ensure(self.triangles)
+
+    def _rebuild_topology(self) -> TriangulationState:
+        self._ensure_triangle_ids()
+        return self._topology.rebuild(self.triangles)
+
+    def _compact_deleted_triangles(self) -> List[MTri3]:
+        self._topology.ensure(self.triangles)
+        self._ensure_triangle_ids()
+        self.triangles = self._topology.compact_deleted()
+        return self.triangles
+
+    def _rebuild_active_triangle_queue(
+        self,
+        failed_tri_counts: Counter,
+        max_tri_failures: int,
+    ):
+        self._rebuild_topology()
+        priority_queue = []
+        for tri in self._topology.active_triangles():
+            if failed_tri_counts[tri.idx] >= max_tri_failures:
+                continue
+            if tri.circumradius is None:
+                self._compute_circumcircle(tri)
+            heapq.heappush(priority_queue, (-tri.circumradius, tri.idx, tri))
+        return priority_queue
 
     def _build_boundary_component_ids(self) -> dict:
         """Build connected-component ids for original boundary loops.
@@ -1889,8 +1902,8 @@ class GmshBowyerWatsonMeshGenerator:
         返回：
             (is_split, steiner_idx): 是否被分割，以及 Steiner 点索引（如果存在）
         """
-        # 找到所有包含 v1 的三角形
-        tris_with_v1 = [tri for tri in self.triangles if v1 in tri.vertices and not tri.is_deleted()]
+        state = self._triangle_state()
+        tris_with_v1 = state.triangles_with_vertex(v1)
         
         # 检查是否有三角形同时包含 v1 和 v2
         for tri in tris_with_v1:
@@ -1898,11 +1911,7 @@ class GmshBowyerWatsonMeshGenerator:
                 return False, None  # 边存在，未被分割
         
         # 找到所有与 v1 相连的点
-        neighbors_of_v1 = set()
-        for tri in tris_with_v1:
-            for v in tri.vertices:
-                if v != v1:
-                    neighbors_of_v1.add(v)
+        neighbors_of_v1 = state.vertex_neighbors_for(v1)
         
         # 检查是否有 Steiner 点在 v1-v2 连线上
         for neighbor in neighbors_of_v1:
@@ -2343,6 +2352,7 @@ class GmshBowyerWatsonMeshGenerator:
             self._rollback_failed_cavity_insertion(cavity_triangles, new_point_idx)
             return [], False
 
+        self._ensure_triangle_ids(new_triangles)
         return new_triangles, True
     
     # -------------------------------------------------------------------------
@@ -2560,11 +2570,10 @@ class GmshBowyerWatsonMeshGenerator:
         
         # 构建优先级队列（按外接圆半径降序）
         # 使用负半径因为 heapq 是最小堆
-        priority_queue = []
-        for tri in self.triangles:
-            if tri.circumradius is None:
-                self._compute_circumcircle(tri)
-            heapq.heappush(priority_queue, (-tri.circumradius, id(tri), tri))
+        priority_queue = self._rebuild_active_triangle_queue(
+            failed_tri_counts,
+            max_tri_failures,
+        )
 
         # Gmsh 终止条件：外接圆半径阈值 (0.5 * sqrt(2) ≈ 0.707)
         # 作为保护机制，但不作为主要终止条件
@@ -2609,7 +2618,7 @@ class GmshBowyerWatsonMeshGenerator:
             max_iterations += 1
 
             if max_iterations % progress_interval == 0 or max_iterations == 1:
-                active_triangles = [t for t in self.triangles if not t.is_deleted()]
+                active_triangles = self._triangle_state().active_triangles()
                 current_triangles = len(active_triangles)
                 current_points = len(self.points)
                 current_inserted = current_points - initial_point_count
@@ -2621,16 +2630,12 @@ class GmshBowyerWatsonMeshGenerator:
 
                 total_triangles = len(self.triangles)
                 if total_triangles > max(int(2.5 * max(current_triangles, 1)), current_triangles + 4000):
-                    self.triangles = active_triangles
-                    build_adjacency_from_triangles(self.triangles)
-                    priority_queue = []
-                    for tri in self.triangles:
-                        tri_id = id(tri)
-                        if failed_tri_counts[tri_id] >= max_tri_failures:
-                            continue
-                        if tri.circumradius is None:
-                            self._compute_circumcircle(tri)
-                        heapq.heappush(priority_queue, (-tri.circumradius, tri_id, tri))
+                    self._compact_deleted_triangles()
+                    current_triangles = self._triangle_state().active_triangle_count()
+                    priority_queue = self._rebuild_active_triangle_queue(
+                        failed_tri_counts,
+                        max_tri_failures,
+                    )
                     verbose(
                         f"  [清理] 压缩已删除三角形: {total_triangles} -> {current_triangles}, "
                         f"重建队列 {len(priority_queue)} 项"
@@ -2831,12 +2836,12 @@ class GmshBowyerWatsonMeshGenerator:
             )
 
             if new_point is None:
-                failed_tri_counts[id(worst_tri)] += 1
+                failed_tri_counts[worst_tri.idx] += 1
                 consecutive_failures += 1
                 if consecutive_failures <= 10 and self.holes:
                     verbose(f"    [候选拒绝] 三角形 {worst_tri.vertices} 的候选点均无效")
-                if failed_tri_counts[id(worst_tri)] < max_tri_failures:
-                    heapq.heappush(priority_queue, (-worst_tri.circumradius, id(worst_tri), worst_tri))
+                if failed_tri_counts[worst_tri.idx] < max_tri_failures:
+                    heapq.heappush(priority_queue, (-worst_tri.circumradius, worst_tri.idx, worst_tri))
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
                     break
@@ -2846,26 +2851,26 @@ class GmshBowyerWatsonMeshGenerator:
 
             if success:
                 consecutive_failures = 0  # 重置失败计数
-                failed_tri_counts.pop(id(worst_tri), None)
+                failed_tri_counts.pop(worst_tri.idx, None)
                  
                 # 将新三角形加入优先级队列
                 for tri in new_triangles:
                     if tri.circumradius is None:
                         self._compute_circumcircle(tri)
-                    heapq.heappush(priority_queue, (-tri.circumradius, id(tri), tri))
+                    heapq.heappush(priority_queue, (-tri.circumradius, tri.idx, tri))
             else:
-                failed_tri_counts[id(worst_tri)] += 1
+                failed_tri_counts[worst_tri.idx] += 1
                 consecutive_failures += 1
                 if consecutive_failures <= 10:
                     verbose(f"    [插点失败] {insertion_strategy} 候选点未通过 cavity 重连")
-                if failed_tri_counts[id(worst_tri)] < max_tri_failures:
-                    heapq.heappush(priority_queue, (-worst_tri.circumradius, id(worst_tri), worst_tri))
+                if failed_tri_counts[worst_tri.idx] < max_tri_failures:
+                    heapq.heappush(priority_queue, (-worst_tri.circumradius, worst_tri.idx, worst_tri))
                 if consecutive_failures >= max_consecutive_failures:
                     verbose(f"  [进度] 连续失败 {consecutive_failures} 次，停止插点")
                     break
         
         # 清理已删除的三角形
-        self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
+        self._compact_deleted_triangles()
         
         final_triangles = len(self.triangles)
         final_points = len(self.points)
@@ -2933,29 +2938,16 @@ class GmshBowyerWatsonMeshGenerator:
 
     def _count_missing_protected_edges(self) -> int:
         """统计当前三角网中缺失的受保护边数量。"""
-        edge_set = set()
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            for i in range(3):
-                a = verts[i]
-                b = verts[(i + 1) % 3]
-                edge_set.add(frozenset({a, b}))
-
-        missing = 0
-        for edge in self.protected_edges:
-            if edge not in edge_set:
-                missing += 1
-        return missing
+        state = self._triangle_state()
+        return sum(
+            1
+            for edge in self.protected_edges
+            if not state.has_edge(*tuple(edge))
+        )
 
     def _count_isolated_boundary_points(self) -> int:
         """统计当前未连接到任何三角形的原始边界点数量。"""
-        connected = set()
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            connected.update(tri.vertices)
+        connected = self._triangle_state().active_vertices()
         return sum(1 for i in range(self.boundary_count) if i not in connected)
 
     def _remove_holes_via_seed_fill(self, holes_to_use) -> int:
@@ -3212,31 +3204,11 @@ class GmshBowyerWatsonMeshGenerator:
     
     def _is_boundary_edge_in_mesh(self, v1: int, v2) -> bool:
         """检查边(v1, v2)是否已经是当前三角剖分中的边。"""
-        edge_set = frozenset({v1, v2})
-
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            for i in range(3):
-                e1 = verts[i]
-                e2 = verts[(i + 1) % 3]
-                if frozenset({e1, e2}) == edge_set:
-                    return True
-        return False
+        return self._triangle_state().has_edge(v1, v2)
 
     def _is_exact_protected_edge_in_mesh(self, v1: int, v2: int) -> bool:
         """检查受保护边是否以“真实 boundary edge”形式存在。"""
-        edge_set = frozenset({v1, v2})
-        incident_count = 0
-
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            for i in range(3):
-                if frozenset({verts[i], verts[(i + 1) % 3]}) == edge_set:
-                    incident_count += 1
+        incident_count = self._triangle_state().edge_use_count(v1, v2)
 
         if incident_count == 0:
             return False
@@ -3248,17 +3220,7 @@ class GmshBowyerWatsonMeshGenerator:
     
     def _find_edge_adjacent_triangles(self, v1: int, v2: int) -> List[MTri3]:
         """找到包含边(v1, v2)的所有三角形。"""
-        result = []
-        edge_set = frozenset({v1, v2})
-        
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            if v1 in verts and v2 in verts:
-                result.append(tri)
-        
-        return result
+        return self._triangle_state().incident_triangles(v1, v2)
     
     def _can_flip_edge(self, n1: int, n2: int) -> bool:
         """检查边(n1, n2)是否可以翻转。
@@ -4364,16 +4326,7 @@ class GmshBowyerWatsonMeshGenerator:
 
     def _edge_use_count(self, v1: int, v2: int) -> int:
         """统计当前活动三角形中边 (v1, v2) 的邻接单元数量。"""
-        edge_set = frozenset({v1, v2})
-        count = 0
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            for i in range(3):
-                if frozenset({verts[i], verts[(i + 1) % 3]}) == edge_set:
-                    count += 1
-        return count
+        return self._triangle_state().edge_use_count(v1, v2)
 
     def _point_in_domain(self, point: np.ndarray) -> bool:
         if self.outer_boundary is not None and not point_in_polygon(point, self.outer_boundary):
@@ -4385,17 +4338,7 @@ class GmshBowyerWatsonMeshGenerator:
         return True
 
     def _incident_triangles_for_edge(self, v1: int, v2: int) -> List['MTri3']:
-        edge_set = frozenset({v1, v2})
-        incident = []
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            verts = tri.vertices
-            for i in range(3):
-                if frozenset({verts[i], verts[(i + 1) % 3]}) == edge_set:
-                    incident.append(tri)
-                    break
-        return incident
+        return self._triangle_state().incident_triangles(v1, v2)
 
     def _enforce_protected_edge_as_boundary(self, v1: int, v2: int) -> bool:
         """将受保护边的域外侧相邻单元移除，使其回到真实 boundary edge。"""
@@ -4549,7 +4492,7 @@ class GmshBowyerWatsonMeshGenerator:
 
         self.triangles = restored
         self._tri_id_counter = tri_id_counter
-        build_adjacency_from_triangles(self.triangles)
+        self._rebuild_topology()
 
     def _count_triangle_components(self) -> int:
         """统计当前活动三角形的连通分量数。"""
@@ -4624,21 +4567,10 @@ class GmshBowyerWatsonMeshGenerator:
         if self._is_protected_edge(n1, n2):
             return False
         
-        # 查找共享该边的两个三角形
-        t1 = t2 = None
-        for tri in self.triangles:
-            if tri.is_deleted():
-                continue
-            if n1 in tri.vertices and n2 in tri.vertices:
-                if t1 is None:
-                    t1 = tri
-                elif t2 is None:
-                    t2 = tri
-                else:
-                    break
-
-        if t1 is None or t2 is None:
+        incident = self._triangle_state().incident_triangles(n1, n2)
+        if len(incident) < 2:
             return False
+        t1, t2 = incident[:2]
         
         # 找到对角顶点
         a_idx = next(v for v in t1.vertices if v != n1 and v != n2)
@@ -4672,7 +4604,7 @@ class GmshBowyerWatsonMeshGenerator:
         self.triangles.append(new_tri2)
         
         # 重建邻接关系
-        build_adjacency_from_triangles(self.triangles)
+        self._rebuild_topology()
         
         return True
     
@@ -4882,7 +4814,7 @@ class GmshBowyerWatsonMeshGenerator:
     def _collect_mesh_output(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         points, simplices, boundary_mask = _build_mesh_arrays(
             self.points,
-            self.triangles,
+            self._triangle_state().active_triangles(),
             self.boundary_count,
             self.boundary_mask,
         )
