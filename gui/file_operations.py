@@ -8,18 +8,24 @@ PyQt文件操作模块
 
 import os
 import sys
+from pathlib import Path
 import vtk
 from vtk.util import numpy_support
 import numpy as np
+from utils.runtime_paths import add_existing_path, find_resource_root
 
 # 添加项目根目录到sys.path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(project_root)
+project_root = Path(__file__).resolve().parent.parent
+add_existing_path(project_root)
 
 # 添加 meshio 到 sys.path
-meshio_path = os.path.join(project_root, "3rd_party", "meshio", "src")
-if meshio_path not in sys.path:
-    sys.path.insert(0, meshio_path)
+resource_root = find_resource_root(
+    __file__,
+    levels_up=1,
+    required_paths=("3rd_party/meshio/src",),
+)
+meshio_path = resource_root / "3rd_party" / "meshio" / "src"
+add_existing_path(meshio_path, prepend=True)
 
 # 导入统一网格数据类
 from data_structure.unstructured_grid import Unstructured_Grid

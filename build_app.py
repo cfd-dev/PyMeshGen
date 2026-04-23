@@ -11,7 +11,7 @@ PyMeshGen 一键打包工具
     - 可选：创建便携版 ZIP 压缩包
 
 使用方法:
-    python unified_build.py [--clean] [--debug] [--installer] [--zip]
+    python build_app.py [--clean] [--debug] [--installer] [--zip]
 
 参数:
     --clean       清理之前的构建文件
@@ -433,11 +433,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python unified_build.py              基本构建（仅可执行文件）
-  python unified_build.py --clean      清理后构建
-  python unified_build.py --installer  创建安装包（需要 Inno Setup）
-  python unified_build.py --zip        创建便携版 ZIP
-  python unified_build.py --all        创建所有输出
+  python build_app.py              基本构建（仅可执行文件）
+  python build_app.py --clean      清理后构建
+  python build_app.py --installer  创建安装包（需要 Inno Setup）
+  python build_app.py --zip        创建便携版 ZIP
+  python build_app.py --all        创建所有输出
         """
     )
     

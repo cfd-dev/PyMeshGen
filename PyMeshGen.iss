@@ -5,7 +5,6 @@
 ;   1. 先运行 build.bat 构建可执行文件
 ;   2. 安装 Inno Setup: https://jrsoftware.org/isdl.php
 ;   3. 运行: iscc.exe PyMeshGen.iss
-;   或运行：build_installer.bat
 ; ============================================================================
 
 #define MyAppName "PyMeshGen"

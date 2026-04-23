@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import sys
 import os
+from utils.runtime_paths import find_resource_root
 
 # 添加必要的路径 (保持兼容性)
 current_dir = os.path.dirname(__file__)
@@ -84,10 +85,14 @@ class Parameters:
     def open_config_file(self):
         # 第一种方式，从main.json读取案例配置文件路径
         if self.get_param_from == "FROM_MAIN_JSON":
-            self.json_file = Path(__file__).parent.parent / "config/main.json"
+            resource_root = find_resource_root(__file__, levels_up=1, required_paths=("config",))
+            self.json_file = resource_root / "config" / "main.json"
             with open(self.json_file, "r") as f1:
                 main_config = json.load(f1)
-                self.case_file = Path(main_config["case_file"]).resolve()
+                case_file = Path(main_config["case_file"])
+                if not case_file.is_absolute():
+                    case_file = (resource_root / case_file).resolve()
+                self.case_file = case_file
         elif self.get_param_from == "FROM_CASE_JSON":
             # 第二种方式，如果直接给定案例配置，则直接读取
             self.case_file = self.json_file

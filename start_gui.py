@@ -9,21 +9,24 @@ import sys
 import os
 import traceback
 from pathlib import Path
+from utils.runtime_paths import add_existing_path, find_resource_root
 
 # 添加项目根目录和子目录到Python路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).resolve().parent
+add_existing_path(project_root, prepend=True)
 
 # 添加子目录到Python路径
 for subdir in ["fileIO", "data_structure", "meshsize", "visualization", "adfront2", "optimize", "utils", "gui"]:
     subdir_path = project_root / subdir
-    if subdir_path.exists() and str(subdir_path) not in sys.path:
-        sys.path.append(str(subdir_path))
+    add_existing_path(subdir_path)
 
 # 添加 meshio 到 Python 路径
-meshio_path = project_root / "3rd_party" / "meshio" / "src"
-if meshio_path.exists():
-    sys.path.insert(0, str(meshio_path))
+resource_root = find_resource_root(
+    __file__,
+    required_paths=("3rd_party/meshio/src",),
+)
+meshio_path = resource_root / "3rd_party" / "meshio" / "src"
+add_existing_path(meshio_path, prepend=True)
 
 def main():
     """主启动函数"""

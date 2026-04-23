@@ -9,7 +9,7 @@ REM   - 可选：创建 Inno Setup 安装包
 REM   - 可选：创建便携版 ZIP 压缩包
 REM
 REM 使用方法:
-REM   双击运行此脚本，或从命令行执行: unified_build.bat [参数]
+REM   双击运行此脚本，或从命令行执行: build.bat [参数]
 REM
 REM 参数:
 REM   clean       - 清理之前的构建文件
@@ -59,7 +59,7 @@ REM 运行打包脚本
 echo 正在启动打包工具...
 echo.
 
-python unified_build.py %ARGS%
+python build_app.py %ARGS%
 
 if errorlevel 1 (
     echo.
@@ -84,7 +84,7 @@ echo ===========================================================================
 echo PyMeshGen 一键打包工具 - 使用说明
 echo ============================================================================
 echo.
-echo 用法：unified_build.bat [参数]
+echo 用法：build.bat [参数]
 echo.
 echo 参数:
 echo   clean       - 清理之前的构建文件后再打包
@@ -95,12 +95,12 @@ echo   all         - 创建所有输出（安装包 + ZIP）
 echo   help        - 显示此帮助信息
 echo.
 echo 示例:
-echo   unified_build.bat              - 基本打包（仅可执行文件）
-echo   unified_build.bat clean        - 清理后打包
-echo   unified_build.bat installer    - 创建安装包（需要 Inno Setup）
-echo   unified_build.bat zip          - 创建 ZIP 便携版
-echo   unified_build.bat all          - 创建安装包和 ZIP
-echo   unified_build.bat clean all    - 清理并创建所有输出
+echo   build.bat              - 基本打包（仅可执行文件）
+echo   build.bat clean        - 清理后打包
+echo   build.bat installer    - 创建安装包（需要 Inno Setup）
+echo   build.bat zip          - 创建 ZIP 便携版
+echo   build.bat all          - 创建安装包和 ZIP
+echo   build.bat clean all    - 清理并创建所有输出
 echo.
 echo 输出位置:
 echo   可执行文件：dist\PyMeshGen.exe

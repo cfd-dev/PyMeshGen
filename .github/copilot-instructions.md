@@ -1,26 +1,42 @@
 # Copilot Instructions for PyMeshGen
 
-## Build, test, and lint commands
+## Setup, run, test, and packaging commands
 - Install dependencies: `pip install -r requirements.txt`
-- CLI mesh generation (config-driven): `python PyMeshGen.py --case "./config/30p30n.json"`
+- Install in editable mode: `pip install -e .`
+- CLI mesh generation (config-driven): `python PyMeshGen.py --case ".\\config\\30p30n.json"`
 - Launch GUI: `python start_gui.py`
 - Run all tests: `cd unittests; python run_tests.py`
-- Run quick tests (skips heavy mesh generation): `cd unittests; python run_quick_tests.py`
-- Run a specific test module: `cd unittests; python run_tests.py <test_name>` (e.g., `python run_tests.py cas_file_io`)
-- Run a single test file via unittest: `cd unittests; python -m unittest test_cas_file_io.py`
+- Run quick tests (skips heavy mesh-generation regressions): `cd unittests; python run_quick_tests.py`
+- Run a named test module: `cd unittests; python run_tests.py cas_file_io`
+- Run one unittest target from repo root: `python -m unittest unittests.test_bowyer_watson.TestBowyerWatsonJSONConfig.test_anw_bowyer_watson`
+- Build source and wheel distributions: `python -m pip install build && python -m build`
+- There is no repo-root lint configuration checked in; do not invent Ruff/Flake8/Pylint commands. Prefer the existing unittest scripts and focused unittest targets.
 
 ## High-level architecture
-- **Entry points**: `PyMeshGen.py` (CLI and library wrapper) and `start_gui.py` (GUI launcher). Both construct `Parameters` and call `core.generate_mesh`.
-- **Core pipeline (`core.py`)**: parse input mesh (typically Fluent `.cas`) → construct initial front (`data_structure.front2d`) → build sizing field (`meshsize.QuadtreeSizing`) → generate boundary layers (`adfront2.adlayers2`) → generate interior mesh (`adfront2.adfront2` or `adfront2.adfront2_hybrid`) → optimize (`optimize.edge_swap`, `optimize.optimize_hybrid_grid`, `optimize.laplacian_smooth`) → merge and export via `Unstructured_Grid`.
-- **Data model**: `data_structure.unstructured_grid.Unstructured_Grid` is the central mesh container; `cell_container` is the authoritative store and `cells` is a derived read-only view.
-- **I/O**: `fileIO.read_cas` for Fluent input, `fileIO.vtk_io` / `fileIO.stl_io` for output and conversions; OCC/VTK conversion lives in `fileIO.occ_to_vtk`.
-- **GUI**: `gui.gui_main` hosts the PyQt5 app; `gui.mesh_display` handles VTK rendering; `gui.config_manager` maps GUI parameters to `Parameters` and config JSON; import runs asynchronously in `gui.import_thread`.
-- **AI/optimization modules**: `neural/` contains NN/DRL smoothing, used for advanced mesh optimization workflows.
+- **Entry points**: `PyMeshGen.py` is the CLI/library wrapper and `start_gui.py` is the GUI launcher. The GUI bootstraps PyQt5 and prepends `3rd_party\\meshio\\src` to `sys.path`.
+- **Pipeline orchestrator**: `core.generate_mesh()` is the main hub. It resolves the input grid/front data, builds `meshsize.QuadtreeSizing`, optionally grows boundary layers with `adfront2.adlayers2.Adlayers2`, runs the selected interior meshing path, then merges/optimizes/exports the result.
+- **Interior meshing branches**:
+  - `mesh_type == 1` or `2`: triangular advancing-front interior meshing via `adfront2.adfront2.Adfront2`
+  - `mesh_type == 3`: mixed mesh path; `triangle_to_quad_method == "q_morph"` uses a triangle-first pipeline, otherwise `adfront2.adfront2_hybrid.Adfront2Hybrid`
+  - `mesh_type == 4`: Delaunay path via `delaunay.create_bowyer_watson_mesh()`, which dispatches to the Bowyer-Watson core or `delaunay.triangle_backend`
+- **Delaunay package layout**: `bw_utils.py` prepares boundary input and backend dispatch; `bw_core_stable.py` contains the active Bowyer-Watson implementation; `bw_cavity.py`, `bw_predicates.py`, and `bw_types.py` hold supporting geometry/topology logic; `triangle_backend.py` wraps the Triangle executable path; `postprocess.py` and `validation.py` handle boundary recovery and topology checks.
+- **Mesh container**: `data_structure.unstructured_grid.Unstructured_Grid` is the canonical mesh object shared across the pipeline.
 
-## Key conventions
-- **Configuration source**: `Parameters` loads either `config/main.json` (which points to a case file) or a direct case JSON (via `--case`). Case files live under `config/` and specify parts, sizes, and prism-layer settings.
-- **Part parameters**: each part requires at least `part_name`; optional fields (e.g., `PRISM_SWITCH`, `first_height`, `max_layers`, `full_layers`) default in `Parameters._create_part_params` and are merged with mesh-derived parts via `update_part_params_from_mesh`.
-- **Mesh type selection**: `Parameters.mesh_type` drives algorithm choice in `core.generate_mesh` (1 = triangular, 3 = hybrid tri/quad).
-- **Unstructured grid invariants**: update mesh cells via `Unstructured_Grid.set_cells`; do not write to `cells` directly (it is derived from `cell_container`). Updating `node_coords` invalidates `bbox` and is recomputed lazily.
-- **GUI/CLI messaging**: `utils.message` is the centralized message system; GUI passes its instance to `core.generate_mesh` so status updates are routed to the UI.
-- **Third-party meshio**: GUI startup adds `3rd_party/meshio/src` to `sys.path` for compatibility with bundled meshio.
+## Configuration and data conventions
+- `Parameters` loads either `config\\main.json` (which points to a case file) or a direct case JSON passed with `--case`. Automation should usually work with the case JSON under `config\\`.
+- Each part requires `part_name`. Optional part fields such as `max_size`, `PRISM_SWITCH`, `first_height`, `growth_rate`, `max_layers`, `full_layers`, and `multi_direction` are defaulted in `Parameters._create_part_params()`.
+- If imported mesh data contains parts missing from the config, `Parameters.update_part_params_from_mesh()` adds default part settings instead of failing.
+- `mesh_type == 4` is the Delaunay/Bowyer-Watson workflow. `delaunay_backend` defaults to `"bowyer_watson"` and `triangle_point_strategy` defaults to `"equilateral"`.
+- Boundary-layer cases on `mesh_type == 4` force the effective inner Delaunay backend to `triangle` through `utils.core_helpers.select_delaunay_backend()`, even if the config requested Bowyer-Watson.
+- `gui.config_manager.ConfigManager` preserves part-level settings plus non-default `curves` entries when importing/exporting GUI JSON config. Curve entries with `PRISM_SWITCH == "match"` are meaningful and should not be dropped accidentally.
+- `utils.message` is the shared message channel. `core.generate_mesh()` registers the GUI instance so `info`, `warning`, and `error` output is mirrored into the GUI log.
+
+## Unstructured_Grid invariants
+- `cell_container` is the only writable cell source of truth.
+- `cells` is a derived read-only node-id view; update cell topology through `set_cells()` or `Unstructured_Grid.from_cells()`, not by mutating `cells` directly.
+- Updating `node_coords` invalidates the cached `bbox`; it is recomputed lazily on access.
+
+## Test guidance
+- `unittests/run_quick_tests.py` is the fastest broad regression pass and skips the slow mesh-generation scenarios.
+- Delaunay, boundary recovery, and boundary-layer regressions are concentrated in `unittests/test_bowyer_watson.py`; use focused unittest targets there when changing `delaunay/`, `core.py`, `meshsize/`, or `adfront2/`.
+- GUI-related tests exist, but they are not the default smoke tests for algorithmic meshing changes.

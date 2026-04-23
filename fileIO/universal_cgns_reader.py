@@ -10,6 +10,7 @@ import os
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+from utils.runtime_paths import add_existing_path, find_resource_root
 
 try:
     import h5py
@@ -19,13 +20,17 @@ except ImportError:
     print("❌ h5py 未安装，无法读取 CGNS 文件")
 
 # 添加项目根目录到Python路径
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
+project_root = Path(__file__).resolve().parent.parent
+add_existing_path(project_root, prepend=True)
 
 # 添加 meshio 到 Python 路径
-meshio_path = project_root / "3rd_party" / "meshio" / "src"
-if meshio_path.exists():
-    sys.path.insert(0, str(meshio_path))
+resource_root = find_resource_root(
+    __file__,
+    levels_up=1,
+    required_paths=("3rd_party/meshio/src",),
+)
+meshio_path = resource_root / "3rd_party" / "meshio" / "src"
+add_existing_path(meshio_path, prepend=True)
 
 
 class UniversalCGNSReader:

@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PyMeshGen"
+version = "1.0.0"
+description = "Python-based unstructured mesh generator for CFD/FEA preprocessing and algorithm research"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.8"
+license = "GPL-2.0-or-later"
+authors = [
+  { name = "cfd_dev", email = "cfd_dev@126.com" }
+]
+keywords = ["mesh", "mesh-generation", "cfd", "fea", "delaunay", "advancing-front"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dynamic = ["dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/cfd-dev/PyMeshGen"
+Repository = "https://github.com/cfd-dev/PyMeshGen"
+Issues = "https://github.com/cfd-dev/PyMeshGen/issues"
+
+[project.scripts]
+pymeshgen = "PyMeshGen:PyMeshGen"
+pymeshgen-mixed = "PyMeshGen:PyMeshGen_mixed"
+
+[project.gui-scripts]
+pymeshgen-gui = "start_gui:main"
+
+[tool.setuptools]
+py-modules = ["PyMeshGen", "core", "start_gui"]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = [
+  "adfront2*",
+  "data_structure*",
+  "delaunay*",
+  "fileIO*",
+  "gui*",
+  "meshsize*",
+  "optimize*",
+  "utils*",
+  "visualization*",
+]
+exclude = [
+  "unittests*",
+  "backup*",
+  "build*",
+  "dist*",
+  "examples*",
+  "temp_docs*",
+]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.package-data]
+"*" = ["*.txt", "*.md", "*.json", "*.cas"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["__pycache__/*", "*.pyc", "*.pyo"]
+

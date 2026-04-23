@@ -10,14 +10,20 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from utils.runtime_paths import find_resource_root
+
 try:
     from utils.geom_toolkit import point_in_polygon
 except ModuleNotFoundError:
     from geom_toolkit import point_in_polygon
 
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_TRIANGLE_DIR = _REPO_ROOT / "3rd_party" / "triangle"
+_RESOURCE_ROOT = find_resource_root(
+    __file__,
+    levels_up=1,
+    required_paths=("3rd_party/triangle",),
+)
+_TRIANGLE_DIR = _RESOURCE_ROOT / "3rd_party" / "triangle"
 _TRIANGLE_EXE = _TRIANGLE_DIR / "build" / "pymeshgen_triangle.exe"
 _TRIANGLE_SOURCE = _TRIANGLE_DIR / "triangle.c"
 
