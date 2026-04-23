@@ -23,7 +23,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Check out required packaging submodules
+        run: |
+          git submodule sync -- 3rd_party/meshio
+          git submodule update --init --depth=1 3rd_party/meshio
 
       - name: Set up Python
         uses: actions/setup-python@v5
