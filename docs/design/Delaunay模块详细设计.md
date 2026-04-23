@@ -55,7 +55,7 @@ core.generate_mesh()
   -> create_bowyer_watson_mesh(...)         # delaunay 公共入口
       -> bw_utils._build_boundary_input()   # front -> 点/边/孔洞
       -> backend dispatch
-         -> GmshBowyerWatsonMeshGenerator
+         -> BowyerWatsonMeshGenerator
          -> create_triangle_mesh
   -> core._recover_delaunay_boundary_edges()  # 轻量边翻转补恢复（非 Triangle）
   -> Unstructured_Grid.from_cells()           # 统一转网格对象
@@ -88,7 +88,7 @@ core.generate_mesh()
 
 | 文件 | 角色 | 主要职责 |
 | --- | --- | --- |
-| `__init__.py` | 包入口 | 暴露 `GmshBowyerWatsonMeshGenerator`、`MTri3`、`create_bowyer_watson_mesh` |
+| `__init__.py` | 包入口 | 暴露 `BowyerWatsonMeshGenerator`、`MTri3`、`create_bowyer_watson_mesh` |
 | `bw_utils.py` | 输入归一化与后端分发 | 从 `front` 提取边界点、边界边、外边界和孔洞；按配置选择 Bowyer-Watson 或 Triangle |
 | `bw_core_stable.py` | 主算法实现 | Gmsh 风格 Bowyer-Watson、边界恢复、孔洞/域清理、拓扑清理 |
 | `bw_cavity.py` | 空腔搜索与重连 | Cavity 搜索、star-shaped 校验、插点后重连、失败恢复 |
@@ -113,7 +113,7 @@ core.generate_mesh()
 
 `delaunay\__init__.py` 当前公开：
 
-- `GmshBowyerWatsonMeshGenerator`
+- `BowyerWatsonMeshGenerator`
 - `MTri3`
 - `create_bowyer_watson_mesh`
 
@@ -132,7 +132,7 @@ from delaunay import create_bowyer_watson_mesh
 3. 自动识别孔洞与外边界
 4. 根据 `backend` 选择：
    - `triangle`
-   - `bowyer_watson` -> `GmshBowyerWatsonMeshGenerator`
+   - `bowyer_watson` -> `BowyerWatsonMeshGenerator`
 5. 统一返回：
     - `points: np.ndarray`
     - `simplices: np.ndarray`
@@ -302,7 +302,7 @@ boundary_front
 
 ## 8. Bowyer-Watson 核心算法设计
 
-### 8.1 `GmshBowyerWatsonMeshGenerator`
+### 8.1 `BowyerWatsonMeshGenerator`
 
 这是当前 `backend="bowyer_watson"` 的唯一实现，设计上更接近 Gmsh `meshGFaceDelaunayInsertion.cpp` 的二维思路。
 
@@ -338,7 +338,7 @@ boundary_front
 
 ### 8.3 迭代细化策略
 
-Gmsh 风格细化主循环 `_insert_points_iteratively_gmsh()` 的核心元素：
+细化主循环 `_insert_points_iteratively()` 的核心元素：
 
 1. **优先级队列**
    - 按外接圆半径排序，优先处理“坏三角形”
@@ -402,7 +402,7 @@ start_tri
 模块中存在两层边界恢复：
 
 1. **核心恢复**：`bw_core_stable.py`
-   - `GmshBowyerWatsonMeshGenerator._constrained_delaunay_triangulation()`
+   - `BowyerWatsonMeshGenerator._constrained_delaunay_triangulation()`
    - 面向受保护边执行 swap-first 的精确恢复
 2. **轻量恢复**：`postprocess.py`
    - `recover_boundary_edges_by_swaps()`

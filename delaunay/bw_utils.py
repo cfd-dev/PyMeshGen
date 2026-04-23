@@ -230,9 +230,9 @@ def create_bowyer_watson_mesh(
             point_strategy=triangle_point_strategy,
         )
 
-    from .bw_core_stable import GmshBowyerWatsonMeshGenerator
+    from .bw_core_stable import BowyerWatsonMeshGenerator
 
-    generator = GmshBowyerWatsonMeshGenerator(
+    generator = BowyerWatsonMeshGenerator(
         boundary_points=boundary_input.boundary_points,
         boundary_edges=boundary_input.boundary_edges,
         sizing_system=sizing_system,

@@ -8,14 +8,14 @@ Bowyer-Watson Delaunay 网格生成器 - 核心实现（重构版）
 4. 边界边保护与恢复
 5. 增量式点插入（避免全量重剖分）
 
-重构特性（参考 Gmsh C++ Delaunay 实现）：
-- Gmsh 风格的数据结构（MTri3、edgeXface）
+重构特性（参考外部 C++ Delaunay 实现）：
+- 当前主实现使用的数据结构（MTri3、edgeXface）
 - 递归/迭代 Cavity 搜索（recurFindCavityAniso）
 - 鲁棒几何谓词（Shewchuk's predicates）
 - 懒删除优化（避免频繁集合操作）
 - 优先级队列（按外接圆半径排序）
 
-参考: Gmsh C++ Delaunay 实现
+参考: 外部 C++ Delaunay 实现
 """
 
 import numpy as np
@@ -42,7 +42,7 @@ from .bw_predicates import (
 from .bw_types import MTri3, TriangulationState, build_adjacency_from_triangles
 
 __all__ = [
-    "GmshBowyerWatsonMeshGenerator",
+    "BowyerWatsonMeshGenerator",
 ]
 
 
@@ -90,13 +90,13 @@ def _log_mesh_summary(
 
 
 # =============================================================================
-# GmshBowyerWatsonMeshGenerator
+# BowyerWatsonMeshGenerator
 # =============================================================================
 
-class GmshBowyerWatsonMeshGenerator:
-    """Gmsh 风格的 Bowyer-Watson 网格生成器。
+class BowyerWatsonMeshGenerator:
+    """当前主实现的 Bowyer-Watson 网格生成器。
     
-    参考 Gmsh 的核心算法流程：
+    参考当前主实现采用的核心流程：
     1. 构建初始三角剖分（超级三角形）
     2. 主循环：选择最差三角形 → 计算插入点 → 插入点
     3. Cavity 搜索：递归查找违反 Delaunay 的三角形
@@ -402,7 +402,7 @@ class GmshBowyerWatsonMeshGenerator:
     def _get_target_size_for_triangle(self, tri: MTri3) -> Optional[float]:
         """获取三角形的目标尺寸。
 
-        Gmsh 做法：使用三角形三个顶点处局部尺寸的平均值。
+        当前做法：使用三角形三个顶点处局部尺寸的平均值。
         
         关键修复：当三角形包含边界节点时，目标尺寸应考虑边界边长度，
         避免因尺寸场过大而产生极扁的三角形。
@@ -784,7 +784,7 @@ class GmshBowyerWatsonMeshGenerator:
                     verbose(f"  警告：点 {i} ({point}) 未找到包含三角形")
                 continue
 
-            # 使用 Gmsh Cavity 搜索（使用 circumcircle 测试，这是正确的）
+            # 使用当前主路径的 Cavity 搜索（使用 circumcircle 测试）
             cavity_triangles, shell_edges = recur_find_cavity(
                 containing_tri,
                 point,
@@ -877,13 +877,13 @@ class GmshBowyerWatsonMeshGenerator:
             verbose(f"  仍有 {len(still_missing)} 条边界边无法恢复")
 
     # -------------------------------------------------------------------------
-    # Gmsh 风格的迭代插点主循环
+    # 主实现的迭代插点主循环
     # -------------------------------------------------------------------------
     
-    def _insert_points_iteratively_gmsh(self, target_triangle_count: Optional[int] = None):
-        """Gmsh 风格的迭代插入内部点。
+    def _insert_points_iteratively(self, target_triangle_count: Optional[int] = None):
+        """当前主实现的迭代插入内部点。
         
-        参考 Gmsh bowyerWatson 主循环：
+        参考当前主路径的 bowyerWatson 主循环：
         1. 从优先级队列取出最差三角形（外接圆半径最大）
         2. 检查终止条件（半径阈值或顶点数限制）
         3. 计算插入点（外接圆心）
@@ -925,16 +925,12 @@ class GmshBowyerWatsonMeshGenerator:
             max_tri_failures,
         )
 
-        # Gmsh 终止条件：外接圆半径阈值 (0.5 * sqrt(2) ≈ 0.707)
-        # 作为保护机制，但不作为主要终止条件
-        gmsh_radius_threshold = 0.5 * sqrt(2.0)
-
         # 定期全量检查的间隔
         full_check_interval = 100
         last_full_check = 0
 
         # 版本控制：A=稳定（保守细分），B=激进（积极细分），C=融合（智能自适应）
-        # 版本C设计（基于Gmsh Frontal Delaunay理念）：
+        # 版本C设计（基于当前前沿 Delaunay 细化理念）：
         #   - 核心思想：边界保护优先，内部适度细化
         #   - 策略1：边界边附近的三角形使用宽松阈值（size_tolerance=1.2, quality_threshold=0.1）
         #   - 策略2：远离边界的内部三角形使用严格阈值（size_tolerance=1.1, quality_threshold=0.15）
@@ -2145,7 +2141,7 @@ class GmshBowyerWatsonMeshGenerator:
     def _recover_boundary_edges(self) -> int:
         """恢复丢失的边界边。
 
-        参考 Gmsh recoverEdges() 的恢复顺序：
+        参考经典 recoverEdges() 的恢复顺序：
         1. 找出缺失的边
         2. 对每条缺失边，使用边交换 + Steiner点插入恢复
         """
@@ -2196,7 +2192,7 @@ class GmshBowyerWatsonMeshGenerator:
     def _recover_single_edge_enhanced(self, v1: int, v2: int, max_iter: int = 1000) -> bool:
         """通过连续边翻转恢复边界边（增强版）。
 
-        参考Gmsh recoverEdgeBySwaps()：
+        参考经典 recoverEdgeBySwaps()：
         - 查找与目标边相交的网格边
         - 执行2-2交换（边翻转）
         - 迭代直到边被恢复或无法继续
@@ -3035,7 +3031,7 @@ class GmshBowyerWatsonMeshGenerator:
 
     def _run_initial_domain_cleanup(self) -> None:
         if self.holes:
-            verbose("阶段 2.6/3: 清理孔洞内三角形（Gmsh顺序：后删除孔洞）...")
+            verbose("阶段 2.6/3: 清理孔洞内三角形（当前顺序：后删除孔洞）...")
             before_count = len(self.triangles)
             self._remove_hole_triangles()
             verbose(f"  删除孔洞内三角形: {before_count - len(self.triangles)} 个")
@@ -3186,25 +3182,25 @@ class GmshBowyerWatsonMeshGenerator:
         返回:
             (points, simplices, boundary_mask)
         """
-        timer = TimeSpan("开始 Gmsh Bowyer-Watson 网格生成...")
+        timer = TimeSpan("开始 Bowyer-Watson 网格生成...")
         self._initialize_generation_state()
         
         verbose("阶段 1/3: 初始三角剖分...")
         self._triangulate()
         verbose(f"  初始三角形数量: {len(self.triangles)}")
 
-        verbose("阶段 2/3: Gmsh 风格迭代插入内部点...")
+        verbose("阶段 2/3: 迭代插入内部点...")
         if self.holes:
             verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
             for i, hole in enumerate(self.holes):
                 hole_center = np.mean(hole, axis=0)
                 verbose(f"    孔洞 {i}: {len(hole)} 个点，中心 {hole_center}")
-        self._insert_points_iteratively_gmsh(target_triangle_count)
+        self._insert_points_iteratively(target_triangle_count)
 
-        # 关键修复：根据Gmsh/TetGen的正确顺序
+        # 关键修复：根据成熟 Delaunay/TetGen 实现的正确顺序
         # 1. 先恢复边界边（在完整三角网上操作）
         # 2. 再删除孔洞三角形（此时边界边已经被保护）
-        # 参考 Gmsh / TetGen 的典型顺序：
+        # 参考成熟实现 / TetGen 的典型顺序：
         #   5. 恢复边界
         #   6. 挖洞
 
@@ -3234,7 +3230,7 @@ class GmshBowyerWatsonMeshGenerator:
         self._run_topology_cleanup_passes()
         points, simplices, boundary_mask = self._collect_mesh_output()
         _log_mesh_summary(points, simplices, boundary_mask)
-        timer.show_to_console("Gmsh Bowyer-Watson 网格生成完成")
+        timer.show_to_console("Bowyer-Watson 网格生成完成")
         return points, simplices, boundary_mask
 
     def _remove_overlapping_triangles(self) -> int:
