@@ -507,17 +507,22 @@ class Adfront2Hybrid(Adfront2):
     def reconstruct_node2front(self):
         """重构node2front列表，按照先左侧阵面，后右侧阵面的顺序存储"""
         num_neighbors = 2
-        for front in self.front_list:
-            for node_elem in front.node_elems:
-                if len(node_elem.node2front) == 0:
-                    node_elem.node2front = [None] * num_neighbors  # 预分配2个位置
+        node_front_slots = {}
 
+        for front in self.front_list:
             # node_elem在front中是起点，则front是在后面
             for i, node_elem in enumerate(front.node_elems):
-                node_elem.node2front[(i + 1) % num_neighbors] = front
+                slots = node_front_slots.setdefault(
+                    node_elem.idx,
+                    [None] * num_neighbors,
+                )
+                slots[(i + 1) % num_neighbors] = front
 
         # 检查每个节点的邻阵面数量是否为2
         for front in self.front_list:
             for node_elem in front.node_elems:
-                if not all(node_elem.node2front):
+                node_elem.node2front = list(
+                    node_front_slots.get(node_elem.idx, [None] * num_neighbors)
+                )
+                if node_elem.idx < 0 or not all(node_elem.node2front):
                     raise ValueError(f"节点 {node_elem.idx} 的邻阵面数量不足2")

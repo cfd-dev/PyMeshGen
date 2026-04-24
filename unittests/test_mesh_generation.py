@@ -392,9 +392,11 @@ class TestMeshGeneration(unittest.TestCase):
     def test_30p30n_mixed_generation(self):
         """测试30p30n_mixed网格生成"""
         case_file, output_file = self._fix_project_case_config("30p30n_mixed")
+        output_file = self.output_dir / "test_30p30n_mixed_greedy_merge.vtk"
         self._override_case_config(
             case_file,
             debug_level=0,
+            output_file=output_file,
             triangle_to_quad_method="greedy_merge",
         )
 
@@ -406,16 +408,18 @@ class TestMeshGeneration(unittest.TestCase):
             case_file.unlink(missing_ok=True)
 
         grid = parse_vtk_msh(output_file)
-        self.assertAlmostEqual(grid.num_cells, 4370, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 4202, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 3474, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 3381, delta=20)
         self.assertLess(cost, 120)
 
     def test_30p30n_mixed_generation_qmorh(self):
         """测试30p30n_mixed网格生成, q-morph"""
         case_file, output_file = self._fix_project_case_config("30p30n_mixed")
+        output_file = self.output_dir / "test_30p30n_mixed_q_morph.vtk"
         self._override_case_config(
             case_file,
             debug_level=0,
+            output_file=output_file,
             triangle_to_quad_method="q_morph",
         )
 
@@ -455,8 +459,8 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1173, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 1121, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1017, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 984, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 
@@ -485,8 +489,8 @@ class TestMeshGeneration(unittest.TestCase):
             if quadrilateral_quality2(*points) <= 1e-9:
                 zero_quality_quads += 1
 
-        self.assertAlmostEqual(grid.num_cells, 1131, delta=20)
-        self.assertAlmostEqual(grid.num_nodes, 868, delta=20)
+        self.assertAlmostEqual(grid.num_cells, 1033, delta=20)
+        self.assertAlmostEqual(grid.num_nodes, 808, delta=20)
         self.assertEqual(zero_quality_quads, 0)
         self.assertLess(cost, 40)
 

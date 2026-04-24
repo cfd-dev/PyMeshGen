@@ -930,165 +930,147 @@ def edge_collapse(unstr_grid, min_edge_ratio=0.001, max_iterations=None):
         for coords in node_coords
     ]
     boundary_nodes = set(unstr_grid.boundary_nodes_list)
-    
-    # 计算平均边长
-    edge_lengths = []
-    for cell in unstr_grid.cell_container:
-        if type(cell).__name__ == 'Triangle':
+
+    def _build_topology():
+        edge_map = {}
+        node_to_cells = {}
+        edge_lengths = []
+
+        for cell_idx, cell in enumerate(unstr_grid.cell_container):
+            if type(cell).__name__ != "Triangle":
+                continue
             node_ids = cell.node_ids
+            for node_id in node_ids:
+                node_to_cells.setdefault(node_id, []).append(cell_idx)
             for i in range(3):
                 j = (i + 1) % 3
-                length = np.linalg.norm(
-                    np.array(node_coords[node_ids[i]]) - np.array(node_coords[node_ids[j]])
-                )
-                edge_lengths.append(length)
-    
+                n0, n1 = node_ids[i], node_ids[j]
+                edge = (n0, n1) if n0 < n1 else (n1, n0)
+                edge_map.setdefault(edge, []).append(cell_idx)
+                edge_lengths.append(np.linalg.norm(node_coords[n0] - node_coords[n1]))
+
+        return edge_map, node_to_cells, edge_lengths
+
+    def _orient_ccw(node_ids):
+        p0 = node_coords_2d[node_ids[0]]
+        p1 = node_coords_2d[node_ids[1]]
+        p2 = node_coords_2d[node_ids[2]]
+        cross = (p1[0] - p0[0]) * (p2[1] - p0[1]) - (p1[1] - p0[1]) * (p2[0] - p0[0])
+        if abs(cross) <= 1e-14:
+            return None
+        if cross < 0:
+            return [node_ids[0], node_ids[2], node_ids[1]]
+        return node_ids
+
+    edge_map, node_to_cells, edge_lengths = _build_topology()
     if not edge_lengths:
         timer.show_to_console("边折叠优化完成（无需折叠）.")
         return unstr_grid
-    
-    avg_edge_length = np.mean(edge_lengths)
+
+    avg_edge_length = float(np.mean(edge_lengths))
     min_edge_length = avg_edge_length * min_edge_ratio
-    
     info(f"平均边长：{avg_edge_length:.6f}, 最小折叠边长：{min_edge_length:.6f}")
-    
-    # 构建节点到单元的映射
-    node_to_cells = {}
-    for cell_idx, cell in enumerate(unstr_grid.cell_container):
-        if type(cell).__name__ != 'Triangle':
-            continue
-        for node_id in cell.node_ids:
-            if node_id not in node_to_cells:
-                node_to_cells[node_id] = []
-            node_to_cells[node_id].append(cell_idx)
-    
-    # 构建边到单元的映射
-    edge_map = {}
-    for cell_idx, cell in enumerate(unstr_grid.cell_container):
-        if type(cell).__name__ != 'Triangle':
-            continue
-        node_ids = cell.node_ids
-        for i in range(3):
-            j = (i + 1) % 3
-            edge = tuple(sorted([node_ids[i], node_ids[j]]))
-            if edge not in edge_map:
-                edge_map[edge] = []
-            edge_map[edge].append(cell_idx)
-    
-    # 找出需要折叠的边（短边）
-    short_edges = []
-    for edge, cells in edge_map.items():
-        if len(cells) != 2:  # 只处理内部边
-            continue
-        length = np.linalg.norm(
-            np.array(node_coords[edge[0]]) - np.array(node_coords[edge[1]])
-        )
-        if length < min_edge_length:
-            short_edges.append((length, edge))
-    
-    # 按边长排序，优先折叠最短的边
-    short_edges.sort(key=lambda x: x[0])
-    
-    info(f"找到 {len(short_edges)} 条需要折叠的短边")
-    
-    if not short_edges:
+
+    initial_short_edge_count = sum(
+        1
+        for edge, cells in edge_map.items()
+        if len(cells) == 2 and np.linalg.norm(node_coords[edge[0]] - node_coords[edge[1]]) < min_edge_length
+    )
+    info(f"找到 {initial_short_edge_count} 条需要折叠的短边")
+    if initial_short_edge_count == 0:
         timer.show_to_console("边折叠优化完成（无需折叠）.")
         return unstr_grid
-    
-    # 标记已删除的节点和单元
-    removed_nodes = set()
-    removed_cells = set()
+
     num_collapsed = 0
-    iteration_count = 0
-    max_iter = max_iterations or len(short_edges) * 2
-    
-    for edge_length, edge in short_edges:
-        if iteration_count >= max_iter:
-            info(f"达到最大迭代次数 {max_iter}，停止边折叠")
+    removed_cells_total = 0
+    triangle_count = sum(1 for cell in unstr_grid.cell_container if type(cell).__name__ == "Triangle")
+    max_iter = max_iterations if max_iterations is not None else max(1, triangle_count * 2)
+
+    while num_collapsed < max_iter:
+        edge_map, node_to_cells, _ = _build_topology()
+        short_edges = []
+        for edge, cells in edge_map.items():
+            if len(cells) != 2:
+                continue
+            length = np.linalg.norm(node_coords[edge[0]] - node_coords[edge[1]])
+            if length < min_edge_length:
+                short_edges.append((length, edge))
+        short_edges.sort(key=lambda x: x[0])
+
+        if not short_edges:
             break
-        
-        if edge[0] in removed_nodes or edge[1] in removed_nodes:
-            continue
-        
-        # 检查边的两个端点是否都是边界节点
-        if edge[0] in boundary_nodes and edge[1] in boundary_nodes:
-            continue  # 不折叠边界上的边
-        
-        # 获取共享这条边的两个三角形
-        cells = edge_map.get(edge, [])
-        if len(cells) != 2:
-            continue
-        
-        cell1_idx, cell2_idx = cells
-        if cell1_idx in removed_cells or cell2_idx in removed_cells:
-            continue
-        
-        # 确定折叠后的目标节点（选择不是边界节点的那个）
-        if edge[1] in boundary_nodes:
-            keep_node = edge[0]
-            remove_node = edge[1]
-        else:
-            keep_node = edge[0]
-            remove_node = edge[1]
-        
-        # 标记要删除的单元（包含 remove_node 的单元）
-        cells_to_remove = set()
-        for cell_idx in node_to_cells.get(remove_node, []):
-            if cell_idx not in removed_cells:
-                cells_to_remove.add(cell_idx)
-        
-        # 创建新的单元（将 remove_node 替换为 keep_node）
-        new_cells = []
-        for cell_idx in node_to_cells.get(remove_node, []):
-            if cell_idx in cells_to_remove:
+
+        collapsed_this_round = False
+        for _, edge in short_edges:
+            n0, n1 = edge
+            if n0 in boundary_nodes and n1 in boundary_nodes:
                 continue
-            
-            cell = unstr_grid.cell_container[cell_idx]
-            new_node_ids = [keep_node if n == remove_node else n for n in cell.node_ids]
-            
-            # 检查是否是退化单元（有重复节点）
-            if len(set(new_node_ids)) < 3:
+
+            if n0 in boundary_nodes:
+                keep_node, remove_node = n0, n1
+            elif n1 in boundary_nodes:
+                keep_node, remove_node = n1, n0
+            else:
+                keep_node, remove_node = n0, n1
+
+            affected_cells = node_to_cells.get(remove_node, [])
+            if not affected_cells:
                 continue
-            
-            # 确保逆时针
-            if not geom_tool.is_left2d(
-                node_coords_2d[new_node_ids[0]],
-                node_coords_2d[new_node_ids[1]],
-                node_coords_2d[new_node_ids[2]]
-            ):
-                new_node_ids = [new_node_ids[2], new_node_ids[1], new_node_ids[0]]
-            
-            new_cell = Triangle(
-                node_coords[new_node_ids[0]],
-                node_coords[new_node_ids[1]],
-                node_coords[new_node_ids[2]],
-                cell.part_name,
-                cell.idx,
-                node_ids=new_node_ids,
-            )
-            new_cells.append((cell_idx, new_cell))
-        
-        # 更新单元
-        for cell_idx, new_cell in new_cells:
-            unstr_grid.cell_container[cell_idx] = new_cell
-        
-        # 标记删除的单元
-        removed_cells.update(cells_to_remove)
-        removed_nodes.add(remove_node)
-        num_collapsed += 1
-        
-        iteration_count += 1
-    
-    # 从网格中删除被标记的单元
-    if removed_cells:
-        new_cell_container = [
-            cell for idx, cell in enumerate(unstr_grid.cell_container)
-            if idx not in removed_cells
-        ]
-        unstr_grid.cell_container = new_cell_container
-    
-    info(f"边折叠完成，折叠了 {num_collapsed} 条边，删除了 {len(removed_cells)} 个单元")
+
+            cells_to_remove = set()
+            updated_cells = {}
+            changed = False
+
+            for cell_idx in affected_cells:
+                cell = unstr_grid.cell_container[cell_idx]
+                if type(cell).__name__ != "Triangle":
+                    continue
+
+                new_node_ids = [keep_node if nid == remove_node else nid for nid in cell.node_ids]
+                if len(set(new_node_ids)) < 3:
+                    cells_to_remove.add(cell_idx)
+                    changed = True
+                    continue
+
+                ccw_node_ids = _orient_ccw(new_node_ids)
+                if ccw_node_ids is None:
+                    cells_to_remove.add(cell_idx)
+                    changed = True
+                    continue
+
+                if ccw_node_ids != list(cell.node_ids):
+                    changed = True
+
+                updated_cells[cell_idx] = Triangle(
+                    node_coords[ccw_node_ids[0]],
+                    node_coords[ccw_node_ids[1]],
+                    node_coords[ccw_node_ids[2]],
+                    cell.part_name,
+                    cell.idx,
+                    node_ids=ccw_node_ids,
+                )
+
+            if not changed:
+                continue
+
+            new_cell_container = []
+            for cell_idx, cell in enumerate(unstr_grid.cell_container):
+                if cell_idx in cells_to_remove:
+                    continue
+                new_cell_container.append(updated_cells.get(cell_idx, cell))
+            unstr_grid.cell_container = new_cell_container
+            removed_cells_total += len(cells_to_remove)
+            num_collapsed += 1
+            collapsed_this_round = True
+            break
+
+        if not collapsed_this_round:
+            break
+
+    if num_collapsed >= max_iter and max_iterations is not None:
+        info(f"达到最大迭代次数 {max_iter}，停止边折叠")
+
+    info(f"边折叠完成，折叠了 {num_collapsed} 条边，删除了 {removed_cells_total} 个单元")
     timer.show_to_console("边折叠优化完成.")
-    
     return unstr_grid
 

@@ -20,11 +20,13 @@ from fileIO.read_cas import parse_cas_to_unstr_grid
 from optimize.optimize import (
     node_perturbation,
     edge_swap,
+    edge_collapse,
     laplacian_smooth,
     hybrid_smooth,
     edge_swap_delaunay
 )
 from optimize.mesh_quality import triangle_shape_quality, quadrilateral_quality2
+from data_structure.unstructured_grid import Unstructured_Grid
 from utils.message import info
 
 
@@ -172,6 +174,104 @@ class TestEdgeSwap(unittest.TestCase):
         node_coords_array = np.array(delaunay_grid.node_coords)
         self.assertTrue(np.all(np.isfinite(node_coords_array)), 
                        "Delaunay边交换后网格中存在非有限值（NaN或Inf）")
+
+
+class TestEdgeCollapse(unittest.TestCase):
+    """测试边折叠功能"""
+
+    def _cell_node_sets(self, grid):
+        return {
+            frozenset(cell.node_ids)
+            for cell in grid.cell_container
+            if type(cell).__name__ == "Triangle"
+        }
+
+    def test_edge_collapse_reconnects_neighbor_cells(self):
+        """短边折叠后应重连相邻单元，而不是只删除单元"""
+        node_coords = [
+            [0.0, 0.0],    # 0 (boundary)
+            [0.01, 0.0],   # 1 (interior, very close to node 0)
+            [0.0, 1.0],    # 2 (boundary)
+            [1.0, 0.0],    # 3 (boundary)
+            [1.0, 1.0],    # 4 (boundary)
+        ]
+        cells = [
+            [0, 1, 2],
+            [1, 0, 3],
+            [1, 3, 4],
+            [1, 4, 2],
+        ]
+        grid = Unstructured_Grid.from_cells(
+            node_coords=node_coords,
+            cells=cells,
+            boundary_nodes_idx=[0, 2, 3, 4],
+            grid_dimension=2,
+        )
+
+        collapsed = edge_collapse(grid, min_edge_ratio=0.5, max_iterations=1)
+
+        self.assertEqual(len(collapsed.cell_container), 2, "折叠后应保留重连后的2个单元")
+        self.assertEqual(
+            self._cell_node_sets(collapsed),
+            {frozenset([0, 3, 4]), frozenset([0, 4, 2])},
+            "折叠后的拓扑重连结果不符合预期",
+        )
+
+    def test_edge_collapse_skips_internal_edge_between_boundary_nodes(self):
+        """当内部短边两端都是边界点时，不应执行折叠"""
+        node_coords = [
+            [0.0, 0.0],    # 0 boundary
+            [1.0, 0.0],    # 1 boundary
+            [0.05, 0.02],  # 2 boundary (close to node 0)
+            [0.0, 1.0],    # 3 boundary
+        ]
+        cells = [
+            [0, 1, 2],
+            [0, 2, 3],
+        ]
+        grid = Unstructured_Grid.from_cells(
+            node_coords=node_coords,
+            cells=cells,
+            boundary_nodes_idx=[0, 1, 2, 3],
+            grid_dimension=2,
+        )
+        original_cells = self._cell_node_sets(grid)
+
+        collapsed = edge_collapse(grid, min_edge_ratio=0.8, max_iterations=3)
+
+        self.assertEqual(
+            self._cell_node_sets(collapsed),
+            original_cells,
+            "内部边两端均为边界节点时不应发生折叠",
+        )
+
+    def test_edge_collapse_no_short_edge_keeps_topology(self):
+        """没有短边时，应保持网格拓扑不变"""
+        node_coords = [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+        ]
+        cells = [
+            [0, 1, 2],
+            [0, 2, 3],
+        ]
+        grid = Unstructured_Grid.from_cells(
+            node_coords=node_coords,
+            cells=cells,
+            boundary_nodes_idx=[0, 1, 2, 3],
+            grid_dimension=2,
+        )
+        original_cells = self._cell_node_sets(grid)
+
+        collapsed = edge_collapse(grid, min_edge_ratio=1e-8, max_iterations=3)
+
+        self.assertEqual(
+            self._cell_node_sets(collapsed),
+            original_cells,
+            "无短边时，拓扑应保持不变",
+        )
 
 
 class TestLaplacianSmooth(unittest.TestCase):

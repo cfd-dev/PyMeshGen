@@ -81,6 +81,7 @@ class Adfront2:
         self.unstr_grid = None  # Unstructured_Grid网格对象
 
         self.node_hash_list = None  # 节点hash列表，用于判断是否重复
+        self.node_elem_by_hash = None  # 节点hash到NodeElement对象的映射
         self.cell_hash_list = None  # 单元hash列表，用于判断是否重复
 
         self.initialize()
@@ -93,6 +94,7 @@ class Adfront2:
 
         self.boundary_nodes = set()
         self.node_hash_list = set()
+        self.node_elem_by_hash = {}
         self.cell_hash_list = set()
         self.cell_container = []
         self.front_node_list = []
@@ -110,8 +112,27 @@ class Adfront2:
                 if node_elem.hash not in self.node_hash_list:
                     self.node_hash_list.add(node_elem.hash)
                     self.boundary_nodes.add(node_elem)  # 添加边界节点
-                    if not flag_given_node:  # 如果未给定节点坐标，则添加节点坐标
+                    if not flag_given_node:  # 如果未给定节点坐标，则添加节点坐标并重建索引
+                        node_elem.idx = len(self.node_coords)
                         self.node_coords.append(node_elem.coords)
+                    elif (
+                        not isinstance(node_elem.idx, int)
+                        or node_elem.idx < 0
+                        or node_elem.idx >= len(self.node_coords)
+                    ):
+                        # 外部提供了节点坐标，但当前front节点索引无效时，补齐索引并扩展坐标表
+                        node_elem.idx = len(self.node_coords)
+                        self.node_coords.append(node_elem.coords)
+                    self.node_elem_by_hash[node_elem.hash] = node_elem
+                else:
+                    # 复用已登记节点索引，避免重复坐标节点残留idx=-1
+                    existing_node = self.node_elem_by_hash.get(node_elem.hash)
+                    if existing_node is not None and (
+                        not isinstance(node_elem.idx, int) or node_elem.idx < 0
+                    ):
+                        node_elem.idx = existing_node.idx
+
+            front.node_ids = [node_elem.idx for node_elem in front.node_elems]
 
         self.front_node_list = list(self.boundary_nodes)
         self.num_nodes = len(self.node_coords)
@@ -724,12 +745,8 @@ class Adfront2:
     def update_nodes(self):
         """更新节点"""
         # 应对pselected可能为NodeElement，也可能为多个NodeElement的情况，统一转换为list
-        # 注意不能直接将self.pselected转换为list，应该后面update_fronts时还需要使用self.pselected
-        pselected = (
-            [self.pselected]
-            if is_node_element(self.pselected)
-            else self.pselected
-        )
+        is_single_selected = is_node_element(self.pselected)
+        pselected = [self.pselected] if is_single_selected else list(self.pselected)
 
         for i, node in enumerate(pselected):
             node_hash = node.hash
@@ -737,11 +754,22 @@ class Adfront2:
                 self.node_hash_list.add(node_hash)
                 self.node_coords.append(node.coords)
                 pselected[i].idx = self.num_nodes
+                self.node_elem_by_hash[node_hash] = pselected[i]
+                self.front_node_list.append(pselected[i])
                 self.add_elems_to_space_index(
                     [node], self.space_index_node, self.node_dict
                 )
 
                 self.num_nodes += 1
+            else:
+                # 对重复节点仅回填合法idx，不替换节点对象，避免改变原有推进行为
+                existing_node = self.node_elem_by_hash.get(node_hash)
+                if existing_node is not None and (
+                    not isinstance(pselected[i].idx, int) or pselected[i].idx < 0
+                ):
+                    pselected[i].idx = existing_node.idx
+
+        self.pselected = pselected[0] if is_single_selected else pselected
 
     def update_fronts(self, new_fronts):
         """更新阵面"""
