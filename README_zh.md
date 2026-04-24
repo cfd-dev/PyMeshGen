@@ -33,9 +33,33 @@
   - 模型树显示几何和网格层次结构
   - 文件导入导出操作
 
+## 安装说明
+
+```bash
+# 安装核心依赖
+pip install -r requirements.txt
+
+# 安装可选依赖（OpenCASCADE / 神经网络 / 强化学习）
+pip install -r requirements-optional.txt
+```
+
+PyPI 安装默认只要求核心依赖。以下功能依赖可选包：
+- 几何导入导出（`pythonocc-core`）
+- 神经网络/强化学习平滑（`torch`、`torch-geometric`、`stable-baselines3`、`trimesh` 等）
+
+如需从 PyPI 安装可选 extra：
+
+```bash
+pip install pymeshgen
+pip install "pymeshgen[ml]"
+pip install "pymeshgen[occ]"
+```
+
+`pythonocc-core` 在部分平台上更适合通过 `conda-forge` 安装。
+
 ## 快速开始
 ```bash
-# 安装依赖
+# 安装核心依赖
 pip install -r requirements.txt
 
 # 生成示例网格

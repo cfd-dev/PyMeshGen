@@ -1,7 +1,8 @@
 # Copilot Instructions for PyMeshGen
 
 ## Setup, run, test, and packaging commands
-- Install dependencies: `pip install -r requirements.txt`
+- Install core dependencies: `pip install -r requirements.txt`
+- Install optional OCC/ML dependencies when needed: `pip install -r requirements-optional.txt`
 - Install in editable mode: `pip install -e .`
 - CLI mesh generation (config-driven): `python PyMeshGen.py --case ".\\config\\30p30n.json"`
 - Launch GUI: `python start_gui.py`

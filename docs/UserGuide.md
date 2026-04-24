@@ -37,10 +37,14 @@ This guide will walk you through the installation, usage, and advanced features 
 To get started with PyMeshGen, you need:
 1. Download/clone the source code from the following repository:
      - https://github.com/cfd-dev/PyMeshGen
-2. Install requirements
+2. Install core requirements
 ```bash
-# Install dependencies
+# Install core dependencies
 pip install -r requirements.txt
+```
+   Optional geometry / ML features additionally need:
+```bash
+pip install -r requirements-optional.txt
 ```
 3. Run the main script (Command Line Mode)
 ```bash

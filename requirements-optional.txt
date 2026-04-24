@@ -1,0 +1,13 @@
+# PyMeshGen 可选依赖
+# 按需安装，默认 PyPI 安装不会强制要求这些包。
+
+# 几何导入导出 / OpenCASCADE
+# pythonocc-core 在某些平台上更适合通过 conda-forge 安装
+pythonocc-core>=7.7.0
+
+# 神经网络和机器学习
+torch>=2.0.0
+torch-geometric>=2.3.0
+gym>=0.21.0
+stable-baselines3>=2.0.0
+trimesh>=4.0.0

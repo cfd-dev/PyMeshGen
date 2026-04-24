@@ -30,6 +30,26 @@ Homepage = "https://github.com/cfd-dev/PyMeshGen"
 Repository = "https://github.com/cfd-dev/PyMeshGen"
 Issues = "https://github.com/cfd-dev/PyMeshGen/issues"
 
+[project.optional-dependencies]
+occ = [
+  "pythonocc-core>=7.7.0",
+]
+ml = [
+  "torch>=2.0.0",
+  "torch-geometric>=2.3.0",
+  "gym>=0.21.0",
+  "stable-baselines3>=2.0.0",
+  "trimesh>=4.0.0",
+]
+full = [
+  "pythonocc-core>=7.7.0",
+  "torch>=2.0.0",
+  "torch-geometric>=2.3.0",
+  "gym>=0.21.0",
+  "stable-baselines3>=2.0.0",
+  "trimesh>=4.0.0",
+]
+
 [project.scripts]
 pymeshgen = "PyMeshGen:PyMeshGen"
 pymeshgen-mixed = "PyMeshGen:PyMeshGen_mixed"

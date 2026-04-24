@@ -15,6 +15,13 @@ For most users, the intended installation target is:
 pip install pymeshgen
 ```
 
+Optional extras:
+
+```bash
+pip install "pymeshgen[ml]"
+pip install "pymeshgen[occ]"
+```
+
 ## Standard Python package build
 
 ```bash
@@ -104,7 +111,13 @@ pip install pymeshgen
 pymeshgen-gui
 ```
 
-GUI usage still depends on GUI/runtime dependencies such as `PyQt5`, `vtk`, and `pythonocc-core`.
+For geometry import/export and neural/ML workflows, install optional dependencies separately:
+
+```bash
+pip install -r requirements-optional.txt
+```
+
+GUI usage still depends on GUI/runtime dependencies such as `PyQt5` and `vtk`. Geometry import/export additionally depends on `pythonocc-core`.
 
 ## Optional Windows application packaging
 

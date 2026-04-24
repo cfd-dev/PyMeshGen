@@ -18,13 +18,19 @@ PyMeshGen is an open-source Python project for unstructured mesh generation aime
 ## Requirements
 
 - Python 3.8+
-- Install runtime dependencies with:
+- Core runtime dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Some optional workflows, especially GUI and geometry import/export, rely on heavyweight packages such as VTK, PyQt5, and `pythonocc-core`.
+Optional heavyweight dependencies are split out:
+
+```bash
+pip install -r requirements-optional.txt
+```
+
+Some optional workflows, especially geometry import/export and neural/ML smoothing, rely on packages such as `pythonocc-core`, `torch`, `torch-geometric`, `stable-baselines3`, and `trimesh`.
 
 ## Installation
 
@@ -33,6 +39,15 @@ Some optional workflows, especially GUI and geometry import/export, rely on heav
 ```bash
 pip install pymeshgen
 ```
+
+Optional extras:
+
+```bash
+pip install "pymeshgen[ml]"
+pip install "pymeshgen[occ]"
+```
+
+`pythonocc-core` may be easier to install via `conda-forge` on some platforms.
 
 Available entry points after installation:
 
@@ -45,6 +60,13 @@ pymeshgen-gui
 
 ```bash
 pip install -e .
+```
+
+For full local feature coverage:
+
+```bash
+pip install -r requirements.txt
+pip install -r requirements-optional.txt
 ```
 
 ## Quick start
