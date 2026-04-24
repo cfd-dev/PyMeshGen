@@ -40,11 +40,13 @@ def create_interior_generator(
     - 混合网格模式：使用 Adfront2Hybrid（混合推进）
     - 三角形网格模式：使用 Adfront2（纯三角形推进）
     """
+    seed_node_coords = boundary_grid.node_coords if boundary_grid is not None else None
+
     if use_triangle_pipeline_for_qmorph(parameters):
         return Adfront2(
             boundary_front=front_heap,
             sizing_system=sizing_system,
-            node_coords=boundary_grid.node_coords,
+            node_coords=seed_node_coords,
             param_obj=parameters,
             visual_obj=visual_obj,
         )
@@ -53,14 +55,14 @@ def create_interior_generator(
         return Adfront2Hybrid(
             boundary_front=front_heap,
             sizing_system=sizing_system,
-            node_coords=boundary_grid.node_coords,
+            node_coords=seed_node_coords,
             param_obj=parameters,
             visual_obj=visual_obj,
         )
     return Adfront2(
         boundary_front=front_heap,
         sizing_system=sizing_system,
-        node_coords=boundary_grid.node_coords,
+        node_coords=seed_node_coords,
         param_obj=parameters,
         visual_obj=visual_obj,
     )
