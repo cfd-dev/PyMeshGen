@@ -1,8 +1,6 @@
 from math import log
 import math
 import matplotlib.pyplot as plt
-from collections import defaultdict
-import numpy as np
 
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose
@@ -105,8 +103,6 @@ class QuadtreeSizing:
         self.resolution = resolution  # 分辨率
         self.decay = decay  # 网格尺寸场的decay
         self.initial_front = initial_front  # 阵面列表
-        self.decay_source_floor = self._build_decay_source_floor()
-        self.decay_source_size_map = self._build_decay_source_size_map()
 
         self.quad_tree = None  # 四叉树
         self.bg_bounds = []  # 背景网格边界
@@ -118,152 +114,8 @@ class QuadtreeSizing:
 
         self.generate_bg_mesh()
 
-    @staticmethod
-    def _front_source_key(front):
-        part_name = getattr(front, "part_name", None)
-        if part_name:
-            return ("part", str(part_name))
-        bc_type = getattr(front, "bc_type", None)
-        if bc_type:
-            return ("bc", str(bc_type))
-        return ("all", "default")
-
-    @staticmethod
-    def _is_wall_like_key(key):
-        return "wall" in str(key[1]).lower()
-
-    def _build_decay_source_floor(self):
-        """为尺寸场传播构建按边界分组的最小源尺度。
-
-        仅在 decay 传播阶段对极短边做平滑，避免少量异常短边把壁面附近
-        的尺寸场拉得过细、过陡；几何边界本身仍按原始 front.length 参与解析。
-        """
-        if not self.initial_front:
-            return {}
-
-        grouped_lengths = defaultdict(list)
-        for front in self.initial_front:
-            grouped_lengths[self._front_source_key(front)].append(front.length)
-
-        source_floor = {}
-        for key, lengths in grouped_lengths.items():
-            if len(lengths) < 8:
-                continue
-
-            lengths = np.asarray(lengths, dtype=float)
-            p25 = float(np.percentile(lengths, 25))
-            median = float(np.percentile(lengths, 50))
-            # 用分组内的下四分位数抬高极短边的传播源尺度，只修正最短一截。
-            source_floor[key] = min(p25, 0.25 * median + 0.75 * p25)
-
-        return source_floor
-
-    def _build_front_loops(self, fronts):
-        """按共享端点恢复 fronts 的拓扑顺序。"""
-        if not fronts:
-            return []
-
-        node_to_fronts = defaultdict(list)
-        front_nodes = []
-        for idx, front in enumerate(fronts):
-            n1 = front.node_elems[0].hash
-            n2 = front.node_elems[1].hash
-            node_to_fronts[n1].append(idx)
-            node_to_fronts[n2].append(idx)
-            front_nodes.append((n1, n2))
-
-        remaining = set(range(len(fronts)))
-        loops = []
-
-        while remaining:
-            start_idx = remaining.pop()
-            loop = [fronts[start_idx]]
-            current_idx = start_idx
-            _, current_node = front_nodes[start_idx]
-            safety = 0
-
-            while safety < len(fronts):
-                safety += 1
-                next_idx = None
-                for candidate_idx in node_to_fronts[current_node]:
-                    if candidate_idx != current_idx and candidate_idx in remaining:
-                        next_idx = candidate_idx
-                        break
-
-                if next_idx is None:
-                    break
-
-                remaining.remove(next_idx)
-                loop.append(fronts[next_idx])
-
-                n1, n2 = front_nodes[next_idx]
-                current_node = n1 if n2 == current_node else n2
-                current_idx = next_idx
-
-            loops.append(loop)
-
-        return loops
-
-    def _smooth_loop_source_sizes(self, sizes):
-        if len(sizes) < 5:
-            return sizes
-
-        radius = 2 if len(sizes) >= 8 else 1
-        log_sizes = np.log(np.asarray(sizes, dtype=float))
-        padded = np.concatenate([log_sizes[-radius:], log_sizes, log_sizes[:radius]])
-        local_smoothed = np.empty_like(log_sizes)
-
-        window_size = 2 * radius + 1
-        for i in range(len(log_sizes)):
-            window = padded[i : i + window_size]
-            local_smoothed[i] = np.median(window)
-
-        # 以平滑值为主、原始值为辅，抬平局部锯齿，同时保留沿壁面的整体变化趋势。
-        blended = np.exp(0.35 * log_sizes + 0.65 * local_smoothed)
-        return blended
-
-    def _build_decay_source_size_map(self):
-        """构建每条 front 的传播源尺寸。"""
-        if not self.initial_front:
-            return {}
-
-        grouped_fronts = defaultdict(list)
-        for front in self.initial_front:
-            grouped_fronts[self._front_source_key(front)].append(front)
-
-        source_size_map = {}
-        for key, fronts in grouped_fronts.items():
-            floor = self.decay_source_floor.get(key)
-
-            for front in fronts:
-                base_size = front.length
-                if floor is not None:
-                    base_size = max(base_size, floor)
-                source_size_map[id(front)] = base_size
-
-            if not self._is_wall_like_key(key):
-                continue
-
-            loops = self._build_front_loops(fronts)
-            for loop in loops:
-                loop_sizes = np.array([source_size_map[id(front)] for front in loop], dtype=float)
-                smoothed_sizes = self._smooth_loop_source_sizes(loop_sizes)
-
-                for front, smooth_size in zip(loop, smoothed_sizes):
-                    source_size_map[id(front)] = float(smooth_size)
-
-        return source_size_map
-
     def _get_decay_source_size(self, front):
-        size = self.decay_source_size_map.get(id(front))
-        if size is not None:
-            return size
-
-        base_size = front.length
-        floor = self.decay_source_floor.get(self._front_source_key(front))
-        if floor is None:
-            return base_size
-        return max(base_size, floor)
+        return front.length
 
     def draw_bgmesh(self):
         draw_quadtree(self.quad_tree, self.ax)
