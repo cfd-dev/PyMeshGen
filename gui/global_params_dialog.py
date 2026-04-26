@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QCheckBox,
-                             QLineEdit, QComboBox, QPushButton, QFileDialog, QGridLayout)
+                             QLineEdit, QComboBox, QPushButton, QFileDialog, QGridLayout, QDoubleSpinBox)
 from PyQt5.QtCore import Qt
 import os
 
@@ -95,6 +95,22 @@ class GlobalParamsDialog(QDialog):
         global_size_group.setLayout(global_size_layout)
         main_layout.addWidget(global_size_group)
 
+        # 5. 尺寸场衰减参数设置
+        decay_group = QGroupBox("尺寸场衰减参数")
+        decay_layout = QHBoxLayout()
+        decay_layout.addWidget(QLabel("Sizing Decay:"))
+        self.sizing_decay_spin = QDoubleSpinBox()
+        self.sizing_decay_spin.setRange(0.0, 10.0)
+        self.sizing_decay_spin.setDecimals(3)
+        self.sizing_decay_spin.setSingleStep(0.05)
+        self.sizing_decay_spin.setStyleSheet("background-color: white;")
+        self.sizing_decay_spin.setToolTip("decay=1.0 基本不随距离增长；>1 越大增长越快；<1 将跳过decay传播")
+        decay_layout.addWidget(self.sizing_decay_spin)
+        decay_layout.addWidget(QLabel("(建议 >= 1.0)"))
+        decay_layout.addStretch()
+        decay_group.setLayout(decay_layout)
+        main_layout.addWidget(decay_group)
+
         # 按钮布局
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -164,6 +180,9 @@ class GlobalParamsDialog(QDialog):
         global_size = self.params.get("global_max_size", 1e6)
         self.global_size_edit.setText(str(global_size))
 
+        # 5. 尺寸场衰减参数设置
+        self.sizing_decay_spin.setValue(float(self.params.get("sizing_decay", 1.2)))
+
     def get_params(self):
         """获取用户设置的参数"""
         params = {}
@@ -181,7 +200,7 @@ class GlobalParamsDialog(QDialog):
 
         # 三角形合并算法（从下拉框获取当前选择的值）
         params["triangle_to_quad_method"] = self.triangle_to_quad_combo.currentText()
-        params["sizing_decay"] = self.params.get("sizing_decay", 1.2)
+        params["sizing_decay"] = float(self.sizing_decay_spin.value())
 
         # 4. 全局网格尺寸设置
         try:
