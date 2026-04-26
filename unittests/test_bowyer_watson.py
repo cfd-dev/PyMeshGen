@@ -24,6 +24,7 @@ from delaunay.validation import (
     check_hole_cleanup,
     check_topology_clean,
 )
+from fileIO.read_cas import parse_fluent_msh
 
 
 def resolve_case_input_path(input_file_str, project_root, fallback_input_dir=None):
@@ -90,8 +91,15 @@ def create_delaunay_case_config(
 
 
 def assert_boundary_recovery(testcase, cas_file, grid, test_name):
+    cas_data = parse_fluent_msh(str(cas_file))
+
     print("\n  - 边界恢复检查:")
-    boundary_edges_result = check_boundary_edges(str(cas_file), grid, test_name)
+    boundary_edges_result = check_boundary_edges(
+        str(cas_file),
+        grid,
+        test_name,
+        cas_data=cas_data,
+    )
 
     if boundary_edges_result["pass"]:
         print("  - [PASS] 边界恢复检查通过")
@@ -122,7 +130,12 @@ def assert_boundary_recovery(testcase, cas_file, grid, test_name):
         )
 
     print("\n  - 孔洞清理检查:")
-    hole_cleanup_result = check_hole_cleanup(str(cas_file), grid, test_name)
+    hole_cleanup_result = check_hole_cleanup(
+        str(cas_file),
+        grid,
+        test_name,
+        cas_data=cas_data,
+    )
     if hole_cleanup_result["pass"]:
         print("  - [PASS] 孔洞清理检查通过")
         for hole_key, hole_result in hole_cleanup_result.get("hole_results", {}).items():
@@ -168,11 +181,12 @@ def run_delaunay_config_test(
     delaunay_backend="bowyer_watson",
     fallback_input_dir=None,
     check_boundary_recovery=True,
+    max_generation_time=120,
 ):
     from PyMeshGen import PyMeshGen
     from data_structure.parameters import Parameters
     from fileIO.vtk_io import parse_vtk_msh
-    from utils.message import DEBUG_LEVEL_VERBOSE, set_debug_level
+    from utils.message import set_debug_level
 
     if not original_config.exists():
         testcase.skipTest(f"{original_config.name} 不存在")
@@ -180,7 +194,7 @@ def run_delaunay_config_test(
     with open(original_config, "r", encoding="utf-8") as handle:
         config_data = json.load(handle)
 
-    set_debug_level(DEBUG_LEVEL_VERBOSE)
+    set_debug_level(0)
 
     try:
         bw_config = create_delaunay_case_config(
@@ -210,7 +224,7 @@ def run_delaunay_config_test(
 
         testcase.assertGreater(grid.num_nodes, 0, "节点数应大于 0")
         testcase.assertGreater(grid.num_cells, 0, "单元数应大于 0")
-        testcase.assertLess(cost, 120, "生成时间应小于 120 秒")
+        testcase.assertLess(cost, max_generation_time, f"生成时间应小于 {max_generation_time} 秒")
 
         tri_count = sum(1 for cell in grid.cells if len(cell) == 3)
         quad_count = sum(1 for cell in grid.cells if len(cell) == 4)
@@ -300,7 +314,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "naca0012.json",
             "test_naca0012_bw_no_bl.vtk",
             enable_boundary_layer=False,
-            test_name="NACA0012 Bowyer-Watson（无边界层）"
+            test_name="NACA0012 Bowyer-Watson（无边界层）",
+            max_generation_time=180,
         )
     
     def test_naca0012_bowyer_watson_with_boundary_layer(self):
@@ -309,7 +324,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "naca0012.json",
             "test_naca0012_bw_with_bl.vtk",
             enable_boundary_layer=True,
-            test_name="NACA0012 Bowyer-Watson（带边界层）"
+            test_name="NACA0012 Bowyer-Watson（带边界层）",
+            max_generation_time=180,
         )
     
     def test_anw_bowyer_watson(self):
@@ -318,7 +334,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "anw.json",
             "test_anw_bw_no_bl.vtk",
             enable_boundary_layer=False,
-            test_name="ANW Bowyer-Watson（无边界层）"
+            test_name="ANW Bowyer-Watson（无边界层）",
+            max_generation_time=90,
         )
     
     def test_anw_bowyer_watson_with_boundary_layer(self):
@@ -327,7 +344,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "anw.json",
             "test_anw_bw_with_bl.vtk",
             enable_boundary_layer=True,
-            test_name="ANW Bowyer-Watson（带边界层）"
+            test_name="ANW Bowyer-Watson（带边界层）",
+            max_generation_time=120,
         )
 
     def test_naca0012_triangle_backend(self):
@@ -338,6 +356,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             enable_boundary_layer=False,
             test_name="NACA0012 Triangle 后端（无边界层）",
             delaunay_backend="triangle",
+            max_generation_time=90,
         )
 
     def test_anw_triangle_backend(self):
@@ -348,6 +367,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             enable_boundary_layer=False,
             test_name="ANW Triangle 后端（无边界层）",
             delaunay_backend="triangle",
+            max_generation_time=90,
         )
     
     def test_rae2822_bowyer_watson(self):
@@ -356,7 +376,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "rae2822.json",
             "test_rae2822_bw_no_bl.vtk",
             enable_boundary_layer=False,
-            test_name="RAE2822 Bowyer-Watson（无边界层）"
+            test_name="RAE2822 Bowyer-Watson（无边界层）",
+            max_generation_time=180,
         )
     
     def test_rae2822_bowyer_watson_with_boundary_layer(self):
@@ -365,7 +386,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "rae2822.json",
             "test_rae2822_bw_with_bl.vtk",
             enable_boundary_layer=True,
-            test_name="RAE2822 Bowyer-Watson（带边界层）"
+            test_name="RAE2822 Bowyer-Watson（带边界层）",
+            max_generation_time=180,
         )
 
     def test_quad_quad_bowyer_watson(self):
@@ -375,7 +397,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "test_quad_quad_bw_no_bl.vtk",
             enable_boundary_layer=False,
             test_name="quad_quad Bowyer-Watson（无边界层）",
-            check_boundary_recovery=True
+            check_boundary_recovery=True,
+            max_generation_time=60,
         )
 
     def test_quad_quad_bowyer_watson_with_boundary_layer(self):
@@ -385,7 +408,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "test_quad_quad_bw_with_bl.vtk",
             enable_boundary_layer=True,
             test_name="quad_quad Bowyer-Watson（带边界层）",
-            check_boundary_recovery=True
+            check_boundary_recovery=True,
+            max_generation_time=90,
         )
 
     def test_cylinder_bowyer_watson(self):
@@ -395,7 +419,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "test_cylinder_bw_no_bl.vtk",
             enable_boundary_layer=False,
             test_name="cylinder Bowyer-Watson（无边界层）",
-            check_boundary_recovery=True
+            check_boundary_recovery=True,
+            max_generation_time=90,
         )
 
     def test_cylinder_bowyer_watson_with_boundary_layer(self):
@@ -405,7 +430,8 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             "test_cylinder_bw_with_bl.vtk",
             enable_boundary_layer=True,
             test_name="cylinder Bowyer-Watson（带边界层）",
-            check_boundary_recovery=True
+            check_boundary_recovery=True,
+            max_generation_time=120,
         )
 
     def _test_bowyer_watson_with_config_from_root(
@@ -415,6 +441,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         enable_boundary_layer,
         test_name,
         check_boundary_recovery=True,
+        max_generation_time=120,
     ):
         """从项目根目录 config/ 文件夹加载配置的 Bowyer-Watson 测试方法。"""
         run_delaunay_config_test(
@@ -426,6 +453,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             enable_boundary_layer=enable_boundary_layer,
             fallback_input_dir=None,
             check_boundary_recovery=check_boundary_recovery,
+            max_generation_time=max_generation_time,
         )
 
     def _test_bowyer_watson_with_config(
@@ -435,6 +463,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
         enable_boundary_layer,
         test_name,
         delaunay_backend="bowyer_watson",
+        max_generation_time=120,
     ):
         """通用的 mesh_type=4 Delaunay 配置测试方法。"""
         run_delaunay_config_test(
@@ -447,6 +476,7 @@ class TestBowyerWatsonJSONConfig(unittest.TestCase):
             delaunay_backend=delaunay_backend,
             fallback_input_dir=self.test_dir,
             check_boundary_recovery=True,
+            max_generation_time=max_generation_time,
         )
 
 

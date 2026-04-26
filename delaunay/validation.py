@@ -101,11 +101,12 @@ def _build_ordered_polygon(cas_nodes, edges):
     return np.array(ordered_coords)
 
 
-def check_boundary_edges(cas_file, grid, test_name=None, tolerance=0.01):
-    try:
-        cas_data = parse_fluent_msh(cas_file)
-    except Exception as exc:
-        return {"pass": False, "issue": f"无法解析 CAS 文件: {exc}", "zone_results": {}}
+def check_boundary_edges(cas_file, grid, test_name=None, tolerance=0.01, cas_data=None):
+    if cas_data is None:
+        try:
+            cas_data = parse_fluent_msh(cas_file)
+        except Exception as exc:
+            return {"pass": False, "issue": f"无法解析 CAS 文件: {exc}", "zone_results": {}}
 
     cas_nodes = np.array(cas_data["nodes"])
     vtk_nodes = np.array(grid.node_coords)
@@ -261,11 +262,12 @@ def check_boundary_edges(cas_file, grid, test_name=None, tolerance=0.01):
     return {"pass": all_pass, "zone_results": all_results, "issue": issue}
 
 
-def check_hole_cleanup(cas_file, grid, test_name=None, tolerance=0.01):
-    try:
-        cas_data = parse_fluent_msh(cas_file)
-    except Exception as exc:
-        return {"pass": False, "issue": f"无法解析 CAS 文件: {exc}", "hole_results": {}}
+def check_hole_cleanup(cas_file, grid, test_name=None, tolerance=0.01, cas_data=None):
+    if cas_data is None:
+        try:
+            cas_data = parse_fluent_msh(cas_file)
+        except Exception as exc:
+            return {"pass": False, "issue": f"无法解析 CAS 文件: {exc}", "hole_results": {}}
 
     cas_nodes = np.array(cas_data["nodes"])
     vtk_nodes = np.array(grid.node_coords)
