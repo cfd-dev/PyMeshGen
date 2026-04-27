@@ -4,6 +4,8 @@
 import os
 import sys
 import time
+from importlib import metadata
+from utils.runtime_paths import find_resource_root
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QGroupBox, QLabel, QTextEdit, QPushButton,
@@ -18,6 +20,13 @@ from PyQt5.QtGui import QFont, QIcon
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+RESOURCE_ROOT = str(
+    find_resource_root(
+        __file__,
+        levels_up=1,
+        required_paths=("docs",),
+    )
+)
 
 SUB_DIRS = [
     os.path.join(PROJECT_ROOT, 'data_structure'),
@@ -71,13 +80,25 @@ except Exception:
 GLOBAL_MESH_DIMENSION = 2
 
 
+def _resolve_resource_file(*relative_parts):
+    for base in (RESOURCE_ROOT, PROJECT_ROOT):
+        candidate = os.path.join(base, *relative_parts)
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
 def _load_app_version():
-    version_file = os.path.join(PROJECT_ROOT, "VERSION")
-    if os.path.exists(version_file):
+    version_file = _resolve_resource_file("VERSION")
+    if version_file:
         with open(version_file, "r", encoding="utf-8") as f:
             version = f.read().strip()
         if version:
             return version
+    try:
+        return metadata.version("PyMeshGen")
+    except metadata.PackageNotFoundError:
+        pass
     return "0.0.0"
 
 
@@ -104,19 +125,11 @@ class PyMeshGenGUI(QMainWindow):
             f"PyMeshGen V{_load_app_version()} - 基于Python的网格生成工具"
         )
 
-        # Use only the docs/icon.png file as requested
-        icon_path = os.path.join(PROJECT_ROOT, "docs", "icon.png")
-
-        # Try to set the icon from the docs directory
+        # 优先使用 docs/icon.png，若不存在则尝试 docs/icon.ico
         try:
-            from PyQt5.QtGui import QIcon
-            if os.path.exists(icon_path):
+            icon_path = _resolve_resource_file("docs", "icon.png") or _resolve_resource_file("docs", "icon.ico")
+            if icon_path:
                 self.setWindowIcon(QIcon(icon_path))
-            else:
-                # If the icon file doesn't exist, try alternative path
-                alt_icon_path = os.path.join(PROJECT_ROOT, "..", "docs", "icon.png")
-                if os.path.exists(alt_icon_path):
-                    self.setWindowIcon(QIcon(alt_icon_path))
         except Exception as e:
             # If icon setting fails, log the error but continue
             print(f"Could not set application icon: {e}")
@@ -2342,7 +2355,10 @@ def main():
     """主函数"""
     app = QApplication(sys.argv)
     app.setApplicationName("PyMeshGen")
-    app.setApplicationVersion("1.0")
+    app.setApplicationVersion(_load_app_version())
+    icon_path = _resolve_resource_file("docs", "icon.png") or _resolve_resource_file("docs", "icon.ico")
+    if icon_path:
+        app.setWindowIcon(QIcon(icon_path))
 
     window = PyMeshGenGUI()
     window.show()

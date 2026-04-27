@@ -77,6 +77,7 @@ datas = [
     # 配置文件目录
     (os.path.join(project_root, 'config'), 'config'),
     (os.path.join(project_root, 'config', 'input'), 'config\\input'),
+    (os.path.join(project_root, 'VERSION'), '.'),
 
     # 文档和图标
     (os.path.join(project_root, 'docs'), 'docs'),
