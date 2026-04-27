@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QCheckBox,
                              QLineEdit, QComboBox, QPushButton, QFileDialog, QGridLayout, QDoubleSpinBox,
-                             QRadioButton, QButtonGroup)
+                             QRadioButton, QButtonGroup, QSizePolicy)
 from PyQt5.QtCore import Qt
 import os
 
@@ -9,7 +9,7 @@ class GlobalParamsDialog(QDialog):
     def __init__(self, parent=None, params=None):
         super().__init__(parent)
         self.setWindowTitle("全局参数设置")
-        self.setMinimumWidth(500)
+        self.setMinimumWidth(680)
 
         # 初始化参数
         self.params = params or {}
@@ -55,6 +55,7 @@ class GlobalParamsDialog(QDialog):
         self.verbosity_combo = QComboBox()
         self.verbosity_combo.setStyleSheet("background-color: white;")
         self.verbosity_combo.addItems(["0 (基本信息)", "1 (调试信息)", "2 (详细信息)"])
+        self._configure_combo_width(self.verbosity_combo, min_width=220)
         verbosity_layout.addWidget(self.verbosity_combo)
         verbosity_layout.addStretch()
         verbosity_group.setLayout(verbosity_layout)
@@ -67,6 +68,7 @@ class GlobalParamsDialog(QDialog):
         self.mesh_type_combo = QComboBox()
         self.mesh_type_combo.setStyleSheet("background-color: white;")
         self.mesh_type_combo.addItems(["三角形网格", "三角形/四边形混合网格"])
+        self._configure_combo_width(self.mesh_type_combo, min_width=300)
         self.mesh_type_combo.currentIndexChanged.connect(self._on_mesh_type_changed)
         mesh_type_layout.addWidget(self.mesh_type_combo, 0, 1)
 
@@ -75,6 +77,7 @@ class GlobalParamsDialog(QDialog):
         mesh_type_layout.addWidget(self.mesh_algorithm_label, 1, 0)
         self.mesh_algorithm_combo = QComboBox()
         self.mesh_algorithm_combo.setStyleSheet("background-color: white;")
+        self._configure_combo_width(self.mesh_algorithm_combo, min_width=300)
         self.mesh_algorithm_combo.currentIndexChanged.connect(self._on_algorithm_changed)
         mesh_type_layout.addWidget(self.mesh_algorithm_combo, 1, 1)
 
@@ -84,6 +87,7 @@ class GlobalParamsDialog(QDialog):
         self.triangle_to_quad_combo = QComboBox()
         self.triangle_to_quad_combo.setStyleSheet("background-color: white;")
         self.triangle_to_quad_combo.addItems(["greedy_merge", "q_morph"])
+        self._configure_combo_width(self.triangle_to_quad_combo, min_width=300)
         self.triangle_to_quad_combo.setToolTip("greedy_merge: 贪婪合并算法\nq_morph: Q-Morph 算法")
         self.triangle_to_quad_combo.currentIndexChanged.connect(self._on_triangle_to_quad_changed)
         mesh_type_layout.addWidget(self.triangle_to_quad_combo, 2, 1)
@@ -103,7 +107,7 @@ class GlobalParamsDialog(QDialog):
         backend_layout.addStretch()
         mesh_type_layout.addLayout(backend_layout, 3, 1)
 
-        mesh_type_layout.setColumnStretch(2, 1)
+        mesh_type_layout.setColumnStretch(1, 1)
         mesh_type_group.setLayout(mesh_type_layout)
         main_layout.addWidget(mesh_type_group)
 
@@ -149,6 +153,11 @@ class GlobalParamsDialog(QDialog):
         button_layout.addWidget(self.cancel_btn)
 
         main_layout.addLayout(button_layout)
+
+    def _configure_combo_width(self, combo, min_width=260):
+        combo.setMinimumWidth(min_width)
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToContentsOnFirstShow)
+        combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
     def _browse_output_path(self):
         file_path, _ = QFileDialog.getSaveFileName(
