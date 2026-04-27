@@ -20,6 +20,115 @@ class BoundaryInput:
     outer_boundary: Optional[np.ndarray]
 
 
+def _coord_key(coord) -> Tuple[str, ...]:
+    return tuple(f"{float(value):.6f}" for value in coord)
+
+
+def _build_front_boundary_metadata(front_heap) -> dict:
+    metadata = {}
+    for front in front_heap:
+        front_part_name = getattr(front, "part_name", None)
+        front_bc_type = getattr(front, "bc_type", None)
+        for node_elem in getattr(front, "node_elems", []):
+            key = _coord_key(node_elem.coords)
+            node_part_name = getattr(node_elem, "part_name", None) or front_part_name
+            node_bc_type = getattr(node_elem, "bc_type", None) or front_bc_type or "boundary"
+            if key not in metadata or (metadata[key][0] is None and node_part_name is not None):
+                metadata[key] = (node_part_name, node_bc_type)
+    return metadata
+
+
+def build_delaunay_unstructured_grid(points, simplices, boundary_mask, front_heap):
+    """Convert triangulation arrays into an Unstructured_Grid with boundary metadata."""
+    from data_structure.unstructured_grid import Unstructured_Grid
+
+    boundary_nodes_idx = [idx for idx, is_boundary in enumerate(boundary_mask) if is_boundary]
+    triangular_grid = Unstructured_Grid.from_cells(
+        node_coords=points.tolist(),
+        cells=simplices.tolist(),
+        boundary_nodes_idx=boundary_nodes_idx,
+        grid_dimension=2,
+    )
+    boundary_metadata = _build_front_boundary_metadata(front_heap)
+    for node_elem in triangular_grid.boundary_nodes:
+        part_name, bc_type = boundary_metadata.get(_coord_key(node_elem.coords), (None, None))
+        if part_name is not None:
+            node_elem.part_name = part_name
+        if bc_type is not None:
+            node_elem.bc_type = bc_type
+    return triangular_grid
+
+
+def resolve_delaunay_backend(parameters, has_boundary_layer=False, info_logger=None):
+    """Select and optionally log the effective mesh_type=4 Delaunay backend."""
+    from utils.core_helpers import select_delaunay_backend
+
+    configured_backend = str(
+        getattr(parameters, "delaunay_backend", "bowyer_watson")
+    ).strip().lower()
+    delaunay_backend = select_delaunay_backend(
+        parameters,
+        has_boundary_layer=has_boundary_layer,
+    )
+    if info_logger:
+        if has_boundary_layer and delaunay_backend != configured_backend:
+            info_logger(
+                "Bowyer-Watson 模式：检测到边界层，"
+                f"内层三角剖分从 {configured_backend} 切换为 triangle 后端"
+            )
+        else:
+            info_logger(
+                f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格"
+            )
+    return delaunay_backend
+
+
+def generate_delaunay_triangular_grid(
+    parameters,
+    front_heap,
+    sizing_system,
+    has_boundary_layer=False,
+    info_logger=None,
+):
+    """Generate mesh_type=4 interior triangular grid."""
+    from .postprocess import recover_boundary_edges_with_validation
+
+    delaunay_backend = resolve_delaunay_backend(
+        parameters,
+        has_boundary_layer=has_boundary_layer,
+        info_logger=info_logger,
+    )
+    points, simplices, boundary_mask = create_bowyer_watson_mesh(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        target_triangle_count=None,
+        smoothing_iterations=3,
+        auto_detect_holes=True,
+        backend=delaunay_backend,
+        triangle_point_strategy=getattr(
+            parameters,
+            "triangle_point_strategy",
+            "equilateral",
+        ),
+    )
+
+    if delaunay_backend != "triangle":
+        simplices = recover_boundary_edges_with_validation(
+            points,
+            simplices,
+            front_heap,
+            info_logger=info_logger,
+        )
+
+    triangular_grid = build_delaunay_unstructured_grid(
+        points,
+        simplices,
+        boundary_mask,
+        front_heap,
+    )
+    return triangular_grid, delaunay_backend
+
+
 def _build_front_graph(fronts) -> Tuple[dict, dict]:
     """Build an undirected graph from boundary fronts."""
     adjacency = {}

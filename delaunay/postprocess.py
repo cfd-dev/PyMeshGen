@@ -206,3 +206,24 @@ def is_topology_valid(points_arr, simplices_arr):
                 return False
 
     return True
+
+
+def recover_boundary_edges_with_validation(points, simplices, front_heap, info_logger=None):
+    """Recover constrained boundary edges and validate topology before accepting swaps."""
+    boundary_edges = collect_boundary_edges_from_fronts(front_heap)
+    swapped_simplices, recovered_edges, remaining_edges = recover_boundary_edges_by_swaps(
+        points,
+        simplices,
+        boundary_edges,
+    )
+    if recovered_edges > 0:
+        if is_topology_valid(points, swapped_simplices):
+            simplices = swapped_simplices
+            if info_logger:
+                info_logger(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
+        else:
+            if info_logger:
+                info_logger("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
+    if remaining_edges and info_logger:
+        info_logger(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
+    return simplices

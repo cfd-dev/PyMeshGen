@@ -10,7 +10,6 @@ sys.path.insert(0, project_root)  # Add project root first
 # Now import modules using proper package structure
 from meshsize import QuadtreeSizing
 from adfront2.adlayers2 import Adlayers2
-from delaunay import create_bowyer_watson_mesh
 from data_structure.parameters import Parameters
 from optimize.optimize import edge_swap, edge_collapse, laplacian_smooth
 from utils.timer import TimeSpan
@@ -20,7 +19,6 @@ from optimize.optimize import optimize_hybrid_grid
 from utils.core_helpers import (
     is_mixed_mesh,
     use_triangle_pipeline_for_qmorph,
-    select_delaunay_backend,
     create_interior_generator,
     log_parameters_debug_summary,
     log_mesh_debug_summary,
@@ -31,11 +29,7 @@ from utils.core_io import (
     merge_generated_grids,
     output_and_finalize,
 )
-from delaunay.postprocess import (
-    collect_boundary_edges_from_fronts,
-    is_topology_valid,
-    recover_boundary_edges_by_swaps,
-)
+from delaunay.bw_utils import generate_delaunay_triangular_grid
 from utils.mesh_utils import deduplicate_grid_cells
 
 
@@ -70,99 +64,6 @@ def _generate_boundary_layer_grid(parameters, front_heap, sizing_system, visual_
     log_mesh_debug_summary(boundary_grid, "边界层网格")
     gui_log(gui_instance, "边界层网格生成完成")
     return boundary_grid, updated_front_heap, True
-
-
-def _resolve_delaunay_backend(parameters, has_boundary_layer):
-    """Select and log the effective mesh_type=4 Delaunay backend."""
-    configured_backend = str(
-        getattr(parameters, "delaunay_backend", "bowyer_watson")
-    ).strip().lower()
-    delaunay_backend = select_delaunay_backend(
-        parameters,
-        has_boundary_layer=has_boundary_layer,
-    )
-    if has_boundary_layer and delaunay_backend != configured_backend:
-        info(
-            "Bowyer-Watson 模式：检测到边界层，"
-            f"内层三角剖分从 {configured_backend} 切换为 triangle 后端"
-        )
-    else:
-        info(
-            f"Bowyer-Watson 模式：使用 {delaunay_backend} Delaunay 三角剖分生成网格"
-        )
-    return delaunay_backend
-
-
-def _recover_delaunay_boundary_edges(points, simplices, front_heap):
-    """Run the lightweight swap-based boundary recovery used after BW meshing."""
-    boundary_edges = collect_boundary_edges_from_fronts(front_heap)
-    swapped_simplices, recovered_edges, remaining_edges = recover_boundary_edges_by_swaps(
-        points,
-        simplices,
-        boundary_edges,
-    )
-    if recovered_edges > 0:
-        if is_topology_valid(points, swapped_simplices):
-            simplices = swapped_simplices
-            info(f"Bowyer-Watson 模式：通过边翻转恢复了 {recovered_edges} 条边界约束边")
-        else:
-            info("Bowyer-Watson 模式：边翻转恢复引入拓扑异常，已回退到原始三角剖分结果")
-    if remaining_edges:
-        info(f"Bowyer-Watson 模式：仍有 {len(remaining_edges)} 条边界约束边未直接恢复")
-    return simplices
-
-
-def _build_delaunay_unstructured_grid(points, simplices, boundary_mask):
-    """Convert raw triangulation arrays into an Unstructured_Grid."""
-    from data_structure.unstructured_grid import Unstructured_Grid
-
-    boundary_nodes_idx = [
-        idx for idx, is_boundary in enumerate(boundary_mask) if is_boundary
-    ]
-    return Unstructured_Grid.from_cells(
-        node_coords=points.tolist(),
-        cells=simplices.tolist(),
-        boundary_nodes_idx=boundary_nodes_idx,
-        grid_dimension=2,
-    )
-
-
-def _generate_delaunay_triangular_grid(
-    parameters,
-    front_heap,
-    sizing_system,
-    has_boundary_layer,
-    gui_instance,
-):
-    """Generate the mesh_type=4 interior triangular grid."""
-    delaunay_backend = _resolve_delaunay_backend(
-        parameters,
-        has_boundary_layer=has_boundary_layer,
-    )
-    points, simplices, boundary_mask = create_bowyer_watson_mesh(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        target_triangle_count=None,
-        smoothing_iterations=3,
-        auto_detect_holes=True,
-        backend=delaunay_backend,
-        triangle_point_strategy=getattr(
-            parameters,
-            "triangle_point_strategy",
-            "equilateral",
-        ),
-    )
-
-    if delaunay_backend != "triangle":
-        simplices = _recover_delaunay_boundary_edges(points, simplices, front_heap)
-
-    triangular_grid = _build_delaunay_unstructured_grid(
-        points,
-        simplices,
-        boundary_mask,
-    )
-    gui_log(gui_instance, "Bowyer-Watson 网格生成完成")
-    return triangular_grid, delaunay_backend
 
 
 def _generate_advancing_front_grid(
@@ -287,13 +188,14 @@ def generate_mesh(parameters, mesh_data=None, parts=None, gui_instance=None):
 
     # Bowyer-Watson Delaunay 网格生成分支
     if parameters.mesh_type == 4:
-        triangular_grid, delaunay_backend = _generate_delaunay_triangular_grid(
-            parameters,
+        triangular_grid, delaunay_backend = generate_delaunay_triangular_grid(
+            parameters=parameters,
             sizing_system=sizing_system,
             front_heap=front_heap,
             has_boundary_layer=has_boundary_layer,
-            gui_instance=gui_instance,
+            info_logger=info,
         )
+        gui_log(gui_instance, "Bowyer-Watson 网格生成完成")
     else:
         triangular_grid = _generate_advancing_front_grid(
             parameters=parameters,
