@@ -33,6 +33,15 @@ for subdir in SUBDIRS:
 from .core import generate_mesh
 from .data_structure.parameters import Parameters
 
-__version__ = "1.0.0"
+def _load_version():
+    version_file = project_root / "VERSION"
+    if version_file.exists():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if version:
+            return version
+    return "0.0.0"
+
+
+__version__ = _load_version()
 __author__ = "CFD_Dev"
 __all__ = ["generate_mesh", "Parameters"]

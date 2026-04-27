@@ -71,6 +71,16 @@ except Exception:
 GLOBAL_MESH_DIMENSION = 2
 
 
+def _load_app_version():
+    version_file = os.path.join(PROJECT_ROOT, "VERSION")
+    if os.path.exists(version_file):
+        with open(version_file, "r", encoding="utf-8") as f:
+            version = f.read().strip()
+        if version:
+            return version
+    return "0.0.0"
+
+
 class PyMeshGenGUI(QMainWindow):
     """PyQt版PyMeshGen GUI主类"""
 
@@ -90,7 +100,9 @@ class PyMeshGenGUI(QMainWindow):
 
     def _setup_window(self):
         """设置窗口大小和标题"""
-        self.setWindowTitle("PyMeshGen V1.0 - 基于Python的网格生成工具")
+        self.setWindowTitle(
+            f"PyMeshGen V{_load_app_version()} - 基于Python的网格生成工具"
+        )
 
         # Use only the docs/icon.png file as requested
         icon_path = os.path.join(PROJECT_ROOT, "docs", "icon.png")
