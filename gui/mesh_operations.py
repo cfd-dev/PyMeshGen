@@ -285,6 +285,7 @@ class MeshOperations:
                 "viz_enabled": False,
                 "parts": self.gui.parts_params or [],
                 "mesh_type": self.gui.params.mesh_type if hasattr(self.gui, 'params') and self.gui.params else 1,
+                "delaunay_backend": getattr(self.gui.params, 'delaunay_backend', 'bowyer_watson'),
                 "triangle_to_quad_method": getattr(self.gui.params, 'triangle_to_quad_method', 'q_morph'),
                 "sizing_decay": getattr(self.gui.params, 'sizing_decay', 1.2) if hasattr(self.gui, 'params') and self.gui.params else 1.2,
                 "auto_output": self.gui.params.auto_output if hasattr(self.gui, 'params') and self.gui.params else True

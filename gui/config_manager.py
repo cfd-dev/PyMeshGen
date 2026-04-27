@@ -84,6 +84,7 @@ class ConfigManager:
                     "input_file": getattr(self.gui.params, 'input_file', ''),
                     "output_file": getattr(self.gui.params, 'output_file', ''),
                     "mesh_type": getattr(self.gui.params, 'mesh_type', 1),
+                    "delaunay_backend": getattr(self.gui.params, 'delaunay_backend', 'bowyer_watson'),
                     "triangle_to_quad_method": getattr(self.gui.params, 'triangle_to_quad_method', 'q_morph'),
                     "sizing_decay": getattr(self.gui.params, 'sizing_decay', 1.2),
                     "auto_output": getattr(self.gui.params, 'auto_output', True),
@@ -247,6 +248,7 @@ class ConfigManager:
             current_params["debug_level"] = self.gui.params.debug_level
             current_params["output_file"] = self.gui.params.output_file
             current_params["mesh_type"] = self.gui.params.mesh_type
+            current_params["delaunay_backend"] = getattr(self.gui.params, 'delaunay_backend', 'bowyer_watson')
             current_params["auto_output"] = getattr(self.gui.params, 'auto_output', True)
             current_params["triangle_to_quad_method"] = getattr(self.gui.params, 'triangle_to_quad_method', 'q_morph')
             current_params["sizing_decay"] = getattr(self.gui.params, 'sizing_decay', 1.2)
@@ -287,6 +289,7 @@ class ConfigManager:
                     "input_file": [],
                     "output_file": new_params["output_file"],
                     "mesh_type": new_params["mesh_type"],
+                    "delaunay_backend": new_params.get("delaunay_backend", "bowyer_watson"),
                     "triangle_to_quad_method": new_params.get("triangle_to_quad_method", "q_morph"),
                     "sizing_decay": new_params.get("sizing_decay", 1.2),
                     "auto_output": new_params["auto_output"],
@@ -314,6 +317,7 @@ class ConfigManager:
             self.gui.params.mesh_type = new_params["mesh_type"]
             self.gui.params.auto_output = new_params["auto_output"]
             self.gui.params.triangle_to_quad_method = new_params["triangle_to_quad_method"]
+            self.gui.params.delaunay_backend = new_params.get("delaunay_backend", "bowyer_watson")
             self.gui.params.sizing_decay = new_params.get("sizing_decay", getattr(self.gui.params, 'sizing_decay', 1.2))
             
             # 更新所有部件的最大尺寸为全局尺寸
@@ -331,6 +335,7 @@ class ConfigManager:
             
             self.gui.log_info(
                 f"全局参数已更新: 自动输出={new_params['auto_output']}, "
-                f"网格类型={new_params['mesh_type']}, 合并算法={new_params['triangle_to_quad_method']}, 输出路径={new_params['output_file'][0]}"
+                f"网格类型={new_params['mesh_type']}, Delaunay后端={new_params.get('delaunay_backend', 'bowyer_watson')}, "
+                f"合并算法={new_params['triangle_to_quad_method']}, 输出路径={new_params['output_file'][0]}"
             )
             self.gui.update_status("全局参数已更新")

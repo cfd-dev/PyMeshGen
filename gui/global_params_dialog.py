@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QCheckBox,
-                             QLineEdit, QComboBox, QPushButton, QFileDialog, QGridLayout, QDoubleSpinBox)
+                             QLineEdit, QComboBox, QPushButton, QFileDialog, QGridLayout, QDoubleSpinBox,
+                             QRadioButton, QButtonGroup)
 from PyQt5.QtCore import Qt
 import os
 
@@ -69,14 +70,38 @@ class GlobalParamsDialog(QDialog):
         self.mesh_type_combo.currentIndexChanged.connect(self._on_mesh_type_changed)
         mesh_type_layout.addWidget(self.mesh_type_combo, 0, 1)
 
+        # 网格生成算法选择（与网格类型联动）
+        self.mesh_algorithm_label = QLabel("网格生成算法:")
+        mesh_type_layout.addWidget(self.mesh_algorithm_label, 1, 0)
+        self.mesh_algorithm_combo = QComboBox()
+        self.mesh_algorithm_combo.setStyleSheet("background-color: white;")
+        self.mesh_algorithm_combo.currentIndexChanged.connect(self._on_algorithm_changed)
+        mesh_type_layout.addWidget(self.mesh_algorithm_combo, 1, 1)
+
         # 三角形合并算法选择（仅在混合网格模式下可用）
         self.triangle_to_quad_label = QLabel("三角形合并算法:")
-        mesh_type_layout.addWidget(self.triangle_to_quad_label, 1, 0)
+        mesh_type_layout.addWidget(self.triangle_to_quad_label, 2, 0)
         self.triangle_to_quad_combo = QComboBox()
         self.triangle_to_quad_combo.setStyleSheet("background-color: white;")
         self.triangle_to_quad_combo.addItems(["greedy_merge", "q_morph"])
         self.triangle_to_quad_combo.setToolTip("greedy_merge: 贪婪合并算法\nq_morph: Q-Morph 算法")
-        mesh_type_layout.addWidget(self.triangle_to_quad_combo, 1, 1)
+        self.triangle_to_quad_combo.currentIndexChanged.connect(self._on_triangle_to_quad_changed)
+        mesh_type_layout.addWidget(self.triangle_to_quad_combo, 2, 1)
+
+        # Delaunay backend 单选（仅在三角+Delaunay算法下可见）
+        self.delaunay_backend_label = QLabel("Delaunay Backend:")
+        mesh_type_layout.addWidget(self.delaunay_backend_label, 3, 0)
+        backend_layout = QHBoxLayout()
+        self.bw_radio = QRadioButton("Bowyer-Watson")
+        self.triangle_radio = QRadioButton("Triangle")
+        self.backend_group = QButtonGroup(self)
+        self.backend_group.addButton(self.bw_radio)
+        self.backend_group.addButton(self.triangle_radio)
+        self.bw_radio.setChecked(True)
+        backend_layout.addWidget(self.bw_radio)
+        backend_layout.addWidget(self.triangle_radio)
+        backend_layout.addStretch()
+        mesh_type_layout.addLayout(backend_layout, 3, 1)
 
         mesh_type_layout.setColumnStretch(2, 1)
         mesh_type_group.setLayout(mesh_type_layout)
@@ -139,11 +164,59 @@ class GlobalParamsDialog(QDialog):
         self.browse_btn.setVisible(is_checked)
 
     def _on_mesh_type_changed(self, index):
-        """当网格类型改变时，控制三角形合并算法下拉框的可见性"""
+        """当网格类型改变时，联动算法和可见控件"""
         # 索引 0=三角形网格，1=三角形/四边形混合网格
-        is_mixed = (index == 1)
+        self.mesh_algorithm_combo.blockSignals(True)
+        self.mesh_algorithm_combo.clear()
+        if index == 0:
+            self.mesh_algorithm_combo.addItem("前沿推进 (Adfront2)", "advancing_front")
+            self.mesh_algorithm_combo.addItem("Delaunay 三角剖分", "delaunay")
+        else:
+            self.mesh_algorithm_combo.addItem("混合前沿推进 (Adfront2Hybrid)", "hybrid")
+            self.mesh_algorithm_combo.addItem("Q-Morph (先三角后重构)", "q_morph")
+        self.mesh_algorithm_combo.setCurrentIndex(0)
+        self.mesh_algorithm_combo.blockSignals(False)
+        self._update_algorithm_dependent_controls()
+
+    def _on_algorithm_changed(self, _index):
+        self._update_algorithm_dependent_controls()
+
+    def _on_triangle_to_quad_changed(self, index):
+        # 混合网格时，保持算法选择与三角形合并策略一致
+        if self.mesh_type_combo.currentIndex() != 1:
+            return
+        target_algo = "q_morph" if index == 1 else "hybrid"
+        algo_index = self.mesh_algorithm_combo.findData(target_algo)
+        if algo_index >= 0 and algo_index != self.mesh_algorithm_combo.currentIndex():
+            self.mesh_algorithm_combo.blockSignals(True)
+            self.mesh_algorithm_combo.setCurrentIndex(algo_index)
+            self.mesh_algorithm_combo.blockSignals(False)
+        self._update_algorithm_dependent_controls()
+
+    def _update_algorithm_dependent_controls(self):
+        is_mixed = (self.mesh_type_combo.currentIndex() == 1)
+        selected_algo = self.mesh_algorithm_combo.currentData()
+        is_delaunay = (selected_algo == "delaunay")
+
+        # 混合网格显示三角形合并策略
         self.triangle_to_quad_label.setVisible(is_mixed)
         self.triangle_to_quad_combo.setVisible(is_mixed)
+
+        # 若算法下拉选择了 q_morph/hybrid，同步 triangle_to_quad_method
+        if is_mixed:
+            if selected_algo == "q_morph":
+                self.triangle_to_quad_combo.blockSignals(True)
+                self.triangle_to_quad_combo.setCurrentText("q_morph")
+                self.triangle_to_quad_combo.blockSignals(False)
+            elif selected_algo == "hybrid":
+                self.triangle_to_quad_combo.blockSignals(True)
+                self.triangle_to_quad_combo.setCurrentText("greedy_merge")
+                self.triangle_to_quad_combo.blockSignals(False)
+
+        # Delaunay backend 仅在三角网格 + Delaunay 算法可见
+        self.delaunay_backend_label.setVisible((not is_mixed) and is_delaunay)
+        self.bw_radio.setVisible((not is_mixed) and is_delaunay)
+        self.triangle_radio.setVisible((not is_mixed) and is_delaunay)
 
     def _load_params(self):
         """加载现有参数"""
@@ -162,9 +235,9 @@ class GlobalParamsDialog(QDialog):
         verbosity = self.params.get("debug_level", 0)
         self.verbosity_combo.setCurrentIndex(verbosity)
 
-        # 3. 网格类型设置
+        # 3. 网格类型 / 算法设置
         mesh_type = self.params.get("mesh_type", 1)
-        combo_index = 0 if mesh_type == 1 else 1
+        combo_index = 0 if mesh_type in (1, 4) else 1
         self.mesh_type_combo.setCurrentIndex(combo_index)
 
         # 三角形合并算法
@@ -173,8 +246,23 @@ class GlobalParamsDialog(QDialog):
         if method_index >= 0:
             self.triangle_to_quad_combo.setCurrentIndex(method_index)
 
-        # 根据网格类型设置合并算法下拉框的可见性
-        self._on_mesh_type_changed(combo_index)
+        # Delaunay backend
+        delaunay_backend = self.params.get("delaunay_backend", "bowyer_watson")
+        if delaunay_backend == "triangle":
+            self.triangle_radio.setChecked(True)
+        else:
+            self.bw_radio.setChecked(True)
+
+        # 按 mesh_type 设置算法下拉
+        if combo_index == 0:
+            algo = "delaunay" if mesh_type == 4 else "advancing_front"
+        else:
+            algo = "q_morph" if triangle_to_quad_method == "q_morph" else "hybrid"
+        algo_index = self.mesh_algorithm_combo.findData(algo)
+        if algo_index >= 0:
+            self.mesh_algorithm_combo.setCurrentIndex(algo_index)
+
+        self._update_algorithm_dependent_controls()
 
         # 4. 全局网格尺寸设置
         global_size = self.params.get("global_max_size", 1e6)
@@ -194,12 +282,19 @@ class GlobalParamsDialog(QDialog):
         # 2. 信息输出等级设置
         params["debug_level"] = self.verbosity_combo.currentIndex()
 
-        # 3. 网格类型设置
+        # 3. 网格类型 / 算法设置
         combo_index = self.mesh_type_combo.currentIndex()
-        params["mesh_type"] = 1 if combo_index == 0 else 3
+        selected_algo = self.mesh_algorithm_combo.currentData()
+        if combo_index == 0:
+            params["mesh_type"] = 4 if selected_algo == "delaunay" else 1
+        else:
+            params["mesh_type"] = 3
 
         # 三角形合并算法（从下拉框获取当前选择的值）
         params["triangle_to_quad_method"] = self.triangle_to_quad_combo.currentText()
+        params["delaunay_backend"] = (
+            "triangle" if self.triangle_radio.isChecked() else "bowyer_watson"
+        )
         params["sizing_decay"] = float(self.sizing_decay_spin.value())
 
         # 4. 全局网格尺寸设置

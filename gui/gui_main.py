@@ -739,6 +739,8 @@ class PyMeshGenGUI(QMainWindow):
                         "input_file": config_info.get("input_file", ""),
                         "output_file": config_info.get("output_file", ""),
                         "mesh_type": config_info.get("mesh_type", 1),
+                        "delaunay_backend": config_info.get("delaunay_backend", "bowyer_watson"),
+                        "triangle_to_quad_method": config_info.get("triangle_to_quad_method", "q_morph"),
                         "viz_enabled": config_info.get("viz_enabled", False),
                         "parts": config_info.get("parts", [])
                     }
