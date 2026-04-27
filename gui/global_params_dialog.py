@@ -93,7 +93,7 @@ class GlobalParamsDialog(QDialog):
         mesh_type_layout.addWidget(self.delaunay_backend_label, 3, 0)
         backend_layout = QHBoxLayout()
         self.bw_radio = QRadioButton("Bowyer-Watson")
-        self.triangle_radio = QRadioButton("Triangle")
+        self.triangle_radio = QRadioButton("Shewchuk Triangle Lib")
         self.backend_group = QButtonGroup(self)
         self.backend_group.addButton(self.bw_radio)
         self.backend_group.addButton(self.triangle_radio)
@@ -169,10 +169,10 @@ class GlobalParamsDialog(QDialog):
         self.mesh_algorithm_combo.blockSignals(True)
         self.mesh_algorithm_combo.clear()
         if index == 0:
-            self.mesh_algorithm_combo.addItem("前沿推进 (Adfront2)", "advancing_front")
+            self.mesh_algorithm_combo.addItem("阵面推进法 (Adfront2)", "advancing_front")
             self.mesh_algorithm_combo.addItem("Delaunay 三角剖分", "delaunay")
         else:
-            self.mesh_algorithm_combo.addItem("混合前沿推进 (Adfront2Hybrid)", "hybrid")
+            self.mesh_algorithm_combo.addItem("混合阵面推进法 (Adfront2Hybrid)", "hybrid")
             self.mesh_algorithm_combo.addItem("Q-Morph (先三角后重构)", "q_morph")
         self.mesh_algorithm_combo.setCurrentIndex(0)
         self.mesh_algorithm_combo.blockSignals(False)
@@ -239,6 +239,8 @@ class GlobalParamsDialog(QDialog):
         mesh_type = self.params.get("mesh_type", 1)
         combo_index = 0 if mesh_type in (1, 4) else 1
         self.mesh_type_combo.setCurrentIndex(combo_index)
+        # 当索引未变化时 currentIndexChanged 不会触发，需主动初始化算法下拉
+        self._on_mesh_type_changed(combo_index)
 
         # 三角形合并算法
         triangle_to_quad_method = self.params.get("triangle_to_quad_method", "q_morph")

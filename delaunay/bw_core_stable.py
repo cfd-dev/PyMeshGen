@@ -25,7 +25,7 @@ from scipy.spatial import KDTree
 from collections import Counter
 import heapq  # 新增：用于优先级队列
 
-from utils.message import debug, verbose
+from utils.message import debug, info, verbose
 from utils.geom_toolkit import (
     point_in_polygon,
     is_polygon_clockwise,
@@ -82,11 +82,11 @@ def _log_mesh_summary(
     boundary_mask: np.ndarray,
 ) -> None:
     """Emit the common mesh summary used by both BW entry points."""
-    verbose("网格生成完成:")
-    verbose(f"  - 总节点数: {len(points)}")
-    verbose(f"  - 边界节点: {np.sum(boundary_mask)}")
-    verbose(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
-    verbose(f"  - 三角形数: {len(simplices)}")
+    info("网格生成完成:")
+    info(f"  - 总节点数: {len(points)}")
+    info(f"  - 边界节点: {np.sum(boundary_mask)}")
+    info(f"  - 内部节点: {len(points) - np.sum(boundary_mask)}")
+    info(f"  - 三角形数: {len(simplices)}")
 
 
 # =============================================================================
@@ -1221,9 +1221,11 @@ class BowyerWatsonMeshGenerator:
         final_triangles = len(self.triangles)
         final_points = len(self.points)
         final_inserted = final_points - initial_point_count
-        verbose(f"  [完成] 插点完成 | "
-                f"节点: {final_points} (边界: {boundary_count}, 内部: {final_inserted}) | "
-                f"三角形: {final_triangles}")
+        info(
+            f"Bowyer-Watson: 插点阶段完成 | "
+            f"节点: {final_points} (边界: {boundary_count}, 内部: {final_inserted}) | "
+            f"三角形: {final_triangles}"
+        )
     
     # -------------------------------------------------------------------------
     # 孔洞处理
@@ -3027,7 +3029,7 @@ class BowyerWatsonMeshGenerator:
         self.boundary_count = len(self.original_points)
         self.points = self.original_points.copy()
         self.boundary_mask = _create_boundary_mask(len(self.points), self.boundary_count)
-        verbose(f"边界点数量: {self.boundary_count}")
+        info(f"Bowyer-Watson: 边界点数量 {self.boundary_count}")
 
     def _run_initial_domain_cleanup(self) -> None:
         if self.holes:
@@ -3064,22 +3066,22 @@ class BowyerWatsonMeshGenerator:
 
     def _apply_final_smoothing(self) -> None:
         if self.smoothing_iterations > 0:
-            verbose(f"阶段 3/3: Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
+            info(f"Bowyer-Watson: 阶段 3/3 Laplacian 平滑 ({self.smoothing_iterations} 次迭代)...")
             self.boundary_mask = _create_boundary_mask(
                 len(self.points),
                 self.boundary_count,
                 self.boundary_mask,
             )
             self._laplacian_smoothing(self.smoothing_iterations)
-            verbose("  平滑完成")
+            info("Bowyer-Watson: 平滑完成")
             return
 
-        verbose("阶段 3/3: 跳过平滑（未启用）")
+        info("Bowyer-Watson: 阶段 3/3 跳过平滑（未启用）")
 
     def _run_topology_cleanup_passes(self) -> None:
         self.triangles = [tri for tri in self.triangles if not tri.is_deleted()]
 
-        verbose("阶段 3.5/3: 检测并修复重叠三角形...")
+        info("Bowyer-Watson: 阶段 3.5/3 检测并修复重叠/重复单元...")
         self._remove_overlapping_triangles()
         self._remove_duplicate_triangles()
         self._remove_strictly_intersecting_triangles()
@@ -3185,13 +3187,13 @@ class BowyerWatsonMeshGenerator:
         timer = TimeSpan("开始 Bowyer-Watson 网格生成...")
         self._initialize_generation_state()
         
-        verbose("阶段 1/3: 初始三角剖分...")
+        info("Bowyer-Watson: 阶段 1/3 初始三角剖分...")
         self._triangulate()
-        verbose(f"  初始三角形数量: {len(self.triangles)}")
+        info(f"Bowyer-Watson: 初始三角形数量 {len(self.triangles)}")
 
-        verbose("阶段 2/3: 迭代插入内部点...")
+        info("Bowyer-Watson: 阶段 2/3 迭代插入内部点...")
         if self.holes:
-            verbose(f"  检测到 {len(self.holes)} 个孔洞，插点时将拒绝在孔洞内插入新点")
+            info(f"Bowyer-Watson: 检测到 {len(self.holes)} 个孔洞，插点将跳过孔洞区域")
             for i, hole in enumerate(self.holes):
                 hole_center = np.mean(hole, axis=0)
                 verbose(f"    孔洞 {i}: {len(hole)} 个点，中心 {hole_center}")
@@ -3204,7 +3206,7 @@ class BowyerWatsonMeshGenerator:
         #   5. 恢复边界
         #   6. 挖洞
 
-        verbose("阶段 2.5/3: Constrained Delaunay 边界恢复...")
+        info("Bowyer-Watson: 阶段 2.5/3 Constrained Delaunay 边界恢复...")
         self._constrained_delaunay_triangulation()
 
         # 注意：不再调用 _recover_boundary_edges()
@@ -3215,7 +3217,7 @@ class BowyerWatsonMeshGenerator:
 
         # 清理孔洞/外边界后，局部 cavity 已只剩真实计算域，再做一次 exact boundary 恢复，
         # 避免首次恢复落在错误一侧的三角形被后续清理删除后，原始边再次丢失。
-        verbose("阶段 2.8/3: 清理后重新执行 Constrained Delaunay 边界恢复...")
+        info("Bowyer-Watson: 阶段 2.8/3 清理后再次执行边界恢复...")
         self._constrained_delaunay_triangulation()
 
         # 第二次 CDT 之后仍可能在孔洞/域外补回少量三角形；
@@ -3223,7 +3225,7 @@ class BowyerWatsonMeshGenerator:
         final_hole_removed, final_outer_removed = self._run_final_domain_cleanup()
 
         if final_hole_removed > 0 or final_outer_removed > 0:
-            verbose("阶段 2.98/3: 最终域清理后再次刷新精确边界...")
+            info("Bowyer-Watson: 阶段 2.98/3 最终域清理后刷新精确边界...")
             self._constrained_delaunay_triangulation()
 
         self._apply_final_smoothing()
