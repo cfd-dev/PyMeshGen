@@ -5,9 +5,9 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 try:
-    from utils.geom_toolkit import point_in_polygon
+    from utils.geom_toolkit import point_in_polygon, point_to_segment_distance
 except ModuleNotFoundError:
-    from geom_toolkit import point_in_polygon
+    from geom_toolkit import point_in_polygon, point_to_segment_distance
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,42 @@ def _build_front_boundary_metadata(front_heap) -> dict:
     return metadata
 
 
+def _build_front_segments(front_heap):
+    segments = []
+    for front in front_heap:
+        front_part_name = getattr(front, "part_name", None)
+        front_bc_type = getattr(front, "bc_type", None) or "boundary"
+        node_elems = getattr(front, "node_elems", [])
+        if len(node_elems) < 2:
+            continue
+        n1 = node_elems[0]
+        n2 = node_elems[1]
+        part_name = getattr(n1, "part_name", None) or getattr(n2, "part_name", None) or front_part_name
+        bc_type = getattr(n1, "bc_type", None) or getattr(n2, "bc_type", None) or front_bc_type
+        segments.append(
+            (
+                np.asarray(n1.coords[:2], dtype=float),
+                np.asarray(n2.coords[:2], dtype=float),
+                part_name,
+                bc_type,
+            )
+        )
+    return segments
+
+
+def _fallback_boundary_metadata(point: np.ndarray, segments, tol: float):
+    best = None
+    best_dist = float("inf")
+    for seg_start, seg_end, part_name, bc_type in segments:
+        dist = point_to_segment_distance(point, seg_start, seg_end)
+        if dist < best_dist:
+            best_dist = dist
+            best = (part_name, bc_type)
+    if best is not None and best_dist <= tol:
+        return best
+    return None, None
+
+
 def build_delaunay_unstructured_grid(points, simplices, boundary_mask, front_heap):
     """Convert triangulation arrays into an Unstructured_Grid with boundary metadata."""
     from data_structure.unstructured_grid import Unstructured_Grid
@@ -50,8 +86,25 @@ def build_delaunay_unstructured_grid(points, simplices, boundary_mask, front_hea
         grid_dimension=2,
     )
     boundary_metadata = _build_front_boundary_metadata(front_heap)
+    segments = _build_front_segments(front_heap)
+    if len(points) > 0:
+        points_arr = np.asarray(points, dtype=float)
+        bbox_min = np.min(points_arr[:, :2], axis=0)
+        bbox_max = np.max(points_arr[:, :2], axis=0)
+        diag = float(np.linalg.norm(bbox_max - bbox_min))
+    else:
+        diag = 1.0
+    fallback_tol = max(1e-8, diag * 1e-6)
     for node_elem in triangular_grid.boundary_nodes:
         part_name, bc_type = boundary_metadata.get(_coord_key(node_elem.coords), (None, None))
+        if part_name is None:
+            part_name, bc_type_fallback = _fallback_boundary_metadata(
+                np.asarray(node_elem.coords[:2], dtype=float),
+                segments,
+                fallback_tol,
+            )
+            if bc_type is None:
+                bc_type = bc_type_fallback
         if part_name is not None:
             node_elem.part_name = part_name
         if bc_type is not None:

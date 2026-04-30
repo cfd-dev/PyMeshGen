@@ -1,7 +1,7 @@
 import os
 import subprocess
 import sys
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QApplication, QMessageBox
 
 
 class HelpModule:
@@ -12,7 +12,11 @@ class HelpModule:
 
     def show_about(self):
         """显示关于对话框"""
-        about_text = """PyMeshGen v1.0\n\n基于Python的网格生成工具\n\n© 2025 CFD Dev"""
+        app = QApplication.instance()
+        version = app.applicationVersion() if app else ""
+        if not version:
+            version = "0.0.0"
+        about_text = f"""PyMeshGen v{version}\n\n基于Python的网格生成工具\n\n© 2025 CFD Dev"""
         QMessageBox.about(self.gui, "关于", about_text)
 
     def show_user_manual(self):

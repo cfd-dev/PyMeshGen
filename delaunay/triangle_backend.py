@@ -13,9 +13,9 @@ import numpy as np
 from utils.runtime_paths import find_resource_root
 
 try:
-    from utils.geom_toolkit import point_in_polygon
+    from utils.geom_toolkit import point_in_polygon, point_to_segment_distance
 except ModuleNotFoundError:
-    from geom_toolkit import point_in_polygon
+    from geom_toolkit import point_in_polygon, point_to_segment_distance
 
 
 _RESOURCE_ROOT = find_resource_root(
@@ -107,17 +107,6 @@ def _iter_leaf_nodes(nodes) -> Iterable[object]:
             yield node
 
 
-def _point_to_segment_distance(point: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
-    ab = b - a
-    denom = float(np.dot(ab, ab))
-    if denom <= 1e-20:
-        return float(np.linalg.norm(point - a))
-    t = float(np.dot(point - a, ab) / denom)
-    t = max(0.0, min(1.0, t))
-    projection = a + t * ab
-    return float(np.linalg.norm(point - projection))
-
-
 def _point_in_domain(
     point: np.ndarray,
     outer_boundary: Optional[np.ndarray],
@@ -151,7 +140,7 @@ def _candidate_boundary_distance(
 ) -> float:
     min_boundary_distance = float("inf")
     for edge_start, edge_end in boundary_edges:
-        dist = _point_to_segment_distance(
+        dist = point_to_segment_distance(
             candidate,
             boundary_points[edge_start],
             boundary_points[edge_end],
