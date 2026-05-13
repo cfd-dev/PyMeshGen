@@ -83,11 +83,12 @@ class SurfaceMeshGenerator:
         self.node_coords: List[Tuple[float, float, float]] = []
         self.node_dict: Dict[int, NodeElement3D] = {}
         self.node_hash_set: Set[int] = set()
-        
+        self.triangle_set: Set[frozenset] = set()
+
         self.space_index_node = None
         self.space_index_front = None
         self.space_index_triangle = None
-        
+
         self.num_nodes = 0
         self.num_triangles = 0
         
@@ -249,43 +250,75 @@ class SurfaceMeshGenerator:
     ) -> Optional[NodeElement3D]:
         """
         选择最佳节点
-        
+
         Args:
             front: 当前阵面
             ideal_point: 理想点
             candidates: 候选节点列表
-        
+
         Returns:
             最佳节点，如果没有合适的返回None
         """
         p0 = np.array(front.node_elems[0].coords)
         p1 = np.array(front.node_elems[1].coords)
-        
+        front_center = np.array(front.center)
+        tangent = np.array(front.tangent_normal)
+
+        front_len = np.linalg.norm(p1 - p0)
+        min_height = front_len * 0.05  # 退化三角形高度阈值
+
+        # 理想点在阵面的哪一侧（正=推进方向）
+        ideal_side = np.dot(np.array(ideal_point) - front_center, tangent)
+
         scored_candidates = []
-        
+
+        front_hash_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash])
+
         for node in candidates:
             if node.idx == front.node_elems[0].idx or node.idx == front.node_elems[1].idx:
                 continue
-            
+
             p2 = np.array(node.coords)
-            
+
+            # 拒绝已存在的三角形（防止重叠）
+            tri_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash, node.hash])
+            if tri_key in self.triangle_set:
+                continue
+
+            # 拒绝在阵面背面的候选节点（与理想点反向）
+            candidate_side = np.dot(p2 - front_center, tangent)
+            if ideal_side > 1e-12 and candidate_side < -1e-12:
+                continue
+            if ideal_side < -1e-12 and candidate_side > 1e-12:
+                continue
+
+            # 拒绝距离阵面边过近的候选节点（退化三角形）
+            edge_vec = p1 - p0
+            edge_len_sq = np.dot(edge_vec, edge_vec)
+            if edge_len_sq > 1e-24:
+                t = np.dot(p2 - p0, edge_vec) / edge_len_sq
+                closest = p0 + np.clip(t, 0, 1) * edge_vec
+                height = np.linalg.norm(p2 - closest)
+                if height < min_height:
+                    continue
+
             quality = self._compute_triangle_quality(p0, p1, p2)
-            
-            if quality > 0:
+
+            if quality > 0.1:
                 scored_candidates.append((quality, node))
-        
+
         ideal_node = self._create_ideal_node(ideal_point)
         ideal_quality = self._compute_triangle_quality(p0, p1, np.array(ideal_point))
         ideal_quality *= self.quality_discount
-        
+
         if ideal_quality > 0:
             scored_candidates.append((ideal_quality, ideal_node))
-        
+
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
-        
+
         for quality, node in scored_candidates:
             return node
-        
+
         return None
     
     def _compute_triangle_quality(
@@ -419,6 +452,9 @@ class SurfaceMeshGenerator:
             idx=self.num_triangles
         )
         self.triangle_list.append(triangle)
+        self.triangle_set.add(frozenset([
+            front.node_elems[0].hash, front.node_elems[1].hash, node.hash
+        ]))
         self.num_triangles += 1
 
         # 更新空间索引

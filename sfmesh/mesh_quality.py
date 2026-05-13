@@ -220,7 +220,15 @@ class SurfaceMeshQuality:
             'is_good': is_good,
             'area': triangle.area
         }
-    
+
+    @staticmethod
+    def _safe_histogram(data, bins=10):
+        """安全的直方图计算，处理数据范围为零的情况"""
+        try:
+            return np.histogram(data, bins=bins)[0].tolist()
+        except ValueError:
+            return [len(data)]
+
     @staticmethod
     def evaluate_mesh(
         triangles: List[SurfaceTriangle],
@@ -266,7 +274,7 @@ class SurfaceMeshQuality:
             'max_angle_max': np.max(max_angles),
             'total_area': np.sum(areas),
             'area_mean': np.mean(areas),
-            'quality_histogram': np.histogram(qualities, bins=10)[0].tolist()
+            'quality_histogram': SurfaceMeshQuality._safe_histogram(qualities, bins=10)
         }
         
         poor_quality_count = sum(1 for q in qualities if q < 0.3)
@@ -392,7 +400,7 @@ def check_edge_triangle_intersection(
     d2 = np.dot(edge_end - p1, normal)
     
     if abs(d1) < tolerance and abs(d2) < tolerance:
-        return True
+        return False
     
     if d1 * d2 > tolerance:
         return False

@@ -1,0 +1,293 @@
+"""
+基础几何体曲面网格生成单元测试
+
+测试 sfmesh 模块从基础几何体（长方体、圆柱体）生成曲面网格的功能
+"""
+import sys
+import os
+import unittest
+from pathlib import Path
+
+project_root = Path(__file__).parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from fileIO.occ_loader import ensure_occ_loaded
+ensure_occ_loaded()
+
+from sfmesh.primitives import (
+    generate_cube_mesh,
+    generate_cylinder_mesh,
+    PrimitiveMeshResult,
+    _extract_faces,
+)
+from sfmesh.mesh_quality import SurfaceMeshQuality
+
+
+class TestPrimitiveMeshResult(unittest.TestCase):
+    """测试 PrimitiveMeshResult 数据结构"""
+
+    def test_result_creation(self):
+        """测试结果对象创建"""
+        result = PrimitiveMeshResult()
+        self.assertEqual(len(result.triangles), 0)
+        self.assertEqual(len(result.nodes), 0)
+        self.assertEqual(result.num_faces, 0)
+        self.assertEqual(len(result.face_map), 0)
+        self.assertEqual(len(result.face_types), 0)
+
+
+class TestExtractFaces(unittest.TestCase):
+    """测试面提取辅助函数"""
+
+    def test_extract_box_faces(self):
+        """测试从长方体提取面"""
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCC.Core.gp import gp_Pnt
+
+        shape = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), gp_Pnt(1, 1, 1)).Shape()
+        faces = _extract_faces(shape)
+        self.assertEqual(len(faces), 6)
+
+    def test_extract_cylinder_faces(self):
+        """测试从圆柱体提取面"""
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+        from OCC.Core.gp import gp_Ax2, gp_Pnt, gp_Dir
+
+        axis = gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
+        shape = BRepPrimAPI_MakeCylinder(axis, 1.0, 2.0).Shape()
+        faces = _extract_faces(shape)
+        self.assertEqual(len(faces), 3)
+
+
+class TestCubeMeshGeneration(unittest.TestCase):
+    """测试长方体曲面网格生成"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_cube_face_count(self):
+        """测试长方体面数量（应为6）"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1)
+        self.assertEqual(result.num_faces, 6)
+        self.assertEqual(len(result.face_map), 6)
+
+    def test_cube_triangle_generation(self):
+        """测试长方体每个面都生成了三角形"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1)
+        self.assertGreater(len(result.triangles), 0, "未生成任何三角形")
+        for face_idx, tris in result.face_map.items():
+            self.assertGreater(len(tris), 0, f"面 {face_idx} 未生成三角形")
+
+    def test_cube_face_coverage(self):
+        """测试长方体网格完整覆盖6个面"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(2, 3, 4), spacing=0.2)
+
+        for face_idx, tris in result.face_map.items():
+            ftype = result.face_types[face_idx]
+            coords = [n.coords for t in tris for n in t.nodes]
+            xs = [c[0] for c in coords]
+            ys = [c[1] for c in coords]
+            zs = [c[2] for c in coords]
+
+            with self.subTest(face=ftype):
+                if ftype == "bottom":
+                    self.assertAlmostEqual(min(zs), 0.0, places=1)
+                    self.assertAlmostEqual(max(zs), 0.0, places=1)
+                    self.assertAlmostEqual(min(xs), 0.0, places=1)
+                    self.assertAlmostEqual(max(xs), 2.0, places=1)
+                    self.assertAlmostEqual(min(ys), 0.0, places=1)
+                    self.assertAlmostEqual(max(ys), 3.0, places=1)
+                elif ftype == "top":
+                    self.assertAlmostEqual(min(zs), 4.0, places=1)
+                    self.assertAlmostEqual(max(zs), 4.0, places=1)
+                    self.assertAlmostEqual(min(xs), 0.0, places=1)
+                    self.assertAlmostEqual(max(xs), 2.0, places=1)
+                elif ftype == "left":
+                    self.assertAlmostEqual(min(xs), 0.0, places=1)
+                    self.assertAlmostEqual(max(xs), 0.0, places=1)
+                    self.assertAlmostEqual(min(ys), 0.0, places=1)
+                    self.assertAlmostEqual(max(ys), 3.0, places=1)
+                    self.assertAlmostEqual(min(zs), 0.0, places=1)
+                    self.assertAlmostEqual(max(zs), 4.0, places=1)
+                elif ftype == "right":
+                    self.assertAlmostEqual(min(xs), 2.0, places=1)
+                    self.assertAlmostEqual(max(xs), 2.0, places=1)
+                elif ftype == "front":
+                    self.assertAlmostEqual(min(ys), 0.0, places=1)
+                    self.assertAlmostEqual(max(ys), 0.0, places=1)
+                    self.assertAlmostEqual(min(xs), 0.0, places=1)
+                    self.assertAlmostEqual(max(xs), 2.0, places=1)
+                    self.assertAlmostEqual(min(zs), 0.0, places=1)
+                    self.assertAlmostEqual(max(zs), 4.0, places=1)
+                elif ftype == "back":
+                    self.assertAlmostEqual(min(ys), 3.0, places=1)
+                    self.assertAlmostEqual(max(ys), 3.0, places=1)
+
+    def test_cube_face_types(self):
+        """测试长方体面类型标注"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1)
+        expected_types = {"bottom", "top", "front", "back", "left", "right"}
+        actual_types = set(result.face_types.values())
+        self.assertTrue(expected_types.issubset(actual_types),
+                        f"缺少面类型: {expected_types - actual_types}")
+
+    def test_cube_node_count(self):
+        """测试长方体网格节点数量"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1)
+        self.assertGreater(len(result.nodes), 0)
+        self.assertGreaterEqual(len(result.nodes), 8)
+
+    def test_cube_quality(self):
+        """测试长方体网格质量"""
+        result = generate_cube_mesh(corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1)
+        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.5, "平均网格质量过低")
+
+    def test_cube_different_sizes(self):
+        """测试不同尺寸长方体（参数化子测试）"""
+        test_cases = [
+            {"corner1": (0, 0, 0), "corner2": (1, 1, 1), "spacing": 0.1},
+            {"corner1": (0, 0, 0), "corner2": (2, 3, 4), "spacing": 0.2},
+            {"corner1": (-1, -1, -1), "corner2": (1, 1, 1), "spacing": 0.2},
+        ]
+        for case in test_cases:
+            with self.subTest(case=case):
+                result = generate_cube_mesh(**case)
+                self.assertEqual(result.num_faces, 6)
+                self.assertGreater(len(result.triangles), 0)
+                # 每个面都有完整覆盖
+                for face_idx, tris in result.face_map.items():
+                    self.assertGreater(len(tris), 4,
+                                       f"面 {face_idx} 三角形数量不足")
+
+    def test_cube_invalid_input(self):
+        """测试无效输入"""
+        with self.assertRaises(ValueError):
+            generate_cube_mesh(corner1=(0, 0, 0), corner2=(0, 1, 1), spacing=0.5)
+
+    def test_cube_vtk_export(self):
+        """测试VTK导出"""
+        output_file = str(self.output_dir / "cube_mesh.vtk")
+        result = generate_cube_mesh(
+            corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1, output_vtk=output_file,
+        )
+        self.assertGreater(len(result.triangles), 0)
+        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
+        self.assertGreater(os.path.getsize(output_file), 0)
+
+
+class TestCylinderMeshGeneration(unittest.TestCase):
+    """测试圆柱体曲面网格生成"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_cylinder_face_count(self):
+        """测试圆柱体面数量（应为3）"""
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+        )
+        self.assertEqual(result.num_faces, 3)
+
+    def test_cylinder_triangle_generation(self):
+        """测试圆柱体每个面都生成了三角形"""
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+        )
+        self.assertGreater(len(result.triangles), 0)
+        for face_idx, tris in result.face_map.items():
+            self.assertGreater(len(tris), 0, f"面 {face_idx} 未生成三角形")
+
+    def test_cylinder_face_types(self):
+        """测试圆柱体面类型标注"""
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+        )
+        expected_types = {"bottom", "top", "lateral"}
+        actual_types = set(result.face_types.values())
+        self.assertTrue(expected_types.issubset(actual_types),
+                        f"缺少面类型: {expected_types - actual_types}")
+
+    def test_cylinder_face_coverage(self):
+        """测试圆柱体网格完整覆盖3个面"""
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+        )
+        for face_idx, tris in result.face_map.items():
+            ftype = result.face_types[face_idx]
+            coords = [n.coords for t in tris for n in t.nodes]
+            zs = [c[2] for c in coords]
+            with self.subTest(face=ftype):
+                if ftype == "bottom":
+                    self.assertAlmostEqual(min(zs), 0.0, places=1)
+                    self.assertAlmostEqual(max(zs), 0.0, places=1)
+                elif ftype == "top":
+                    self.assertAlmostEqual(min(zs), 2.0, places=1)
+                    self.assertAlmostEqual(max(zs), 2.0, places=1)
+                elif ftype == "lateral":
+                    self.assertGreater(min(zs), -0.1)
+                    self.assertLess(max(zs), 2.1)
+
+    def test_cylinder_quality(self):
+        """测试圆柱体网格质量"""
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+        )
+        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3, "平均网格质量过低")
+
+    def test_cylinder_different_params(self):
+        """测试不同参数圆柱体"""
+        test_cases = [
+            {"base_center": (0, 0, 0), "radius": 1.0, "height": 1.0, "spacing": 0.1},
+            {"base_center": (0, 0, 0), "radius": 2.0, "height": 3.0, "spacing": 0.2},
+            {"base_center": (1, 1, 1), "radius": 0.5, "height": 2.0, "spacing": 0.05},
+        ]
+        for case in test_cases:
+            with self.subTest(case=case):
+                result = generate_cylinder_mesh(**case)
+                self.assertEqual(result.num_faces, 3)
+                self.assertGreater(len(result.triangles), 0)
+
+    def test_cylinder_invalid_radius(self):
+        """测试无效半径"""
+        with self.assertRaises(ValueError):
+            generate_cylinder_mesh(base_center=(0, 0, 0), radius=-1.0, height=1.0)
+
+    def test_cylinder_invalid_height(self):
+        """测试无效高度"""
+        with self.assertRaises(ValueError):
+            generate_cylinder_mesh(base_center=(0, 0, 0), radius=1.0, height=0.0)
+
+    def test_cylinder_vtk_export(self):
+        """测试VTK导出"""
+        output_file = str(self.output_dir / "cylinder_mesh.vtk")
+        result = generate_cylinder_mesh(
+            base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
+            output_vtk=output_file,
+        )
+        self.assertGreater(len(result.triangles), 0)
+        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
+        self.assertGreater(os.path.getsize(output_file), 0)
+
+
+def run_tests():
+    """运行测试"""
+    loader = unittest.TestLoader()
+    suite = unittest.TestSuite()
+    suite.addTests(loader.loadTestsFromTestCase(TestPrimitiveMeshResult))
+    suite.addTests(loader.loadTestsFromTestCase(TestExtractFaces))
+    suite.addTests(loader.loadTestsFromTestCase(TestCubeMeshGeneration))
+    suite.addTests(loader.loadTestsFromTestCase(TestCylinderMeshGeneration))
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
+    return result
+
+
+if __name__ == "__main__":
+    run_tests()
