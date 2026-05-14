@@ -841,6 +841,11 @@ def generate_cylinder_mesh(
     """
     生成圆柱体的曲面网格
 
+    逐面使用 2D 阵面推进流水线生成网格：
+    - 底面/顶面：圆形域在 XY 平面离散化后用 AFM 填充
+    - 侧面：展开为 (s, z) 矩形后用 AFM 填充，再映射回 3D 圆柱坐标
+    共边节点通过坐标去重保持一致。
+
     Args:
         base_center: 底面圆心坐标 (x, y, z)
         radius: 圆柱半径
@@ -859,18 +864,71 @@ def generate_cylinder_mesh(
     if height <= 0:
         raise ValueError(f"圆柱高度必须为正数: {height}")
 
-    axis = gp_Ax2(gp_Pnt(*base_center), gp_Dir(0, 0, 1))
-    shape = BRepPrimAPI_MakeCylinder(axis, radius, height).Shape()
+    cx, cy, z0 = base_center
+    z1 = z0 + height
 
-    faces = _extract_faces(shape)
-    base_z = base_center[2]
-    top_z = base_center[2] + height
-    face_types = _classify_cylinder_faces(faces, base_z, top_z)
+    # 三个面的定义
+    face_mesh_funcs = [
+        ("bottom", lambda: _mesh_disk_2d(
+            center_xy=(cx, cy), radius=radius, z=z0,
+            spacing=spacing, face_name="bottom", normal_z=-1.0,
+        )),
+        ("top", lambda: _mesh_disk_2d(
+            center_xy=(cx, cy), radius=radius, z=z1,
+            spacing=spacing, face_name="top", normal_z=1.0,
+        )),
+        ("lateral", lambda: _mesh_lateral_cylinder_2d(
+            base_center=base_center, radius=radius, height=height,
+            spacing=spacing, face_name="lateral",
+        )),
+    ]
 
-    result = _mesh_faces(faces, face_types, spacing=spacing)
+    # 逐面生成网格
+    face_results = []
+    for face_name, mesh_func in face_mesh_funcs:
+        info(f"生成面 {face_name} 网格...")
+        tris, nodes = mesh_func()
+        face_results.append((face_name, tris, nodes))
+
+    # 合并结果，共边节点按坐标去重
+    node_hash_to_global_idx = {}
+    all_nodes = []
+    all_triangles = []
+    result = PrimitiveMeshResult()
+    result.num_faces = 3
+
+    global_idx = 0
+    for face_idx, (face_name, tris, nodes) in enumerate(face_results):
+        result.face_types[face_idx] = face_name
+
+        node_to_global = {}
+        for node in nodes:
+            h = node.hash
+            if h not in node_hash_to_global_idx:
+                node_hash_to_global_idx[h] = global_idx
+                node.idx = global_idx
+                all_nodes.append(node)
+                global_idx += 1
+            node_to_global[id(node)] = node_hash_to_global_idx[h]
+
+        face_tris = []
+        for tri in tris:
+            new_tri = SurfaceTriangle(
+                all_nodes[node_to_global[id(tri.nodes[0])]],
+                all_nodes[node_to_global[id(tri.nodes[1])]],
+                all_nodes[node_to_global[id(tri.nodes[2])]],
+                surface=None, idx=len(all_triangles),
+            )
+            all_triangles.append(new_tri)
+            face_tris.append(new_tri)
+
+        result.face_map[face_idx] = face_tris
+
+    result.triangles = all_triangles
+    result.nodes = all_nodes
 
     if output_vtk:
-        _export_combined_mesh(result.triangles, output_vtk)
+        _export_combined_mesh(all_triangles, output_vtk)
 
     return result
 
@@ -893,6 +951,157 @@ def _discretize_edge_2d(
         pt = s + t * (e - s)
         points.append((float(pt[0]), float(pt[1])))
     return points
+
+
+def _create_fronts_from_2d_edges(
+    edge_points_2d: List[List[Tuple[float, float]]],
+    face_name: str = "face",
+) -> List[Front]:
+    """从 2D 边界点列表创建 Front 对象列表"""
+    all_fronts = []
+    bc_type = "BCWall"
+    for pts in edge_points_2d:
+        for i in range(len(pts) - 1):
+            node1 = NodeElementALM(
+                coords=(pts[i][0], pts[i][1], 0.0),
+                idx=-1, bc_type=bc_type, part_name=face_name,
+            )
+            node2 = NodeElementALM(
+                coords=(pts[i + 1][0], pts[i + 1][1], 0.0),
+                idx=-1, bc_type=bc_type, part_name=face_name,
+            )
+            front = Front(node1, node2, idx=-1, bc_type=bc_type, part_name=face_name)
+            all_fronts.append(front)
+    return all_fronts
+
+
+def _run_afm_2d_pipeline(
+    all_fronts: List[Front],
+    spacing: float,
+    face_size: float,
+):
+    """
+    运行 2D AFM 核心流水线：QuadtreeSizing → Adfront2 → 边交换 → Laplacian 光滑
+
+    Args:
+        all_fronts: 边界阵面列表（CCW 排列）
+        spacing: 网格尺寸
+        face_size: 面的特征尺寸（用于计算边界扩展和迭代上限）
+
+    Returns:
+        优化后的 Unstructured_Grid
+    """
+    from meshsize.meshsize import QuadtreeSizing
+    from adfront2.adfront2 import Adfront2
+    from optimize.optimize import edge_swap_delaunay, laplacian_smooth
+    import heapq as _heapq
+
+    class _DummyVisual:
+        ax = None
+
+    _extra_pad = max(face_size * 0.5, 5.0 * spacing) / max(face_size, 1e-12)
+
+    class _PaddedSizingField(QuadtreeSizing):
+        def compute_global_parameters(self):
+            super().compute_global_parameters()
+            x0, y0, x1, y1 = self.bg_bounds
+            dx, dy = x1 - x0, y1 - y0
+            self.bg_bounds = (
+                x0 - dx * _extra_pad, y0 - dy * _extra_pad,
+                x1 + dx * _extra_pad, y1 + dy * _extra_pad,
+            )
+
+        def spacing_at(self, point):
+            try:
+                return super().spacing_at(point)
+            except ValueError:
+                return self.global_spacing
+
+    sizing_system = _PaddedSizingField(
+        initial_front=all_fronts,
+        max_size=spacing * 10,
+        resolution=0.1,
+        decay=1.2,
+        visual_obj=_DummyVisual(),
+    )
+
+    class _ParamObj:
+        debug_level = 0
+        mesh_type = 1
+
+    front_heap = list(all_fronts)
+    _heapq.heapify(front_heap)
+
+    adfront = Adfront2(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        node_coords=None,
+        param_obj=_ParamObj(),
+        visual_obj=_DummyVisual(),
+    )
+
+    max_steps = max(50000, int((face_size / spacing) ** 2 * 15))
+    step = 0
+    while adfront.front_list and step < max_steps:
+        step += 1
+        adfront.base_front = _heapq.heappop(adfront.front_list)
+        sp = sizing_system.spacing_at(adfront.base_front.center)
+        adfront.add_new_point(sp)
+        adfront.search_candidates(adfront.base_front.al * sp)
+        adfront.select_point()
+        adfront.update_data()
+    adfront.construct_unstr_grid()
+
+    unstr_grid = adfront.unstr_grid
+    edge_swap_delaunay(unstr_grid)
+    laplacian_smooth(unstr_grid, num_iter=3)
+    return unstr_grid
+
+
+def _unstr_grid_to_3d(
+    unstr_grid,
+    map_to_3d,
+    normal_3d: Tuple[float, float, float] = (0.0, 0.0, 1.0),
+    normal_func=None,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    将 2D Unstructured_Grid 映射到 3D 坐标并生成 SurfaceTriangle 列表
+
+    Args:
+        unstr_grid: AFM 生成的 2D 网格
+        map_to_3d: 坐标映射函数 (x2d, y2d) → (x3d, y3d, z3d)
+        normal_3d: 默认法向量（当 normal_func 为 None 时使用）
+        normal_func: 可选的法向量计算函数 (x2d, y2d) → (nx, ny, nz)
+
+    Returns:
+        (triangles, nodes_3d)
+    """
+    grid_nodes = unstr_grid.node_coords
+    grid_cells = unstr_grid.cell_container
+
+    nodes_3d = []
+    for idx, coords_2d in enumerate(grid_nodes):
+        x2d, y2d = float(coords_2d[0]), float(coords_2d[1])
+        coord_3d = map_to_3d(x2d, y2d)
+        n3d = normal_func(x2d, y2d) if normal_func else normal_3d
+        node = NodeElement3D(
+            coords=coord_3d, idx=idx,
+            surface=None, uv_params=(0.0, 0.0),
+            normal=n3d,
+        )
+        nodes_3d.append(node)
+
+    triangles = []
+    for cell in grid_cells:
+        nids = cell.node_ids
+        if len(nids) >= 3:
+            tri = SurfaceTriangle(
+                nodes_3d[nids[0]], nodes_3d[nids[1]], nodes_3d[nids[2]],
+                surface=None, idx=len(triangles),
+            )
+            triangles.append(tri)
+
+    return triangles, nodes_3d
 
 
 def _mesh_face_2d_pipeline(
@@ -941,131 +1150,145 @@ def _mesh_face_2d_pipeline(
         pts = _discretize_edge_2d(c2d[i], c2d[(i + 1) % 4], spacing)
         edge_points_2d.append(pts)
 
-    # 创建 Front 对象
-    all_fronts = []
-    bc_type = "BCWall"
-    for pts in edge_points_2d:
-        for i in range(len(pts) - 1):
-            node1 = NodeElementALM(
-                coords=(pts[i][0], pts[i][1], 0.0),
-                idx=-1, bc_type=bc_type, part_name=face_name,
-            )
-            node2 = NodeElementALM(
-                coords=(pts[i + 1][0], pts[i + 1][1], 0.0),
-                idx=-1, bc_type=bc_type, part_name=face_name,
-            )
-            front = Front(node1, node2, idx=-1, bc_type=bc_type, part_name=face_name)
-            all_fronts.append(front)
-
-    # QuadtreeSizing（扩展边界 + 越界保护）
-    from meshsize.meshsize import QuadtreeSizing
-
-    class _DummyVisual:
-        ax = None
-
+    # 创建 Front 对象并运行 AFM
+    all_fronts = _create_fronts_from_2d_edges(edge_points_2d, face_name)
     _face_sz = max(
         max(c2d[i][0] for i in range(4)) - min(c2d[i][0] for i in range(4)),
         max(c2d[i][1] for i in range(4)) - min(c2d[i][1] for i in range(4)),
     )
-    _extra_pad = max(_face_sz * 0.5, 5.0 * spacing) / max(_face_sz, 1e-12)
-
-    class _PaddedSizingField(QuadtreeSizing):
-        """扩展边界并在越界时返回 global_spacing"""
-        def compute_global_parameters(self):
-            super().compute_global_parameters()
-            x0, y0, x1, y1 = self.bg_bounds
-            dx, dy = x1 - x0, y1 - y0
-            self.bg_bounds = (
-                x0 - dx * _extra_pad, y0 - dy * _extra_pad,
-                x1 + dx * _extra_pad, y1 + dy * _extra_pad,
-            )
-
-        def spacing_at(self, point):
-            try:
-                return super().spacing_at(point)
-            except ValueError:
-                return self.global_spacing
-
-    sizing_system = _PaddedSizingField(
-        initial_front=all_fronts,
-        max_size=spacing * 10,
-        resolution=0.1,
-        decay=1.2,
-        visual_obj=_DummyVisual(),
-    )
-
-    # Adfront2（带迭代上限保护）
-    import heapq as _heapq
-    from adfront2.adfront2 import Adfront2
-
-    class _ParamObj:
-        debug_level = 0
-        mesh_type = 1
-
-    front_heap = list(all_fronts)
-    _heapq.heapify(front_heap)
-
-    adfront = Adfront2(
-        boundary_front=front_heap,
-        sizing_system=sizing_system,
-        node_coords=None,
-        param_obj=_ParamObj(),
-        visual_obj=_DummyVisual(),
-    )
-
-    # 硬性迭代上限，防止推进发散
-    max_steps = max(50000, int((_face_sz / spacing) ** 2 * 15))
-    orig_generate = adfront.generate_elements
-
-    def _bounded_generate():
-        step = 0
-        while adfront.front_list and step < max_steps:
-            step += 1
-            adfront.base_front = _heapq.heappop(adfront.front_list)
-            sp = sizing_system.spacing_at(adfront.base_front.center)
-            adfront.add_new_point(sp)
-            adfront.search_candidates(adfront.base_front.al * sp)
-            adfront.select_point()
-            adfront.update_data()
-        adfront.construct_unstr_grid()
-        return adfront.unstr_grid
-
-    unstr_grid = _bounded_generate()
-
-    # 网格优化：边交换 + Laplacian 光滑
-    from optimize.optimize import edge_swap_delaunay, laplacian_smooth
-    edge_swap_delaunay(unstr_grid)
-    laplacian_smooth(unstr_grid, num_iter=3)
+    unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing, _face_sz)
 
     # 变换回 3D 坐标
-    grid_nodes = unstr_grid.node_coords
-    grid_cells = unstr_grid.cell_container
+    normal_3d = tuple(float(x) for x in normal)
 
-    nodes_3d = []
-    for idx, coords_2d in enumerate(grid_nodes):
-        x2d, y2d = float(coords_2d[0]), float(coords_2d[1])
+    def _map_to_3d(x2d, y2d):
         coord_3d = [0.0, 0.0, 0.0]
         coord_3d[ax0] = x2d
         coord_3d[ax1] = y2d
         coord_3d[max_axis] = const_val
-        node = NodeElement3D(
-            coords=tuple(coord_3d), idx=idx,
-            surface=None, uv_params=(0.0, 0.0),
-            normal=tuple(float(x) for x in normal),
-        )
-        nodes_3d.append(node)
+        return tuple(coord_3d)
 
-    triangles = []
-    for cell in grid_cells:
-        nids = cell.node_ids
-        if len(nids) >= 3:
-            tri = SurfaceTriangle(
-                nodes_3d[nids[0]], nodes_3d[nids[1]], nodes_3d[nids[2]],
-                surface=None, idx=len(triangles),
-            )
-            triangles.append(tri)
+    return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_3d)
 
-    return triangles, nodes_3d
+
+def _discretize_circle_2d(
+    center: Tuple[float, float],
+    radius: float,
+    n_segments: int,
+) -> List[Tuple[float, float]]:
+    """将圆离散化为 2D 点列表（CCW 排列）"""
+    import math
+    points = []
+    for i in range(n_segments):
+        angle = 2.0 * math.pi * i / n_segments
+        x = center[0] + radius * math.cos(angle)
+        y = center[1] + radius * math.sin(angle)
+        points.append((x, y))
+    return points
+
+
+def _mesh_disk_2d(
+    center_xy: Tuple[float, float],
+    radius: float,
+    z: float,
+    spacing: float,
+    face_name: str = "disk",
+    normal_z: float = 1.0,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    对圆形平面使用 2D 阵面推进流水线生成网格
+
+    Args:
+        center_xy: 圆心 (x, y) 坐标
+        radius: 圆半径
+        z: 圆平面的 z 坐标
+        spacing: 网格尺寸
+        face_name: 面名称
+        normal_z: 法向量 z 分量 (+1 或 -1)
+
+    Returns:
+        (triangles, nodes_3d)
+    """
+    import math
+    n_segments = max(12, round(2 * math.pi * radius / spacing))
+    circle_pts = _discretize_circle_2d(center_xy, radius, n_segments)
+
+    # 圆形边界：将点序列拆分为多条边（每条弧一段）
+    # 每段弧作为一个 edge，用直线段近似
+    edge_points_2d = []
+    for i in range(n_segments):
+        j = (i + 1) % n_segments
+        edge_points_2d.append([circle_pts[i], circle_pts[j]])
+
+    all_fronts = _create_fronts_from_2d_edges(edge_points_2d, face_name)
+    face_size = 2 * radius
+    unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing, face_size)
+
+    normal_3d = (0.0, 0.0, normal_z)
+
+    def _map_to_3d(x2d, y2d):
+        return (x2d, y2d, z)
+
+    return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_3d)
+
+
+def _mesh_lateral_cylinder_2d(
+    base_center: Tuple[float, float, float],
+    radius: float,
+    height: float,
+    spacing: float,
+    face_name: str = "lateral",
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    对圆柱侧面使用 2D 阵面推进流水线生成网格
+
+    将侧面展开为 (s, z) 平面上的矩形 [0, L] × [z0, z1]，
+    其中 L = 2πr 为周长。使用 AFM 生成网格后映射回 3D 圆柱坐标。
+    左右边界 (s=0 和 s=L) 代表同一条物理母线，映射回 3D 后坐标相同，
+    由调用方的节点去重自动处理。
+
+    Args:
+        base_center: 底面圆心 (x, y, z)
+        radius: 圆柱半径
+        height: 圆柱高度
+        spacing: 网格尺寸
+        face_name: 面名称
+
+    Returns:
+        (triangles, nodes_3d)
+    """
+    import math
+
+    cx, cy, z0 = base_center
+    z1 = z0 + height
+    L = 2.0 * math.pi * radius
+
+    # 展开矩形的四个角 (s, z)，CCW 排列
+    corners_2d = [(0.0, z0), (L, z0), (L, z1), (0.0, z1)]
+
+    # 离散化四条边
+    edge_points_2d = []
+    for i in range(4):
+        pts = _discretize_edge_2d(corners_2d[i], corners_2d[(i + 1) % 4], spacing)
+        edge_points_2d.append(pts)
+
+    all_fronts = _create_fronts_from_2d_edges(edge_points_2d, face_name)
+    face_size = max(L, height)
+    unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing, face_size)
+
+    # 映射回 3D：(s, z) → (cx + r*cos(s/r), cy + r*sin(s/r), z)
+    def _map_to_3d(s, z):
+        theta = s / radius
+        x = cx + radius * math.cos(theta)
+        y = cy + radius * math.sin(theta)
+        return (x, y, z)
+
+    # 法向量为径向向外
+    def _normal_func(s, z):
+        theta = s / radius
+        return (math.cos(theta), math.sin(theta), 0.0)
+
+    return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
 
 
 def generate_rectangle_mesh(
