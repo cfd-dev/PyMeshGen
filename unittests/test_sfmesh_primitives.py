@@ -18,6 +18,7 @@ ensure_occ_loaded()
 from sfmesh.primitives import (
     generate_cube_mesh,
     generate_cylinder_mesh,
+    generate_rectangle_mesh,
     PrimitiveMeshResult,
     _extract_faces,
 )
@@ -276,6 +277,68 @@ class TestCylinderMeshGeneration(unittest.TestCase):
         self.assertGreater(os.path.getsize(output_file), 0)
 
 
+class TestRectangleMeshGeneration(unittest.TestCase):
+    """测试矩形域曲面网格生成（不依赖 OCC 几何体）"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_rectangle_basic(self):
+        """基本矩形网格生成"""
+        result = generate_rectangle_mesh((0, 0, 0), (1, 0, 1), spacing=0.2)
+        self.assertGreater(len(result.triangles), 0, "未生成任何三角形")
+        self.assertEqual(result.num_faces, 1)
+        self.assertIn(0, result.face_map)
+        self.assertEqual(result.face_types[0], "rectangle")
+
+    def test_rectangle_coverage(self):
+        """网格覆盖整个矩形域"""
+        result = generate_rectangle_mesh((0, 0, 0), (2, 0, 3), spacing=0.2)
+        coords = [n.coords for n in result.nodes]
+        xs = [c[0] for c in coords]
+        zs = [c[2] for c in coords]
+        self.assertAlmostEqual(min(xs), 0.0, places=1)
+        self.assertAlmostEqual(max(xs), 2.0, places=1)
+        self.assertAlmostEqual(min(zs), 0.0, places=1)
+        self.assertAlmostEqual(max(zs), 3.0, places=1)
+
+    def test_rectangle_quality(self):
+        """网格质量检查"""
+        result = generate_rectangle_mesh((0, 0, 0), (1, 0, 1), spacing=0.1)
+        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3, "平均网格质量过低")
+
+    def test_rectangle_different_sizes(self):
+        """不同尺寸矩形（参数化子测试）"""
+        test_cases = [
+            {"corner1": (0, 0, 0), "corner2": (1, 0, 1), "spacing": 0.2},
+            {"corner1": (0, 0, 0), "corner2": (2, 0, 3), "spacing": 0.3},
+            {"corner1": (-1, 0, -1), "corner2": (1, 0, 1), "spacing": 0.2},
+        ]
+        for case in test_cases:
+            with self.subTest(case=case):
+                result = generate_rectangle_mesh(**case)
+                self.assertEqual(result.num_faces, 1)
+                self.assertGreater(len(result.triangles), 0)
+
+    def test_rectangle_invalid_input(self):
+        """无效输入（退化为线段）"""
+        with self.assertRaises(ValueError):
+            generate_rectangle_mesh((0, 0, 0), (1, 0, 0), spacing=0.1)
+
+    def test_rectangle_vtk_export(self):
+        """VTK导出"""
+        output_file = str(self.output_dir / "rectangle_mesh.vtk")
+        result = generate_rectangle_mesh(
+            (0, 0, 0), (1, 0, 1), spacing=0.2, output_vtk=output_file,
+        )
+        self.assertGreater(len(result.triangles), 0)
+        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
+        self.assertGreater(os.path.getsize(output_file), 0)
+
+
 def run_tests():
     """运行测试"""
     loader = unittest.TestLoader()
@@ -284,6 +347,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestExtractFaces))
     suite.addTests(loader.loadTestsFromTestCase(TestCubeMeshGeneration))
     suite.addTests(loader.loadTestsFromTestCase(TestCylinderMeshGeneration))
+    suite.addTests(loader.loadTestsFromTestCase(TestRectangleMeshGeneration))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return result

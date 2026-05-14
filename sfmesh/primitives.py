@@ -2,11 +2,13 @@
 基础几何体曲面网格生成模块
 
 支持从 OCC 基础几何体（长方体、圆柱体）直接生成曲面网格，
-无需从文件导入。
+无需从文件导入。使用阵面推进法（Advancing Front Method）生成高质量网格。
 """
 import sys
+import heapq
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
+import numpy as np
 
 project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
@@ -26,10 +28,19 @@ from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.BRepClass import BRepClass_FaceClassifier
 
 from .surface_mesh import _export_combined_mesh
-from .surface_front import SurfaceTriangle, NodeElement3D
+from .surface_front import SurfaceFront, SurfaceTriangle, NodeElement3D, create_initial_fronts_from_surface
 from .surface_geometry import SurfaceGeometry
+from .sizing_field import SurfaceSizingField
+from .mesh_quality import check_edge_triangle_intersection
+from data_structure.rtree_space import (
+    build_space_index_3d_with_RTree,
+    get_candidate_elements_id_3d,
+    add_elems_to_space_index_3d_with_RTree,
+)
+from data_structure.front2d import Front
+from data_structure.basic_elements import NodeElementALM
 
-from utils.message import info
+from utils.message import info, warning
 
 
 class PrimitiveMeshResult:
@@ -217,6 +228,466 @@ def _mesh_face_parametric(
     return triangles, nodes
 
 
+
+
+# ---------------------------------------------------------------------------
+# 阵面推进法（Advancing Front Method）实现
+# ---------------------------------------------------------------------------
+
+def _compute_triangle_quality(p0, p1, p2) -> float:
+    """计算三角形形状质量因子 (0~1, 1=等边三角形)"""
+    a = np.linalg.norm(p1 - p0)
+    b = np.linalg.norm(p2 - p1)
+    c = np.linalg.norm(p0 - p2)
+    if a < 1e-12 or b < 1e-12 or c < 1e-12:
+        return 0.0
+    s = (a + b + c) / 2.0
+    area_sq = s * (s - a) * (s - b) * (s - c)
+    if area_sq <= 0:
+        return 0.0
+    area = np.sqrt(area_sq)
+    sum_sq = a * a + b * b + c * c
+    return min(1.0, max(0.0, 4.0 * np.sqrt(3) * area / sum_sq))
+
+
+def _project_to_2d(points: np.ndarray, normal: np.ndarray) -> np.ndarray:
+    """将3D点投影到2D平面（沿法向最大分量方向消除一个坐标轴）"""
+    abs_n = np.abs(normal)
+    if abs_n[0] >= abs_n[1] and abs_n[0] >= abs_n[2]:
+        return points[:, [1, 2]]
+    elif abs_n[1] >= abs_n[0] and abs_n[1] >= abs_n[2]:
+        return points[:, [0, 2]]
+    else:
+        return points[:, [0, 1]]
+
+
+def _segments_intersect_2d(a1, a2, b1, b2) -> bool:
+    """判断两个2D线段是否相交（含共线重叠）"""
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    # 快速排除端点重合
+    for pa in (a1, a2):
+        for pb in (b1, b2):
+            if abs(pa[0] - pb[0]) < 1e-12 and abs(pa[1] - pb[1]) < 1e-12:
+                return False
+
+    # AABB 快速排斥
+    if max(a1[0], a2[0]) < min(b1[0], b2[0]) - 1e-12:
+        return False
+    if max(b1[0], b2[0]) < min(a1[0], a2[0]) - 1e-12:
+        return False
+    if max(a1[1], a2[1]) < min(b1[1], b2[1]) - 1e-12:
+        return False
+    if max(b1[1], b2[1]) < min(a1[1], a2[1]) - 1e-12:
+        return False
+
+    d1 = cross(b1, b2, a1)
+    d2 = cross(b1, b2, a2)
+    d3 = cross(a1, a2, b1)
+    d4 = cross(a1, a2, b2)
+
+    if ((d1 > 1e-12 and d2 < -1e-12) or (d1 < -1e-12 and d2 > 1e-12)) and \
+       ((d3 > 1e-12 and d4 < -1e-12) or (d3 < -1e-12 and d4 > 1e-12)):
+        return True
+
+    return False
+
+
+def _point_in_triangle_2d(p, t0, t1, t2) -> bool:
+    """判断2D点是否在三角形内部（含边界）"""
+    d1 = (p[0] - t1[0]) * (t0[1] - t1[1]) - (p[1] - t1[1]) * (t0[0] - t1[0])
+    d2 = (p[0] - t2[0]) * (t1[1] - t2[1]) - (p[1] - t2[1]) * (t1[0] - t2[0])
+    d3 = (p[0] - t0[0]) * (t2[1] - t0[1]) - (p[1] - t0[1]) * (t2[0] - t0[0])
+    has_neg = (d1 < -1e-12) or (d2 < -1e-12) or (d3 < -1e-12)
+    has_pos = (d1 > 1e-12) or (d2 > 1e-12) or (d3 > 1e-12)
+    return not (has_neg and has_pos)
+
+
+def _are_coplanar_triangles_overlapping(
+    tri_a: List[Tuple[float, float, float]],
+    tri_b: List[Tuple[float, float, float]],
+    surface_normal: np.ndarray,
+    tolerance: float = 1e-8,
+) -> bool:
+    """检查两个共面三角形是否重叠（投影到2D后检测）"""
+    pts_a = np.array(tri_a)
+    pts_b = np.array(tri_b)
+    pts_2d_a = _project_to_2d(pts_a, surface_normal)
+    pts_2d_b = _project_to_2d(pts_b, surface_normal)
+
+    edges_a = [(pts_2d_a[0], pts_2d_a[1]), (pts_2d_a[1], pts_2d_a[2]), (pts_2d_a[2], pts_2d_a[0])]
+    edges_b = [(pts_2d_b[0], pts_2d_b[1]), (pts_2d_b[1], pts_2d_b[2]), (pts_2d_b[2], pts_2d_b[0])]
+
+    for ea in edges_a:
+        for eb in edges_b:
+            if _segments_intersect_2d(ea[0], ea[1], eb[0], eb[1]):
+                return True
+
+    if _point_in_triangle_2d(pts_2d_a[0], pts_2d_b[0], pts_2d_b[1], pts_2d_b[2]):
+        return True
+    if _point_in_triangle_2d(pts_2d_b[0], pts_2d_a[0], pts_2d_a[1], pts_2d_a[2]):
+        return True
+
+    return False
+
+
+def _check_intersection_afm(
+    p0: np.ndarray,
+    p1: np.ndarray,
+    candidate_node: NodeElement3D,
+    triangle_list: List[SurfaceTriangle],
+    space_index_triangle,
+    triangle_dict: dict,
+    shared_node_ids: set,
+    surface_normal: np.ndarray,
+) -> bool:
+    """RTree 加速的相交检测"""
+    p2 = np.array(candidate_node.coords)
+    new_edges = [(p0, p2), (p2, p1)]
+
+    if space_index_triangle is None or len(triangle_list) == 0:
+        return False
+
+    # 计算候选三角形包围盒，查询 RTree
+    all_pts = np.array([p0, p1, p2])
+    padding = 1e-6
+    query_bbox = (
+        all_pts[:, 0].min() - padding, all_pts[:, 1].min() - padding, all_pts[:, 2].min() - padding,
+        all_pts[:, 0].max() + padding, all_pts[:, 1].max() + padding, all_pts[:, 2].max() + padding,
+    )
+
+    candidate_ids = list(space_index_triangle.intersection(query_bbox))
+
+    for tri_id in candidate_ids:
+        if tri_id not in triangle_dict:
+            continue
+        existing_tri = triangle_dict[tri_id]
+
+        existing_node_ids = set(existing_tri.node_ids)
+        shared_count = len(existing_node_ids & shared_node_ids)
+
+        # 共享2个节点（共享边）：合法相邻三角形，跳过
+        if shared_count >= 2:
+            continue
+
+        # 检查每条新边是否与已有三角形相交
+        for edge_start, edge_end in new_edges:
+            if check_edge_triangle_intersection(edge_start, edge_end, existing_tri):
+                return True
+
+        # 共面重叠检测（共享1个顶点时可能发生重叠）
+        existing_pts = [n.coords for n in existing_tri.nodes]
+        new_pts = [tuple(p0), tuple(p1), tuple(p2)]
+        if _are_coplanar_triangles_overlapping(new_pts, existing_pts, surface_normal):
+            return True
+
+    return False
+
+
+def _select_best_node_afm(
+    front: SurfaceFront,
+    ideal_point: Tuple[float, float, float],
+    candidates: List[NodeElement3D],
+    triangle_set: set,
+    triangle_list: List[SurfaceTriangle],
+    space_index_triangle,
+    triangle_dict: dict,
+    surface_normal: np.ndarray,
+    quality_discount: float = 0.8,
+    boundary_node_indices: set = None,
+) -> Optional[NodeElement3D]:
+    """从候选节点中选择最佳节点（含相交检测）"""
+    p0 = np.array(front.node_elems[0].coords)
+    p1 = np.array(front.node_elems[1].coords)
+    front_len = np.linalg.norm(p1 - p0)
+    min_height = front_len * 0.05
+
+    ideal_side = np.dot(np.array(ideal_point) - np.array(front.center), np.array(front.tangent_normal))
+    ideal_pt = np.array(ideal_point)
+
+    scored_candidates = []
+
+    for node in candidates:
+        if node.idx == front.node_elems[0].idx or node.idx == front.node_elems[1].idx:
+            continue
+
+        p2 = np.array(node.coords)
+
+        # 拒绝重复三角形
+        tri_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash, node.hash])
+        if tri_key in triangle_set:
+            continue
+
+        # 侧向检查：候选节点必须在理想点同侧
+        candidate_side = np.dot(p2 - np.array(front.center), np.array(front.tangent_normal))
+        if ideal_side > 1e-12 and candidate_side < -1e-12:
+            continue
+        if ideal_side < -1e-12 and candidate_side > 1e-12:
+            continue
+
+        # 退化三角形检查
+        edge_vec = p1 - p0
+        edge_len_sq = np.dot(edge_vec, edge_vec)
+        if edge_len_sq > 1e-24:
+            t = np.dot(p2 - p0, edge_vec) / edge_len_sq
+            closest = p0 + np.clip(t, 0, 1) * edge_vec
+            height = np.linalg.norm(p2 - closest)
+            if height < min_height:
+                continue
+
+        quality = _compute_triangle_quality(p0, p1, p2)
+        if quality > 0.1:
+            # 距离惩罚：离理想点越远，得分越低
+            dist = np.linalg.norm(p2 - ideal_pt)
+            dist_factor = 1.0 / (1.0 + dist / (front_len + 1e-12))
+            scored_candidates.append((quality * dist_factor, node))
+
+    if boundary_node_indices is None:
+        boundary_node_indices = set()
+
+    # 边界节点优先（促进阵面去重），同组内按质量排序
+    scored_candidates.sort(
+        key=lambda x: (1 if x[1].idx in boundary_node_indices else 0, x[0]),
+        reverse=True,
+    )
+
+    shared_ids = {front.node_elems[0].idx, front.node_elems[1].idx}
+
+    # 优先使用已有候选节点（需要相交检测）
+    for quality, node in scored_candidates:
+        if _check_intersection_afm(
+            p0, p1, node, triangle_list,
+            space_index_triangle, triangle_dict,
+            shared_ids | {node.idx}, surface_normal,
+        ):
+            continue
+        return node
+
+    # 无合适已有节点时，创建理想点（新节点）
+    ideal_quality = _compute_triangle_quality(p0, p1, np.array(ideal_point))
+    if ideal_quality > 0.01:
+        ideal_uv = None
+        try:
+            geom = SurfaceGeometry()
+            ideal_uv = geom.project_point_to_surface(ideal_point, front.surface)
+            # 检查理想点是否在面的边界内
+            if not _is_point_in_face(ideal_uv[0], ideal_uv[1], front.surface):
+                return None
+            ideal_normal = geom.get_surface_normal(ideal_uv[0], ideal_uv[1], front.surface)
+        except Exception:
+            return None
+        ideal_node = NodeElement3D(
+            coords=ideal_point, idx=-1,
+            surface=front.surface, uv_params=ideal_uv, normal=ideal_normal,
+        )
+        if not _check_intersection_afm(
+            p0, p1, ideal_node, triangle_list,
+            space_index_triangle, triangle_dict,
+            shared_ids, surface_normal,
+        ):
+            return ideal_node
+
+    return None
+
+
+def _mesh_face_afm(
+    face: TopoDS_Face,
+    spacing: float,
+    node_id_offset: int,
+    max_iterations: int = 100000,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    对单个面使用阵面推进法生成网格
+
+    从面的边界出发，逐层向内部推进，每次生成一个三角形，
+    直到整个面被填满。节点投影到几何曲面上确保几何保真度。
+
+    Args:
+        face: OCC TopoDS_Face
+        spacing: 目标网格尺寸
+        node_id_offset: 起始节点索引
+        max_iterations: 安全迭代上限
+
+    Returns:
+        (triangles, nodes) 与 _mesh_face_parametric 接口一致
+    """
+    geometry = SurfaceGeometry()
+    sizing_field = SurfaceSizingField(
+        global_spacing=spacing,
+        curvature_adaptation=False,
+        geometry_handler=geometry,
+    )
+
+    # Step 1: 提取边界阵面
+    initial_fronts = create_initial_fronts_from_surface(face, geometry, sizing_field)
+    if not initial_fronts:
+        return [], []
+
+    # 计算面法向量和初始搜索半径
+    face_normal = np.array(initial_fronts[0].normal)
+    xmin, ymin, zmin, xmax, ymax, zmax = _get_face_bbox(face)
+    face_size = max(xmax - xmin, ymax - ymin, zmax - zmin)
+    initial_al = min(5.0, max(3.0, face_size / spacing * 0.5))
+
+    # Step 2: 初始化数据结构
+    front_list = list(initial_fronts)
+    heapq.heapify(front_list)
+
+    front_hash_set = set()
+    for f in initial_fronts:
+        f.al = initial_al
+        front_hash_set.add(f.hash)
+
+    node_list = []
+    node_hash_set = set()
+    node_dict = {}
+    num_nodes = node_id_offset
+    boundary_node_indices = set()
+
+    for front in initial_fronts:
+        for node in front.node_elems:
+            if node.hash not in node_hash_set:
+                node_hash_set.add(node.hash)
+                node.idx = num_nodes
+                node_list.append(node)
+                node_dict[node.idx] = node
+                boundary_node_indices.add(num_nodes)
+                num_nodes += 1
+            else:
+                # 回填已有节点索引
+                for existing in node_list:
+                    if existing.hash == node.hash:
+                        node.idx = existing.idx
+                        break
+
+    triangle_list = []
+    triangle_set = set()
+
+    _, space_index_node = build_space_index_3d_with_RTree(node_list)
+    space_index_triangle = None
+    triangle_dict = {}
+
+    quality_discount = 0.8
+
+    # Step 3: 主循环
+    iteration = 0
+    while front_list and iteration < max_iterations:
+        iteration += 1
+        base_front = heapq.heappop(front_list)
+
+        # 跳过已去重的陈旧阵面
+        if base_front.hash not in front_hash_set:
+            continue
+
+        # 计算间距和理想点
+        spacing_local = sizing_field.compute_front_spacing(base_front, face)
+        distance = sizing_field.compute_ideal_point_distance(base_front, face)
+        try:
+            tangent_normal = base_front.tangent_normal
+            ideal_point, ideal_uv = geometry.compute_ideal_point_on_surface(
+                base_front.center, base_front.normal,
+                tangent_normal, distance, face,
+            )
+            # 若理想点在面外，翻转切向再试
+            if not _is_point_in_face(ideal_uv[0], ideal_uv[1], face):
+                flipped = tuple(-x for x in tangent_normal)
+                ideal_point, ideal_uv = geometry.compute_ideal_point_on_surface(
+                    base_front.center, base_front.normal,
+                    flipped, distance, face,
+                )
+        except Exception:
+            base_front.al *= 1.2
+            if base_front.al < 20.0:
+                front_hash_set.add(base_front.hash)
+                heapq.heappush(front_list, base_front)
+            continue
+
+        # 搜索候选节点
+        search_radius = base_front.al * spacing_local
+        candidate_ids = get_candidate_elements_id_3d(
+            base_front, space_index_node, search_radius,
+        )
+        candidates = [node_dict[nid] for nid in candidate_ids if nid in node_dict]
+
+        # 选择最佳节点
+        selected_node = _select_best_node_afm(
+            base_front, ideal_point, candidates,
+            triangle_set, triangle_list,
+            space_index_triangle, triangle_dict,
+            face_normal, quality_discount,
+            boundary_node_indices,
+        )
+
+        if selected_node is None:
+            base_front.al *= 1.2
+            if base_front.al < 20.0:
+                front_hash_set.add(base_front.hash)
+                heapq.heappush(front_list, base_front)
+            continue
+
+        # 新节点需要分配索引并加入空间索引
+        if selected_node.hash not in node_hash_set:
+            node_hash_set.add(selected_node.hash)
+            selected_node.idx = num_nodes
+            node_list.append(selected_node)
+            node_dict[selected_node.idx] = selected_node
+            num_nodes += 1
+            space_index_node, node_dict = add_elems_to_space_index_3d_with_RTree(
+                [selected_node], space_index_node, node_dict,
+            )
+
+        # 创建三角形
+        triangle = SurfaceTriangle(
+            base_front.node_elems[0], base_front.node_elems[1],
+            selected_node, surface=face, idx=len(triangle_list),
+        )
+        triangle_list.append(triangle)
+        triangle_set.add(frozenset([
+            base_front.node_elems[0].hash, base_front.node_elems[1].hash,
+            selected_node.hash,
+        ]))
+
+        # 更新三角形 RTree
+        if space_index_triangle is None:
+            _, space_index_triangle = build_space_index_3d_with_RTree([triangle])
+            triangle_dict = {id(triangle): triangle}
+        else:
+            space_index_triangle, triangle_dict = add_elems_to_space_index_3d_with_RTree(
+                [triangle], space_index_triangle, triangle_dict,
+            )
+
+        # 移除已消耗阵面
+        front_hash_set.discard(base_front.hash)
+
+        # 创建子阵面（含去重）
+        new_front1 = SurfaceFront(
+            base_front.node_elems[0], selected_node,
+            surface=face, bc_type="interior",
+        )
+        new_front2 = SurfaceFront(
+            selected_node, base_front.node_elems[1],
+            surface=face, bc_type="interior",
+        )
+
+        for new_front in [new_front1, new_front2]:
+            new_front.al = initial_al
+            if new_front.hash in front_hash_set:
+                # 该边已被另一三角形占用，移除旧阵面
+                front_hash_set.discard(new_front.hash)
+            else:
+                front_hash_set.add(new_front.hash)
+                heapq.heappush(front_list, new_front)
+
+    return triangle_list, node_list
+
+
+def _is_planar_face(face: TopoDS_Face) -> bool:
+    """判断面是否为平面"""
+    surface = BRep_Tool.Surface(face)
+    return surface.DynamicType().Name() == "Geom_Plane"
+
+
 def _mesh_faces(
     faces: List[TopoDS_Face],
     face_types: Dict[int, str],
@@ -225,8 +696,8 @@ def _mesh_faces(
     """
     对一组面逐个生成面网格
 
-    利用 OCC 几何模型的参数空间进行网格剖分，
-    节点通过投影确保落在几何模型的真实曲面上。
+    平面使用参数化网格方法（高效、质量稳定），
+    曲面使用阵面推进法（AFM，从几何边界出发生成高质量网格）。
     """
     result = PrimitiveMeshResult()
     result.num_faces = len(faces)
@@ -239,9 +710,11 @@ def _mesh_faces(
         ftype = face_types.get(i, "unknown")
         info(f"生成面 {i + 1}/{len(faces)} ({ftype}) 网格...")
 
-        triangles, face_nodes = _mesh_face_parametric(
-            face, spacing, node_id_offset,
-        )
+        try:
+            triangles, face_nodes = _mesh_face_afm(face, spacing, node_id_offset)
+        except Exception as e:
+            warning(f"AFM 失败 (面 {i}, {ftype})，回退到参数化方法: {e}")
+            triangles, face_nodes = _mesh_face_parametric(face, spacing, node_id_offset)
 
         # 去重并收集节点
         unique_face_nodes = []
@@ -340,5 +813,198 @@ def generate_cylinder_mesh(
 
     if output_vtk:
         _export_combined_mesh(result.triangles, output_vtk)
+
+    return result
+
+
+def _discretize_edge_2d(
+    start_2d: Tuple[float, float],
+    end_2d: Tuple[float, float],
+    spacing: float,
+) -> List[Tuple[float, float]]:
+    """将 2D 线段均匀离散化为点列表"""
+    s = np.array(start_2d)
+    e = np.array(end_2d)
+    length = np.linalg.norm(e - s)
+    if length < 1e-14:
+        return [start_2d]
+    n = max(2, round(length / spacing) + 1)
+    points = []
+    for i in range(n + 1):
+        t = i / n
+        pt = s + t * (e - s)
+        points.append((float(pt[0]), float(pt[1])))
+    return points
+
+
+def _xz_to_xy(p: Tuple[float, float, float]) -> Tuple[float, float]:
+    """XZ 平面 3D 坐标 → 2D XY 坐标: (x, 0, z) → (x, z)"""
+    return (p[0], p[2])
+
+
+def _xy_to_xz(p_2d: Tuple[float, float], y_val: float = 0.0) -> Tuple[float, float, float]:
+    """2D XY 坐标 → XZ 平面 3D 坐标: (x, y) → (x, y_val, y)"""
+    return (p_2d[0], y_val, p_2d[1])
+
+
+def generate_rectangle_mesh(
+    corner1: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    corner2: Tuple[float, float, float] = (1.0, 0.0, 1.0),
+    spacing: float = 0.1,
+    output_vtk: str = None,
+) -> PrimitiveMeshResult:
+    """
+    在指定平面内生成矩形域的三角形网格
+
+    使用已有 2D 阵面推进流水线：离散化边界 → Front/NodeElementALM →
+    QuadtreeSizing → Adfront2 → Unstructured_Grid。
+    坐标先变换到 XY 平面，网格生成后再变换回来。
+
+    Args:
+        corner1: 矩形第一个角点坐标
+        corner2: 矩形对角点坐标
+        spacing: 网格尺寸
+        output_vtk: 输出VTK文件路径（可选）
+
+    Returns:
+        PrimitiveMeshResult
+
+    Raises:
+        ValueError: 如果角点坐标无效
+    """
+    p1 = np.array(corner1, dtype=float)
+    p2 = np.array(corner2, dtype=float)
+    diff = p2 - p1
+
+    nonzero = [i for i in range(3) if abs(diff[i]) > 1e-12]
+    if len(nonzero) < 2:
+        raise ValueError(f"矩形需要两个方向有非零长度，当前差值: {diff}")
+
+    # 确定常量坐标（矩形所在平面的法向分量）
+    ax0, ax1 = nonzero[0], nonzero[1]
+    const_axis = 3 - ax0 - ax1  # 常量轴索引
+    const_val = corner1[const_axis]
+
+    # 构建矩形四个 3D 角点
+    c3d = [
+        corner1,
+        (corner2[0], corner1[1], corner1[2]),
+        corner2,
+        (corner1[0], corner2[1], corner2[2]),
+    ]
+
+    # 变换到 2D：取非常量的两个轴
+    c2d = []
+    for p in c3d:
+        coord = [p[0], p[1], p[2]]
+        c2d.append((coord[ax0], coord[ax1]))
+
+    # 离散化四条边为 2D 点
+    edge_points_2d = []
+    for i in range(4):
+        pts = _discretize_edge_2d(c2d[i], c2d[(i + 1) % 4], spacing)
+        edge_points_2d.append(pts)
+
+    # 为每条边创建 NodeElementALM + Front
+    all_fronts = []
+    bc_type = "BCWall"
+    part_name = "rectangle"
+    for pts in edge_points_2d:
+        for i in range(len(pts) - 1):
+            p1_2d = pts[i]
+            p2_2d = pts[i + 1]
+            # 2D 节点坐标 (x, y, 0) — Adfront2 工作在 XY 平面
+            node1 = NodeElementALM(
+                coords=(p1_2d[0], p1_2d[1], 0.0),
+                idx=-1, bc_type=bc_type, part_name=part_name,
+            )
+            node2 = NodeElementALM(
+                coords=(p2_2d[0], p2_2d[1], 0.0),
+                idx=-1, bc_type=bc_type, part_name=part_name,
+            )
+            front = Front(node1, node2, idx=-1, bc_type=bc_type, part_name=part_name)
+            all_fronts.append(front)
+
+    # QuadtreeSizing 从边界阵面构建尺寸场
+    from meshsize.meshsize import QuadtreeSizing
+
+    class _DummyVisual:
+        ax = None
+
+    sizing_system = QuadtreeSizing(
+        initial_front=all_fronts,
+        max_size=spacing * 10,
+        resolution=0.1,
+        decay=1.2,
+        visual_obj=_DummyVisual(),
+    )
+
+    # 最小 param_obj 给 Adfront2
+    class _ParamObj:
+        debug_level = 0
+        mesh_type = 1
+
+    # 构建 Adfront2 并运行
+    import heapq as _heapq
+    from adfront2.adfront2 import Adfront2
+
+    front_heap = list(all_fronts)
+    _heapq.heapify(front_heap)
+
+    adfront = Adfront2(
+        boundary_front=front_heap,
+        sizing_system=sizing_system,
+        node_coords=None,
+        param_obj=_ParamObj(),
+        visual_obj=_DummyVisual(),
+    )
+    unstr_grid = adfront.generate_elements()
+
+    # 网格优化：边交换 + Laplacian 光滑
+    from optimize.optimize import edge_swap_delaunay, laplacian_smooth
+    edge_swap_delaunay(unstr_grid)
+    laplacian_smooth(unstr_grid, num_iter=3)
+
+    # 从 Unstructured_Grid 提取三角形和节点，变换回 3D 坐标
+    grid_nodes = unstr_grid.node_coords  # [[x, y], ...] 或 [[x, y, z], ...]
+    grid_cells = unstr_grid.cell_container  # Triangle 对象列表
+
+    # 构建 3D 节点列表
+    nodes_3d = []
+    for idx, coords_2d in enumerate(grid_nodes):
+        x2d, y2d = float(coords_2d[0]), float(coords_2d[1])
+        # 反变换：2D (u, v) → 3D
+        coord_3d = [0.0, 0.0, 0.0]
+        coord_3d[ax0] = x2d
+        coord_3d[ax1] = y2d
+        coord_3d[const_axis] = const_val
+        node = NodeElement3D(
+            coords=tuple(coord_3d), idx=idx,
+            surface=None, uv_params=(0.0, 0.0),
+            normal=(0.0, 0.0, 0.0),
+        )
+        nodes_3d.append(node)
+
+    # 构建 SurfaceTriangle 列表
+    triangles = []
+    for cell in grid_cells:
+        nids = cell.node_ids
+        if len(nids) >= 3:
+            tri = SurfaceTriangle(
+                nodes_3d[nids[0]], nodes_3d[nids[1]], nodes_3d[nids[2]],
+                surface=None, idx=len(triangles),
+            )
+            triangles.append(tri)
+
+    # 构建结果
+    result = PrimitiveMeshResult()
+    result.num_faces = 1
+    result.face_types = {0: "rectangle"}
+    result.face_map = {0: triangles}
+    result.triangles = triangles
+    result.nodes = nodes_3d
+
+    if output_vtk:
+        _export_combined_mesh(triangles, output_vtk)
 
     return result
