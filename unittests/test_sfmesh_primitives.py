@@ -20,8 +20,8 @@ from sfmesh.primitives import (
     generate_cylinder_mesh,
     generate_rectangle_mesh,
     PrimitiveMeshResult,
-    _extract_faces,
 )
+from sfmesh.occ_utils import _extract_faces
 from sfmesh.mesh_quality import SurfaceMeshQuality
 
 
