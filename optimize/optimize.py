@@ -470,6 +470,12 @@ def edge_swap_delaunay(unstr_grid, max_iterations=None):
         if len(other_points) != 2:
             continue  # 无法构成四边形
 
+        # 保护几何边界边：公共边的两个端点都是边界节点时不交换
+        boundary_set = set(unstr_grid.boundary_nodes_list)
+        common_list = list(common_edge)
+        if common_list[0] in boundary_set and common_list[1] in boundary_set:
+            continue
+
         quad_nodes = list(common_edge) + other_points
         try:
             sorted_quad_nodes = geom_tool.sort_quadrilateral_nodes(quad_nodes, node_container)

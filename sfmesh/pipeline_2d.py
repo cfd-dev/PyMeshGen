@@ -463,12 +463,36 @@ def _mesh_cylinder_unified(
     )
 
     # --- 合并节点 ---
+    from collections import Counter as _Counter
     node_hash_to_idx = {}
     all_nodes = []
     all_triangles = []
     global_idx = 0
+    geometric_boundary_obj_ids = set()  # 各面几何边界节点的 object id
 
-    for face_nodes in [bottom_nodes, top_nodes, lateral_nodes]:
+    for face_nodes, face_tris in [
+        (bottom_nodes, bottom_tris),
+        (top_nodes, top_tris),
+        (lateral_nodes, lateral_tris),
+    ]:
+        # 用 object id 识别该面的几何边界节点
+        # 构建 local_idx → object id 映射
+        local_idx_to_objid = {}
+        for node in face_nodes:
+            local_idx_to_objid[node.idx] = id(node)
+
+        face_edge_count = _Counter()
+        for tri in face_tris:
+            nids = [tri.nodes[i].idx for i in range(3)]
+            for i in range(3):
+                e = tuple(sorted([nids[i], nids[(i + 1) % 3]]))
+                face_edge_count[e] += 1
+        for e, cnt in face_edge_count.items():
+            if cnt == 1:
+                for local_idx in e:
+                    if local_idx in local_idx_to_objid:
+                        geometric_boundary_obj_ids.add(local_idx_to_objid[local_idx])
+
         node_local_to_global = {}
         for node in face_nodes:
             h = node.hash
@@ -479,9 +503,6 @@ def _mesh_cylinder_unified(
                 global_idx += 1
             node_local_to_global[id(node)] = node_hash_to_idx[h]
 
-        face_tris = bottom_tris if face_nodes is bottom_nodes else (
-            top_tris if face_nodes is top_nodes else lateral_tris
-        )
         for tri in face_tris:
             new_tri = SurfaceTriangle(
                 all_nodes[node_local_to_global[id(tri.nodes[0])]],
@@ -491,4 +512,106 @@ def _mesh_cylinder_unified(
             )
             all_triangles.append(new_tri)
 
+    # 将几何边界 object id 映射为全局索引
+    objid_to_global = {id(n): n.idx for n in all_nodes}
+    geometric_boundary_ids = {
+        objid_to_global[oid] for oid in geometric_boundary_obj_ids
+        if oid in objid_to_global
+    }
+
+    # 后处理：边交换 + Laplacian 光滑（几何边界节点固定不动）
+    all_triangles, all_nodes = _post_process_surface_mesh(
+        all_triangles, all_nodes, num_smooth_iter=3,
+        fixed_node_ids=geometric_boundary_ids,
+    )
+
     return all_triangles, all_nodes
+
+
+def _post_process_surface_mesh(
+    triangles: List[SurfaceTriangle],
+    nodes: List[NodeElement3D],
+    num_smooth_iter: int = 3,
+    fixed_node_ids: set = None,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    对曲面网格进行后处理优化：边交换 + Laplacian 光滑
+
+    Args:
+        triangles: 三角形列表
+        nodes: 节点列表
+        num_smooth_iter: Laplacian 光滑迭代次数
+        fixed_node_ids: 必须固定的节点索引集合（几何边界节点）
+
+    Returns:
+        优化后的 (triangles, nodes)
+    """
+    from data_structure.unstructured_grid import Unstructured_Grid
+    from data_structure.basic_elements import Triangle, NodeElement
+    from optimize.optimize import edge_swap_delaunay, laplacian_smooth
+
+    if len(triangles) < 3:
+        return triangles, nodes
+
+    # 构建 node_coords 和 cell_container
+    node_coords = [list(n.coords) for n in nodes]
+
+    cell_container = []
+    for t in triangles:
+        nids = [t.nodes[i].idx for i in range(3)]
+        cell = Triangle(
+            nodes[nids[0]], nodes[nids[1]], nodes[nids[2]],
+            node_ids=nids, idx=t.idx,
+        )
+        cell_container.append(cell)
+
+    # 识别拓扑边界节点（只属于一个三角形的边的端点）
+    from collections import Counter
+    edge_count = Counter()
+    for t in triangles:
+        nids = [t.nodes[i].idx for i in range(3)]
+        for i in range(3):
+            e = tuple(sorted([nids[i], nids[(i + 1) % 3]]))
+            edge_count[e] += 1
+    boundary_set = set()
+    for e, cnt in edge_count.items():
+        if cnt == 1:
+            boundary_set.add(e[0])
+            boundary_set.add(e[1])
+
+    # 合并几何边界节点（各面的边界节点，合并后变为内部边但仍需固定）
+    if fixed_node_ids:
+        boundary_set |= fixed_node_ids
+
+    boundary_node_elems = [NodeElement(node_coords[i], i) for i in boundary_set]
+
+    # 创建 Unstructured_Grid
+    grid = Unstructured_Grid(
+        cell_container=cell_container,
+        node_coords=node_coords,
+        boundary_nodes=boundary_node_elems,
+        grid_dimension=3,
+    )
+
+    # 边交换优化
+    edge_swap_delaunay(grid)
+
+    # Laplacian 光滑（边界节点固定不动）
+    laplacian_smooth(grid, num_iter=num_smooth_iter)
+
+    # 更新节点坐标
+    for i, n in enumerate(nodes):
+        new_coords = grid.node_coords[i]
+        n.coords = tuple(new_coords)
+
+    # 重建三角形（边交换可能改变了单元连接关系）
+    new_triangles = []
+    for ci, cell in enumerate(grid.cell_container):
+        nids = cell.node_ids
+        tri = SurfaceTriangle(
+            nodes[nids[0]], nodes[nids[1]], nodes[nids[2]],
+            idx=ci,
+        )
+        new_triangles.append(tri)
+
+    return new_triangles, nodes
