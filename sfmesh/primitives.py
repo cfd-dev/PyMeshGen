@@ -53,6 +53,7 @@ from .geom_utils import (
 )
 from .pipeline_2d import (
     _mesh_face_2d_pipeline, _mesh_disk_2d, _mesh_lateral_cylinder_2d,
+    _mesh_cylinder_unified,
 )
 
 
@@ -927,10 +928,8 @@ def generate_cylinder_mesh(
     """
     生成圆柱体的曲面网格
 
-    逐面使用 2D 阵面推进流水线生成网格：
-    - 底面/顶面：圆形域在 XY 平面离散化后用 AFM 填充
-    - 侧面：展开为 (s, z) 矩形后用 AFM 填充，再映射回 3D 圆柱坐标
-    共边节点通过坐标去重保持一致。
+    使用统一的 2D 阵面推进流水线，确保端面和柱面共享边界节点。
+    统一离散化圆边界，后处理包含边交换、Laplacian 光滑和曲面投影。
 
     Args:
         base_center: 底面圆心坐标 (x, y, z)
@@ -950,68 +949,29 @@ def generate_cylinder_mesh(
     if height <= 0:
         raise ValueError(f"圆柱高度必须为正数: {height}")
 
+    all_triangles, all_nodes = _mesh_cylinder_unified(
+        base_center=base_center, radius=radius, height=height, spacing=spacing,
+    )
+
+    # 按面分类三角形
     cx, cy, z0 = base_center
     z1 = z0 + height
+    face_tris_map = {0: [], 1: [], 2: []}  # 0=bottom, 1=top, 2=lateral
+    for tri in all_triangles:
+        z_avg = sum(tri.nodes[i].coords[2] for i in range(3)) / 3.0
+        if abs(z_avg - z0) < abs(z_avg - z1) and abs(z_avg - z0) < height * 0.25:
+            face_tris_map[0].append(tri)
+        elif abs(z_avg - z1) < height * 0.25:
+            face_tris_map[1].append(tri)
+        else:
+            face_tris_map[2].append(tri)
 
-    # 三个面的定义
-    face_mesh_funcs = [
-        ("bottom", lambda: _mesh_disk_2d(
-            center_xy=(cx, cy), radius=radius, z=z0,
-            spacing=spacing, face_name="bottom", normal_z=-1.0,
-        )),
-        ("top", lambda: _mesh_disk_2d(
-            center_xy=(cx, cy), radius=radius, z=z1,
-            spacing=spacing, face_name="top", normal_z=1.0,
-        )),
-        ("lateral", lambda: _mesh_lateral_cylinder_2d(
-            base_center=base_center, radius=radius, height=height,
-            spacing=spacing, face_name="lateral",
-        )),
-    ]
-
-    # 逐面生成网格
-    face_results = []
-    for face_name, mesh_func in face_mesh_funcs:
-        info(f"生成面 {face_name} 网格...")
-        tris, nodes = mesh_func()
-        face_results.append((face_name, tris, nodes))
-
-    # 合并结果，共边节点按坐标去重
-    node_hash_to_global_idx = {}
-    all_nodes = []
-    all_triangles = []
     result = PrimitiveMeshResult()
-    result.num_faces = 3
-
-    global_idx = 0
-    for face_idx, (face_name, tris, nodes) in enumerate(face_results):
-        result.face_types[face_idx] = face_name
-
-        node_to_global = {}
-        for node in nodes:
-            h = node.hash
-            if h not in node_hash_to_global_idx:
-                node_hash_to_global_idx[h] = global_idx
-                node.idx = global_idx
-                all_nodes.append(node)
-                global_idx += 1
-            node_to_global[id(node)] = node_hash_to_global_idx[h]
-
-        face_tris = []
-        for tri in tris:
-            new_tri = SurfaceTriangle(
-                all_nodes[node_to_global[id(tri.nodes[0])]],
-                all_nodes[node_to_global[id(tri.nodes[1])]],
-                all_nodes[node_to_global[id(tri.nodes[2])]],
-                surface=None, idx=len(all_triangles),
-            )
-            all_triangles.append(new_tri)
-            face_tris.append(new_tri)
-
-        result.face_map[face_idx] = face_tris
-
     result.triangles = all_triangles
     result.nodes = all_nodes
+    result.num_faces = 3
+    result.face_types = {0: "bottom", 1: "top", 2: "lateral"}
+    result.face_map = face_tris_map
 
     if output_vtk:
         _export_combined_mesh(all_triangles, output_vtk)

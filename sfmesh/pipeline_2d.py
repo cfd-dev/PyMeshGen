@@ -469,17 +469,39 @@ def _mesh_cylinder_unified(
     all_triangles = []
     global_idx = 0
     geometric_boundary_obj_ids = set()  # 各面几何边界节点的 object id
+    node_face_map = {}  # object id → face name（用于曲面投影）
 
-    for face_nodes, face_tris in [
-        (bottom_nodes, bottom_tris),
-        (top_nodes, top_tris),
-        (lateral_nodes, lateral_tris),
+    # 定义各面的投影函数
+    def _proj_bottom(x, y, z):
+        return (x, y, z0)
+
+    def _proj_top(x, y, z):
+        return (x, y, z1)
+
+    def _proj_lateral(x, y, z):
+        dx, dy = x - cx, y - cy
+        d = math.sqrt(dx * dx + dy * dy)
+        if d < 1e-14:
+            return (cx + radius, cy, z)
+        return (cx + radius * dx / d, cy + radius * dy / d, z)
+
+    face_projectors = {
+        "bottom": _proj_bottom,
+        "top": _proj_top,
+        "lateral": _proj_lateral,
+    }
+
+    for face_name, face_nodes, face_tris in [
+        ("bottom", bottom_nodes, bottom_tris),
+        ("top", top_nodes, top_tris),
+        ("lateral", lateral_nodes, lateral_tris),
     ]:
         # 用 object id 识别该面的几何边界节点
         # 构建 local_idx → object id 映射
         local_idx_to_objid = {}
         for node in face_nodes:
             local_idx_to_objid[node.idx] = id(node)
+            node_face_map[id(node)] = face_name
 
         face_edge_count = _Counter()
         for tri in face_tris:
@@ -519,10 +541,18 @@ def _mesh_cylinder_unified(
         if oid in objid_to_global
     }
 
-    # 后处理：边交换 + Laplacian 光滑（几何边界节点固定不动）
+    # 构建节点投影函数映射（global_idx → projector）
+    node_projectors = {}
+    for node in all_nodes:
+        face_name = node_face_map.get(id(node))
+        if face_name and face_name in face_projectors:
+            node_projectors[node.idx] = face_projectors[face_name]
+
+    # 后处理：边交换 + Laplacian 光滑 + 曲面投影（几何边界节点固定不动）
     all_triangles, all_nodes = _post_process_surface_mesh(
         all_triangles, all_nodes, num_smooth_iter=3,
         fixed_node_ids=geometric_boundary_ids,
+        node_projectors=node_projectors,
     )
 
     return all_triangles, all_nodes
@@ -533,15 +563,17 @@ def _post_process_surface_mesh(
     nodes: List[NodeElement3D],
     num_smooth_iter: int = 3,
     fixed_node_ids: set = None,
+    node_projectors: dict = None,
 ) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
     """
-    对曲面网格进行后处理优化：边交换 + Laplacian 光滑
+    对曲面网格进行后处理优化：边交换 + Laplacian 光滑 + 曲面投影
 
     Args:
         triangles: 三角形列表
         nodes: 节点列表
         num_smooth_iter: Laplacian 光滑迭代次数
         fixed_node_ids: 必须固定的节点索引集合（几何边界节点）
+        node_projectors: 节点索引 → 投影函数的映射，光滑后将节点投影回几何面
 
     Returns:
         优化后的 (triangles, nodes)
@@ -598,6 +630,14 @@ def _post_process_surface_mesh(
 
     # Laplacian 光滑（边界节点固定不动）
     laplacian_smooth(grid, num_iter=num_smooth_iter)
+
+    # 曲面投影：将光滑后的非边界节点投影回几何面
+    if node_projectors:
+        for i, proj_func in node_projectors.items():
+            if i in boundary_set:
+                continue  # 边界节点不动
+            coords = grid.node_coords[i]
+            grid.node_coords[i] = list(proj_func(*coords))
 
     # 更新节点坐标
     for i, n in enumerate(nodes):
