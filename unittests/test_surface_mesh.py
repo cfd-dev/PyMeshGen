@@ -205,7 +205,7 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
         """设置测试类"""
         cls.sphere_path = Path(project_root) / "examples" / "cad" / "sphere.iges"
         cls.cylinder_path = Path(project_root) / "examples" / "cad" / "cylinder.stp"
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
     
     def test_sphere_file_exists(self):

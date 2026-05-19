@@ -69,7 +69,7 @@ class TestCubeMeshGeneration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
 
     def test_cube_face_count(self):
@@ -188,7 +188,7 @@ class TestCylinderMeshGeneration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
 
     def test_cylinder_face_count(self):
@@ -285,7 +285,7 @@ class TestRectangleMeshGeneration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
 
     def test_rectangle_basic(self):
@@ -347,7 +347,7 @@ class TestSphereMeshGeneration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
 
     def test_sphere_basic(self):
@@ -414,7 +414,7 @@ class TestEllipsoidMeshGeneration(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "sfmesh_primitives"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
 
     def test_ellipsoid_basic(self):
