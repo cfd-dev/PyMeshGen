@@ -10,7 +10,10 @@ from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .surface_mesh import SurfaceMeshGenerator
-from .primitives import generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh, PrimitiveMeshResult
+from .primitives import (
+    generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
+    generate_sphere_mesh, generate_ellipsoid_mesh, PrimitiveMeshResult,
+)
 
 __all__ = [
     'SurfaceFront',
@@ -23,5 +26,7 @@ __all__ = [
     'generate_cube_mesh',
     'generate_cylinder_mesh',
     'generate_rectangle_mesh',
+    'generate_sphere_mesh',
+    'generate_ellipsoid_mesh',
     'PrimitiveMeshResult',
 ]

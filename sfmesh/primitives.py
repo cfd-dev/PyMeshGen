@@ -45,7 +45,7 @@ from utils.message import info, warning
 from .occ_utils import (
     _extract_faces, _get_face_bbox, _get_face_bbox_center,
     _classify_cube_faces, _classify_cylinder_faces,
-    _is_point_in_face, _is_planar_face,
+    _is_point_in_face, _is_planar_face, _is_closed_surface,
 )
 from .geom_utils import (
     _project_to_2d, _segments_intersect_2d,
@@ -104,8 +104,8 @@ def _mesh_face_parametric(
     dz = zmax - zmin
     phys_len = max(dx, dy, dz)
 
-    nu = max(2, int(round(phys_len / spacing)) + 1)
-    nv = max(2, int(round(phys_len / spacing)) + 1)
+    nu = max(6, int(round(phys_len / spacing)) + 1)
+    nv = max(6, int(round(phys_len / spacing)) + 1)
 
     # 第一遍：生成候选节点，检查是否在面内
     node_dict = {}  # (ju, jv) -> node
@@ -153,6 +153,245 @@ def _mesh_face_parametric(
 
     nodes = list(node_dict.values())
     return triangles, nodes
+
+
+def _mesh_face_closed_surface(
+    face: TopoDS_Face,
+    spacing: float,
+    node_id_offset: int,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    对闭合曲面（球面、椭球面等）进行参数化网格剖分
+
+    闭合曲面的参数域在极点方向有奇异性（球面 U=0/U=π 处所有 V 映射到同一点），
+    直接在参数空间生成网格会产生退化三角形。
+
+    本函数检测退化行（极点），跳过它们生成内部结构化网格，
+    然后在两极用三角形扇填充。
+    """
+    from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+
+    geometry = SurfaceGeometry()
+    adaptor = BRepAdaptor_Surface(face)
+    u_min = adaptor.FirstUParameter()
+    u_max = adaptor.LastUParameter()
+    v_min = adaptor.FirstVParameter()
+    v_max = adaptor.LastVParameter()
+
+    # 利用包围盒估算物理尺寸
+    xmin, ymin, zmin, xmax, ymax, zmax = _get_face_bbox(face)
+    dx = xmax - xmin
+    dy = ymax - ymin
+    dz = zmax - zmin
+    phys_len = max(dx, dy, dz)
+    n_div = max(6, int(round(phys_len / spacing)) + 1)
+
+    # 检测哪个方向的边界是退化行（极点）
+    # 采样边界行的多个点，如果全部映射到同一个 3D 点，则为退化行
+    def _is_degenerate_row(u_val, n_samples=8):
+        pts = []
+        for i in range(n_samples):
+            v = v_min + i * (v_max - v_min) / n_samples
+            p = adaptor.Value(u_val, v)
+            pts.append((p.X(), p.Y(), p.Z()))
+        ref = pts[0]
+        return all(
+            ((p[0]-ref[0])**2 + (p[1]-ref[1])**2 + (p[2]-ref[2])**2) < 1e-10
+            for p in pts
+        )
+
+    def _is_degenerate_col(v_val, n_samples=8):
+        pts = []
+        for i in range(n_samples):
+            u = u_min + i * (u_max - u_min) / n_samples
+            p = adaptor.Value(u, v_val)
+            pts.append((p.X(), p.Y(), p.Z()))
+        ref = pts[0]
+        return all(
+            ((p[0]-ref[0])**2 + (p[1]-ref[1])**2 + (p[2]-ref[2])**2) < 1e-10
+            for p in pts
+        )
+
+    u_min_degen = _is_degenerate_row(u_min)
+    u_max_degen = _is_degenerate_row(u_max)
+    v_min_degen = _is_degenerate_col(v_min)
+    v_max_degen = _is_degenerate_col(v_max)
+
+    nodes = []
+    node_dict = {}  # (ju, jv) -> node
+    nid = node_id_offset
+    triangles = []
+    tri_idx = 0
+
+    # U 方向有退化行（极点在 U 边界）→ 沿 U 方向跳过退化行
+    if u_min_degen or u_max_degen:
+        nu_interior = max(2, n_div - 1)
+        nv = max(6, n_div)
+
+        # 极点 1（U = u_min）
+        if u_min_degen:
+            pole1_coords = geometry.evaluate_point(u_min, (v_min + v_max) / 2, face)
+            pole1_normal = geometry.get_surface_normal(u_min, (v_min + v_max) / 2, face)
+            pole1_node = NodeElement3D(
+                coords=pole1_coords, idx=nid,
+                surface=face, uv_params=(u_min, (v_min + v_max) / 2),
+                normal=pole1_normal,
+            )
+            nodes.append(pole1_node)
+            nid += 1
+
+        # 内部行（直接使用参数坐标，避免投影到极点）
+        ju_start = 1 if u_min_degen else 0
+        ju_end = nu_interior - 1 if u_max_degen else nu_interior
+        for ju in range(ju_start, ju_end + 1):
+            u = u_min + ju * (u_max - u_min) / nu_interior
+            for jv in range(nv):
+                v = v_min + jv * (v_max - v_min) / nv
+                pnt = adaptor.Value(u, v)
+                coords = (pnt.X(), pnt.Y(), pnt.Z())
+                normal = geometry.get_surface_normal(u, v, face)
+                node = NodeElement3D(
+                    coords=coords, idx=nid,
+                    surface=face, uv_params=(u, v), normal=normal,
+                )
+                node_dict[(ju, jv)] = node
+                nodes.append(node)
+                nid += 1
+
+        # 极点 2（U = u_max）
+        if u_max_degen:
+            pole2_coords = geometry.evaluate_point(u_max, (v_min + v_max) / 2, face)
+            pole2_normal = geometry.get_surface_normal(u_max, (v_min + v_max) / 2, face)
+            pole2_node = NodeElement3D(
+                coords=pole2_coords, idx=nid,
+                surface=face, uv_params=(u_max, (v_min + v_max) / 2),
+                normal=pole2_normal,
+            )
+            nodes.append(pole2_node)
+            nid += 1
+
+        # 极点 1 三角形扇
+        if u_min_degen:
+            for jv in range(nv):
+                n1 = node_dict.get((ju_start, jv))
+                n2 = node_dict.get((ju_start, (jv + 1) % nv))
+                if n1 and n2:
+                    triangles.append(SurfaceTriangle(pole1_node, n1, n2, idx=tri_idx))
+                    tri_idx += 1
+
+        # 中间四边形条带
+        interior_keys = sorted(set(k[0] for k in node_dict))
+        for idx_i in range(len(interior_keys) - 1):
+            ju = interior_keys[idx_i]
+            ju_next = interior_keys[idx_i + 1]
+            for jv in range(nv):
+                jv_next = (jv + 1) % nv
+                tl = node_dict.get((ju, jv))
+                tr = node_dict.get((ju, jv_next))
+                bl = node_dict.get((ju_next, jv))
+                br = node_dict.get((ju_next, jv_next))
+                if tl and tr and bl:
+                    triangles.append(SurfaceTriangle(tl, bl, tr, idx=tri_idx))
+                    tri_idx += 1
+                if tr and bl and br:
+                    triangles.append(SurfaceTriangle(tr, bl, br, idx=tri_idx))
+                    tri_idx += 1
+
+        # 极点 2 三角形扇
+        if u_max_degen:
+            last_ju = interior_keys[-1]
+            for jv in range(nv):
+                n1 = node_dict.get((last_ju, jv))
+                n2 = node_dict.get((last_ju, (jv + 1) % nv))
+                if n1 and n2:
+                    triangles.append(SurfaceTriangle(n1, pole2_node, n2, idx=tri_idx))
+                    tri_idx += 1
+
+        return triangles, nodes
+
+    # V 方向有退化行（极点在 V 边界）→ 沿 V 方向跳过退化行
+    elif v_min_degen or v_max_degen:
+        nu = max(6, n_div)
+        nv_interior = max(2, n_div - 1)
+
+        if v_min_degen:
+            pole1_coords = geometry.evaluate_point((u_min + u_max) / 2, v_min, face)
+            pole1_normal = geometry.get_surface_normal((u_min + u_max) / 2, v_min, face)
+            pole1_node = NodeElement3D(
+                coords=pole1_coords, idx=nid,
+                surface=face, uv_params=((u_min + u_max) / 2, v_min),
+                normal=pole1_normal,
+            )
+            nodes.append(pole1_node)
+            nid += 1
+
+        jv_start = 1 if v_min_degen else 0
+        jv_end = nv_interior - 1 if v_max_degen else nv_interior
+        for jv in range(jv_start, jv_end + 1):
+            v = v_min + jv * (v_max - v_min) / nv_interior
+            for ju in range(nu):
+                u = u_min + ju * (u_max - u_min) / nu
+                pnt = adaptor.Value(u, v)
+                coords = (pnt.X(), pnt.Y(), pnt.Z())
+                normal = geometry.get_surface_normal(u, v, face)
+                node = NodeElement3D(
+                    coords=coords, idx=nid,
+                    surface=face, uv_params=(u, v), normal=normal,
+                )
+                node_dict[(ju, jv)] = node
+                nodes.append(node)
+                nid += 1
+
+        if v_max_degen:
+            pole2_coords = geometry.evaluate_point((u_min + u_max) / 2, v_max, face)
+            pole2_normal = geometry.get_surface_normal((u_min + u_max) / 2, v_max, face)
+            pole2_node = NodeElement3D(
+                coords=pole2_coords, idx=nid,
+                surface=face, uv_params=((u_min + u_max) / 2, v_max),
+                normal=pole2_normal,
+            )
+            nodes.append(pole2_node)
+            nid += 1
+
+        if v_min_degen:
+            for ju in range(nu):
+                n1 = node_dict.get((ju, jv_start))
+                n2 = node_dict.get(((ju + 1) % nu, jv_start))
+                if n1 and n2:
+                    triangles.append(SurfaceTriangle(pole1_node, n1, n2, idx=tri_idx))
+                    tri_idx += 1
+
+        interior_keys = sorted(set(k[1] for k in node_dict))
+        for idx_j in range(len(interior_keys) - 1):
+            jv = interior_keys[idx_j]
+            jv_next = interior_keys[idx_j + 1]
+            for ju in range(nu):
+                ju_next = (ju + 1) % nu
+                tl = node_dict.get((ju, jv))
+                tr = node_dict.get((ju_next, jv))
+                bl = node_dict.get((ju, jv_next))
+                br = node_dict.get((ju_next, jv_next))
+                if tl and tr and bl:
+                    triangles.append(SurfaceTriangle(tl, bl, tr, idx=tri_idx))
+                    tri_idx += 1
+                if tr and bl and br:
+                    triangles.append(SurfaceTriangle(tr, bl, br, idx=tri_idx))
+                    tri_idx += 1
+
+        if v_max_degen:
+            last_jv = interior_keys[-1]
+            for ju in range(nu):
+                n1 = node_dict.get((ju, last_jv))
+                n2 = node_dict.get(((ju + 1) % nu, last_jv))
+                if n1 and n2:
+                    triangles.append(SurfaceTriangle(n1, pole2_node, n2, idx=tri_idx))
+                    tri_idx += 1
+
+        return triangles, nodes
+
+    else:
+        # 无退化行（如环面）— 普通参数化
+        return _mesh_face_parametric(face, spacing, node_id_offset)
 
 
 
@@ -535,8 +774,9 @@ def _mesh_faces(
     """
     对一组面逐个生成面网格
 
-    平面使用参数化网格方法（高效、质量稳定），
-    曲面使用阵面推进法（AFM，从几何边界出发生成高质量网格）。
+    - 平面使用参数化网格方法（高效、质量稳定）
+    - 闭合曲面（球面、椭球面等）使用带极点处理的参数化方法
+    - 其他曲面使用阵面推进法（AFM，从几何边界出发生成高质量网格）
     """
     result = PrimitiveMeshResult()
     result.num_faces = len(faces)
@@ -547,13 +787,20 @@ def _mesh_faces(
 
     for i, face in enumerate(faces):
         ftype = face_types.get(i, "unknown")
-        info(f"生成面 {i + 1}/{len(faces)} ({ftype}) 网格...")
 
-        try:
-            triangles, face_nodes = _mesh_face_afm(face, spacing, node_id_offset)
-        except Exception as e:
-            warning(f"AFM 失败 (面 {i}, {ftype})，回退到参数化方法: {e}")
+        if _is_planar_face(face):
+            info(f"生成面 {i + 1}/{len(faces)} ({ftype}) 网格 [参数化]...")
             triangles, face_nodes = _mesh_face_parametric(face, spacing, node_id_offset)
+        elif _is_closed_surface(face):
+            info(f"生成面 {i + 1}/{len(faces)} ({ftype}) 网格 [闭合曲面参数化]...")
+            triangles, face_nodes = _mesh_face_closed_surface(face, spacing, node_id_offset)
+        else:
+            info(f"生成面 {i + 1}/{len(faces)} ({ftype}) 网格 [AFM]...")
+            try:
+                triangles, face_nodes = _mesh_face_afm(face, spacing, node_id_offset)
+            except Exception as e:
+                warning(f"AFM 失败 (面 {i}, {ftype})，回退到参数化方法: {e}")
+                triangles, face_nodes = _mesh_face_parametric(face, spacing, node_id_offset)
 
         # 去重并收集节点
         unique_face_nodes = []
@@ -819,6 +1066,276 @@ def generate_rectangle_mesh(
     result.face_map = {0: triangles}
     result.triangles = triangles
     result.nodes = nodes_3d
+
+    if output_vtk:
+        _export_combined_mesh(triangles, output_vtk)
+
+    return result
+
+
+def _compute_triangle_quality_standalone(
+    p1: Tuple[float, float, float],
+    p2: Tuple[float, float, float],
+    p3: Tuple[float, float, float],
+) -> float:
+    """计算三角形质量（形状因子），范围 [0, 1]，等边三角形为 1.0"""
+    a = np.linalg.norm(np.array(p2) - np.array(p1))
+    b = np.linalg.norm(np.array(p3) - np.array(p2))
+    c = np.linalg.norm(np.array(p1) - np.array(p3))
+    s = (a + b + c) / 2.0
+    if s < 1e-12:
+        return 0.0
+    area = np.sqrt(max(0, s * (s - a) * (s - b) * (s - c)))
+    sum_sq = a * a + b * b + c * c
+    if sum_sq < 1e-12:
+        return 0.0
+    return min(1.0, max(0.0, 4.0 * np.sqrt(3) * area / sum_sq))
+
+
+def generate_sphere_mesh(
+    center: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    radius: float = 1.0,
+    spacing: float = 0.5,
+    output_vtk: str = None,
+) -> PrimitiveMeshResult:
+    """
+    生成球面的三角形网格
+
+    使用球坐标参数化生成结构化网格：
+    - 南北极点用三角形扇
+    - 中间纬度带用四边形条带对角剖分
+
+    Args:
+        center: 球心坐标
+        radius: 球半径
+        spacing: 网格尺寸
+        output_vtk: 输出VTK文件路径（可选）
+
+    Returns:
+        PrimitiveMeshResult
+
+    Raises:
+        ValueError: 如果半径不是正数
+    """
+    if radius <= 0:
+        raise ValueError(f"球半径必须为正数: {radius}")
+
+    cx, cy, cz = center
+    n_theta = max(6, int(2 * np.pi * radius / spacing))
+    n_phi = max(4, int(np.pi * radius / spacing))
+
+    # 生成节点
+    nodes = []
+    node_idx = 0
+
+    # 北极
+    nx, ny, nz = cx, cy, cz + radius
+    nodes.append(NodeElement3D(
+        coords=(nx, ny, nz), idx=node_idx,
+        normal=(0.0, 0.0, 1.0),
+    ))
+    node_idx += 1
+
+    # 中间纬度带
+    for j in range(1, n_phi):
+        phi = j * np.pi / n_phi
+        sin_phi = np.sin(phi)
+        cos_phi = np.cos(phi)
+        for i in range(n_theta):
+            theta = i * 2 * np.pi / n_theta
+            x = cx + radius * sin_phi * np.cos(theta)
+            y = cy + radius * sin_phi * np.sin(theta)
+            z = cz + radius * cos_phi
+            nx_dir = sin_phi * np.cos(theta)
+            ny_dir = sin_phi * np.sin(theta)
+            nz_dir = cos_phi
+            nodes.append(NodeElement3D(
+                coords=(x, y, z), idx=node_idx,
+                normal=(nx_dir, ny_dir, nz_dir),
+            ))
+            node_idx += 1
+
+    # 南极
+    sx, sy, sz = cx, cy, cz - radius
+    nodes.append(NodeElement3D(
+        coords=(sx, sy, sz), idx=node_idx,
+        normal=(0.0, 0.0, -1.0),
+    ))
+    node_idx += 1
+
+    triangles = []
+    tri_idx = 0
+
+    # 北极三角形扇
+    north = nodes[0]
+    for i in range(n_theta):
+        n1 = nodes[1 + i]
+        n2 = nodes[1 + (i + 1) % n_theta]
+        tri = SurfaceTriangle(north, n1, n2, idx=tri_idx)
+        triangles.append(tri)
+        tri_idx += 1
+
+    # 中间四边形条带
+    for j in range(n_phi - 2):
+        base_curr = 1 + j * n_theta
+        base_next = 1 + (j + 1) * n_theta
+        for i in range(n_theta):
+            i_next = (i + 1) % n_theta
+            tl = nodes[base_curr + i]
+            tr = nodes[base_curr + i_next]
+            bl = nodes[base_next + i]
+            br = nodes[base_next + i_next]
+
+            tri1 = SurfaceTriangle(tl, bl, tr, idx=tri_idx)
+            triangles.append(tri1)
+            tri_idx += 1
+            tri2 = SurfaceTriangle(tr, bl, br, idx=tri_idx)
+            triangles.append(tri2)
+            tri_idx += 1
+
+    # 南极三角形扇
+    south = nodes[-1]
+    base_last = 1 + (n_phi - 2) * n_theta
+    for i in range(n_theta):
+        n1 = nodes[base_last + i]
+        n2 = nodes[base_last + (i + 1) % n_theta]
+        tri = SurfaceTriangle(n1, south, n2, idx=tri_idx)
+        triangles.append(tri)
+        tri_idx += 1
+
+    result = PrimitiveMeshResult()
+    result.num_faces = 1
+    result.face_types = {0: "sphere"}
+    result.face_map = {0: triangles}
+    result.triangles = triangles
+    result.nodes = nodes
+
+    if output_vtk:
+        _export_combined_mesh(triangles, output_vtk)
+
+    return result
+
+
+def generate_ellipsoid_mesh(
+    center: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    semi_axes: Tuple[float, float, float] = (1.0, 0.75, 0.5),
+    spacing: float = 0.2,
+    output_vtk: str = None,
+) -> PrimitiveMeshResult:
+    """
+    生成椭球面的三角形网格
+
+    使用球坐标参数化，将单位球坐标缩放到椭球半轴。
+
+    Args:
+        center: 椭球中心坐标
+        semi_axes: 三个半轴长度 (a, b, c) 对应 (x, y, z)
+        spacing: 网格尺寸（基于最大半轴估算）
+        output_vtk: 输出VTK文件路径（可选）
+
+    Returns:
+        PrimitiveMeshResult
+
+    Raises:
+        ValueError: 如果半轴不是正数
+    """
+    a, b, c = semi_axes
+    if a <= 0 or b <= 0 or c <= 0:
+        raise ValueError(f"椭球半轴必须为正数: ({a}, {b}, {c})")
+
+    cx, cy, cz = center
+    r_max = max(a, b, c)
+    n_theta = max(6, int(2 * np.pi * r_max / spacing))
+    n_phi = max(4, int(np.pi * r_max / spacing))
+
+    nodes = []
+    node_idx = 0
+
+    # 北极
+    nodes.append(NodeElement3D(
+        coords=(cx, cy, cz + c), idx=node_idx,
+        normal=(0.0, 0.0, 1.0),
+    ))
+    node_idx += 1
+
+    # 中间纬度带
+    for j in range(1, n_phi):
+        phi = j * np.pi / n_phi
+        sin_phi = np.sin(phi)
+        cos_phi = np.cos(phi)
+        for i in range(n_theta):
+            theta = i * 2 * np.pi / n_theta
+            cos_theta = np.cos(theta)
+            sin_theta = np.sin(theta)
+            x = cx + a * sin_phi * cos_theta
+            y = cy + b * sin_phi * sin_theta
+            z = cz + c * cos_phi
+
+            # 椭球面法向量: (x/a^2, y/b^2, z/c^2) 归一化
+            nx_dir = sin_phi * cos_theta / a
+            ny_dir = sin_phi * sin_theta / b
+            nz_dir = cos_phi / c
+            norm = np.sqrt(nx_dir**2 + ny_dir**2 + nz_dir**2)
+            if norm > 1e-12:
+                nx_dir /= norm
+                ny_dir /= norm
+                nz_dir /= norm
+
+            nodes.append(NodeElement3D(
+                coords=(x, y, z), idx=node_idx,
+                normal=(nx_dir, ny_dir, nz_dir),
+            ))
+            node_idx += 1
+
+    # 南极
+    nodes.append(NodeElement3D(
+        coords=(cx, cy, cz - c), idx=node_idx,
+        normal=(0.0, 0.0, -1.0),
+    ))
+    node_idx += 1
+
+    triangles = []
+    tri_idx = 0
+
+    # 北极扇
+    north = nodes[0]
+    for i in range(n_theta):
+        n1 = nodes[1 + i]
+        n2 = nodes[1 + (i + 1) % n_theta]
+        triangles.append(SurfaceTriangle(north, n1, n2, idx=tri_idx))
+        tri_idx += 1
+
+    # 中间条带
+    for j in range(n_phi - 2):
+        base_curr = 1 + j * n_theta
+        base_next = 1 + (j + 1) * n_theta
+        for i in range(n_theta):
+            i_next = (i + 1) % n_theta
+            tl = nodes[base_curr + i]
+            tr = nodes[base_curr + i_next]
+            bl = nodes[base_next + i]
+            br = nodes[base_next + i_next]
+
+            triangles.append(SurfaceTriangle(tl, bl, tr, idx=tri_idx))
+            tri_idx += 1
+            triangles.append(SurfaceTriangle(tr, bl, br, idx=tri_idx))
+            tri_idx += 1
+
+    # 南极扇
+    south = nodes[-1]
+    base_last = 1 + (n_phi - 2) * n_theta
+    for i in range(n_theta):
+        n1 = nodes[base_last + i]
+        n2 = nodes[base_last + (i + 1) % n_theta]
+        triangles.append(SurfaceTriangle(n1, south, n2, idx=tri_idx))
+        tri_idx += 1
+
+    result = PrimitiveMeshResult()
+    result.num_faces = 1
+    result.face_types = {0: "ellipsoid"}
+    result.face_map = {0: triangles}
+    result.triangles = triangles
+    result.nodes = nodes
 
     if output_vtk:
         _export_combined_mesh(triangles, output_vtk)

@@ -18,7 +18,7 @@ ensure_occ_loaded()
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE
 
-from sfmesh.surface_mesh import SurfaceMeshGenerator, generate_surface_mesh_from_file
+from sfmesh.surface_mesh import SurfaceMeshGenerator, generate_surface_mesh_from_file, _export_combined_mesh
 from sfmesh.mesh_quality import SurfaceMeshQuality
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront
 from sfmesh.surface_geometry import SurfaceGeometry
@@ -222,34 +222,33 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
         """测试从球体 IGES 文件生成网格"""
         if not self.sphere_path.exists():
             self.skipTest(f"球体文件不存在：{self.sphere_path}")
-        
+
         from fileIO.geometry_io import import_geometry_file
-        
+
         shape = import_geometry_file(str(self.sphere_path))
-        
+
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
         faces = []
         while explorer.More():
             faces.append(explorer.Current())
             explorer.Next()
-        
+
         self.assertGreater(len(faces), 0, "球体模型中没有找到曲面")
-        
+
         face = faces[0]
-        
+
         generator = SurfaceMeshGenerator(
             surface=face,
-            global_spacing=5.0,
-            max_iterations=1000
+            global_spacing=0.3,
+            max_iterations=5000
         )
-        
+
         triangles = generator.generate()
 
-        self.assertGreater(len(triangles), 0, "没有生成任何三角形")
+        self.assertGreater(len(triangles), 50, "三角形数量不足")
 
         quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
-        # 注意：球体网格生成质量受算法限制，当前实现仅生成少量三角形
-        self.assertGreater(quality_result['quality_mean'], 0.1,
+        self.assertGreater(quality_result['quality_mean'], 0.3,
                           "平均网格质量过低")
 
         output_file = self.output_dir / "sphere_mesh.vtk"
@@ -257,65 +256,56 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
         self.assertTrue(output_file.exists(), "VTK 文件未生成")
     
     def test_generate_mesh_from_cylinder(self):
-        """测试从圆柱 STEP 文件生成网格"""
+        """测试从圆柱 STEP 文件生成网格（统一网格生成，端面与柱面共享边界节点）"""
         if not self.cylinder_path.exists():
             self.skipTest(f"圆柱文件不存在：{self.cylinder_path}")
-        
+
         from fileIO.geometry_io import import_geometry_file
-        
+        from sfmesh.surface_mesh import generate_surface_mesh_from_shape
+
         shape = import_geometry_file(str(self.cylinder_path))
-        
-        explorer = TopExp_Explorer(shape, TopAbs_FACE)
-        faces = []
-        while explorer.More():
-            faces.append(explorer.Current())
-            explorer.Next()
-        
-        self.assertGreater(len(faces), 0, "圆柱模型中没有找到曲面")
-        
-        all_triangles = []
-        for face in faces:
-            generator = SurfaceMeshGenerator(
-                surface=face,
-                global_spacing=3.0,
-                max_iterations=500
-            )
-            
-            triangles = generator.generate()
-            all_triangles.extend(triangles)
-        
+        all_triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.5)
+
         self.assertGreater(len(all_triangles), 0, "没有生成任何三角形")
-        
+
         quality_result = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
-        self.assertGreater(quality_result['quality_mean'], 0.3, 
+        self.assertGreater(quality_result['quality_mean'], 0.3,
                           "平均网格质量过低")
+
+        output_file = self.output_dir / "cylinder_mesh.vtk"
+        _export_combined_mesh(all_triangles, str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
     
     def test_generate_mesh_with_curvature_adaptation(self):
-        """测试曲率自适应网格生成"""
+        """测试曲率自适应网格生成（从球体 IGES 文件）"""
         if not self.sphere_path.exists():
             self.skipTest(f"球体文件不存在：{self.sphere_path}")
-        
+
         from fileIO.geometry_io import import_geometry_file
-        
+
         shape = import_geometry_file(str(self.sphere_path))
-        
+
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
         face = explorer.Current()
-        
+
         generator = SurfaceMeshGenerator(
             surface=face,
-            global_spacing=5.0,
+            global_spacing=0.3,
             curvature_adaptation=True,
-            max_iterations=1000
+            max_iterations=5000
         )
-        
+
         triangles = generator.generate()
 
-        self.assertGreater(len(triangles), 0)
+        self.assertGreater(len(triangles), 50, "三角形数量不足")
 
         quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
-        # 注意：球体网格生成质量受算法限制，当前实现仅生成少量三角形
-        self.assertGreater(quality_result['quality_mean'], 0.1)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "sphere_curvature_adaptation.vtk"
+        generator.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
 
 
 class TestMeshQuality(unittest.TestCase):

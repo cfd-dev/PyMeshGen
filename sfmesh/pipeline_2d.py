@@ -279,6 +279,7 @@ def _mesh_disk_2d(
     spacing: float,
     face_name: str = "disk",
     normal_z: float = 1.0,
+    boundary_pts_2d: list = None,
 ) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
     """
     对圆形平面使用 2D 阵面推进流水线生成网格
@@ -290,12 +291,17 @@ def _mesh_disk_2d(
         spacing: 网格尺寸
         face_name: 面名称
         normal_z: 法向量 z 分量 (+1 或 -1)
+        boundary_pts_2d: 预定义的边界点列表（用于共享边界节点）
 
     Returns:
         (triangles, nodes_3d)
     """
-    n_segments = max(12, round(2 * math.pi * radius / spacing))
-    circle_pts = _discretize_circle_2d(center_xy, radius, n_segments)
+    if boundary_pts_2d is not None:
+        circle_pts = boundary_pts_2d
+        n_segments = len(circle_pts)
+    else:
+        n_segments = max(12, round(2 * math.pi * radius / spacing))
+        circle_pts = _discretize_circle_2d(center_xy, radius, n_segments)
 
     # 圆形边界：将点序列拆分为多条边（每条弧一段）
     # 每段弧作为一个 edge，用直线段近似
@@ -322,6 +328,7 @@ def _mesh_lateral_cylinder_2d(
     height: float,
     spacing: float,
     face_name: str = "lateral",
+    boundary_pts_2d: list = None,
 ) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
     """
     对圆柱侧面使用 2D 阵面推进流水线生成网格
@@ -337,6 +344,7 @@ def _mesh_lateral_cylinder_2d(
         height: 圆柱高度
         spacing: 网格尺寸
         face_name: 面名称
+        boundary_pts_2d: 预定义的边界点 (s, z) 列表（用于共享边界节点）
 
     Returns:
         (triangles, nodes_3d)
@@ -345,14 +353,18 @@ def _mesh_lateral_cylinder_2d(
     z1 = z0 + height
     L = 2.0 * math.pi * radius
 
-    # 展开矩形的四个角 (s, z)，CCW 排列
-    corners_2d = [(0.0, z0), (L, z0), (L, z1), (0.0, z1)]
+    if boundary_pts_2d is not None:
+        # 使用预定义的边界点
+        edge_points_2d = boundary_pts_2d
+    else:
+        # 展开矩形的四个角 (s, z)，CCW 排列
+        corners_2d = [(0.0, z0), (L, z0), (L, z1), (0.0, z1)]
 
-    # 离散化四条边
-    edge_points_2d = []
-    for i in range(4):
-        pts = _discretize_edge_2d(corners_2d[i], corners_2d[(i + 1) % 4], spacing)
-        edge_points_2d.append(pts)
+        # 离散化四条边
+        edge_points_2d = []
+        for i in range(4):
+            pts = _discretize_edge_2d(corners_2d[i], corners_2d[(i + 1) % 4], spacing)
+            edge_points_2d.append(pts)
 
     all_fronts = _create_fronts_from_2d_edges(edge_points_2d, face_name)
     face_size = max(L, height)
@@ -371,3 +383,112 @@ def _mesh_lateral_cylinder_2d(
         return (math.cos(theta), math.sin(theta), 0.0)
 
     return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
+
+
+def _mesh_cylinder_unified(
+    base_center: Tuple[float, float, float],
+    radius: float,
+    height: float,
+    spacing: float,
+) -> Tuple[List[SurfaceTriangle], List[NodeElement3D]]:
+    """
+    统一圆柱体网格生成：端面和柱面共享边界节点
+
+    统一离散化圆边界，确保端面和柱面使用完全相同的边界节点。
+
+    Args:
+        base_center: 底面圆心 (x, y, z)
+        radius: 圆柱半径
+        height: 圆柱高度
+        spacing: 网格尺寸
+
+    Returns:
+        (triangles, nodes)
+    """
+    cx, cy, z0 = base_center
+    z1 = z0 + height
+
+    # 统一离散化圆边界（与 primitives 分支一致，使用 max(6, ...)）
+    L = 2.0 * math.pi * radius
+    n_segments = max(6, round(L / spacing))
+    circle_pts = _discretize_circle_2d((cx, cy), radius, n_segments)
+
+    # 2D 圆边界点（x, y）用于端面
+    circle_pts_2d = [(pt[0], pt[1]) for pt in circle_pts]
+
+    # 转换为侧面展开坐标 (s, z)
+    # 直接用均匀角度计算 s，避免 atan2 的 -0.0 问题
+    lateral_bottom = []
+    lateral_top = []
+    for i in range(n_segments):
+        s = radius * 2.0 * math.pi * i / n_segments
+        lateral_bottom.append((s, z0))
+        lateral_top.append((s, z1))
+
+    # 添加接缝绕回点 (s=L)，hash 归一化后与起点 (s=0) 去重
+    lateral_bottom.append((L, z0))
+    lateral_top.append((L, z1))
+
+    # 构建侧面闭合边界（四条边，首尾相连）
+    # 底边: circle pts at z0 + 绕回点 (L, z0)
+    # 右边: (L, z0) → (L, z1)，均匀离散化
+    # 顶边: circle pts at z1 + 绕回点 (L, z1)（反向）
+    # 左边: (0, z1) → (0, z0)，均匀离散化
+    bottom_edge = list(lateral_bottom)
+    right_edge = _discretize_edge_2d((L, z0), (L, z1), spacing)
+    top_edge = list(reversed(lateral_top))
+    left_edge = _discretize_edge_2d((0.0, z1), (0.0, z0), spacing)
+
+    lateral_edge_pts = [bottom_edge, right_edge, top_edge, left_edge]
+
+    # --- 底面网格（使用统一的圆边界）---
+    bottom_tris, bottom_nodes = _mesh_disk_2d(
+        center_xy=(cx, cy), radius=radius, z=z0,
+        spacing=spacing, face_name="bottom", normal_z=-1.0,
+        boundary_pts_2d=circle_pts_2d,
+    )
+
+    # --- 顶面网格 ---
+    top_tris, top_nodes = _mesh_disk_2d(
+        center_xy=(cx, cy), radius=radius, z=z1,
+        spacing=spacing, face_name="top", normal_z=1.0,
+        boundary_pts_2d=circle_pts_2d,
+    )
+
+    # --- 侧面网格（使用统一的边界）---
+    lateral_tris, lateral_nodes = _mesh_lateral_cylinder_2d(
+        base_center=base_center, radius=radius, height=height,
+        spacing=spacing, face_name="lateral",
+        boundary_pts_2d=lateral_edge_pts,
+    )
+
+    # --- 合并节点 ---
+    node_hash_to_idx = {}
+    all_nodes = []
+    all_triangles = []
+    global_idx = 0
+
+    for face_nodes in [bottom_nodes, top_nodes, lateral_nodes]:
+        node_local_to_global = {}
+        for node in face_nodes:
+            h = node.hash
+            if h not in node_hash_to_idx:
+                node_hash_to_idx[h] = global_idx
+                node.idx = global_idx
+                all_nodes.append(node)
+                global_idx += 1
+            node_local_to_global[id(node)] = node_hash_to_idx[h]
+
+        face_tris = bottom_tris if face_nodes is bottom_nodes else (
+            top_tris if face_nodes is top_nodes else lateral_tris
+        )
+        for tri in face_tris:
+            new_tri = SurfaceTriangle(
+                all_nodes[node_local_to_global[id(tri.nodes[0])]],
+                all_nodes[node_local_to_global[id(tri.nodes[1])]],
+                all_nodes[node_local_to_global[id(tri.nodes[2])]],
+                idx=len(all_triangles),
+            )
+            all_triangles.append(new_tri)
+
+    return all_triangles, all_nodes

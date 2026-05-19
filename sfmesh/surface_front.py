@@ -57,7 +57,7 @@ class NodeElement3D:
         self.uv_params = uv_params
         self.normal = normal
         
-        coords_hash = hash(tuple(f"{c:.8f}" for c in coords))
+        coords_hash = hash(tuple(f"{0.0 if round(c, 8) == 0 else round(c, 8):.8f}" for c in coords))
         self.hash = coords_hash
         
         self.bbox = (coords[0], coords[1], coords[2], coords[0], coords[1], coords[2])
@@ -385,14 +385,27 @@ def create_initial_fronts_from_surface(
         
         for edge in edges:
             curve_handle, first, last = BRep_Tool.Curve(edge)
-            
+
             if curve_handle is None:
                 continue
-            
+
             # BRep_Tool.Curve() 返回的已经是 Geom_Curve 对象，不需要 GetObject()
             curve = curve_handle
-            
-            num_points = max(2, int((last - first) / sizing_field.global_spacing))
+
+            # 通过采样估算物理弧长，避免参数空间与物理空间的不一致
+            n_samples = max(20, int(abs(last - first) * 2))
+            arc_length = 0.0
+            prev_pt = curve.Value(first)
+            for s in range(1, n_samples + 1):
+                t = first + s * (last - first) / n_samples
+                pt = curve.Value(t)
+                dx = pt.X() - prev_pt.X()
+                dy = pt.Y() - prev_pt.Y()
+                dz = pt.Z() - prev_pt.Z()
+                arc_length += (dx * dx + dy * dy + dz * dz) ** 0.5
+                prev_pt = pt
+
+            num_points = max(2, int(arc_length / sizing_field.global_spacing))
             
             prev_node = None
             for i in range(num_points + 1):
