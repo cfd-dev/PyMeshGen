@@ -205,18 +205,30 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
         """设置测试类"""
         cls.sphere_path = Path(project_root) / "examples" / "cad" / "sphere.iges"
         cls.cylinder_path = Path(project_root) / "examples" / "cad" / "cylinder.stp"
+        cls.ellipsoid_path = Path(project_root) / "examples" / "cad" / "ellipsoid-mm.igs"
+        cls.m6_path = Path(project_root) / "examples" / "cad" / "onera_m6.igs"
         cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
         cls.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def test_sphere_file_exists(self):
         """测试球体文件存在"""
-        self.assertTrue(self.sphere_path.exists(), 
+        self.assertTrue(self.sphere_path.exists(),
                        f"球体文件不存在：{self.sphere_path}")
-    
+
     def test_cylinder_file_exists(self):
         """测试圆柱文件存在"""
-        self.assertTrue(self.cylinder_path.exists(), 
+        self.assertTrue(self.cylinder_path.exists(),
                        f"圆柱文件不存在：{self.cylinder_path}")
+
+    def test_ellipsoid_file_exists(self):
+        """测试椭球体文件存在"""
+        self.assertTrue(self.ellipsoid_path.exists(),
+                       f"椭球体文件不存在：{self.ellipsoid_path}")
+
+    def test_m6_file_exists(self):
+        """测试 M6 机翼文件存在"""
+        self.assertTrue(self.m6_path.exists(),
+                       f"M6 机翼文件不存在：{self.m6_path}")
     
     def test_generate_mesh_from_sphere(self):
         """测试从球体 IGES 文件生成网格"""
@@ -305,6 +317,79 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
 
         output_file = self.output_dir / "sphere_curvature_adaptation.vtk"
         generator.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
+
+    def test_generate_mesh_from_ellipsoid_3d_afm(self):
+        """测试从椭球体 IGES 文件生成网格（3D AFM 方法，单面，曲率各向异性）"""
+        if not self.ellipsoid_path.exists():
+            self.skipTest(f"椭球体文件不存在：{self.ellipsoid_path}")
+
+        from fileIO.geometry_io import import_geometry_file
+
+        shape = import_geometry_file(str(self.ellipsoid_path))
+
+        explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        faces = []
+        while explorer.More():
+            faces.append(explorer.Current())
+            explorer.Next()
+
+        self.assertGreater(len(faces), 0, "椭球体模型中没有找到曲面")
+
+        face = faces[0]
+        generator = SurfaceMeshGenerator(
+            surface=face,
+            global_spacing=5.0,
+            curvature_adaptation=True,
+            max_iterations=10000,
+        )
+        triangles = generator.generate()
+
+        self.assertGreater(len(triangles), 50, "三角形数量不足")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "ellipsoid_mesh_3d_afm.vtk"
+        generator.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
+
+    def test_generate_mesh_from_m6(self):
+        """测试从 ONERA M6 机翼 IGES 文件生成网格（多面组合，大尺寸几何）"""
+        if not self.m6_path.exists():
+            self.skipTest(f"M6 机翼文件不存在：{self.m6_path}")
+
+        from fileIO.geometry_io import import_geometry_file
+
+        shape = import_geometry_file(str(self.m6_path))
+
+        explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        faces = []
+        while explorer.More():
+            faces.append(explorer.Current())
+            explorer.Next()
+
+        self.assertGreater(len(faces), 0, "M6 机翼模型中没有找到曲面")
+
+        all_triangles = []
+        for face in faces:
+            generator = SurfaceMeshGenerator(
+                surface=face,
+                global_spacing=2000.0,
+                max_iterations=10000,
+            )
+            tris = generator.generate()
+            all_triangles.extend(tris)
+
+        self.assertGreater(len(all_triangles), 0, "没有生成任何三角形")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.2,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "onera_m6_mesh.vtk"
+        _export_combined_mesh(all_triangles, str(output_file))
         self.assertTrue(output_file.exists(), "VTK 文件未生成")
 
 

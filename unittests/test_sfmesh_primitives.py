@@ -410,7 +410,7 @@ class TestSphereMeshGeneration(unittest.TestCase):
 
 
 class TestEllipsoidMeshGeneration(unittest.TestCase):
-    """测试椭球面网格生成"""
+    """测试椭球面网格生成（2D 参数空间流水线方法）"""
 
     @classmethod
     def setUpClass(cls):
@@ -464,7 +464,7 @@ class TestEllipsoidMeshGeneration(unittest.TestCase):
 
     def test_ellipsoid_vtk_export(self):
         """VTK导出"""
-        output_file = str(self.output_dir / "ellipsoid_mesh.vtk")
+        output_file = str(self.output_dir / "ellipsoid_mesh_2d_pipeline.vtk")
         result = generate_ellipsoid_mesh(
             center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
             output_vtk=output_file,

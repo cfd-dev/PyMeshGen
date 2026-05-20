@@ -222,6 +222,7 @@ def _is_cylinder_face(face: TopoDS_Face) -> bool:
     """判断面是否为圆柱面（包括 B-spline 近似的圆柱面）"""
     from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
     from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_BSplineSurface
+    from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE
 
     adaptor = BRepAdaptor_Surface(face)
     surf_type = adaptor.GetType()

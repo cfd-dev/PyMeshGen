@@ -5,6 +5,7 @@
 无需从文件导入。使用阵面推进法（Advancing Front Method）生成高质量网格。
 """
 import sys
+import math
 import heapq
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
@@ -17,8 +18,10 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from OCC.Core.gp import gp_Pnt, gp_Pnt2d, gp_Ax2, gp_Dir
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+from OCC.Core.gp import gp_Pnt, gp_Pnt2d, gp_Ax2, gp_Dir, gp_GTrsf, gp_Mat, gp_XYZ, gp_Pln
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeSphere, BRepPrimAPI_MakeHalfSpace
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_GTransform, BRepBuilderAPI_MakeFace
+from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE, TopAbs_IN, TopAbs_ON
 from OCC.Core.TopoDS import TopoDS_Face, topods
@@ -1185,12 +1188,14 @@ def generate_ellipsoid_mesh(
     """
     生成椭球面的三角形网格
 
-    使用球坐标参数化，将单位球坐标缩放到椭球半轴。
+    将椭球面按赤道拆分为南北两个半球面，在参数空间 (u, v) 中使用
+    2D 阵面推进流水线生成网格，再映射到 3D 椭球面坐标，最后合并并
+    去重赤道共享边界节点。
 
     Args:
         center: 椭球中心坐标
         semi_axes: 三个半轴长度 (a, b, c) 对应 (x, y, z)
-        spacing: 网格尺寸（基于最大半轴估算）
+        spacing: 网格尺寸
         output_vtk: 输出VTK文件路径（可选）
 
     Returns:
@@ -1199,105 +1204,187 @@ def generate_ellipsoid_mesh(
     Raises:
         ValueError: 如果半轴不是正数
     """
+    from .pipeline_2d import (
+        _run_afm_2d_pipeline, _create_fronts_from_2d_edges, _unstr_grid_to_3d,
+    )
+
     a, b, c = semi_axes
     if a <= 0 or b <= 0 or c <= 0:
         raise ValueError(f"椭球半轴必须为正数: ({a}, {b}, {c})")
 
     cx, cy, cz = center
-    r_max = max(a, b, c)
-    n_theta = max(6, int(2 * np.pi * r_max / spacing))
-    n_phi = max(4, int(np.pi * r_max / spacing))
 
-    nodes = []
-    node_idx = 0
+    # 椭球参数方程 (单位球参数化 + 缩放):
+    #   x = a * cos(v) * cos(u) + cx
+    #   y = b * cos(v) * sin(u) + cy
+    #   z = c * sin(v) + cz
+    # u ∈ [0, 2π], v ∈ [-π/2, π/2]
+    #
+    # 北半球: v ∈ [0, π/2], 南半球: v ∈ [-π/2, 0]
+    # 参数空间矩形: u ∈ [0, 2π], v_shifted ∈ [0, π/2]
 
-    # 北极
-    nodes.append(NodeElement3D(
-        coords=(cx, cy, cz + c), idx=node_idx,
-        normal=(0.0, 0.0, 1.0),
-    ))
-    node_idx += 1
+    def _mesh_hemisphere(v_sign: float):
+        """
+        在参数空间中对半球面生成网格
 
-    # 中间纬度带
-    for j in range(1, n_phi):
-        phi = j * np.pi / n_phi
-        sin_phi = np.sin(phi)
-        cos_phi = np.cos(phi)
-        for i in range(n_theta):
-            theta = i * 2 * np.pi / n_theta
-            cos_theta = np.cos(theta)
-            sin_theta = np.sin(theta)
-            x = cx + a * sin_phi * cos_theta
-            y = cy + b * sin_phi * sin_theta
-            z = cz + c * cos_phi
+        Args:
+            v_sign: +1.0 北半球, -1.0 南半球
 
-            # 椭球面法向量: (x/a^2, y/b^2, z/c^2) 归一化
-            nx_dir = sin_phi * cos_theta / a
-            ny_dir = sin_phi * sin_theta / b
-            nz_dir = cos_phi / c
-            norm = np.sqrt(nx_dir**2 + ny_dir**2 + nz_dir**2)
-            if norm > 1e-12:
-                nx_dir /= norm
-                ny_dir /= norm
-                nz_dir /= norm
+        Returns:
+            (triangles, nodes)
+        """
+        u_min, u_max = 0.0, 2.0 * math.pi
+        v_lo, v_hi = 0.0, math.pi / 2.0  # 参数空间的 v 范围
 
-            nodes.append(NodeElement3D(
-                coords=(x, y, z), idx=node_idx,
-                normal=(nx_dir, ny_dir, nz_dir),
+        # 参数空间离散化步长（物理弧长 → 参数步长）
+        # 北半球赤道周长 ≈ π * max(a, b)，经线弧长 ≈ π/2 * max(a, c)
+        L_equator = math.pi * max(a, b)
+        n_equator = max(6, round(L_equator / spacing))
+        du = (u_max - u_min) / n_equator
+        dv = spacing / max(a, b, c)  # 参数空间步长
+
+        # 边界离散化
+        # 底边 (v=0, 赤道): u 从 0 到 2π
+        bottom = [(u_min + i * du, v_lo) for i in range(n_equator)]
+        bottom.append((u_max, v_lo))
+
+        # 右边 (u=2π): v 从 0 到 π/2
+        nv_side = max(2, round((math.pi / 2.0) / dv) + 1)
+        right = [(u_max, v_lo + i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+
+        # 顶边 (v=π/2, 北极): u 从 2π 到 0（反向）
+        top = [(u_max - i * du, v_hi) for i in range(n_equator)]
+        top.append((u_min, v_hi))
+
+        # 左边 (u=0): v 从 π/2 到 0（反向）
+        left = [(u_min, v_hi - i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+
+        edge_pts = [bottom, right, top, left]
+        all_fronts = _create_fronts_from_2d_edges(edge_pts, face_name="ellipsoid")
+
+        face_sz = max(u_max - u_min, v_hi - v_lo)
+        unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing * 0.5, face_sz * 2)
+
+        # 坐标映射: (u, v) → 3D 椭球面
+        def _map_to_3d(u, v):
+            sv = v_sign * v  # 北半球 v>0, 南半球 v<0
+            cos_v = math.cos(sv)
+            sin_v = math.sin(sv)
+            cos_u = math.cos(u)
+            sin_u = math.sin(u)
+            return (
+                a * cos_v * cos_u + cx,
+                b * cos_v * sin_u + cy,
+                c * sin_v + cz,
+            )
+
+        def _normal_func(u, v):
+            sv = v_sign * v
+            cos_v = math.cos(sv)
+            sin_v = math.sin(sv)
+            cos_u = math.cos(u)
+            sin_u = math.sin(u)
+            # 椭球法向量: (x/a², y/b², z/c²) 归一化
+            nx = cos_v * cos_u / a
+            ny = cos_v * sin_u / b
+            nz = sin_v / c
+            nn = math.sqrt(nx * nx + ny * ny + nz * nz)
+            if nn < 1e-14:
+                return (0.0, 0.0, v_sign)
+            return (nx / nn, ny / nn, nz / nn)
+
+        return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
+
+    tris_n, nodes_n = _mesh_hemisphere(1.0)   # 北半球
+    tris_s, nodes_s = _mesh_hemisphere(-1.0)   # 南半球
+
+    # --- 合并节点，赤道边界去重 ---
+    node_hash_to_idx = {}
+    all_nodes = []
+    all_triangles = []
+    global_idx = 0
+
+    def _add_nodes(nodes_src):
+        nonlocal global_idx
+        idx_map = {}
+        for node in nodes_src:
+            key = node.hash
+            if key in node_hash_to_idx:
+                idx_map[node.idx] = node_hash_to_idx[key]
+            else:
+                new_node = NodeElement3D(
+                    coords=node.coords, idx=global_idx,
+                    normal=node.normal,
+                )
+                node_hash_to_idx[key] = global_idx
+                idx_map[node.idx] = global_idx
+                all_nodes.append(new_node)
+                global_idx += 1
+        return idx_map
+
+    idx_map_n = _add_nodes(nodes_n)
+    idx_map_s = _add_nodes(nodes_s)
+
+    for tri in tris_n:
+        new_ids = [idx_map_n[n.idx] for n in tri.nodes]
+        all_triangles.append(SurfaceTriangle(
+            all_nodes[new_ids[0]], all_nodes[new_ids[1]], all_nodes[new_ids[2]],
+        ))
+
+    for tri in tris_s:
+        new_ids = [idx_map_s[n.idx] for n in tri.nodes]
+        all_triangles.append(SurfaceTriangle(
+            all_nodes[new_ids[0]], all_nodes[new_ids[1]], all_nodes[new_ids[2]],
+        ))
+
+    # --- 极点去重：合并距离过近的节点，移除退化三角形 ---
+    tol = min(a, b, c) * 1e-6
+    coord_key = lambda p: (round(p[0] / tol), round(p[1] / tol), round(p[2] / tol))
+    merge_map = {}  # coord_key -> representative node index
+    node_redirect = list(range(len(all_nodes)))
+
+    for i, node in enumerate(all_nodes):
+        key = coord_key(node.coords)
+        if key in merge_map:
+            node_redirect[i] = merge_map[key]
+        else:
+            merge_map[key] = i
+            node_redirect[i] = i
+
+    # 压缩：重映射节点索引并移除未使用的节点
+    new_idx_map = {}
+    new_nodes = []
+    new_global = 0
+    for i in range(len(all_nodes)):
+        rep = node_redirect[i]
+        if rep not in new_idx_map:
+            new_idx_map[rep] = new_global
+            new_nodes.append(NodeElement3D(
+                coords=all_nodes[rep].coords, idx=new_global,
+                normal=all_nodes[rep].normal,
             ))
-            node_idx += 1
+            new_global += 1
 
-    # 南极
-    nodes.append(NodeElement3D(
-        coords=(cx, cy, cz - c), idx=node_idx,
-        normal=(0.0, 0.0, -1.0),
-    ))
-    node_idx += 1
+    # 重建三角形，过滤退化
+    final_triangles = []
+    for tri in all_triangles:
+        ids = [new_idx_map[node_redirect[n.idx]] for n in tri.nodes]
+        if ids[0] != ids[1] and ids[1] != ids[2] and ids[0] != ids[2]:
+            final_triangles.append(SurfaceTriangle(
+                new_nodes[ids[0]], new_nodes[ids[1]], new_nodes[ids[2]],
+            ))
 
-    triangles = []
-    tri_idx = 0
-
-    # 北极扇
-    north = nodes[0]
-    for i in range(n_theta):
-        n1 = nodes[1 + i]
-        n2 = nodes[1 + (i + 1) % n_theta]
-        triangles.append(SurfaceTriangle(north, n1, n2, idx=tri_idx))
-        tri_idx += 1
-
-    # 中间条带
-    for j in range(n_phi - 2):
-        base_curr = 1 + j * n_theta
-        base_next = 1 + (j + 1) * n_theta
-        for i in range(n_theta):
-            i_next = (i + 1) % n_theta
-            tl = nodes[base_curr + i]
-            tr = nodes[base_curr + i_next]
-            bl = nodes[base_next + i]
-            br = nodes[base_next + i_next]
-
-            triangles.append(SurfaceTriangle(tl, bl, tr, idx=tri_idx))
-            tri_idx += 1
-            triangles.append(SurfaceTriangle(tr, bl, br, idx=tri_idx))
-            tri_idx += 1
-
-    # 南极扇
-    south = nodes[-1]
-    base_last = 1 + (n_phi - 2) * n_theta
-    for i in range(n_theta):
-        n1 = nodes[base_last + i]
-        n2 = nodes[base_last + (i + 1) % n_theta]
-        triangles.append(SurfaceTriangle(n1, south, n2, idx=tri_idx))
-        tri_idx += 1
+    all_nodes = new_nodes
+    all_triangles = final_triangles
 
     result = PrimitiveMeshResult()
     result.num_faces = 1
     result.face_types = {0: "ellipsoid"}
-    result.face_map = {0: triangles}
-    result.triangles = triangles
-    result.nodes = nodes
+    result.face_map = {0: all_triangles}
+    result.triangles = all_triangles
+    result.nodes = all_nodes
 
     if output_vtk:
-        _export_combined_mesh(triangles, output_vtk)
+        _export_combined_mesh(all_triangles, output_vtk)
 
     return result
