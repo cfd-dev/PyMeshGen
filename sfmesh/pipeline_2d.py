@@ -491,11 +491,16 @@ def _mesh_cylinder_unified(
         "lateral": _proj_lateral,
     }
 
+    # 记录每个面的三角形在全局列表中的起止索引
+    face_tri_indices = {}  # face_name → (start_idx, end_idx)
+
     for face_name, face_nodes, face_tris in [
         ("bottom", bottom_nodes, bottom_tris),
         ("top", top_nodes, top_tris),
         ("lateral", lateral_nodes, lateral_tris),
     ]:
+        tri_start = len(all_triangles)
+
         # 用 object id 识别该面的几何边界节点
         # 构建 local_idx → object id 映射
         local_idx_to_objid = {}
@@ -534,6 +539,8 @@ def _mesh_cylinder_unified(
             )
             all_triangles.append(new_tri)
 
+        face_tri_indices[face_name] = (tri_start, len(all_triangles))
+
     # 将几何边界 object id 映射为全局索引
     objid_to_global = {id(n): n.idx for n in all_nodes}
     geometric_boundary_ids = {
@@ -555,7 +562,7 @@ def _mesh_cylinder_unified(
         node_projectors=node_projectors,
     )
 
-    return all_triangles, all_nodes
+    return all_triangles, all_nodes, face_tri_indices
 
 
 def _post_process_surface_mesh(

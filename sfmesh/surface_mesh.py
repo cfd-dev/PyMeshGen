@@ -222,7 +222,7 @@ class SurfaceMeshGenerator:
             from .occ_utils import _extract_cylinder_params
             params = _extract_cylinder_params(self.surface)
             spacing = self.sizing_field.global_spacing
-            triangles, nodes = _mesh_cylinder_unified(
+            triangles, nodes, *_ = _mesh_cylinder_unified(
                 base_center=params['base_center'],
                 radius=params['radius'],
                 height=params['height'],
@@ -681,7 +681,7 @@ def generate_surface_mesh_from_shape(
         params = _extract_cylinder_params(cylinder_faces[0])
         from .pipeline_2d import _mesh_cylinder_unified
         info("检测到圆柱体，使用统一网格生成...")
-        triangles, nodes = _mesh_cylinder_unified(
+        triangles, nodes, *_ = _mesh_cylinder_unified(
             base_center=params['base_center'],
             radius=params['radius'],
             height=params['height'],

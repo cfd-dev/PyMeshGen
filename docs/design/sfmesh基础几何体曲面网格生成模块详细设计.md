@@ -35,6 +35,8 @@
 |------|------|----------|----------|
 | CAD 文件驱动 | `generate_surface_mesh_from_file()` | IGES/STEP 文件 | 3D AFM（`SurfaceMeshGenerator`） |
 | 基础几何体驱动 | `generate_cube_mesh()` / `generate_cylinder_mesh()` / `generate_rectangle_mesh()` | 参数化定义 | 2D AFM 流水线（`pipeline_2d`） |
+| 球体/椭球体（结构化） | `generate_sphere_mesh()` / `generate_ellipsoid_mesh()` | 参数化定义 | 结构化网格 + 极点扇形 |
+| 椭球体（2D AFM） | `generate_ellipsoid_mesh_2d_afm()` | 参数化定义 | 1/4 网格 + 镜像 + 极点扇形 |
 
 两条路径共享底层数据结构（`NodeElement3D`、`SurfaceTriangle`、`SurfaceFront`）和质量评估工具（`mesh_quality`），但采用不同的阵面推进策略：
 
@@ -56,14 +58,14 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `__init__.py` | 32 | 包初始化，导出公开 API |
+| `__init__.py` | 34 | 包初始化，导出公开 API |
 | `surface_front.py` | 449 | 核心数据结构：`NodeElement3D`、`SurfaceTriangle`、`SurfaceFront` |
 | `surface_geometry.py` | 377 | OCC 曲面几何操作：点投影、法向量、曲率、理想点计算 |
 | `sizing_field.py` | 384 | 尺寸场控制：均匀、曲率自适应、梯度限制、特征邻近 |
 | `mesh_quality.py` | 429 | 网格质量评估与几何相交检测 |
 | `surface_mesh.py` | 745 | CAD 文件驱动的 3D AFM 网格生成器 |
-| `primitives.py` | 1303 | 基础几何体网格生成入口：长方体、圆柱体、矩形、球体、椭球体 |
-| `occ_utils.py` | 381 | OCC 辅助函数：面提取、包围盒、面分类 |
+| `primitives.py` | 1640 | 基础几何体网格生成入口：长方体、圆柱体、矩形、球体、椭球体（结构化 + 2D AFM） |
+| `occ_utils.py` | 382 | OCC 辅助函数：面提取、包围盒、面分类 |
 | `geom_utils.py` | 90 | 纯数值计算几何：2D 投影、线段相交、点在三角形内 |
 | `pipeline_2d.py` | 657 | 2D AFM 流水线：离散化、阵面创建、AFM 运行、坐标映射、统一圆柱网格 |
 
@@ -603,6 +605,88 @@ for node in nodes:
 
 此方法快速但质量不如 AFM，仅作为备选方案。
 
+### 6.7 球体网格生成
+
+**`generate_sphere_mesh(center, radius, spacing, output_vtk)`**
+
+使用球坐标参数化生成结构化网格：
+
+1. 在球坐标 `(θ, φ)` 中创建均匀网格：`θ ∈ [0, 2π]`, `φ ∈ [0, π]`
+2. 南北极点（`φ = 0, π`）退化为单点，创建极点节点
+3. 中间纬度带用四边形条带对角剖分为三角形
+4. 两极用三角形扇填充
+
+**极点扇形**: 每个扇形三角形连接极点和第一/最后一纬度带的相邻节点。扇形三角形质量受经线方向间距约束，无法完全等边。
+
+### 6.8 椭球体网格生成（结构化方法）
+
+**`generate_ellipsoid_mesh(center, semi_axes, spacing, output_vtk)`**
+
+使用结构化网格 + 极点扇形填充，与球体方法类似：
+
+1. 在参数空间 `(u ∈ [0, 2π], v ∈ [-π/2, π/2])` 中创建均匀网格
+2. 通过椭球参数方程映射到 3D：`x = a·cos(v)·cos(u)`, `y = b·cos(v)·sin(u)`, `z = c·sin(v)`
+3. 跳过极点退化行，创建单个极点节点
+4. 中间区域用四边形条带拆分为三角形
+5. 两极用三角形扇填充
+
+**质量特征**: 极点附近因 `cos(v) → 0` 导致 U 方向物理间距压缩，扇形三角形长宽比约 `du·max(a,b)/c`。整体网格均匀性好，极点质量为几何约束限制。
+
+### 6.9 椭球体网格生成（2D AFM 流水线方法）
+
+**`generate_ellipsoid_mesh_2d_afm(center, semi_axes, spacing, output_vtk)`**
+
+使用 2D 阵面推进流水线生成椭球面网格，结合镜像确保对称性。
+
+**算法流程**:
+
+```
+┌─────────────────────────────────┐
+│  参数空间 1/4 网格 (u∈[0,π],    │
+│  v∈[0, v_pole])                 │
+│  AFM 生成 + 后处理              │
+└──────────────┬──────────────────┘
+               ▼
+┌─────────────────────────────────┐
+│  极点帽：边界节点扇形连接极点    │
+│  (r_hex = π/nv_meridian)        │
+└──────────────┬──────────────────┘
+               ▼
+┌─────────────────────────────────┐
+│  镜像 1: u→2π-u (y 取反)       │
+│  1/4 → 上半球                   │
+│  边界节点去重                    │
+└──────────────┬──────────────────┘
+               ▼
+┌─────────────────────────────────┐
+│  镜像 2: v→-v (z 取反)         │
+│  上半球 → 完整椭球              │
+│  边界节点去重                    │
+└──────────────┬──────────────────┘
+               ▼
+┌─────────────────────────────────┐
+│  坐标去重 + 退化三角形移除       │
+└─────────────────────────────────┘
+```
+
+**关键设计**:
+
+- **1/4 网格**: 仅生成 `u ∈ [0, π]`, `v ∈ [0, v_pole]` 的 1/4 网格，通过两次镜像获得完整椭球，确保严格对称。
+- **极点帽半径**: `r_hex = π/nv_meridian`，其中 `nv_meridian = max(6, round(π·max(a,c)/spacing))`。与结构化网格的 v 间距一致，确保扇形三角形质量一致。
+- **极点扇形**: 边界节点（`v = v_pole`）与极点连接形成扇形三角形。扇形质量受 `du·max(a,b)/c` 约束。
+- **镜像去重**: 使用坐标容差（`min(a,b,c) × 1e-4`）匹配边界节点，确保镜像后共享边界节点一致。
+- **最终去重**: 使用坐标舍入（`min(a,b,c) × 1e-6`）合并重叠节点，移除退化三角形。
+
+**与结构化方法的对比**:
+
+| 维度 | 结构化方法 (`generate_ellipsoid_mesh`) | 2D AFM 方法 (`generate_ellipsoid_mesh_2d_afm`) |
+|------|---------------------------------------|----------------------------------------------|
+| 网格类型 | 结构化四边形条带 + 极点扇 | 非结构化 AFM + 极点扇 |
+| 对称性 | 天然对称（规则网格） | 镜像保证严格对称 |
+| 内部质量 | 高（规则网格） | 中等（AFM 生成，有后处理） |
+| 极点质量 | 0.35（最小） | 0.18（最小） |
+| 适用场景 | 快速生成、对称性要求不高 | 需要非结构化网格、自适应加密 |
+
 ---
 
 ## 7. CAD 几何驱动网格生成
@@ -767,6 +851,7 @@ from sfmesh import (
     generate_rectangle_mesh,
     generate_sphere_mesh,
     generate_ellipsoid_mesh,
+    generate_ellipsoid_mesh_2d_afm,
     PrimitiveMeshResult,
     # CAD 文件驱动
     SurfaceMeshGenerator,
@@ -823,6 +908,18 @@ generate_surface_mesh_from_file(
 )
 ```
 
+**生成椭球体网格（2D AFM 流水线）**:
+
+```python
+from sfmesh import generate_ellipsoid_mesh_2d_afm
+
+result = generate_ellipsoid_mesh_2d_afm(
+    semi_axes=(1.0, 0.75, 0.5),
+    spacing=0.2,
+    output_vtk="ellipsoid_2d_afm.vtk",
+)
+```
+
 **质量评估**:
 
 ```python
@@ -843,7 +940,7 @@ print(f"低质量三角形: {stats['quality_poor_count']}")
 2. **共面重叠检测为保守估计**: `_are_coplanar_triangles_overlapping` 使用 2D 投影 + 边相交，在极端退化情况下可能漏判。
 3. **搜索半径扩展上限固定**: `al < 20.0` 的硬编码上限在极大尺寸差异的场景下可能不足。
 4. **无并行化**: 逐面网格生成是串行的，多面之间无并行。
-5. **球体/椭球体依赖 OCC**: `generate_sphere_mesh` 和 `generate_ellipsoid_mesh` 使用参数化网格回退方案，质量不如 AFM。
+5. **椭球体极点质量受限**: 结构化方法和 2D AFM 方法的极点扇形三角形质量受 `du·max(a,b)/c` 约束，无法生成完全等边的极点三角形。2D AFM 方法的极点质量（min ≈ 0.18）低于结构化方法（min ≈ 0.35）。
 
 ### 13.2 扩展方向
 
@@ -859,20 +956,20 @@ print(f"低质量三角形: {stats['quality_poor_count']}")
 
 | 文件名 | 行数 | 功能摘要 |
 |--------|------|----------|
-| `__init__.py` | 32 | 包初始化，导出公开 API（含球体/椭球体） |
+| `__init__.py` | 34 | 包初始化，导出公开 API（含球体/椭球体/2D AFM） |
 | `surface_front.py` | 449 | 核心数据结构：NodeElement3D、SurfaceTriangle、SurfaceFront |
 | `surface_geometry.py` | 377 | OCC 曲面几何操作封装 |
 | `sizing_field.py` | 384 | 尺寸场控制（均匀/曲率/梯度/特征） |
 | `mesh_quality.py` | 429 | 网格质量评估与相交检测 |
 | `surface_mesh.py` | 745 | CAD 文件驱动的 3D AFM 网格生成器 |
-| `primitives.py` | 1303 | 基础几何体网格生成入口（长方体/圆柱体/矩形/球体/椭球体） |
-| `occ_utils.py` | 381 | OCC 辅助函数 |
+| `primitives.py` | 1640 | 基础几何体网格生成入口（长方体/圆柱体/矩形/球体/椭球体/2D AFM） |
+| `occ_utils.py` | 382 | OCC 辅助函数 |
 | `geom_utils.py` | 90 | 纯数值计算几何函数 |
 | `pipeline_2d.py` | 657 | 2D AFM 流水线 + 统一圆柱网格 + 曲面投影 |
-| **合计** | **4847** | |
+| **合计** | **5187** | |
 
 ---
 
-*版本: 1.1*
-*日期: 2026-05-19*
+*版本: 1.2*
+*日期: 2026-05-20*
 *作者: Claude Code*

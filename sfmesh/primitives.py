@@ -952,22 +952,15 @@ def generate_cylinder_mesh(
     if height <= 0:
         raise ValueError(f"圆柱高度必须为正数: {height}")
 
-    all_triangles, all_nodes = _mesh_cylinder_unified(
+    all_triangles, all_nodes, face_tri_indices = _mesh_cylinder_unified(
         base_center=base_center, radius=radius, height=height, spacing=spacing,
     )
 
-    # 按面分类三角形
-    cx, cy, z0 = base_center
-    z1 = z0 + height
+    # 按面分类三角形（使用 _mesh_cylinder_unified 返回的面索引）
     face_tris_map = {0: [], 1: [], 2: []}  # 0=bottom, 1=top, 2=lateral
-    for tri in all_triangles:
-        z_avg = sum(tri.nodes[i].coords[2] for i in range(3)) / 3.0
-        if abs(z_avg - z0) < abs(z_avg - z1) and abs(z_avg - z0) < height * 0.25:
-            face_tris_map[0].append(tri)
-        elif abs(z_avg - z1) < height * 0.25:
-            face_tris_map[1].append(tri)
-        else:
-            face_tris_map[2].append(tri)
+    name_to_idx = {"bottom": 0, "top": 1, "lateral": 2}
+    for face_name, (start, end) in face_tri_indices.items():
+        face_tris_map[name_to_idx[face_name]] = all_triangles[start:end]
 
     result = PrimitiveMeshResult()
     result.triangles = all_triangles

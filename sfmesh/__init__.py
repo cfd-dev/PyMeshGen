@@ -12,7 +12,8 @@ from .mesh_quality import SurfaceMeshQuality
 from .surface_mesh import SurfaceMeshGenerator
 from .primitives import (
     generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
-    generate_sphere_mesh, generate_ellipsoid_mesh, PrimitiveMeshResult,
+    generate_sphere_mesh, generate_ellipsoid_mesh,
+    generate_ellipsoid_mesh_2d_afm, PrimitiveMeshResult,
 )
 
 __all__ = [
@@ -28,5 +29,6 @@ __all__ = [
     'generate_rectangle_mesh',
     'generate_sphere_mesh',
     'generate_ellipsoid_mesh',
+    'generate_ellipsoid_mesh_2d_afm',
     'PrimitiveMeshResult',
 ]
