@@ -1433,51 +1433,139 @@ def generate_ellipsoid_mesh_2d_afm(
 
         return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
 
-    tris_n, nodes_n = _mesh_hemisphere(1.0)   # 北半球
-    tris_s, nodes_s = _mesh_hemisphere(-1.0)   # 南半球
+    # --- 只生成 1/4 网格 (u∈[0,π], v∈[0,π/2])，通过两次镜像获得完整半球 ---
+    # 第一次镜像 u→2π-u (y 取反)，第二次镜像 v→-v (z 取反)
+    u_min, u_max = 0.0, math.pi  # 1/4 的 u 范围
+    v_lo, v_hi = 0.0, math.pi / 2.0
 
-    # --- 合并节点，赤道边界去重 ---
-    node_hash_to_idx = {}
+    L_equator = math.pi * max(a, b)
+    n_equator = max(6, round(L_equator / spacing))
+    du = (u_max - u_min) / n_equator
+    dv = spacing / max(a, b, c)
+
+    # 边界离散化 (1/4)
+    bottom = [(u_min + i * du, v_lo) for i in range(n_equator)]
+    bottom.append((u_max, v_lo))
+
+    nv_side = max(2, round((math.pi / 2.0) / dv) + 1)
+    right = [(u_max, v_lo + i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+
+    top = [(u_max - i * du, v_hi) for i in range(n_equator)]
+    top.append((u_min, v_hi))
+
+    left = [(u_min, v_hi - i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+
+    edge_pts = [bottom, right, top, left]
+    all_fronts = _create_fronts_from_2d_edges(edge_pts, face_name="ellipsoid_quarter")
+
+    face_sz = max(u_max - u_min, v_hi - v_lo)
+    unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing * 0.5, face_sz * 2)
+
+    # 映射到 3D
+    def _map_to_3d(u, v):
+        cos_v = math.cos(v)
+        sin_v = math.sin(v)
+        return (
+            a * cos_v * math.cos(u) + cx,
+            b * cos_v * math.sin(u) + cy,
+            c * sin_v + cz,
+        )
+
+    def _normal_func(u, v):
+        cos_v = math.cos(v)
+        sin_v = math.sin(v)
+        nx = cos_v * math.cos(u) / a
+        ny = cos_v * math.sin(u) / b
+        nz = sin_v / c
+        nn = math.sqrt(nx * nx + ny * ny + nz * nz)
+        return (nx / nn, ny / nn, nz / nn) if nn > 1e-14 else (0.0, 0.0, 1.0)
+
+    tris_q, nodes_q = _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
+
+    # 构建 1/4 节点列表
     all_nodes = []
+    quarter_idx_map = {}
+    for i, node in enumerate(nodes_q):
+        quarter_idx_map[node.idx] = i
+        all_nodes.append(NodeElement3D(coords=node.coords, idx=i, normal=node.normal))
+
     all_triangles = []
-    global_idx = 0
+    for tri in tris_q:
+        ids = [quarter_idx_map[n.idx] for n in tri.nodes]
+        all_triangles.append(SurfaceTriangle(all_nodes[ids[0]], all_nodes[ids[1]], all_nodes[ids[2]]))
 
-    def _add_nodes(nodes_src):
-        nonlocal global_idx
-        idx_map = {}
-        for node in nodes_src:
-            key = node.hash
-            if key in node_hash_to_idx:
-                idx_map[node.idx] = node_hash_to_idx[key]
-            else:
-                new_node = NodeElement3D(
-                    coords=node.coords, idx=global_idx,
-                    normal=node.normal,
-                )
-                node_hash_to_idx[key] = global_idx
-                idx_map[node.idx] = global_idx
-                all_nodes.append(new_node)
-                global_idx += 1
-        return idx_map
+    def _mirror_and_merge(src_triangles, src_nodes, mirror_axis):
+        """
+        沿 mirror_axis 镜像网格并合并共享边界节点
 
-    idx_map_n = _add_nodes(nodes_n)
-    idx_map_s = _add_nodes(nodes_s)
+        Args:
+            mirror_axis: 'y' (u→2π-u, y取反) 或 'z' (v→-v, z取反)
+        """
+        nonlocal all_nodes, all_triangles
+        n_prev = len(all_nodes)
+        new_idx_map = {}
 
-    for tri in tris_n:
-        new_ids = [idx_map_n[n.idx] for n in tri.nodes]
-        all_triangles.append(SurfaceTriangle(
-            all_nodes[new_ids[0]], all_nodes[new_ids[1]], all_nodes[new_ids[2]],
-        ))
+        # 创建镜像节点
+        for i, node in enumerate(src_nodes):
+            x, y, z = node.coords
+            nx, ny, nz = node.normal
+            if mirror_axis == 'y':
+                mc, mn = (x, -y, z), (nx, -ny, nz)
+            else:  # 'z'
+                mc, mn = (x, y, -z), (nx, ny, -nz)
+            new_idx_map[i] = n_prev + len(all_nodes) - n_prev
+            all_nodes.append(NodeElement3D(coords=mc, idx=n_prev + len(all_nodes) - n_prev, normal=mn))
 
-    for tri in tris_s:
-        new_ids = [idx_map_s[n.idx] for n in tri.nodes]
-        all_triangles.append(SurfaceTriangle(
-            all_nodes[new_ids[0]], all_nodes[new_ids[1]], all_nodes[new_ids[2]],
-        ))
+        # 修正索引：重新编号新增节点
+        new_idx_map = {}
+        offset = n_prev
+        for i in range(len(src_nodes)):
+            new_idx_map[i] = offset + i
 
-    # --- 极点去重：合并距离过近的节点，移除退化三角形 ---
-    tol = min(a, b, c) * 1e-6
-    coord_key = lambda p: (round(p[0] / tol), round(p[1] / tol), round(p[2] / tol))
+        # 边界节点去重
+        tol = min(a, b, c) * 1e-4
+        redirect = {}
+        for i in range(len(src_nodes)):
+            new_i = new_idx_map[i]
+            mc = all_nodes[new_i].coords
+            # 在已有节点中查找匹配
+            for j in range(n_prev):
+                ec = all_nodes[j].coords
+                if (abs(mc[0] - ec[0]) < tol and
+                    abs(mc[1] - ec[1]) < tol and
+                    abs(mc[2] - ec[2]) < tol):
+                    redirect[new_i] = j
+                    break
+
+        # 创建镜像三角形（winding 反转）
+        for tri in src_triangles:
+            ids = [new_idx_map[src_nodes.index(n)] for n in tri.nodes]
+            ids = [redirect.get(i, i) for i in ids]
+            if ids[0] != ids[1] and ids[1] != ids[2] and ids[0] != ids[2]:
+                all_triangles.append(SurfaceTriangle(
+                    all_nodes[ids[0]], all_nodes[ids[2]], all_nodes[ids[1]],
+                ))
+
+        # 移除被重映射的冗余节点
+        used = set()
+        for tri in all_triangles:
+            for n in tri.nodes:
+                used.add(n.idx)
+        # 不压缩，保留所有节点
+
+    # 镜像 1: u→2π-u (y 取反) —— 从 1/4 到上半球
+    _mirror_and_merge(tris_q, nodes_q, 'y')
+
+    # 保存上半球节点和三角形快照用于第二次镜像
+    upper_nodes_snapshot = list(all_nodes)
+    upper_triangles_snapshot = list(all_triangles)
+
+    # 镜像 2: v→-v (z 取反) —— 从上半球到完整椭球
+    _mirror_and_merge(upper_triangles_snapshot, upper_nodes_snapshot, 'z')
+
+    # --- 极点去重 + 退化三角形移除 ---
+    tol_merge = min(a, b, c) * 1e-6
+    coord_key = lambda p: (round(p[0] / tol_merge), round(p[1] / tol_merge), round(p[2] / tol_merge))
     merge_map = {}
     node_redirect = list(range(len(all_nodes)))
 
