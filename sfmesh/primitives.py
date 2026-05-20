@@ -1433,9 +1433,10 @@ def generate_ellipsoid_mesh_2d_afm(
 
         return _unstr_grid_to_3d(unstr_grid, _map_to_3d, normal_func=_normal_func)
 
-    # --- 只生成 1/4 网格 (u∈[0,π], v∈[0,π/2])，通过两次镜像获得完整半球 ---
-    # 第一次镜像 u→2π-u (y 取反)，第二次镜像 v→-v (z 取反)
-    u_min, u_max = 0.0, math.pi  # 1/4 的 u 范围
+    # --- 1/4 网格 (u∈[0,π], v∈[0,v_pole])，不到极点 ---
+    # 极点处 cos(v)=0 导致 U 方向退化，因此网格在 v_pole 处终止
+    # 内边界为正六边形，无极点
+    u_min, u_max = 0.0, math.pi
     v_lo, v_hi = 0.0, math.pi / 2.0
 
     L_equator = math.pi * max(a, b)
@@ -1443,22 +1444,33 @@ def generate_ellipsoid_mesh_2d_afm(
     du = (u_max - u_min) / n_equator
     dv = spacing / max(a, b, c)
 
+    # 极点帽：AFM 边界在 v=v_pole 处终止，极点用扇形三角形填充
+    # 使用与结构化网格相同的 v 间距，确保扇形三角形质量一致
+    L_meridian = math.pi * max(a, c)  # 经线全长（与结构化网格一致）
+    nv_meridian = max(6, round(L_meridian / spacing))
+    r_hex = math.pi / nv_meridian  # v 间距 = π/nv（与结构化网格一致）
+    r_hex = min(r_hex, (v_hi - v_lo) * 0.3)  # 不超过半球的 30%
+    v_pole = v_hi - r_hex
+    if v_pole < v_lo + 2 * dv:
+        v_pole = v_lo + 2 * dv
+        r_hex = v_hi - v_pole
+
     # 边界离散化 (1/4)
     bottom = [(u_min + i * du, v_lo) for i in range(n_equator)]
     bottom.append((u_max, v_lo))
 
-    nv_side = max(2, round((math.pi / 2.0) / dv) + 1)
-    right = [(u_max, v_lo + i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+    nv_side = max(4, round((v_pole - v_lo) / dv) + 1)
+    right = [(u_max, v_lo + i * (v_pole - v_lo) / nv_side) for i in range(nv_side + 1)]
 
-    top = [(u_max - i * du, v_hi) for i in range(n_equator)]
-    top.append((u_min, v_hi))
+    top = [(u_max - i * du, v_pole) for i in range(n_equator)]
+    top.append((u_min, v_pole))
 
-    left = [(u_min, v_hi - i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
+    left = [(u_min, v_pole - i * (v_pole - v_lo) / nv_side) for i in range(nv_side + 1)]
 
     edge_pts = [bottom, right, top, left]
     all_fronts = _create_fronts_from_2d_edges(edge_pts, face_name="ellipsoid_quarter")
 
-    face_sz = max(u_max - u_min, v_hi - v_lo)
+    face_sz = max(u_max - u_min, v_pole - v_lo)
     unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing * 0.5, face_sz * 2)
 
     # 映射到 3D
@@ -1494,41 +1506,62 @@ def generate_ellipsoid_mesh_2d_afm(
         ids = [quarter_idx_map[n.idx] for n in tri.nodes]
         all_triangles.append(SurfaceTriangle(all_nodes[ids[0]], all_nodes[ids[1]], all_nodes[ids[2]]))
 
-    def _mirror_and_merge(src_triangles, src_nodes, mirror_axis):
+    # --- 极点帽：边界节点扇形连接到极点 ---
+    # 在 v=v_pole 处找到边界节点，与极点连接形成扇形三角形
+    tol_v = dv * 0.5
+    boundary_nodes = []
+    for i, node in enumerate(all_nodes):
+        u_est = math.atan2(node.coords[1] - cy, node.coords[0] - cx) % (2 * math.pi)
+        v_est = math.asin(max(-1, min(1, (node.coords[2] - cz) / c)))
+        if abs(v_est - v_pole) < tol_v and u_est <= u_max + 0.1:
+            boundary_nodes.append((u_est, i))
+    boundary_nodes.sort(key=lambda x: x[0])
+
+    # 极点节点
+    pole_coords = _map_to_3d(0.0, v_hi)
+    pole_normal = _normal_func(0.0, v_hi)
+    pole_idx = len(all_nodes)
+    all_nodes.append(NodeElement3D(coords=pole_coords, idx=pole_idx, normal=pole_normal))
+
+    # 扇形三角形：每条边界边 → 极点
+    for j in range(len(boundary_nodes) - 1):
+        _, bi0 = boundary_nodes[j]
+        _, bi1 = boundary_nodes[j + 1]
+        all_triangles.append(SurfaceTriangle(
+            all_nodes[bi0], all_nodes[bi1], all_nodes[pole_idx],
+        ))
+
+    def _mirror_mesh(src_tri_indices, src_node_indices, mirror_axis):
         """
         沿 mirror_axis 镜像网格并合并共享边界节点
 
         Args:
+            src_tri_indices: 源三角形列表（引用 all_nodes 中的节点）
+            src_node_indices: 源节点在 all_nodes 中的索引集合
             mirror_axis: 'y' (u→2π-u, y取反) 或 'z' (v→-v, z取反)
         """
         nonlocal all_nodes, all_triangles
         n_prev = len(all_nodes)
-        new_idx_map = {}
 
         # 创建镜像节点
-        for i, node in enumerate(src_nodes):
+        mirror_map = {}  # src_node_idx → mirror_node_idx
+        for src_i in src_node_indices:
+            node = all_nodes[src_i]
             x, y, z = node.coords
             nx, ny, nz = node.normal
             if mirror_axis == 'y':
                 mc, mn = (x, -y, z), (nx, -ny, nz)
-            else:  # 'z'
+            else:
                 mc, mn = (x, y, -z), (nx, ny, -nz)
-            new_idx_map[i] = n_prev + len(all_nodes) - n_prev
-            all_nodes.append(NodeElement3D(coords=mc, idx=n_prev + len(all_nodes) - n_prev, normal=mn))
-
-        # 修正索引：重新编号新增节点
-        new_idx_map = {}
-        offset = n_prev
-        for i in range(len(src_nodes)):
-            new_idx_map[i] = offset + i
+            new_i = len(all_nodes)
+            all_nodes.append(NodeElement3D(coords=mc, idx=new_i, normal=mn))
+            mirror_map[src_i] = new_i
 
         # 边界节点去重
         tol = min(a, b, c) * 1e-4
         redirect = {}
-        for i in range(len(src_nodes)):
-            new_i = new_idx_map[i]
+        for src_i, new_i in mirror_map.items():
             mc = all_nodes[new_i].coords
-            # 在已有节点中查找匹配
             for j in range(n_prev):
                 ec = all_nodes[j].coords
                 if (abs(mc[0] - ec[0]) < tol and
@@ -1537,31 +1570,24 @@ def generate_ellipsoid_mesh_2d_afm(
                     redirect[new_i] = j
                     break
 
-        # 创建镜像三角形（winding 反转）
-        for tri in src_triangles:
-            ids = [new_idx_map[src_nodes.index(n)] for n in tri.nodes]
+        # 创建镜像三角形
+        for tri in src_tri_indices:
+            ids = [mirror_map[n.idx] for n in tri.nodes]
             ids = [redirect.get(i, i) for i in ids]
             if ids[0] != ids[1] and ids[1] != ids[2] and ids[0] != ids[2]:
                 all_triangles.append(SurfaceTriangle(
                     all_nodes[ids[0]], all_nodes[ids[2]], all_nodes[ids[1]],
                 ))
 
-        # 移除被重映射的冗余节点
-        used = set()
-        for tri in all_triangles:
-            for n in tri.nodes:
-                used.add(n.idx)
-        # 不压缩，保留所有节点
-
     # 镜像 1: u→2π-u (y 取反) —— 从 1/4 到上半球
-    _mirror_and_merge(tris_q, nodes_q, 'y')
-
-    # 保存上半球节点和三角形快照用于第二次镜像
-    upper_nodes_snapshot = list(all_nodes)
-    upper_triangles_snapshot = list(all_triangles)
+    src_node_indices_1 = set(range(len(all_nodes)))
+    src_tri_snapshot_1 = list(all_triangles)
+    _mirror_mesh(src_tri_snapshot_1, src_node_indices_1, 'y')
 
     # 镜像 2: v→-v (z 取反) —— 从上半球到完整椭球
-    _mirror_and_merge(upper_triangles_snapshot, upper_nodes_snapshot, 'z')
+    src_node_indices_2 = set(range(len(all_nodes)))
+    src_tri_snapshot_2 = list(all_triangles)
+    _mirror_mesh(src_tri_snapshot_2, src_node_indices_2, 'z')
 
     # --- 极点去重 + 退化三角形移除 ---
     tol_merge = min(a, b, c) * 1e-6
