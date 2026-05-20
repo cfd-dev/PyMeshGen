@@ -1188,6 +1188,150 @@ def generate_ellipsoid_mesh(
     """
     生成椭球面的三角形网格
 
+    使用结构化网格 + 极点扇形填充方法：
+    1. 在参数空间 (u∈[0,2π], v∈[-π/2,π/2]) 中创建结构化网格
+    2. 跳过极点退化行（v=±π/2），创建单个极点节点
+    3. 中间区域用四边形条带拆分为三角形
+    4. 两极用三角形扇填充
+
+    Args:
+        center: 椭球中心坐标
+        semi_axes: 三个半轴长度 (a, b, c) 对应 (x, y, z)
+        spacing: 网格尺寸
+        output_vtk: 输出VTK文件路径（可选）
+
+    Returns:
+        PrimitiveMeshResult
+
+    Raises:
+        ValueError: 如果半轴不是正数
+    """
+    a, b, c = semi_axes
+    if a <= 0 or b <= 0 or c <= 0:
+        raise ValueError(f"椭球半轴必须为正数: ({a}, {b}, {c})")
+
+    cx, cy, cz = center
+
+    # 椭球参数方程:
+    #   x = a * cos(v) * cos(u) + cx
+    #   y = b * cos(v) * sin(u) + cy
+    #   z = c * sin(v) + cz
+    # u ∈ [0, 2π], v ∈ [-π/2, π/2]
+
+    def _eval_uv(u, v):
+        cos_v = math.cos(v)
+        sin_v = math.sin(v)
+        cos_u = math.cos(u)
+        sin_u = math.sin(u)
+        return (
+            a * cos_v * cos_u + cx,
+            b * cos_v * sin_u + cy,
+            c * sin_v + cz,
+        )
+
+    def _normal_uv(u, v):
+        cos_v = math.cos(v)
+        sin_v = math.sin(v)
+        cos_u = math.cos(u)
+        sin_u = math.sin(u)
+        nx = cos_v * cos_u / a
+        ny = cos_v * sin_u / b
+        nz = sin_v / c
+        nn = math.sqrt(nx * nx + ny * ny + nz * nz)
+        if nn < 1e-14:
+            return (0.0, 0.0, 1.0 if sin_v >= 0 else -1.0)
+        return (nx / nn, ny / nn, nz / nn)
+
+    # 离散化
+    L_equator = math.pi * max(a, b)  # 赤道半周长
+    L_meridian = math.pi * max(a, c)  # 经线全长（取较大半轴估算）
+    nu = max(8, round(L_equator / spacing))
+    nv = max(6, round(L_meridian / spacing))
+
+    u_vals = [i * 2.0 * math.pi / nu for i in range(nu + 1)]
+    v_vals = [-math.pi / 2.0 + j * math.pi / nv for j in range(nv + 1)]
+
+    nodes = []
+    node_dict = {}  # (iu, iv) -> node index
+    nid = 0
+
+    # 南极 (v = -π/2, 退化行)
+    south_pole = NodeElement3D(
+        coords=_eval_uv(0, -math.pi / 2), idx=nid,
+        normal=_normal_uv(0, -math.pi / 2),
+    )
+    nodes.append(south_pole)
+    nid += 1
+
+    # 内部行 (iv = 1 .. nv-1, 跳过两极)
+    for iv in range(1, nv):
+        v = v_vals[iv]
+        for iu in range(nu + 1):
+            u = u_vals[iu]
+            coords = _eval_uv(u, v)
+            normal = _normal_uv(u, v)
+            node = NodeElement3D(coords=coords, idx=nid, normal=normal)
+            node_dict[(iu, iv)] = nid
+            nodes.append(node)
+            nid += 1
+
+    # 北极 (v = +π/2, 退化行)
+    north_pole = NodeElement3D(
+        coords=_eval_uv(0, math.pi / 2), idx=nid,
+        normal=_normal_uv(0, math.pi / 2),
+    )
+    nodes.append(north_pole)
+    nid += 1
+
+    # 生成三角形
+    triangles = []
+
+    # 南极三角形扇: 连接南极到第一行 (iv=1)
+    iv = 1
+    for iu in range(nu):
+        n1 = nodes[node_dict[(iu, iv)]]
+        n2 = nodes[node_dict[(iu + 1, iv)]]
+        triangles.append(SurfaceTriangle(south_pole, n1, n2))
+
+    # 中间四边形条带
+    for iv in range(1, nv - 1):
+        for iu in range(nu):
+            tl = nodes[node_dict[(iu, iv)]]
+            tr = nodes[node_dict[(iu + 1, iv)]]
+            bl = nodes[node_dict[(iu, iv + 1)]]
+            br = nodes[node_dict[(iu + 1, iv + 1)]]
+            triangles.append(SurfaceTriangle(tl, bl, tr))
+            triangles.append(SurfaceTriangle(tr, bl, br))
+
+    # 北极三角形扇: 连接北极到最后一行 (iv=nv-1)
+    iv = nv - 1
+    for iu in range(nu):
+        n1 = nodes[node_dict[(iu, iv)]]
+        n2 = nodes[node_dict[(iu + 1, iv)]]
+        triangles.append(SurfaceTriangle(n1, north_pole, n2))
+
+    result = PrimitiveMeshResult()
+    result.num_faces = 1
+    result.face_types = {0: "ellipsoid"}
+    result.face_map = {0: triangles}
+    result.triangles = triangles
+    result.nodes = nodes
+
+    if output_vtk:
+        _export_combined_mesh(triangles, output_vtk)
+
+    return result
+
+
+def generate_ellipsoid_mesh_2d_afm(
+    center: Tuple[float, float, float] = (0.0, 0.0, 0.0),
+    semi_axes: Tuple[float, float, float] = (1.0, 0.75, 0.5),
+    spacing: float = 0.2,
+    output_vtk: str = None,
+) -> PrimitiveMeshResult:
+    """
+    使用 2D 阵面推进流水线生成椭球面网格
+
     将椭球面按赤道拆分为南北两个半球面，在参数空间 (u, v) 中使用
     2D 阵面推进流水线生成网格，再映射到 3D 椭球面坐标，最后合并并
     去重赤道共享边界节点。
@@ -1237,26 +1381,21 @@ def generate_ellipsoid_mesh(
         v_lo, v_hi = 0.0, math.pi / 2.0  # 参数空间的 v 范围
 
         # 参数空间离散化步长（物理弧长 → 参数步长）
-        # 北半球赤道周长 ≈ π * max(a, b)，经线弧长 ≈ π/2 * max(a, c)
         L_equator = math.pi * max(a, b)
         n_equator = max(6, round(L_equator / spacing))
         du = (u_max - u_min) / n_equator
-        dv = spacing / max(a, b, c)  # 参数空间步长
+        dv = spacing / max(a, b, c)
 
         # 边界离散化
-        # 底边 (v=0, 赤道): u 从 0 到 2π
         bottom = [(u_min + i * du, v_lo) for i in range(n_equator)]
         bottom.append((u_max, v_lo))
 
-        # 右边 (u=2π): v 从 0 到 π/2
         nv_side = max(2, round((math.pi / 2.0) / dv) + 1)
         right = [(u_max, v_lo + i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
 
-        # 顶边 (v=π/2, 北极): u 从 2π 到 0（反向）
         top = [(u_max - i * du, v_hi) for i in range(n_equator)]
         top.append((u_min, v_hi))
 
-        # 左边 (u=0): v 从 π/2 到 0（反向）
         left = [(u_min, v_hi - i * (v_hi - v_lo) / nv_side) for i in range(nv_side + 1)]
 
         edge_pts = [bottom, right, top, left]
@@ -1267,7 +1406,7 @@ def generate_ellipsoid_mesh(
 
         # 坐标映射: (u, v) → 3D 椭球面
         def _map_to_3d(u, v):
-            sv = v_sign * v  # 北半球 v>0, 南半球 v<0
+            sv = v_sign * v
             cos_v = math.cos(sv)
             sin_v = math.sin(sv)
             cos_u = math.cos(u)
@@ -1284,7 +1423,6 @@ def generate_ellipsoid_mesh(
             sin_v = math.sin(sv)
             cos_u = math.cos(u)
             sin_u = math.sin(u)
-            # 椭球法向量: (x/a², y/b², z/c²) 归一化
             nx = cos_v * cos_u / a
             ny = cos_v * sin_u / b
             nz = sin_v / c
@@ -1340,7 +1478,7 @@ def generate_ellipsoid_mesh(
     # --- 极点去重：合并距离过近的节点，移除退化三角形 ---
     tol = min(a, b, c) * 1e-6
     coord_key = lambda p: (round(p[0] / tol), round(p[1] / tol), round(p[2] / tol))
-    merge_map = {}  # coord_key -> representative node index
+    merge_map = {}
     node_redirect = list(range(len(all_nodes)))
 
     for i, node in enumerate(all_nodes):
@@ -1351,7 +1489,6 @@ def generate_ellipsoid_mesh(
             merge_map[key] = i
             node_redirect[i] = i
 
-    # 压缩：重映射节点索引并移除未使用的节点
     new_idx_map = {}
     new_nodes = []
     new_global = 0
@@ -1365,7 +1502,6 @@ def generate_ellipsoid_mesh(
             ))
             new_global += 1
 
-    # 重建三角形，过滤退化
     final_triangles = []
     for tri in all_triangles:
         ids = [new_idx_map[node_redirect[n.idx]] for n in tri.nodes]

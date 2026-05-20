@@ -22,6 +22,7 @@ from sfmesh.primitives import (
     generate_rectangle_mesh,
     generate_sphere_mesh,
     generate_ellipsoid_mesh,
+    generate_ellipsoid_mesh_2d_afm,
     PrimitiveMeshResult,
 )
 from sfmesh.occ_utils import _extract_faces
@@ -474,6 +475,74 @@ class TestEllipsoidMeshGeneration(unittest.TestCase):
         self.assertGreater(os.path.getsize(output_file), 0)
 
 
+class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
+    """测试椭球面网格生成（2D 阵面推进流水线方法）"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_ellipsoid_2d_afm_basic(self):
+        """基本椭球面网格生成（2D AFM）"""
+        result = generate_ellipsoid_mesh_2d_afm(
+            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
+        )
+        self.assertGreater(len(result.triangles), 50, "三角形数量不足")
+        self.assertGreater(len(result.nodes), 30, "节点数量不足")
+
+    def test_ellipsoid_2d_afm_quality(self):
+        """椭球面网格质量（2D AFM）"""
+        result = generate_ellipsoid_mesh_2d_afm(
+            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
+        )
+        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+    def test_ellipsoid_2d_afm_coverage(self):
+        """椭球面网格覆盖范围（2D AFM）"""
+        result = generate_ellipsoid_mesh_2d_afm(
+            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
+        )
+        coords = [n.coords for n in result.nodes]
+        xs = [p[0] for p in coords]
+        ys = [p[1] for p in coords]
+        zs = [p[2] for p in coords]
+        # 应覆盖整个椭球面
+        self.assertGreater(max(xs) - min(xs), 1.5, "X方向覆盖不足")
+        self.assertGreater(max(ys) - min(ys), 1.0, "Y方向覆盖不足")
+        self.assertGreater(max(zs) - min(zs), 0.8, "Z方向覆盖不足")
+
+    def test_ellipsoid_2d_afm_different_params(self):
+        """不同参数椭球面（2D AFM）"""
+        test_cases = [
+            {"center": (0, 0, 0), "semi_axes": (1.0, 1.0, 1.0), "spacing": 0.3},
+            {"center": (0, 0, 0), "semi_axes": (2.0, 1.0, 0.5), "spacing": 0.3},
+            {"center": (1, 1, 1), "semi_axes": (0.5, 0.5, 0.5), "spacing": 0.1},
+        ]
+        for case in test_cases:
+            with self.subTest(**case):
+                result = generate_ellipsoid_mesh_2d_afm(**case)
+                self.assertGreater(len(result.triangles), 10)
+
+    def test_ellipsoid_2d_afm_invalid_axes(self):
+        """无效半轴（2D AFM）"""
+        with self.assertRaises(ValueError):
+            generate_ellipsoid_mesh_2d_afm(center=(0, 0, 0), semi_axes=(1.0, -1.0, 0.5))
+
+    def test_ellipsoid_2d_afm_vtk_export(self):
+        """VTK导出（2D AFM）"""
+        output_file = str(self.output_dir / "ellipsoid_mesh_2d_afm.vtk")
+        result = generate_ellipsoid_mesh_2d_afm(
+            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
+            output_vtk=output_file,
+        )
+        self.assertGreater(len(result.triangles), 0)
+        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
+        self.assertGreater(os.path.getsize(output_file), 0)
+
+
 def run_tests():
     """运行测试"""
     loader = unittest.TestLoader()
@@ -485,6 +554,7 @@ def run_tests():
     suite.addTests(loader.loadTestsFromTestCase(TestRectangleMeshGeneration))
     suite.addTests(loader.loadTestsFromTestCase(TestSphereMeshGeneration))
     suite.addTests(loader.loadTestsFromTestCase(TestEllipsoidMeshGeneration))
+    suite.addTests(loader.loadTestsFromTestCase(TestEllipsoidMeshGeneration2DAFM))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return result
