@@ -5,7 +5,10 @@ sfmesh - Surface Mesh Generation Module
 支持从 IGES/STEP 几何模型生成三角形曲面网格
 """
 
-from .surface_front import SurfaceFront, NodeElement3D, SurfaceTriangle
+from .surface_front import (
+    SurfaceFront, NodeElement3D, SurfaceTriangle,
+    discretize_shape_edges, create_fronts_from_line_mesh,
+)
 from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
@@ -24,6 +27,8 @@ __all__ = [
     'SurfaceSizingField',
     'SurfaceMeshQuality',
     'SurfaceMeshGenerator',
+    'discretize_shape_edges',
+    'create_fronts_from_line_mesh',
     'generate_cube_mesh',
     'generate_cylinder_mesh',
     'generate_rectangle_mesh',

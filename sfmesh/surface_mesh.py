@@ -47,11 +47,12 @@ class SurfaceMeshGenerator:
         curvature_adaptation: bool = True,
         quality_threshold: float = 0.3,
         max_iterations: int = 100000,
-        debug_level: int = 0
+        debug_level: int = 0,
+        line_mesh: dict = None,
     ):
         """
         初始化曲面网格生成器
-        
+
         Args:
             surface: OCC 曲面对象
             global_spacing: 全局网格尺寸
@@ -61,11 +62,13 @@ class SurfaceMeshGenerator:
             quality_threshold: 质量阈值
             max_iterations: 最大迭代次数
             debug_level: 调试级别
+            line_mesh: 预离散线网格（discretize_shape_edges 的输出），用于跨面共享边界
         """
         self.surface = surface
         self.quality_threshold = quality_threshold
         self.max_iterations = max_iterations
         self.debug_level = debug_level
+        self._line_mesh = line_mesh
         
         self.geometry = SurfaceGeometry()
         self.sizing_field = SurfaceSizingField(
@@ -124,11 +127,17 @@ class SurfaceMeshGenerator:
 
         info("初始化曲面网格生成器...")
 
-        self.front_list = create_initial_fronts_from_surface(
-            self.surface,
-            self.geometry,
-            self.sizing_field
-        )
+        if self._line_mesh is not None:
+            from .surface_front import create_fronts_from_line_mesh
+            self.front_list = create_fronts_from_line_mesh(
+                self.surface, self.geometry, self._line_mesh
+            )
+        else:
+            self.front_list = create_initial_fronts_from_surface(
+                self.surface,
+                self.geometry,
+                self.sizing_field
+            )
 
         heapq.heapify(self.front_list)
 
