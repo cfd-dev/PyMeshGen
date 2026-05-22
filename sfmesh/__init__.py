@@ -14,7 +14,7 @@ from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .mesh_3d_afm import SurfaceMeshGenerator
 from .mesh_parametric import generate_sphere_mesh, generate_ellipsoid_mesh
-from .indirect_2d import (
+from .shape_generators import (
     generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
 )

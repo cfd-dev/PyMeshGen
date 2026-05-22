@@ -16,7 +16,7 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from sfmesh.indirect_2d import (
+from sfmesh.shape_generators import (
     generate_cube_mesh,
     generate_cylinder_mesh,
     generate_rectangle_mesh,
