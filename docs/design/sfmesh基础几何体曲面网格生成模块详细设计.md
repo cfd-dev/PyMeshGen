@@ -899,7 +899,7 @@ result = generate_cylinder_mesh(
 **从 IGES 文件生成网格**:
 
 ```python
-from sfmesh.surface_mesh import generate_surface_mesh_from_file
+from sfmesh.mesh_3d_afm import generate_surface_mesh_from_file
 
 generate_surface_mesh_from_file(
     filename="model.iges",

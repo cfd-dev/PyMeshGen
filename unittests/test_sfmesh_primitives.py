@@ -16,14 +16,16 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from sfmesh.primitives import (
+from sfmesh.indirect_2d import (
     generate_cube_mesh,
     generate_cylinder_mesh,
     generate_rectangle_mesh,
+    generate_ellipsoid_mesh_2d_afm,
+)
+from sfmesh.dispatcher import PrimitiveMeshResult
+from sfmesh.mesh_parametric import (
     generate_sphere_mesh,
     generate_ellipsoid_mesh,
-    generate_ellipsoid_mesh_2d_afm,
-    PrimitiveMeshResult,
 )
 from sfmesh.occ_utils import _extract_faces
 from sfmesh.mesh_quality import SurfaceMeshQuality

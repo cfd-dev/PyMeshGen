@@ -18,7 +18,7 @@ ensure_occ_loaded()
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE
 
-from sfmesh.surface_mesh import SurfaceMeshGenerator, generate_surface_mesh_from_file, _export_combined_mesh
+from sfmesh.mesh_3d_afm import SurfaceMeshGenerator, generate_surface_mesh_from_file, _export_combined_mesh
 from sfmesh.mesh_quality import SurfaceMeshQuality
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, discretize_shape_edges
 from sfmesh.surface_geometry import SurfaceGeometry
@@ -273,7 +273,7 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
             self.skipTest(f"圆柱文件不存在：{self.cylinder_path}")
 
         from fileIO.geometry_io import import_geometry_file
-        from sfmesh.surface_mesh import generate_surface_mesh_from_shape
+        from sfmesh.mesh_3d_afm import generate_surface_mesh_from_shape
 
         shape = import_geometry_file(str(self.cylinder_path))
         all_triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.5)

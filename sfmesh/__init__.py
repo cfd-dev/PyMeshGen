@@ -12,12 +12,13 @@ from .surface_front import (
 from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
-from .surface_mesh import SurfaceMeshGenerator
-from .primitives import (
+from .mesh_3d_afm import SurfaceMeshGenerator
+from .mesh_parametric import generate_sphere_mesh, generate_ellipsoid_mesh
+from .indirect_2d import (
     generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
-    generate_sphere_mesh, generate_ellipsoid_mesh,
-    generate_ellipsoid_mesh_2d_afm, PrimitiveMeshResult,
+    generate_ellipsoid_mesh_2d_afm,
 )
+from .dispatcher import PrimitiveMeshResult
 
 __all__ = [
     'SurfaceFront',
