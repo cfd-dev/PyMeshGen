@@ -18,7 +18,7 @@ from .shape_generators import (
     generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
 )
-from .dispatcher import PrimitiveMeshResult
+from .shape_generators import PrimitiveMeshResult
 
 __all__ = [
     'SurfaceFront',

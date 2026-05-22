@@ -8,9 +8,8 @@
 """
 import math
 import numpy as np
-from typing import Tuple
+from typing import List, Dict, Tuple
 
-from .dispatcher import PrimitiveMeshResult
 from .mesh_3d_afm import _export_combined_mesh
 from .surface_front import SurfaceTriangle, NodeElement3D
 from .indirect_2d import (
@@ -18,6 +17,26 @@ from .indirect_2d import (
     _create_fronts_from_2d_edges, _run_afm_2d_pipeline, _unstr_grid_to_3d,
 )
 from utils.message import info
+
+
+class PrimitiveMeshResult:
+    """
+    基础几何体网格生成结果
+
+    Attributes:
+        triangles: 所有三角形列表
+        nodes: 所有节点列表（去重）
+        face_map: 面索引到三角形列表的映射
+        num_faces: 面的总数
+        face_types: 每个面的类型描述
+    """
+
+    def __init__(self):
+        self.triangles: List[SurfaceTriangle] = []
+        self.nodes: List[NodeElement3D] = []
+        self.face_map: Dict[int, List[SurfaceTriangle]] = {}
+        self.face_types: Dict[int, str] = {}
+        self.num_faces: int = 0
 
 
 def generate_cube_mesh(

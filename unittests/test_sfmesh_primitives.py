@@ -22,7 +22,7 @@ from sfmesh.shape_generators import (
     generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
 )
-from sfmesh.dispatcher import PrimitiveMeshResult
+from sfmesh.shape_generators import PrimitiveMeshResult
 from sfmesh.mesh_parametric import (
     generate_sphere_mesh,
     generate_ellipsoid_mesh,

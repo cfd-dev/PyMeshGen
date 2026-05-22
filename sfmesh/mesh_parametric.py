@@ -356,7 +356,7 @@ def generate_sphere_mesh(
     Raises:
         ValueError: 如果半径不是正数
     """
-    from .dispatcher import PrimitiveMeshResult
+    from .shape_generators import PrimitiveMeshResult
 
     if radius <= 0:
         raise ValueError(f"球半径必须为正数: {radius}")
@@ -484,7 +484,7 @@ def generate_ellipsoid_mesh(
     Raises:
         ValueError: 如果半轴不是正数
     """
-    from .dispatcher import PrimitiveMeshResult
+    from .shape_generators import PrimitiveMeshResult
 
     a, b, c = semi_axes
     if a <= 0 or b <= 0 or c <= 0:
