@@ -1,11 +1,13 @@
-"""
-基础几何体曲面网格生成单元测试
+"""间接法（2D 流水线）网格生成单元测试
 
-测试 sfmesh 模块从基础几何体（长方体、圆柱体）生成曲面网格的功能
+测试 sfmesh 模块使用 2D 间接法流水线生成曲面网格的功能：
+- 长方体（逐面 2D 流水线）
+- 圆柱体（统一 2D 流水线）
+- 矩形（单面 2D 流水线）
+- 椭球（2D AFM + 参数化映射）
 """
 import sys
 import os
-import math
 import unittest
 from pathlib import Path
 
@@ -22,26 +24,8 @@ from sfmesh.shape_generators import (
     generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
 )
-from sfmesh.shape_generators import PrimitiveMeshResult
-from sfmesh.mesh_parametric import (
-    generate_sphere_mesh,
-    generate_ellipsoid_mesh,
-)
 from sfmesh.occ_utils import _extract_faces
 from sfmesh.mesh_quality import SurfaceMeshQuality
-
-
-class TestPrimitiveMeshResult(unittest.TestCase):
-    """测试 PrimitiveMeshResult 数据结构"""
-
-    def test_result_creation(self):
-        """测试结果对象创建"""
-        result = PrimitiveMeshResult()
-        self.assertEqual(len(result.triangles), 0)
-        self.assertEqual(len(result.nodes), 0)
-        self.assertEqual(result.num_faces, 0)
-        self.assertEqual(len(result.face_map), 0)
-        self.assertEqual(len(result.face_types), 0)
 
 
 class TestExtractFaces(unittest.TestCase):
@@ -165,7 +149,6 @@ class TestCubeMeshGeneration(unittest.TestCase):
                 result = generate_cube_mesh(**case)
                 self.assertEqual(result.num_faces, 6)
                 self.assertGreater(len(result.triangles), 0)
-                # 每个面都有完整覆盖
                 for face_idx, tris in result.face_map.items():
                     self.assertGreater(len(tris), 4,
                                        f"面 {face_idx} 三角形数量不足")
@@ -345,140 +328,8 @@ class TestRectangleMeshGeneration(unittest.TestCase):
         self.assertGreater(os.path.getsize(output_file), 0)
 
 
-class TestSphereMeshGeneration(unittest.TestCase):
-    """测试球面网格生成"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
-        cls.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def test_sphere_basic(self):
-        """基本球面网格生成"""
-        result = generate_sphere_mesh(center=(0, 0, 0), radius=1.0, spacing=0.3)
-        self.assertGreater(len(result.triangles), 50, "三角形数量不足")
-        self.assertEqual(result.num_faces, 1)
-        self.assertEqual(result.face_types[0], "sphere")
-
-    def test_sphere_node_count(self):
-        """球面节点数量"""
-        result = generate_sphere_mesh(center=(0, 0, 0), radius=1.0, spacing=0.3)
-        # 北极 + 中间带 + 南极
-        n_theta = max(6, int(2 * math.pi * 1.0 / 0.3))
-        n_phi = max(4, int(math.pi * 1.0 / 0.3))
-        expected_nodes = 1 + n_theta * (n_phi - 1) + 1
-        self.assertEqual(len(result.nodes), expected_nodes)
-
-    def test_sphere_quality(self):
-        """球面网格质量"""
-        result = generate_sphere_mesh(center=(0, 0, 0), radius=1.0, spacing=0.3)
-        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
-        self.assertGreater(quality_result['quality_mean'], 0.5, "平均网格质量过低")
-
-    def test_sphere_coverage(self):
-        """球面网格覆盖整个球面"""
-        result = generate_sphere_mesh(center=(0, 0, 0), radius=1.0, spacing=0.3)
-        coords = [n.coords for n in result.nodes]
-        for i in range(3):
-            self.assertLess(min(c[i] for c in coords), -0.9)
-            self.assertGreater(max(c[i] for c in coords), 0.9)
-
-    def test_sphere_different_params(self):
-        """不同参数球面"""
-        test_cases = [
-            {"center": (0, 0, 0), "radius": 1.0, "spacing": 0.5},
-            {"center": (0, 0, 0), "radius": 2.0, "spacing": 0.5},
-            {"center": (1, 2, 3), "radius": 0.5, "spacing": 0.1},
-        ]
-        for case in test_cases:
-            with self.subTest(case=case):
-                result = generate_sphere_mesh(**case)
-                self.assertGreater(len(result.triangles), 0)
-                self.assertEqual(result.num_faces, 1)
-
-    def test_sphere_invalid_radius(self):
-        """无效半径"""
-        with self.assertRaises(ValueError):
-            generate_sphere_mesh(center=(0, 0, 0), radius=-1.0)
-
-    def test_sphere_vtk_export(self):
-        """VTK导出"""
-        output_file = str(self.output_dir / "parametric_sphere.vtk")
-        result = generate_sphere_mesh(
-            center=(0, 0, 0), radius=1.0, spacing=0.3, output_vtk=output_file,
-        )
-        self.assertGreater(len(result.triangles), 0)
-        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
-        self.assertGreater(os.path.getsize(output_file), 0)
-
-
-class TestEllipsoidMeshGeneration(unittest.TestCase):
-    """测试椭球面网格生成（2D 参数空间流水线方法）"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
-        cls.output_dir.mkdir(parents=True, exist_ok=True)
-
-    def test_ellipsoid_basic(self):
-        """基本椭球面网格生成"""
-        result = generate_ellipsoid_mesh(
-            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
-        )
-        self.assertGreater(len(result.triangles), 50, "三角形数量不足")
-        self.assertEqual(result.num_faces, 1)
-        self.assertEqual(result.face_types[0], "ellipsoid")
-
-    def test_ellipsoid_quality(self):
-        """椭球面网格质量"""
-        result = generate_ellipsoid_mesh(
-            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
-        )
-        quality_result = SurfaceMeshQuality.evaluate_mesh(result.triangles, verbose=False)
-        self.assertGreater(quality_result['quality_mean'], 0.4, "平均网格质量过低")
-
-    def test_ellipsoid_coverage(self):
-        """椭球面网格覆盖范围"""
-        result = generate_ellipsoid_mesh(
-            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
-        )
-        coords = [n.coords for n in result.nodes]
-        self.assertLess(min(c[0] for c in coords), -0.9)
-        self.assertGreater(max(c[0] for c in coords), 0.9)
-        self.assertLess(min(c[2] for c in coords), -0.4)
-        self.assertGreater(max(c[2] for c in coords), 0.4)
-
-    def test_ellipsoid_different_params(self):
-        """不同参数椭球面"""
-        test_cases = [
-            {"center": (0, 0, 0), "semi_axes": (1.0, 1.0, 1.0), "spacing": 0.3},
-            {"center": (0, 0, 0), "semi_axes": (2.0, 1.0, 0.5), "spacing": 0.3},
-            {"center": (1, 1, 1), "semi_axes": (0.5, 0.5, 0.5), "spacing": 0.1},
-        ]
-        for case in test_cases:
-            with self.subTest(case=case):
-                result = generate_ellipsoid_mesh(**case)
-                self.assertGreater(len(result.triangles), 0)
-
-    def test_ellipsoid_invalid_axes(self):
-        """无效半轴"""
-        with self.assertRaises(ValueError):
-            generate_ellipsoid_mesh(center=(0, 0, 0), semi_axes=(1.0, -1.0, 0.5))
-
-    def test_ellipsoid_vtk_export(self):
-        """VTK导出"""
-        output_file = str(self.output_dir / "parametric_ellipsoid.vtk")
-        result = generate_ellipsoid_mesh(
-            center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
-            output_vtk=output_file,
-        )
-        self.assertGreater(len(result.triangles), 0)
-        self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
-        self.assertGreater(os.path.getsize(output_file), 0)
-
-
 class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
-    """测试椭球面网格生成（2D 阵面推进流水线方法）"""
+    """测试椭球面网格生成（2D AFM 方法）"""
 
     @classmethod
     def setUpClass(cls):
@@ -511,7 +362,6 @@ class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
         xs = [p[0] for p in coords]
         ys = [p[1] for p in coords]
         zs = [p[2] for p in coords]
-        # 应覆盖整个椭球面
         self.assertGreater(max(xs) - min(xs), 1.5, "X方向覆盖不足")
         self.assertGreater(max(ys) - min(ys), 1.0, "Y方向覆盖不足")
         self.assertGreater(max(zs) - min(zs), 0.8, "Z方向覆盖不足")
@@ -545,22 +395,5 @@ class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
         self.assertGreater(os.path.getsize(output_file), 0)
 
 
-def run_tests():
-    """运行测试"""
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-    suite.addTests(loader.loadTestsFromTestCase(TestPrimitiveMeshResult))
-    suite.addTests(loader.loadTestsFromTestCase(TestExtractFaces))
-    suite.addTests(loader.loadTestsFromTestCase(TestCubeMeshGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestCylinderMeshGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestRectangleMeshGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestSphereMeshGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestEllipsoidMeshGeneration))
-    suite.addTests(loader.loadTestsFromTestCase(TestEllipsoidMeshGeneration2DAFM))
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    return result
-
-
 if __name__ == "__main__":
-    run_tests()
+    unittest.main()
