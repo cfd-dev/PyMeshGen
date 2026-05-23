@@ -463,6 +463,7 @@ class SurfaceMeshGenerator:
         self.space_index_node = None
         self.space_index_front = None
         self.space_index_triangle = None
+        self._triangle_dict: Dict[int, SurfaceTriangle] = {}
 
         self.num_nodes = 0
         self.num_triangles = 0
@@ -540,7 +541,7 @@ class SurfaceMeshGenerator:
             )
         
         if self.triangle_list:
-            _, self.space_index_triangle = build_space_index_3d_with_RTree(
+            self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree(
                 self.triangle_list
             )
     
@@ -864,7 +865,7 @@ class SurfaceMeshGenerator:
         node: NodeElement3D
     ) -> bool:
         """
-        检查相交
+        检查相交（RTree 加速 + 共面重叠检测）
 
         Args:
             front: 当前阵面
@@ -877,24 +878,46 @@ class SurfaceMeshGenerator:
         p1 = np.array(front.node_elems[1].coords)
         p2 = np.array(node.coords)
 
-        new_edges = [
-            (p0, p2),
-            (p2, p1)
-        ]
+        new_edges = [(p0, p2), (p2, p1)]
 
-        # 只检查与最近三角形的相交，排除共享顶点的情况
-        for edge_start, edge_end in new_edges:
-            for triangle in self.triangle_list[-100:]:
-                # 排除共享顶点的三角形
-                tri_node_ids = set(triangle.node_ids)
-                front_node_ids = {front.node_elems[0].idx, front.node_elems[1].idx}
-                if node.idx in tri_node_ids:
-                    continue
-                if tri_node_ids & front_node_ids:
-                    continue
+        shared_node_ids = {front.node_elems[0].idx, front.node_elems[1].idx, node.idx}
 
-                if check_edge_triangle_intersection(edge_start, edge_end, triangle):
+        if self.space_index_triangle is None or len(self.triangle_list) == 0:
+            return False
+
+        # RTree 查询候选三角形包围盒
+        all_pts = np.array([p0, p1, p2])
+        padding = 1e-6
+        query_bbox = (
+            all_pts[:, 0].min() - padding, all_pts[:, 1].min() - padding, all_pts[:, 2].min() - padding,
+            all_pts[:, 0].max() + padding, all_pts[:, 1].max() + padding, all_pts[:, 2].max() + padding,
+        )
+
+        candidate_ids = list(self.space_index_triangle.intersection(query_bbox))
+
+        surface_normal = np.array(front.normal)
+
+        for tri_id in candidate_ids:
+            if tri_id not in self._triangle_dict:
+                continue
+            existing_tri = self._triangle_dict[tri_id]
+
+            # 共享 ≥2 个节点：合法相邻三角形，跳过
+            existing_node_ids = set(existing_tri.node_ids)
+            shared_count = len(existing_node_ids & shared_node_ids)
+            if shared_count >= 2:
+                continue
+
+            # 边-三角形相交检测
+            for edge_start, edge_end in new_edges:
+                if check_edge_triangle_intersection(edge_start, edge_end, existing_tri):
                     return True
+
+            # 共面重叠检测（共享 1 个顶点时可能发生重叠）
+            existing_pts = [n.coords for n in existing_tri.nodes]
+            new_pts = [tuple(p0), tuple(p1), tuple(p2)]
+            if _are_coplanar_triangles_overlapping(new_pts, existing_pts, surface_normal):
+                return True
 
         return False
     
@@ -939,9 +962,11 @@ class SurfaceMeshGenerator:
                     [node], self.space_index_node, self.node_dict
                 )
 
-        if self.space_index_triangle is not None:
-            self.space_index_triangle, _ = add_elems_to_space_index_3d_with_RTree(
-                [triangle], self.space_index_triangle, {}
+        if self.space_index_triangle is None:
+            self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([triangle])
+        else:
+            self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
+                [triangle], self.space_index_triangle, self._triangle_dict,
             )
 
         new_front1 = SurfaceFront(

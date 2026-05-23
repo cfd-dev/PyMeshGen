@@ -177,7 +177,7 @@ class TestCubeMeshGeneration(unittest.TestCase):
 
     def test_cube_vtk_export(self):
         """测试VTK导出"""
-        output_file = str(self.output_dir / "cube_mesh.vtk")
+        output_file = str(self.output_dir / "pipeline_cube.vtk")
         result = generate_cube_mesh(
             corner1=(0, 0, 0), corner2=(1, 1, 1), spacing=0.1, output_vtk=output_file,
         )
@@ -273,7 +273,7 @@ class TestCylinderMeshGeneration(unittest.TestCase):
 
     def test_cylinder_vtk_export(self):
         """测试VTK导出"""
-        output_file = str(self.output_dir / "cylinder_mesh.vtk")
+        output_file = str(self.output_dir / "pipeline_cylinder.vtk")
         result = generate_cylinder_mesh(
             base_center=(0, 0, 0), radius=1.0, height=2.0, spacing=0.1,
             output_vtk=output_file,
@@ -336,7 +336,7 @@ class TestRectangleMeshGeneration(unittest.TestCase):
 
     def test_rectangle_vtk_export(self):
         """VTK导出"""
-        output_file = str(self.output_dir / "rectangle_mesh.vtk")
+        output_file = str(self.output_dir / "pipeline_rectangle.vtk")
         result = generate_rectangle_mesh(
             (0, 0, 0), (1, 0, 1), spacing=0.2, output_vtk=output_file,
         )
@@ -403,7 +403,7 @@ class TestSphereMeshGeneration(unittest.TestCase):
 
     def test_sphere_vtk_export(self):
         """VTK导出"""
-        output_file = str(self.output_dir / "sphere_mesh.vtk")
+        output_file = str(self.output_dir / "parametric_sphere.vtk")
         result = generate_sphere_mesh(
             center=(0, 0, 0), radius=1.0, spacing=0.3, output_vtk=output_file,
         )
@@ -467,7 +467,7 @@ class TestEllipsoidMeshGeneration(unittest.TestCase):
 
     def test_ellipsoid_vtk_export(self):
         """VTK导出"""
-        output_file = str(self.output_dir / "ellipsoid_mesh_2d_pipeline.vtk")
+        output_file = str(self.output_dir / "parametric_ellipsoid.vtk")
         result = generate_ellipsoid_mesh(
             center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
             output_vtk=output_file,
@@ -535,7 +535,7 @@ class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
 
     def test_ellipsoid_2d_afm_vtk_export(self):
         """VTK导出（2D AFM）"""
-        output_file = str(self.output_dir / "ellipsoid_mesh_2d_afm.vtk")
+        output_file = str(self.output_dir / "afm_ellipsoid.vtk")
         result = generate_ellipsoid_mesh_2d_afm(
             center=(0, 0, 0), semi_axes=(1.0, 0.75, 0.5), spacing=0.2,
             output_vtk=output_file,
