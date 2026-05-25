@@ -574,7 +574,7 @@ class SurfaceMeshGenerator:
         if self._is_planar:
             from .occ_utils import _is_disk_face, _extract_disk_params
             if _is_disk_face(self.surface):
-                from .indirect_2d import _mesh_disk_2d
+                from .mesh_2d_afm import _mesh_disk_2d
                 params = _extract_disk_params(self.surface)
                 spacing = self.sizing_field.global_spacing
                 cx, cy = params['center'][0], params['center'][1]
@@ -600,7 +600,7 @@ class SurfaceMeshGenerator:
             return self.triangle_list
 
         if self._is_cylinder:
-            from .indirect_2d import _mesh_cylinder_unified
+            from .mesh_2d_afm import _mesh_cylinder_unified
             from .occ_utils import _extract_cylinder_params
             params = _extract_cylinder_params(self.surface)
             spacing = self.sizing_field.global_spacing
@@ -1085,7 +1085,7 @@ def generate_surface_mesh_from_shape(
     if len(cylinder_faces) == 1 and len(faces) == 3:
         # 标准圆柱体：1个侧面 + 2个端面
         params = _extract_cylinder_params(cylinder_faces[0])
-        from .indirect_2d import _mesh_cylinder_unified
+        from .mesh_2d_afm import _mesh_cylinder_unified
         info("检测到圆柱体，使用统一网格生成...")
         triangles, nodes, *_ = _mesh_cylinder_unified(
             base_center=params['base_center'],

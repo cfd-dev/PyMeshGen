@@ -12,7 +12,7 @@ from typing import List, Dict, Tuple
 
 from .mesh_3d_afm import _export_combined_mesh
 from .surface_front import SurfaceTriangle, NodeElement3D
-from .indirect_2d import (
+from .mesh_2d_afm import (
     _mesh_face_2d_pipeline, _mesh_cylinder_unified,
     _create_fronts_from_2d_edges, _run_afm_2d_pipeline, _unstr_grid_to_3d,
     MetricAwareSizing,
