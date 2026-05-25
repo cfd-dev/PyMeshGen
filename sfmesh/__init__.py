@@ -17,8 +17,10 @@ from .mesh_parametric import generate_sphere_mesh, generate_ellipsoid_mesh
 from .shape_generators import (
     generate_cube_mesh, generate_cylinder_mesh, generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
+    generate_surface_mesh_from_shape, generate_surface_mesh_from_file,
+    _export_combined_mesh,
+    PrimitiveMeshResult,
 )
-from .shape_generators import PrimitiveMeshResult
 
 __all__ = [
     'SurfaceFront',

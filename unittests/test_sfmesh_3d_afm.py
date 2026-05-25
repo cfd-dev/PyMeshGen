@@ -18,7 +18,8 @@ ensure_occ_loaded()
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_FACE
 
-from sfmesh.mesh_3d_afm import SurfaceMeshGenerator, generate_surface_mesh_from_file, _export_combined_mesh
+from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
+from sfmesh.shape_generators import generate_surface_mesh_from_file, _export_combined_mesh
 from sfmesh.mesh_quality import SurfaceMeshQuality
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, discretize_shape_edges
 from sfmesh.surface_geometry import SurfaceGeometry
@@ -236,26 +237,10 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
             self.skipTest(f"球体文件不存在：{self.sphere_path}")
 
         from fileIO.geometry_io import import_geometry_file
+        from sfmesh.shape_generators import generate_surface_mesh_from_shape, _export_combined_mesh
 
         shape = import_geometry_file(str(self.sphere_path))
-
-        explorer = TopExp_Explorer(shape, TopAbs_FACE)
-        faces = []
-        while explorer.More():
-            faces.append(explorer.Current())
-            explorer.Next()
-
-        self.assertGreater(len(faces), 0, "球体模型中没有找到曲面")
-
-        face = faces[0]
-
-        generator = SurfaceMeshGenerator(
-            surface=face,
-            global_spacing=0.3,
-            max_iterations=5000
-        )
-
-        triangles = generator.generate()
+        triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.3)
 
         self.assertGreater(len(triangles), 50, "三角形数量不足")
 
@@ -264,7 +249,7 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
                           "平均网格质量过低")
 
         output_file = self.output_dir / "parametric_sphere.vtk"
-        generator.export_to_vtk(str(output_file))
+        _export_combined_mesh(triangles, str(output_file))
         self.assertTrue(output_file.exists(), "VTK 文件未生成")
     
     def test_generate_mesh_from_cylinder(self):
@@ -273,7 +258,7 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
             self.skipTest(f"圆柱文件不存在：{self.cylinder_path}")
 
         from fileIO.geometry_io import import_geometry_file
-        from sfmesh.mesh_3d_afm import generate_surface_mesh_from_shape
+        from sfmesh.shape_generators import generate_surface_mesh_from_shape
 
         shape = import_geometry_file(str(self.cylinder_path))
         all_triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.5)
@@ -294,20 +279,10 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
             self.skipTest(f"球体文件不存在：{self.sphere_path}")
 
         from fileIO.geometry_io import import_geometry_file
+        from sfmesh.shape_generators import generate_surface_mesh_from_shape, _export_combined_mesh
 
         shape = import_geometry_file(str(self.sphere_path))
-
-        explorer = TopExp_Explorer(shape, TopAbs_FACE)
-        face = explorer.Current()
-
-        generator = SurfaceMeshGenerator(
-            surface=face,
-            global_spacing=0.3,
-            curvature_adaptation=True,
-            max_iterations=5000
-        )
-
-        triangles = generator.generate()
+        triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.3)
 
         self.assertGreater(len(triangles), 50, "三角形数量不足")
 
@@ -316,7 +291,7 @@ class TestSurfaceMeshGenerator(unittest.TestCase):
                           "平均网格质量过低")
 
         output_file = self.output_dir / "parametric_sphere_curvature.vtk"
-        generator.export_to_vtk(str(output_file))
+        _export_combined_mesh(triangles, str(output_file))
         self.assertTrue(output_file.exists(), "VTK 文件未生成")
 
     @unittest.skip("网格质量有问题，需要逐个调试")
@@ -480,7 +455,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
 
     def _run_and_validate(self, face, name, method="afm", quality_min=0.3, tri_min=30,
                           use_line_mesh=False):
-        """在给定面上运行 SurfaceMeshGenerator 并返回质量评估结果
+        """在给定面上运行网格生成并返回质量评估结果
 
         Args:
             face: OCC TopoDS_Face
@@ -491,6 +466,19 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
             use_line_mesh: 是否使用显式边界线网格流程（先离散边线，再创建面网格）
         """
         from collections import Counter
+
+        if method == "parametric":
+            from sfmesh.mesh_parametric import _mesh_face_closed_surface
+            triangles, nodes = _mesh_face_closed_surface(face, 1.0, 0)
+            self.assertGreater(len(triangles), tri_min,
+                               f"{name}: 三角形数量不足 ({len(triangles)})")
+            tri_sets = [tuple(sorted([t.nodes[j].idx for j in range(3)])) for t in triangles]
+            dup_count = sum(1 for v in Counter(tri_sets).values() if v > 1)
+            self.assertEqual(dup_count, 0, f"{name}: 存在 {dup_count} 个重复三角形")
+            quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+            self.assertGreater(quality_result['quality_mean'], quality_min,
+                               f"{name}: 平均质量 {quality_result['quality_mean']:.3f} < {quality_min}")
+            return
 
         kwargs = dict(
             surface=face,

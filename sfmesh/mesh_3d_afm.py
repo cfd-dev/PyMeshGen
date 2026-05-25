@@ -474,30 +474,7 @@ class SurfaceMeshGenerator:
         self._initialize()
     
     def _initialize(self):
-        """初始化网格生成器"""
-        from .occ_utils import _is_closed_surface, _is_planar_face, _is_cylinder_face
-
-        self._is_closed = _is_closed_surface(self.surface)
-        self._is_planar = _is_planar_face(self.surface)
-        self._is_cylinder = _is_cylinder_face(self.surface)
-
-        if self._is_closed:
-            info("初始化曲面网格生成器... (闭合曲面，使用参数化方法)")
-            self.front_list = []
-            return
-
-        if self._is_cylinder:
-            info("初始化曲面网格生成器... (圆柱面，使用2D展开流水线)")
-            self.front_list = []
-            return
-
-        if self._is_planar:
-            from .occ_utils import _is_disk_face
-            if _is_disk_face(self.surface):
-                info("初始化曲面网格生成器... (圆盘面，使用2D流水线)")
-                self.front_list = []
-                return
-
+        """初始化网格生成器（3D AFM）"""
         info("初始化曲面网格生成器...")
 
         if self._line_mesh is not None:
@@ -547,76 +524,12 @@ class SurfaceMeshGenerator:
     
     def generate(self) -> List[SurfaceTriangle]:
         """
-        执行网格生成
-
-        - 闭合曲面（球面、椭球面等）：使用参数化网格方法
-        - 平面：使用参数化网格方法
-        - 圆柱面：使用 2D 展开流水线
-        - 其他曲面：使用阵面推进法（AFM）
+        使用 3D 阵面推进法（AFM）生成曲面网格
 
         Returns:
             生成的三角形列表
         """
         timer = TimeSpan("开始曲面网格生成...")
-
-        if self._is_closed:
-            from .mesh_parametric import _mesh_face_closed_surface
-            spacing = self.sizing_field.global_spacing
-            triangles, nodes = _mesh_face_closed_surface(self.surface, spacing, 0)
-            self.triangle_list = triangles
-            self.node_list = nodes
-            self.num_triangles = len(triangles)
-            self.num_nodes = len(nodes)
-            timer.show_to_console("曲面网格生成完成（闭合曲面参数化）")
-            self._print_statistics()
-            return self.triangle_list
-
-        if self._is_planar:
-            from .occ_utils import _is_disk_face, _extract_disk_params
-            if _is_disk_face(self.surface):
-                from .mesh_2d_afm import _mesh_disk_2d
-                params = _extract_disk_params(self.surface)
-                spacing = self.sizing_field.global_spacing
-                cx, cy = params['center'][0], params['center'][1]
-                z = params['center'][2]
-                nx, ny, nz = params['normal']
-                normal_z = 1.0 if nz >= 0 else -1.0
-                triangles, nodes = _mesh_disk_2d(
-                    center_xy=(cx, cy), radius=params['radius'], z=z,
-                    spacing=spacing, face_name="disk", normal_z=normal_z,
-                )
-                timer_msg = "曲面网格生成完成（圆盘2D流水线）"
-            else:
-                from .mesh_parametric import _mesh_face_parametric
-                spacing = self.sizing_field.global_spacing
-                triangles, nodes = _mesh_face_parametric(self.surface, spacing, 0)
-                timer_msg = "曲面网格生成完成（平面参数化）"
-            self.triangle_list = triangles
-            self.node_list = nodes
-            self.num_triangles = len(triangles)
-            self.num_nodes = len(nodes)
-            timer.show_to_console(timer_msg)
-            self._print_statistics()
-            return self.triangle_list
-
-        if self._is_cylinder:
-            from .mesh_2d_afm import _mesh_cylinder_unified
-            from .occ_utils import _extract_cylinder_params
-            params = _extract_cylinder_params(self.surface)
-            spacing = self.sizing_field.global_spacing
-            triangles, nodes, *_ = _mesh_cylinder_unified(
-                base_center=params['base_center'],
-                radius=params['radius'],
-                height=params['height'],
-                spacing=spacing,
-            )
-            self.triangle_list = triangles
-            self.node_list = nodes
-            self.num_triangles = len(triangles)
-            self.num_nodes = len(nodes)
-            timer.show_to_console("曲面网格生成完成（圆柱统一2D流水线）")
-            self._print_statistics()
-            return self.triangle_list
 
         iteration = 0
         while self.front_list and iteration < self.max_iterations:
@@ -1031,121 +944,3 @@ class SurfaceMeshGenerator:
                 f.write("5\n")
         
         info(f"网格已导出到: {filename}")
-
-
-def generate_surface_mesh_from_file(
-    filename: str,
-    global_spacing: float = 1.0,
-    output_vtk: str = None
-) -> List[SurfaceTriangle]:
-    """
-    从几何文件生成曲面网格
-
-    Args:
-        filename: 几何文件路径 (IGES/STEP)
-        global_spacing: 全局网格尺寸
-        output_vtk: 输出VTK文件路径（可选）
-
-    Returns:
-        生成的三角形列表
-    """
-    from fileIO.geometry_io import import_geometry_file
-
-    shape = import_geometry_file(filename)
-    all_triangles = generate_surface_mesh_from_shape(shape, global_spacing)
-
-    if output_vtk:
-        _export_combined_mesh(all_triangles, output_vtk)
-
-    return all_triangles
-
-
-def generate_surface_mesh_from_shape(
-    shape: TopoDS_Shape,
-    global_spacing: float = 1.0,
-) -> List[SurfaceTriangle]:
-    """
-    从 OCC 形状生成曲面网格
-
-    自动检测形状类型（圆柱体等），使用统一网格生成策略确保共享边界节点。
-
-    Args:
-        shape: OCC 形状对象
-        global_spacing: 全局网格尺寸
-
-    Returns:
-        生成的三角形列表
-    """
-    from .occ_utils import _extract_faces, _is_cylinder_face, _extract_cylinder_params
-
-    faces = _extract_faces(shape)
-
-    # 检测是否为圆柱体（所有面都是圆柱面或圆盘面）
-    cylinder_faces = [f for f in faces if _is_cylinder_face(f)]
-    if len(cylinder_faces) == 1 and len(faces) == 3:
-        # 标准圆柱体：1个侧面 + 2个端面
-        params = _extract_cylinder_params(cylinder_faces[0])
-        from .mesh_2d_afm import _mesh_cylinder_unified
-        info("检测到圆柱体，使用统一网格生成...")
-        triangles, nodes, *_ = _mesh_cylinder_unified(
-            base_center=params['base_center'],
-            radius=params['radius'],
-            height=params['height'],
-            spacing=global_spacing,
-        )
-        info(f"圆柱体网格: {len(triangles)} 三角形, {len(nodes)} 节点")
-        return triangles
-
-    # 通用形状：逐面生成
-    all_triangles = []
-    for i, face in enumerate(faces):
-        info(f"\n处理曲面 {i+1}/{len(faces)}")
-        generator = SurfaceMeshGenerator(
-            surface=face,
-            global_spacing=global_spacing
-        )
-        triangles = generator.generate()
-        all_triangles.extend(triangles)
-
-    return all_triangles
-
-
-def _export_combined_mesh(triangles: List[SurfaceTriangle], filename: str):
-    """
-    导出合并的网格
-    
-    Args:
-        triangles: 三角形列表
-        filename: 输出文件名
-    """
-    node_set = {}
-    node_list = []
-    
-    for tri in triangles:
-        for node in tri.nodes:
-            if node.hash not in node_set:
-                node_set[node.hash] = len(node_list)
-                node_list.append(node)
-    
-    with open(filename, 'w') as f:
-        f.write("# vtk DataFile Version 3.0\n")
-        f.write("Surface Mesh\n")
-        f.write("ASCII\n")
-        f.write("DATASET UNSTRUCTURED_GRID\n")
-        
-        f.write(f"POINTS {len(node_list)} float\n")
-        for node in node_list:
-            f.write(f"{node.coords[0]} {node.coords[1]} {node.coords[2]}\n")
-        
-        f.write(f"\nCELLS {len(triangles)} {4 * len(triangles)}\n")
-        for tri in triangles:
-            idx0 = node_set[tri.nodes[0].hash]
-            idx1 = node_set[tri.nodes[1].hash]
-            idx2 = node_set[tri.nodes[2].hash]
-            f.write(f"3 {idx0} {idx1} {idx2}\n")
-        
-        f.write(f"\nCELL_TYPES {len(triangles)}\n")
-        for _ in triangles:
-            f.write("5\n")
-    
-    info(f"网格已导出到: {filename}")

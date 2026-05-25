@@ -1,16 +1,19 @@
-"""基础几何体形状生成器
+"""形状生成器与分发模块
 
-基于 2D 间接法流水线生成特定几何体的曲面网格：
+基础几何体网格生成（2D 间接法流水线）：
 - 长方体（逐面 2D 流水线）
 - 圆柱体（统一 2D 流水线）
 - 矩形（单面 2D 流水线）
 - 椭球（2D AFM + 参数化映射）
+
+形状分发与 VTK 导出：
+- generate_surface_mesh_from_shape：自动检测形状类型，分发到最优方法
+- _export_combined_mesh：VTK 导出
 """
 import math
 import numpy as np
 from typing import List, Dict, Tuple
 
-from .mesh_3d_afm import _export_combined_mesh
 from .surface_front import SurfaceTriangle, NodeElement3D
 from .mesh_2d_afm import (
     _mesh_face_2d_pipeline, _mesh_cylinder_unified,
@@ -443,3 +446,154 @@ def generate_ellipsoid_mesh_2d_afm(
         _export_combined_mesh(all_triangles, output_vtk)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# VTK 导出
+# ---------------------------------------------------------------------------
+
+def _export_combined_mesh(triangles: List[SurfaceTriangle], filename: str):
+    """
+    导出合并的网格
+
+    Args:
+        triangles: 三角形列表
+        filename: 输出文件名
+    """
+    node_set = {}
+    node_list = []
+
+    for tri in triangles:
+        for node in tri.nodes:
+            if node.hash not in node_set:
+                node_set[node.hash] = len(node_list)
+                node_list.append(node)
+
+    with open(filename, 'w') as f:
+        f.write("# vtk DataFile Version 3.0\n")
+        f.write("Surface Mesh\n")
+        f.write("ASCII\n")
+        f.write("DATASET UNSTRUCTURED_GRID\n")
+
+        f.write(f"POINTS {len(node_list)} float\n")
+        for node in node_list:
+            f.write(f"{node.coords[0]} {node.coords[1]} {node.coords[2]}\n")
+
+        f.write(f"\nCELLS {len(triangles)} {4 * len(triangles)}\n")
+        for tri in triangles:
+            idx0 = node_set[tri.nodes[0].hash]
+            idx1 = node_set[tri.nodes[1].hash]
+            idx2 = node_set[tri.nodes[2].hash]
+            f.write(f"3 {idx0} {idx1} {idx2}\n")
+
+        f.write(f"\nCELL_TYPES {len(triangles)}\n")
+        for _ in triangles:
+            f.write("5\n")
+
+    info(f"网格已导出到: {filename}")
+
+
+# ---------------------------------------------------------------------------
+# 形状分发入口
+# ---------------------------------------------------------------------------
+
+def generate_surface_mesh_from_file(
+    filename: str,
+    global_spacing: float = 1.0,
+    output_vtk: str = None,
+) -> List[SurfaceTriangle]:
+    """
+    从几何文件生成曲面网格
+
+    Args:
+        filename: 几何文件路径 (IGES/STEP)
+        global_spacing: 全局网格尺寸
+        output_vtk: 输出VTK文件路径（可选）
+
+    Returns:
+        生成的三角形列表
+    """
+    from fileIO.geometry_io import import_geometry_file
+
+    shape = import_geometry_file(filename)
+    all_triangles = generate_surface_mesh_from_shape(shape, global_spacing)
+
+    if output_vtk:
+        _export_combined_mesh(all_triangles, output_vtk)
+
+    return all_triangles
+
+
+def generate_surface_mesh_from_shape(
+    shape,
+    global_spacing: float = 1.0,
+) -> List[SurfaceTriangle]:
+    """
+    从 OCC 形状生成曲面网格
+
+    自动检测形状类型，使用最优网格生成策略：
+    - 圆柱体：统一 2D 流水线（共享边界节点）
+    - 闭合曲面：参数化方法
+    - 平面：参数化 / 2D 流水线
+    - 其他曲面：3D AFM
+
+    Args:
+        shape: OCC 形状对象
+        global_spacing: 全局网格尺寸
+
+    Returns:
+        生成的三角形列表
+    """
+    from .occ_utils import (
+        _extract_faces, _is_cylinder_face, _extract_cylinder_params,
+        _is_closed_surface, _is_planar_face, _is_disk_face, _extract_disk_params,
+    )
+
+    faces = _extract_faces(shape)
+
+    # 检测是否为圆柱体（1个侧面 + 2个端面）
+    cylinder_faces = [f for f in faces if _is_cylinder_face(f)]
+    if len(cylinder_faces) == 1 and len(faces) == 3:
+        params = _extract_cylinder_params(cylinder_faces[0])
+        info("检测到圆柱体，使用统一网格生成...")
+        triangles, nodes, *_ = _mesh_cylinder_unified(
+            base_center=params['base_center'],
+            radius=params['radius'],
+            height=params['height'],
+            spacing=global_spacing,
+        )
+        info(f"圆柱体网格: {len(triangles)} 三角形, {len(nodes)} 节点")
+        return triangles
+
+    # 通用形状：逐面分发
+    all_triangles = []
+    for i, face in enumerate(faces):
+        info(f"\n处理曲面 {i+1}/{len(faces)}")
+
+        if _is_closed_surface(face):
+            from .mesh_parametric import _mesh_face_closed_surface
+            triangles, nodes = _mesh_face_closed_surface(face, global_spacing, 0)
+        elif _is_planar_face(face):
+            if _is_disk_face(face):
+                params = _extract_disk_params(face)
+                cx, cy = params['center'][0], params['center'][1]
+                z = params['center'][2]
+                nz = params['normal'][2]
+                normal_z = 1.0 if nz >= 0 else -1.0
+                triangles, nodes = _mesh_disk_2d(
+                    center_xy=(cx, cy), radius=params['radius'], z=z,
+                    spacing=global_spacing, face_name="disk", normal_z=normal_z,
+                )
+            else:
+                from .mesh_parametric import _mesh_face_parametric
+                triangles, nodes = _mesh_face_parametric(face, global_spacing, 0)
+        else:
+            from .mesh_3d_afm import SurfaceMeshGenerator
+            generator = SurfaceMeshGenerator(
+                surface=face, global_spacing=global_spacing,
+            )
+            triangles = generator.generate()
+
+        all_triangles.extend(triangles)
+
+    return all_triangles

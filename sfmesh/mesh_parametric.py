@@ -12,7 +12,6 @@ from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
 
 from .surface_front import NodeElement3D, SurfaceTriangle
 from .surface_geometry import SurfaceGeometry
-from .mesh_3d_afm import _export_combined_mesh
 from .occ_utils import _get_face_bbox, _is_point_in_face
 from utils.message import info
 
@@ -452,6 +451,7 @@ def generate_sphere_mesh(
     result.nodes = nodes
 
     if output_vtk:
+        from .shape_generators import _export_combined_mesh
         _export_combined_mesh(triangles, output_vtk)
 
     return result
@@ -598,6 +598,7 @@ def generate_ellipsoid_mesh(
     result.nodes = nodes
 
     if output_vtk:
+        from .shape_generators import _export_combined_mesh
         _export_combined_mesh(triangles, output_vtk)
 
     return result

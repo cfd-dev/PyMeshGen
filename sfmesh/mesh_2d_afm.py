@@ -18,7 +18,6 @@ if str(project_root) not in sys.path:
 from data_structure.front2d import Front
 from data_structure.basic_elements import NodeElementALM
 from .surface_front import SurfaceTriangle, NodeElement3D
-from .mesh_3d_afm import _export_combined_mesh
 
 
 class MetricAwareSizing:
