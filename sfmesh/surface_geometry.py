@@ -224,46 +224,46 @@ class SurfaceGeometry:
 
     def compute_ideal_point_on_surface(
         self,
-        front_center: Tuple[float, float, float],
-        front_normal: Tuple[float, float, float],
-        tangent_normal: Tuple[float, float, float],
+        start_point: Tuple[float, float, float],
+        direction: Tuple[float, float, float],
         distance: float,
         surface: TopoDS_Face,
         max_iterations: int = 10
     ) -> Tuple[Tuple[float, float, float], Tuple[float, float]]:
         """
-        计算曲面上的理想点
+        在曲面上计算理想点
+
+        算法步骤:
+        1. 从起点沿方向向量前进指定距离，得到初始理想点（切平面内）
+        2. 将初始理想点投影到目标曲面上
+        3. 迭代投影直到收敛（处理曲面曲率导致的投影偏差）
 
         Args:
-            front_center: 阵面中心坐标
-            front_normal: 阵面平均法向
-            tangent_normal: 切平面内的推进方向
+            start_point: 起点坐标（通常为阵面中点）
+            direction: 推进方向（切平面内垂直于阵面的单位向量）
             distance: 推进距离
             surface: 目标曲面
             max_iterations: 最大迭代次数
 
         Returns:
-            (理想点三维坐标，参数坐标)
+            (理想点三维坐标, 参数坐标)
         """
-        center = np.array(front_center)
-        t_normal = np.array(tangent_normal)
+        # 步骤 1: 沿切平面方向前进
+        initial = np.array(start_point) + distance * np.array(direction)
 
-        ideal_point_3d = center + distance * t_normal
+        # 步骤 2: 投影到曲面
+        uv = self.project_point_to_surface(tuple(initial), surface)
+        point = np.array(self.evaluate_point(uv[0], uv[1], surface))
 
-        uv = self.project_point_to_surface(tuple(ideal_point_3d), surface)
-
+        # 步骤 3: 迭代投影直到收敛
         for _ in range(max_iterations):
-            projected_point = self.evaluate_point(uv[0], uv[1], surface)
+            new_uv = self.project_point_to_surface(tuple(point), surface)
+            new_point = np.array(self.evaluate_point(new_uv[0], new_uv[1], surface))
+            if np.linalg.norm(new_point - point) < self.tolerance:
+                return (tuple(new_point), new_uv)
+            point, uv = new_point, new_uv
 
-            dist_to_ideal = np.linalg.norm(np.array(projected_point) - ideal_point_3d)
-            if dist_to_ideal < self.tolerance:
-                break
-
-            uv = self.project_point_to_surface(tuple(ideal_point_3d), surface)
-            ideal_point_3d = np.array(projected_point)
-
-        final_point = self.evaluate_point(uv[0], uv[1], surface)
-        return (final_point, uv)
+        return (tuple(point), uv)
 
     def get_surface_bounds(
         self,

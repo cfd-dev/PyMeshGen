@@ -307,15 +307,13 @@ def _mesh_face_afm(
         try:
             tangent_normal = base_front.tangent_normal
             ideal_point, ideal_uv = geometry.compute_ideal_point_on_surface(
-                base_front.center, base_front.normal,
-                tangent_normal, distance, face,
+                base_front.center, tangent_normal, distance, face,
             )
             # 若理想点在面外，翻转切向再试
             if not _is_point_in_face(ideal_uv[0], ideal_uv[1], face):
                 flipped = tuple(-x for x in tangent_normal)
                 ideal_point, ideal_uv = geometry.compute_ideal_point_on_surface(
-                    base_front.center, base_front.normal,
-                    flipped, distance, face,
+                    base_front.center, flipped, distance, face,
                 )
         except Exception:
             base_front.al *= 1.2
@@ -575,26 +573,19 @@ class SurfaceMeshGenerator:
         spacing: float
     ) -> Tuple[Tuple[float, float, float], Tuple[float, float]]:
         """
-        计算理想点
-        
+        计算理想点：从阵面中点沿切平面垂直方向前进，投影到曲面
+
         Args:
             front: 当前阵面
             spacing: 网格尺寸
-        
+
         Returns:
             (理想点坐标, 参数坐标)
         """
         distance = self.sizing_field.compute_ideal_point_distance(front, self.surface)
-        
-        ideal_point, ideal_uv = self.geometry.compute_ideal_point_on_surface(
-            front.center,
-            front.normal,
-            front.tangent_normal,
-            distance,
-            self.surface
+        return self.geometry.compute_ideal_point_on_surface(
+            front.center, front.tangent_normal, distance, self.surface,
         )
-        
-        return ideal_point, ideal_uv
     
     def _search_candidates(
         self,

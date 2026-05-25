@@ -440,14 +440,14 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
 
     @staticmethod
     def _make_partial_sphere_face():
-        """半球面（u:0~π, v:π/4~π/2 的球冠，排除极点奇异性）"""
+        """局部球面片（u:0~π, v:π/6~π/3，远离极点的非退化区域）"""
         from OCC.Core.Geom import Geom_SphericalSurface
         from OCC.Core.gp import gp_Ax3, gp_Pnt, gp_Dir
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
         import math
         ax3 = gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
         sphere = Geom_SphericalSurface(ax3, 2.0)
-        return BRepBuilderAPI_MakeFace(sphere, 0, math.pi, math.pi / 4, math.pi / 2, 1e-6).Face()
+        return BRepBuilderAPI_MakeFace(sphere, 0, math.pi, math.pi / 6, math.pi / 3, 1e-6).Face()
 
     # ---------------------------------------------------------------
     # 辅助方法
@@ -556,7 +556,6 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         self._run_and_validate(face, "elliptic_cone", method="afm", quality_min=0.3,
                                use_line_mesh=True)
 
-    @unittest.skip("网格质量有问题，需要逐个调试")
     def test_afm_partial_sphere(self):
         """局部球面（先边界线网格 → 再 AFM 面网格）"""
         face = self._make_partial_sphere_face()
