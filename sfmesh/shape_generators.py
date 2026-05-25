@@ -15,6 +15,7 @@ from .surface_front import SurfaceTriangle, NodeElement3D
 from .indirect_2d import (
     _mesh_face_2d_pipeline, _mesh_cylinder_unified,
     _create_fronts_from_2d_edges, _run_afm_2d_pipeline, _unstr_grid_to_3d,
+    MetricAwareSizing,
 )
 from utils.message import info
 
@@ -249,10 +250,8 @@ def generate_ellipsoid_mesh_2d_afm(
     du = (u_max - u_min) / n_equator
     dv = spacing / max(a, b, c)
 
-    L_meridian = math.pi * max(a, c)
-    nv_meridian = max(6, round(L_meridian / spacing))
-    r_hex = math.pi / nv_meridian
-    r_hex = min(r_hex, (v_hi - v_lo) * 0.3)
+    # 极点帽：一个经向步长（AFM 最小可行帽大小）
+    r_hex = dv
     v_pole = v_hi - r_hex
     if v_pole < v_lo + 2 * dv:
         v_pole = v_lo + 2 * dv
@@ -264,7 +263,11 @@ def generate_ellipsoid_mesh_2d_afm(
     nv_side = max(4, round((v_pole - v_lo) / dv) + 1)
     right = [(u_max, v_lo + i * (v_pole - v_lo) / nv_side) for i in range(nv_side + 1)]
 
-    top = [(u_max - i * du, v_pole) for i in range(n_equator)]
+    # 顶边：当极点帽较小时细化，确保段宽不超过帽高度
+    top_du = min(du, r_hex * 1.5)
+    n_top = max(n_equator, round((u_max - u_min) / top_du))
+    top_du_actual = (u_max - u_min) / n_top
+    top = [(u_max - i * top_du_actual, v_pole) for i in range(n_top)]
     top.append((u_min, v_pole))
 
     left = [(u_min, v_pole - i * (v_pole - v_lo) / nv_side) for i in range(nv_side + 1)]
@@ -272,8 +275,26 @@ def generate_ellipsoid_mesh_2d_afm(
     edge_pts = [bottom, right, top, left]
     all_fronts = _create_fronts_from_2d_edges(edge_pts, face_name="ellipsoid_quarter")
 
+    # 度量张量：椭球面第一基本形式 E, F, G
+    def _ellipsoid_metric(u, v):
+        cosv = math.cos(v)
+        sinv = math.sin(v)
+        cosu = math.cos(u)
+        sinu = math.sin(u)
+        # r_u = (-a*cosv*sinu, b*cosv*cosu, 0)
+        # r_v = (-a*sinv*cosu, -b*sinv*sinu, c*cosv)
+        E = (a * cosv * sinu) ** 2 + (b * cosv * cosu) ** 2
+        F = (a ** 2 - b ** 2) * sinv * cosv * sinu * cosu
+        G = (a * sinv * cosu) ** 2 + (b * sinv * sinu) ** 2 + (c * cosv) ** 2
+        return E, F, G
+
+    metric_sizing = MetricAwareSizing(spacing, _ellipsoid_metric)
+
     face_sz = max(u_max - u_min, v_pole - v_lo)
-    unstr_grid = _run_afm_2d_pipeline(all_fronts, spacing * 0.5, face_sz * 2)
+    unstr_grid = _run_afm_2d_pipeline(
+        all_fronts, spacing * 0.5, face_sz * 2,
+        sizing_system=metric_sizing,
+    )
 
     def _map_to_3d(u, v):
         cos_v = math.cos(v)

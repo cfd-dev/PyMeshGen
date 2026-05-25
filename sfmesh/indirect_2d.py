@@ -21,6 +21,51 @@ from .surface_front import SurfaceTriangle, NodeElement3D
 from .mesh_3d_afm import _export_combined_mesh
 
 
+class MetricAwareSizing:
+    """
+    基于第一基本形式度量张量的参数空间 sizing field
+
+    在参数空间 (u, v) 中，根据曲面第一基本形式 E, F, G 计算局部间距，
+    使得映射到 3D 后的网格单元接近各向同性。
+
+    接口兼容 Adfront2 所需的 sizing_system 协议：
+    - global_spacing: float
+    - spacing_at(point) -> float
+    """
+
+    def __init__(self, target_spacing: float, metric_func):
+        """
+        Args:
+            target_spacing: 目标 3D 网格尺寸
+            metric_func: (u, v) -> (E, F, G) 第一基本形式分量
+        """
+        self.target_spacing = target_spacing
+        self.metric_func = metric_func
+
+        # 计算全局最大间距（用于 Adfront2 空间索引）
+        # 在参数空间均匀采样，找最大 spacing_at
+        max_sp = 0.0
+        for iu in range(21):
+            for iv in range(21):
+                u = iu * math.pi / 20.0
+                v = iv * (math.pi / 2.0) / 20.0
+                sp = self.spacing_at((u, v))
+                if sp > max_sp:
+                    max_sp = sp
+        self.global_spacing = max_sp
+
+    def spacing_at(self, point) -> float:
+        """返回参数空间中该点的局部间距"""
+        u, v = point[0], point[1]
+        E, F, G = self.metric_func(u, v)
+        sqrt_E = math.sqrt(max(E, 1e-30))
+        sqrt_G = math.sqrt(max(G, 1e-30))
+        h = self.target_spacing
+        du = h / sqrt_E
+        dv = h / sqrt_G
+        return min(du, dv)
+
+
 def _discretize_edge_2d(
     start_2d: Tuple[float, float],
     end_2d: Tuple[float, float],
@@ -67,6 +112,7 @@ def _run_afm_2d_pipeline(
     all_fronts: List[Front],
     spacing: float,
     face_size: float,
+    sizing_system=None,
 ):
     """
     运行 2D AFM 核心流水线：QuadtreeSizing → Adfront2 → 边交换 → Laplacian 光滑
@@ -75,6 +121,8 @@ def _run_afm_2d_pipeline(
         all_fronts: 边界阵面列表（CCW 排列）
         spacing: 网格尺寸
         face_size: 面的特征尺寸（用于计算边界扩展和迭代上限）
+        sizing_system: 可选的自定义 sizing system（需提供 global_spacing 属性和
+            spacing_at(point) 方法）。为 None 时使用 QuadtreeSizing。
 
     Returns:
         优化后的 Unstructured_Grid
@@ -87,31 +135,32 @@ def _run_afm_2d_pipeline(
     class _DummyVisual:
         ax = None
 
-    _extra_pad = max(face_size * 0.5, 5.0 * spacing) / max(face_size, 1e-12)
+    if sizing_system is None:
+        _extra_pad = max(face_size * 0.5, 5.0 * spacing) / max(face_size, 1e-12)
 
-    class _PaddedSizingField(QuadtreeSizing):
-        def compute_global_parameters(self):
-            super().compute_global_parameters()
-            x0, y0, x1, y1 = self.bg_bounds
-            dx, dy = x1 - x0, y1 - y0
-            self.bg_bounds = (
-                x0 - dx * _extra_pad, y0 - dy * _extra_pad,
-                x1 + dx * _extra_pad, y1 + dy * _extra_pad,
-            )
+        class _PaddedSizingField(QuadtreeSizing):
+            def compute_global_parameters(self):
+                super().compute_global_parameters()
+                x0, y0, x1, y1 = self.bg_bounds
+                dx, dy = x1 - x0, y1 - y0
+                self.bg_bounds = (
+                    x0 - dx * _extra_pad, y0 - dy * _extra_pad,
+                    x1 + dx * _extra_pad, y1 + dy * _extra_pad,
+                )
 
-        def spacing_at(self, point):
-            try:
-                return super().spacing_at(point)
-            except ValueError:
-                return self.global_spacing
+            def spacing_at(self, point):
+                try:
+                    return super().spacing_at(point)
+                except ValueError:
+                    return self.global_spacing
 
-    sizing_system = _PaddedSizingField(
-        initial_front=all_fronts,
-        max_size=spacing * 10,
-        resolution=0.1,
-        decay=1.2,
-        visual_obj=_DummyVisual(),
-    )
+        sizing_system = _PaddedSizingField(
+            initial_front=all_fronts,
+            max_size=spacing * 10,
+            resolution=0.1,
+            decay=1.2,
+            visual_obj=_DummyVisual(),
+        )
 
     class _ParamObj:
         debug_level = 0
