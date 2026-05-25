@@ -23,6 +23,8 @@ from sfmesh.shape_generators import (
     generate_cylinder_mesh,
     generate_rectangle_mesh,
     generate_ellipsoid_mesh_2d_afm,
+    generate_surface_mesh_from_shape,
+    _export_combined_mesh,
 )
 from sfmesh.occ_utils import _extract_faces
 from sfmesh.mesh_quality import SurfaceMeshQuality
@@ -393,6 +395,36 @@ class TestEllipsoidMeshGeneration2DAFM(unittest.TestCase):
         self.assertGreater(len(result.triangles), 0)
         self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
         self.assertGreater(os.path.getsize(output_file), 0)
+
+
+class TestCylinderFromCAD(unittest.TestCase):
+    """从 CAD 文件生成圆柱体网格测试（统一 2D 流水线）"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cylinder_path = Path(project_root) / "examples" / "cad" / "cylinder.stp"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_generate_mesh_from_cylinder(self):
+        """从圆柱 STEP 文件生成网格（统一网格生成，端面与柱面共享边界节点）"""
+        if not self.cylinder_path.exists():
+            self.skipTest(f"圆柱文件不存在：{self.cylinder_path}")
+
+        from fileIO.geometry_io import import_geometry_file
+
+        shape = import_geometry_file(str(self.cylinder_path))
+        all_triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.5)
+
+        self.assertGreater(len(all_triangles), 0, "没有生成任何三角形")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "indirect_cylinder_cad.vtk"
+        _export_combined_mesh(all_triangles, str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
 
 
 if __name__ == "__main__":

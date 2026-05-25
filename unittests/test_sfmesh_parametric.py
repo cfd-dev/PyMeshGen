@@ -17,10 +17,11 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from sfmesh.shape_generators import PrimitiveMeshResult
+from sfmesh.shape_generators import PrimitiveMeshResult, generate_surface_mesh_from_shape, _export_combined_mesh
 from sfmesh.mesh_parametric import (
     generate_sphere_mesh,
     generate_ellipsoid_mesh,
+    _mesh_face_closed_surface,
 )
 from sfmesh.mesh_quality import SurfaceMeshQuality
 
@@ -167,6 +168,92 @@ class TestEllipsoidMeshGeneration(unittest.TestCase):
         self.assertGreater(len(result.triangles), 0)
         self.assertTrue(os.path.exists(output_file), "VTK文件未生成")
         self.assertGreater(os.path.getsize(output_file), 0)
+
+
+class TestCADFileMeshGeneration(unittest.TestCase):
+    """从 CAD 文件生成网格测试（自动分发到参数化路径）"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sphere_path = Path(project_root) / "examples" / "cad" / "sphere.iges"
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def test_generate_mesh_from_sphere(self):
+        """从球体 IGES 文件生成网格（自动分发到参数化路径）"""
+        if not self.sphere_path.exists():
+            self.skipTest(f"球体文件不存在：{self.sphere_path}")
+
+        from fileIO.geometry_io import import_geometry_file
+
+        shape = import_geometry_file(str(self.sphere_path))
+        triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.3)
+
+        self.assertGreater(len(triangles), 50, "三角形数量不足")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "parametric_sphere_cad.vtk"
+        _export_combined_mesh(triangles, str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
+
+    def test_generate_mesh_with_curvature_adaptation(self):
+        """曲率自适应网格生成（从球体 IGES 文件，参数化路径）"""
+        if not self.sphere_path.exists():
+            self.skipTest(f"球体文件不存在：{self.sphere_path}")
+
+        from fileIO.geometry_io import import_geometry_file
+
+        shape = import_geometry_file(str(self.sphere_path))
+        triangles = generate_surface_mesh_from_shape(shape, global_spacing=0.3)
+
+        self.assertGreater(len(triangles), 50, "三角形数量不足")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          "平均网格质量过低")
+
+        output_file = self.output_dir / "parametric_sphere_curvature.vtk"
+        _export_combined_mesh(triangles, str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未生成")
+
+
+class TestClosedSurfaceParametric(unittest.TestCase):
+    """闭合曲面参数化路径测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _make_torus_face():
+        """完整环面（主半径 3，管半径 1）"""
+        from OCC.Core.Geom import Geom_ToroidalSurface
+        from OCC.Core.gp import gp_Ax3, gp_Pnt, gp_Dir
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+        ax3 = gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
+        torus = Geom_ToroidalSurface(ax3, 3.0, 1.0)
+        return BRepBuilderAPI_MakeFace(torus, 0, 2 * math.pi, 0, 2 * math.pi, 1e-6).Face()
+
+    def test_torus_parametric(self):
+        """完整环面（闭合曲面，参数化路径 _mesh_face_closed_surface）"""
+        from collections import Counter
+
+        face = self._make_torus_face()
+        triangles, nodes = _mesh_face_closed_surface(face, 1.0, 0)
+
+        self.assertGreater(len(triangles), 30, "三角形数量不足")
+
+        tri_sets = [tuple(sorted([t.nodes[j].idx for j in range(3)])) for t in triangles]
+        dup_count = sum(1 for v in Counter(tri_sets).values() if v > 1)
+        self.assertEqual(dup_count, 0, f"存在 {dup_count} 个重复三角形")
+
+        quality_result = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        self.assertGreater(quality_result['quality_mean'], 0.3,
+                          f"平均质量 {quality_result['quality_mean']:.3f} < 0.3")
 
 
 if __name__ == "__main__":
