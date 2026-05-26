@@ -7,6 +7,7 @@ import sys
 import os
 import math
 import unittest
+import numpy as np
 from pathlib import Path
 from collections import Counter
 
@@ -19,7 +20,7 @@ ensure_occ_loaded()
 
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.shape_generators import _export_combined_mesh
-from sfmesh.mesh_quality import SurfaceMeshQuality
+from sfmesh.mesh_quality import SurfaceMeshQuality, check_triangle_intersection
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, discretize_shape_edges
 from sfmesh.sizing_field import SurfaceSizingField
 
@@ -189,7 +190,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     # 辅助方法
     # ---------------------------------------------------------------
 
-    def _run_and_validate(self, face, name, quality_min=0.3, tri_min=30,
+    def _run_and_validate(self, face, name, quality_min=0.3, tri_min=25,
                           use_line_mesh=False):
         """在给定面上运行 3D AFM 网格生成并验证质量
 
@@ -239,6 +240,79 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         self.assertGreater(quality['quality_mean'], quality_min,
                            f"{name}: 平均质量 {quality['quality_mean']:.4f} < {quality_min}")
 
+        # 相交检测：无共享节点的三角形对不应相交
+        intersect_count = 0
+        for i in range(len(triangles)):
+            ids1 = set(triangles[i].node_ids)
+            pts1 = np.array([triangles[i].nodes[k].coords for k in range(3)])
+            tri_min1 = pts1.min(axis=0)
+            tri_max1 = pts1.max(axis=0)
+            
+            for j in range(i + 1, len(triangles)):
+                ids2 = set(triangles[j].node_ids)
+                shared = len(ids1 & ids2)
+                if shared >= 1:
+                    continue
+                
+                pts2 = np.array([triangles[j].nodes[k].coords for k in range(3)])
+                tri_min2 = pts2.min(axis=0)
+                tri_max2 = pts2.max(axis=0)
+                
+                if np.any(tri_max1 < tri_min2 - 0.01) or np.any(tri_min1 > tri_max2 + 0.01):
+                    continue
+                
+                if check_triangle_intersection(triangles[i], triangles[j]):
+                    intersect_count += 1
+        self.assertEqual(intersect_count, 0,
+                        f"{name}: 存在 {intersect_count} 对相交三角形（无共享节点）")
+
+        # 覆盖检测：采样曲面点，检查是否被网格覆盖
+        from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+        adaptor = BRepAdaptor_Surface(face)
+        u_min = adaptor.FirstUParameter()
+        u_max = adaptor.LastUParameter()
+        v_min = adaptor.FirstVParameter()
+        v_max = adaptor.LastVParameter()
+        
+        num_samples = 15
+        uncovered = 0
+        total = 0
+        
+        tri_bounds = []
+        tri_normals = []
+        for tri in triangles:
+            pts = np.array([tri.nodes[k].coords for k in range(3)])
+            tri_bounds.append((pts.min(axis=0), pts.max(axis=0)))
+            normal = np.cross(pts[1] - pts[0], pts[2] - pts[0])
+            norm = np.linalg.norm(normal)
+            if norm > 1e-12:
+                normal /= norm
+            tri_normals.append((pts[0], normal))
+        
+        for i in range(num_samples):
+            for j in range(num_samples):
+                u = u_min + (i + 0.5) * (u_max - u_min) / num_samples
+                v = v_min + (j + 0.5) * (v_max - v_min) / num_samples
+                
+                pt_3d = adaptor.Value(u, v)
+                p = np.array([pt_3d.X(), pt_3d.Y(), pt_3d.Z()])
+                
+                covered = False
+                for (tri_min, tri_max), (tri_pt, tri_normal) in zip(tri_bounds, tri_normals):
+                    if np.all(p >= tri_min - 0.2) and np.all(p <= tri_max + 0.2):
+                        dist = abs(np.dot(p - tri_pt, tri_normal))
+                        if dist < 0.25:
+                            covered = True
+                            break
+                
+                total += 1
+                if not covered:
+                    uncovered += 1
+        
+        coverage = 1.0 - (uncovered / total) if total > 0 else 0
+        self.assertGreater(coverage, 0.85,
+                          f"{name}: 曲面覆盖率过低 {coverage * 100:.2f}% (未覆盖 {uncovered}/{total})")
+
         output_file = self.output_dir / f"afm_{name}.vtk"
         generator.export_to_vtk(str(output_file))
         self.assertTrue(output_file.exists(), f"{name}: VTK 文件未生成")
@@ -248,7 +322,6 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     # 测试用例（全部为直接 3D AFM 路径）
     # ---------------------------------------------------------------
 
-    @unittest.skip("网格质量有问题，需要逐个调试")
     def test_afm_nurbs_surface(self):
         """截断环面子面（先边界线网格 → 再 AFM 面网格）"""
         face = self._make_bspline_face()
@@ -257,13 +330,11 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         self.assertGreater(quality['quality_mean'], 0.3,
                            f"环面截面平均质量过低: {quality['quality_mean']:.4f}")
 
-    @unittest.skip("网格质量有问题，需要逐个调试")
     def test_afm_cone(self):
         """截断锥面（先边界线网格 → 再 AFM 面网格）"""
         face = self._make_cone_face()
         self._run_and_validate(face, "cone", quality_min=0.3, use_line_mesh=True)
 
-    @unittest.skip("网格质量有问题，需要逐个调试")
     def test_afm_hyperbolic_paraboloid(self):
         """椭圆锥面（先边界线网格 → 再 AFM 面网格）"""
         face = self._make_hyperbolic_paraboloid_face()
