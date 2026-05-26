@@ -299,18 +299,50 @@ class SurfaceFront:
         self.hash = hash((center_hash, length_hash))
     
     def _compute_tangent_normal(self):
-        """计算切平面内的法向（用于理想点计算）"""
+        """计算切平面内的推进方向（用于理想点计算）
+
+        在阵面中点处计算曲面法向，再与边方向叉乘，得到切平面内
+        垂直于边的单位向量。
+        """
         direction = np.array(self.direction)
-        normal = np.array(self.normal)
-        
-        tangent_normal = np.cross(direction, normal)
+
+        # 在阵面中点处计算曲面法向
+        mid_uv = self._compute_midpoint_surface_normal()
+
+        tangent_normal = np.cross(direction, mid_uv)
         norm = np.linalg.norm(tangent_normal)
         if norm > 1e-12:
             tangent_normal = tangent_normal / norm
         else:
             tangent_normal = np.array([0.0, 0.0, 1.0])
-        
+
         self.tangent_normal = tuple(tangent_normal)
+
+    def _compute_midpoint_surface_normal(self):
+        """计算阵面中点处的曲面法向量"""
+        mid = self.center
+        if self.surface is not None:
+            try:
+                from .surface_geometry import SurfaceGeometry
+                geom = SurfaceGeometry()
+                uv = geom.project_point_to_surface(mid, self.surface)
+                normal = geom.get_surface_normal(uv[0], uv[1], self.surface)
+                n = np.array(normal)
+                norm = np.linalg.norm(n)
+                if norm > 1e-12:
+                    return n / norm
+            except Exception:
+                pass
+
+        # 回退：使用两端节点法向平均
+        n1 = self.node_elems[0].normal
+        n2 = self.node_elems[1].normal
+        if n1 is not None and n2 is not None:
+            avg = np.array(n1) + np.array(n2)
+            norm = np.linalg.norm(avg)
+            if norm > 1e-12:
+                return avg / norm
+        return np.array([0.0, 0.0, 1.0])
     
     def _compute_bbox(self):
         """计算边界框"""

@@ -17,8 +17,7 @@ from .surface_front import (
 )
 from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
-from .mesh_quality import SurfaceMeshQuality, check_edge_triangle_intersection
-from .geom_utils import _are_coplanar_triangles_overlapping
+from .mesh_quality import SurfaceMeshQuality
 
 from utils.message import info, debug
 from utils.timer import TimeSpan
@@ -90,6 +89,7 @@ class SurfaceMeshGenerator:
         self.space_index_front = None
         self.space_index_triangle = None
         self._triangle_dict: Dict[int, SurfaceTriangle] = {}
+        self.edge_count: Dict[frozenset, int] = {}
 
         self.num_nodes = 0
         self.num_triangles = 0
@@ -411,7 +411,10 @@ class SurfaceMeshGenerator:
         node: NodeElement3D
     ) -> bool:
         """
-        检查相交（RTree 加速 + 共面重叠检测）
+        检查新三角形是否与已有网格相交
+
+        使用 UV 空间边交叉检测（避免 3D 投影在曲面上的假阳性），
+        加上边饱和检查（每条边最多 2 个三角形）。
 
         Args:
             front: 当前阵面
@@ -420,52 +423,140 @@ class SurfaceMeshGenerator:
         Returns:
             是否相交
         """
-        p0 = np.array(front.node_elems[0].coords)
-        p1 = np.array(front.node_elems[1].coords)
-        p2 = np.array(node.coords)
+        from .geom_utils import _segments_intersect_2d
 
-        new_edges = [(p0, p2), (p2, p1)]
+        n0 = front.node_elems[0]
+        n1 = front.node_elems[1]
+        n2 = node
 
-        shared_node_ids = {front.node_elems[0].idx, front.node_elems[1].idx, node.idx}
+        # 边饱和检查：每条边最多 2 个三角形
+        for eh in [frozenset([n0.hash, n1.hash]), frozenset([n0.hash, n2.hash]), frozenset([n1.hash, n2.hash])]:
+            if self.edge_count.get(eh, 0) >= 2:
+                return True
+
+        shared_node_ids = {n0.idx, n1.idx, n2.idx}
 
         if self.space_index_triangle is None or len(self.triangle_list) == 0:
             return False
 
-        # RTree 查询候选三角形包围盒
+        # RTree 查询候选三角形
+        p0 = np.array(n0.coords)
+        p1 = np.array(n1.coords)
+        p2 = np.array(n2.coords)
         all_pts = np.array([p0, p1, p2])
         padding = 1e-6
         query_bbox = (
             all_pts[:, 0].min() - padding, all_pts[:, 1].min() - padding, all_pts[:, 2].min() - padding,
             all_pts[:, 0].max() + padding, all_pts[:, 1].max() + padding, all_pts[:, 2].max() + padding,
         )
-
         candidate_ids = list(self.space_index_triangle.intersection(query_bbox))
 
-        surface_normal = np.array(front.normal)
+        # 新三角形 UV 坐标
+        new_uv = [n0.uv_params, n1.uv_params, n2.uv_params]
+        if any(uv is None for uv in new_uv):
+            return False
+
+        new_uv_pts = [np.array(uv) for uv in new_uv]
+        new_uv_edges = [
+            (new_uv_pts[0], new_uv_pts[1]),
+            (new_uv_pts[1], new_uv_pts[2]),
+            (new_uv_pts[2], new_uv_pts[0]),
+        ]
 
         for tri_id in candidate_ids:
             if tri_id not in self._triangle_dict:
                 continue
             existing_tri = self._triangle_dict[tri_id]
 
-            # 共享 ≥2 个节点：合法相邻三角形，跳过
             existing_node_ids = set(existing_tri.node_ids)
             shared_count = len(existing_node_ids & shared_node_ids)
+
             if shared_count >= 2:
                 continue
 
-            # 边-三角形相交检测
-            for edge_start, edge_end in new_edges:
-                if check_edge_triangle_intersection(edge_start, edge_end, existing_tri):
+            # 已有三角形 UV 坐标
+            exist_uv = [n.uv_params for n in existing_tri.nodes]
+            if any(uv is None for uv in exist_uv):
+                continue
+
+            exist_uv_pts = [np.array(uv) for uv in exist_uv]
+
+            if shared_count == 0:
+                # UV 空间边交叉检测
+                exist_uv_edges = [
+                    (exist_uv_pts[0], exist_uv_pts[1]),
+                    (exist_uv_pts[1], exist_uv_pts[2]),
+                    (exist_uv_pts[2], exist_uv_pts[0]),
+                ]
+                for ne in new_uv_edges:
+                    for ee in exist_uv_edges:
+                        if _segments_intersect_2d(ne[0], ne[1], ee[0], ee[1]):
+                            return True
+
+                # 3D 包含检测：新节点是否落入已有三角形内部
+                if self._point_in_triangle_3d(p2, existing_tri):
                     return True
 
-            # 共面重叠检测（共享 1 个顶点时可能发生重叠）
-            existing_pts = [n.coords for n in existing_tri.nodes]
-            new_pts = [tuple(p0), tuple(p1), tuple(p2)]
-            if _are_coplanar_triangles_overlapping(new_pts, existing_pts, surface_normal):
-                return True
+            elif shared_count == 1:
+                # 找到共享节点，检查非共享边是否交叉
+                shared_id = (existing_node_ids & shared_node_ids).pop()
+                # 已有三角形的非共享边
+                exist_non_shared = []
+                for i in range(3):
+                    ni = existing_tri.node_ids[i]
+                    nj = existing_tri.node_ids[(i + 1) % 3]
+                    if ni != shared_id and nj != shared_id:
+                        exist_non_shared.append((exist_uv_pts[i], exist_uv_pts[(i + 1) % 3]))
+                # 新三角形的非共享边（不含 front 边）
+                new_non_shared = [(new_uv_pts[0], new_uv_pts[2]), (new_uv_pts[2], new_uv_pts[1])]
+                for ne in new_non_shared:
+                    for ee in exist_non_shared:
+                        if _segments_intersect_2d(ne[0], ne[1], ee[0], ee[1]):
+                            return True
 
         return False
+
+    @staticmethod
+    def _point_in_triangle_3d(point, triangle, tol=0.01) -> bool:
+        """判断 3D 点是否在三角形内部（重心坐标 + 平面距离）"""
+        p = np.array(point)
+        a = np.array(triangle.nodes[0].coords)
+        b = np.array(triangle.nodes[1].coords)
+        c = np.array(triangle.nodes[2].coords)
+
+        v0 = c - a
+        v1 = b - a
+        v2 = p - a
+
+        d00 = np.dot(v0, v0)
+        d01 = np.dot(v0, v1)
+        d11 = np.dot(v1, v1)
+        d20 = np.dot(v2, v0)
+        d21 = np.dot(v2, v1)
+
+        denom = d00 * d11 - d01 * d01
+        if abs(denom) < 1e-24:
+            return False
+
+        v = (d11 * d20 - d01 * d21) / denom
+        w = (d00 * d21 - d01 * d20) / denom
+        u = 1.0 - v - w
+
+        if u < -tol or v < -tol or w < -tol:
+            return False
+
+        normal = np.cross(v1, v0)
+        norm_len = np.linalg.norm(normal)
+        if norm_len < 1e-12:
+            return False
+        normal /= norm_len
+        dist = abs(np.dot(p - a, normal))
+
+        edge_len = max(np.linalg.norm(b - a), np.linalg.norm(c - a), np.linalg.norm(c - b))
+        if dist > edge_len * 0.1:
+            return False
+
+        return True
     
     def _update_mesh(
         self,
@@ -500,6 +591,13 @@ class SurfaceMeshGenerator:
             front.node_elems[0].hash, front.node_elems[1].hash, node.hash
         ]))
         self.num_triangles += 1
+
+        # 更新边计数
+        n0h = front.node_elems[0].hash
+        n1h = front.node_elems[1].hash
+        n2h = node.hash
+        for eh in [frozenset([n0h, n1h]), frozenset([n0h, n2h]), frozenset([n1h, n2h])]:
+            self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
 
         # 更新空间索引
         if new_node_added:

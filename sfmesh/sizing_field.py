@@ -189,28 +189,18 @@ class SurfaceSizingField:
         self,
         front,
         surface: TopoDS_Face,
-        quality_factor: float = 0.8
     ) -> float:
         """
-        计算理想点的推进距离
-        
+        计算理想点的推进距离（等于局部网格尺寸）
+
         Args:
             front: 曲面阵面对象
             surface: 曲面
-            quality_factor: 质量因子 (0~1)
-        
+
         Returns:
             推进距离
         """
-        spacing = self.compute_front_spacing(front, surface)
-        
-        front_length = front.length
-        
-        distance = quality_factor * np.sqrt(spacing * front_length)
-        
-        distance = np.clip(distance, 0.5 * spacing, 2.0 * spacing)
-        
-        return distance
+        return self.compute_front_spacing(front, surface)
 
 
 class AdaptiveSizingField(SurfaceSizingField):
