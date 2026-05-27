@@ -63,7 +63,25 @@ def segments_intersect_2d(
     def cross2d(o: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
         return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
 
-    # 排除端点重合
+    d1 = cross2d(b1, b2, a1)
+    d2 = cross2d(b1, b2, a2)
+    d3 = cross2d(a1, a2, b1)
+    d4 = cross2d(a1, a2, b2)
+
+    # 共线重叠：四个叉积均 ≈ 0（优先于端点排除，因为重叠 ≠ 端点接触）
+    if abs(d1) < tol and abs(d2) < tol and abs(d3) < tol and abs(d4) < tol:
+        if abs(a2[0] - a1[0]) >= abs(a2[1] - a1[1]):
+            a_min, a_max = min(a1[0], a2[0]), max(a1[0], a2[0])
+            b_min, b_max = min(b1[0], b2[0]), max(b1[0], b2[0])
+        else:
+            a_min, a_max = min(a1[1], a2[1]), max(a1[1], a2[1])
+            b_min, b_max = min(b1[1], b2[1]), max(b1[1], b2[1])
+        overlap_start = max(a_min, b_min)
+        overlap_end = min(a_max, b_max)
+        if overlap_start < overlap_end - tol:
+            return True  # 区间有实质重叠
+
+    # 排除端点重合（非共线情况下）
     for pa in (a1, a2):
         for pb in (b1, b2):
             if np.max(np.abs(pa - pb)) < tol:
@@ -79,11 +97,7 @@ def segments_intersect_2d(
     if max(b1[1], b2[1]) < min(a1[1], a2[1]) - tol:
         return False
 
-    d1 = cross2d(b1, b2, a1)
-    d2 = cross2d(b1, b2, a2)
-    d3 = cross2d(a1, a2, b1)
-    d4 = cross2d(a1, a2, b2)
-
+    # 严格交叉：叉积异号
     if ((d1 > tol and d2 < -tol) or (d1 < -tol and d2 > tol)) and \
        ((d3 > tol and d4 < -tol) or (d3 < -tol and d4 > tol)):
         return True
@@ -152,7 +166,7 @@ def point_in_triangle_3d(
     dot12 = np.dot(v1, v2)
 
     denom = dot00 * dot11 - dot01 * dot01
-    if abs(denom) < DEGENERATE_TOL:
+    if abs(denom) < DEGENERATE_TOL * (dot00 * dot11 + 1e-300):
         return False
 
     inv_denom = 1.0 / denom
@@ -242,11 +256,24 @@ def segment_segment_distance_3d(
         else:
             b_val = np.dot(d1, d2)
             denom = a * e - b_val * b_val
-            if abs(denom) > DEGENERATE_TOL:
+            if abs(denom) > DEGENERATE_TOL * (a * e + 1e-300):
                 s = float(np.clip((b_val * f - c * e) / denom, 0.0, 1.0))
+                t = (b_val * s + f) / e
             else:
-                s = 0.0
-            t = (b_val * s + f) / e
+                # 近似平行：回退到端点到线段距离最小值
+                best = float('inf')
+                best_s, best_t = 0.0, 0.0
+                for s_cand in (0.0, 1.0):
+                    t_cand = float(np.clip((b_val * s_cand + f) / e, 0.0, 1.0))
+                    dist = np.linalg.norm((p1 + s_cand * d1) - (q1 + t_cand * d2))
+                    if dist < best:
+                        best, best_s, best_t = dist, s_cand, t_cand
+                for t_cand in (0.0, 1.0):
+                    s_cand = float(np.clip((b_val * t_cand - c) / a, 0.0, 1.0))
+                    dist = np.linalg.norm((p1 + s_cand * d1) - (q1 + t_cand * d2))
+                    if dist < best:
+                        best, best_s, best_t = dist, s_cand, t_cand
+                s, t = best_s, best_t
             if t < 0.0:
                 t = 0.0
                 s = float(np.clip(-c / a, 0.0, 1.0))
@@ -375,6 +402,18 @@ def are_coplanar_triangles_overlapping(
 # 3D 三角形/边相交检测（核心算法）
 # ============================================================================
 
+def _point_on_segment_2d(
+    p: np.ndarray, s1: np.ndarray, s2: np.ndarray,
+    tol: float = DEFAULT_TOL
+) -> bool:
+    """判断2D点是否在线段上（含端点）。"""
+    cp = (s2[0] - s1[0]) * (p[1] - s1[1]) - (s2[1] - s1[1]) * (p[0] - s1[0])
+    if abs(cp) > tol:
+        return False
+    dot = (p[0] - s1[0]) * (p[0] - s2[0]) + (p[1] - s1[1]) * (p[1] - s2[1])
+    return dot < tol
+
+
 def _edge_intersects_triangle_core(
     edge_start: np.ndarray, edge_end: np.ndarray,
     t1: np.ndarray, t2: np.ndarray, t3: np.ndarray,
@@ -409,31 +448,33 @@ def _edge_intersects_triangle_core(
     if d1 * d2 > tol and abs(d1) > tol and abs(d2) > tol:
         return False
 
-    # 情况2: 共面
+    # 情况2: 共面 → 投影到2D做标准相交检测
     if abs(d1) < tol and abs(d2) < tol:
-        tri_edges = [(t1, t2), (t2, t3), (t3, t1)]
-        for te_s, te_e in tri_edges:
-            # 共面时使用3D线段距离判断代替2D投影，避免额外投影开销
-            dist = segment_segment_distance_3d(edge_start, edge_end, te_s, te_e)
-            if dist < tol * 10.0:
-                # 排除纯端点接触
-                for ep in (edge_start, edge_end):
-                    for tv in (te_s, te_e):
-                        if np.linalg.norm(ep - tv) < tol * 10.0:
-                            break
-                    else:
-                        continue
-                    break
-                else:
+        all_pts = np.array([edge_start, edge_end, t1, t2, t3])
+        proj_normal = np.cross(t2 - t1, t3 - t1)
+        pts_2d = project_to_2d(all_pts, proj_normal)
+        es_2d, ee_2d = pts_2d[0], pts_2d[1]
+        tri_2d = pts_2d[2:]
+        te_2d = [(tri_2d[0], tri_2d[1]), (tri_2d[1], tri_2d[2]), (tri_2d[2], tri_2d[0])]
+
+        # 边与三角形边相交（含共线重叠）
+        for ts, te in te_2d:
+            if segments_intersect_2d(es_2d, ee_2d, ts, te, tol):
+                return True
+
+        # 边端点在三角形内（排除共享端点）
+        shared_tol = tol * 10.0
+        for ep, ep_3d in [(es_2d, edge_start), (ee_2d, edge_end)]:
+            if point_in_triangle_2d(ep, tri_2d[0], tri_2d[1], tri_2d[2], tol):
+                if all(np.linalg.norm(ep_3d - v) > shared_tol for v in (t1, t2, t3)):
                     return True
 
-        # 检查线段中点是否在三角形内（完全包含情况）
-        mid = (edge_start + edge_end) / 2.0
-        if point_in_triangle_3d(mid, t1, t2, t3, tol):
-            start_inside = point_in_triangle_3d(edge_start, t1, t2, t3, tol)
-            end_inside = point_in_triangle_3d(edge_end, t1, t2, t3, tol)
-            if not start_inside or not end_inside:
-                return True
+        # 三角形顶点在边上
+        for tv, tv_3d in zip(tri_2d, (t1, t2, t3)):
+            if all(np.linalg.norm(tv_3d - ep) > shared_tol for ep in (edge_start, edge_end)):
+                if _point_on_segment_2d(tv, es_2d, ee_2d, tol):
+                    return True
+
         return False
 
     # 情况3: 穿越平面
@@ -452,7 +493,7 @@ def _edge_intersects_triangle_core(
 
     # 排除交点恰好是三角形顶点的情况（视为非有效穿透）
     for vertex in (t1, t2, t3):
-        if np.linalg.norm(intersection - vertex) < tol * 100.0:
+        if np.linalg.norm(intersection - vertex) < tol * 10.0:
             return False
 
     return True
@@ -537,6 +578,13 @@ def check_triangle_intersection(
         return bool(np.all(dists > tolerance) or np.all(dists < -tolerance))
 
     if _all_same_side(q, p1, n1) or _all_same_side(p, q1, n2):
+        return False
+
+    # Step 2.5: 共享边排除（拓扑邻接，非几何穿透）
+    shared_tol = tolerance * 10.0
+    shared_p = [i for i in range(3) if any(np.linalg.norm(p[i] - q[j]) < shared_tol for j in range(3))]
+    shared_q = [j for j in range(3) if any(np.linalg.norm(q[j] - p[i]) < shared_tol for i in range(3))]
+    if len(shared_p) >= 2 and len(shared_q) >= 2:
         return False
 
     # Step 3: 边-三角形穿透检测
