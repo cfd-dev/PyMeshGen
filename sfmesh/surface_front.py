@@ -479,7 +479,81 @@ def create_initial_fronts_from_surface(
                 
                 prev_node = current_node
     
+    # 修复：确保所有初始阵面的方向一致（曲面在阵面左侧）
+    fronts = _fix_front_orientation(fronts, surface, geometry_handler)
+    
     return fronts
+
+
+def _fix_front_orientation(
+    fronts: List[SurfaceFront],
+    surface,
+    geometry_handler
+) -> List[SurfaceFront]:
+    """
+    修复阵面方向，确保所有阵面的方向一致（曲面在阵面左侧）
+    
+    对于每个阵面，检查其方向是否正确。正确的方向应该使得：
+    cross(阵面方向, 曲面法向) 指向曲面内部
+    
+    即：如果曲面法向朝上 [0,0,1]，阵面方向应该使得内部在左侧。
+    
+    Args:
+        fronts: 初始阵面列表
+        surface: 曲面
+        geometry_handler: 几何处理器
+        
+    Returns:
+        方向修正后的阵面列表
+    """
+    if not fronts:
+        return fronts
+    
+    fixed_fronts = []
+    
+    for front in fronts:
+        # 获取阵面中点处的曲面法向
+        mid = np.array(front.center)
+        try:
+            uv = geometry_handler.project_point_to_surface(tuple(mid), surface)
+            surface_normal = np.array(geometry_handler.get_surface_normal(uv[0], uv[1], surface))
+        except Exception:
+            surface_normal = np.array([0.0, 0.0, 1.0])
+        
+        # 归一化曲面法向
+        norm = np.linalg.norm(surface_normal)
+        if norm > 1e-12:
+            surface_normal = surface_normal / norm
+        
+        # 计算当前阵面的切向推进方向
+        current_tangent = np.array(front.tangent_normal)
+        
+        # 计算期望的推进方向：cross(阵面方向, 曲面法向)
+        # 根据右手定则，这样可以保证推进方向指向曲面内部
+        direction = np.array(front.direction)
+        expected_tangent = np.cross(direction, surface_normal)
+        norm = np.linalg.norm(expected_tangent)
+        if norm > 1e-12:
+            expected_tangent = expected_tangent / norm
+        
+        # 检查当前方向是否与期望方向一致
+        dot = np.dot(current_tangent, expected_tangent)
+        
+        if dot < 0:
+            # 方向相反，需要翻转阵面
+            fixed_front = SurfaceFront(
+                node_elem1=front.node_elems[1],
+                node_elem2=front.node_elems[0],
+                surface=surface,
+                idx=front.idx,
+                bc_type=front.bc_type,
+                part_name=front.part_name
+            )
+            fixed_fronts.append(fixed_front)
+        else:
+            fixed_fronts.append(front)
+    
+    return fixed_fronts
 
 
 def _compute_edge_key(edge, face=None) -> str:
