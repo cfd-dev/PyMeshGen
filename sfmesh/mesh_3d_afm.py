@@ -388,6 +388,16 @@ class SurfaceMeshGenerator:
                     [tri], self.space_index_triangle, self._triangle_dict,
                 )
 
+            # 新边界边 prev→next 需要加入 front_list（旧的两条边已被三角形吸收变为内部边）
+            new_front = SurfaceFront(
+                prev_node, next_node,
+                surface=self.surface,
+                idx=len(self.front_list) + 1,
+                bc_type="wall"
+            )
+            new_front.al = 3.0
+            heapq.heappush(self.front_list, new_front)
+
             loop.pop(i)
 
         return created
@@ -459,59 +469,32 @@ class SurfaceMeshGenerator:
 
     def generate(self) -> List[SurfaceTriangle]:
         """
-        使用 3D 阵面推进法（AFM）生成曲面网格
-
-        分两阶段：
-        1. 边界闭环塌缩：将边界作为整体逐层向内推进，维护单一闭环拓扑。
-        2. 内部推进：标准 AFM 优先队列处理内部阵面。
+        使用 3D 阵面推进法（AFM）生成曲面网格（与 2D AFM 等价的主循环）
 
         Returns:
             生成的三角形列表
         """
         timer = TimeSpan("开始曲面网格生成...")
 
-        # === 阶段1：边界闭环塌缩 ===
-        boundary_created = self._process_boundary_loop()
-        info(f"边界闭环塌缩完成: {boundary_created} 个三角形")
-
-        # === 阶段2：内部 AFM 推进 ===
-        valid_fronts = []
-        for f in self.front_list:
-            n0h = f.node_elems[0].hash
-            n1h = f.node_elems[1].hash
-            edge_hash = frozenset([n0h, n1h])
-            if self.edge_count.get(edge_hash, 0) < 2:
-                f.bc_type = "interior"
-                valid_fronts.append(f)
-        self.front_list = valid_fronts
-        heapq.heapify(self.front_list)
-
         iteration = 0
-        stale_count = 0
         while self.front_list and iteration < self.max_iterations:
             iteration += 1
 
             base_front = heapq.heappop(self.front_list)
 
+            # 陈旧阵面跳过
             n0h = base_front.node_elems[0].hash
             n1h = base_front.node_elems[1].hash
             edge_hash = frozenset([n0h, n1h])
             if self.edge_count.get(edge_hash, 0) >= 2:
-                stale_count += 1
                 continue
 
             spacing = self.sizing_field.compute_front_spacing(base_front, self.surface)
             ideal_point, ideal_uv = self._compute_ideal_point(base_front, spacing)
-            candidates = self._search_candidates(ideal_point, spacing)
+            candidates = self._search_candidates(ideal_point, base_front.al * spacing)
             selected_node = self._select_best_node(base_front, ideal_point, candidates)
 
             if selected_node is None:
-                base_front.al *= 1.2
-                if base_front.al < 20:
-                    heapq.heappush(self.front_list, base_front)
-                continue
-
-            if self._check_intersection(base_front, selected_node):
                 base_front.al *= 1.2
                 if base_front.al < 20:
                     heapq.heappush(self.front_list, base_front)
@@ -525,19 +508,7 @@ class SurfaceMeshGenerator:
 
             if iteration % 100 == 0:
                 info(f"迭代 {iteration}: 阵面数={len(self.front_list)}, "
-                     f"节点数={len(self.node_list)}, 三角形数={len(self.triangle_list)}, "
-                     f"陈旧跳过={stale_count}")
-
-        # === 阶段2.5：AFM 后边界闭环塌缩（循环至收敛） ===
-        total_post_bc = 0
-        for _ in range(20):
-            bc = self._process_boundary_loop()
-            tc = self._close_remaining_triangles()
-            total_post_bc += bc + tc
-            if bc + tc == 0:
-                break
-        if total_post_bc > 0:
-            info(f"AFM 后边界塌缩: 共 {total_post_bc} 个三角形")
+                     f"节点数={len(self.node_list)}, 三角形数={len(self.triangle_list)}")
 
         timer.show_to_console("曲面网格生成完成")
 
@@ -586,18 +557,15 @@ class SurfaceMeshGenerator:
 
     def _search_candidates(
         self,
-        ideal_point: Tuple[float, float, float],
-        spacing: float
+        center: Tuple[float, float, float],
+        search_radius: float,
     ) -> List[NodeElement3D]:
         """
-        在理想点周围搜索候选节点（修复5：自适应搜索半径）
-
-        搜索半径取 max(1.5 * spacing, global_spacing * 0.5)，
-        防止在尺寸梯度大的区域遗漏候选节点。
+        在中心点周围搜索候选节点
 
         Args:
-            ideal_point: 理想点坐标
-            spacing: 当地网格尺寸
+            center: 搜索中心点坐标
+            search_radius: 搜索半径
 
         Returns:
             候选节点列表
@@ -605,9 +573,7 @@ class SurfaceMeshGenerator:
         if self.space_index_node is None:
             return []
 
-        # 【修复5】自适应搜索半径，避免尺寸过渡区丢失候选
-        search_radius = max(1.5 * spacing, self.sizing_field.global_spacing * 0.5)
-        px, py, pz = ideal_point
+        px, py, pz = center
         query_bbox = (
             px - search_radius, py - search_radius, pz - search_radius,
             px + search_radius, py + search_radius, pz + search_radius,
@@ -680,6 +646,46 @@ class SurfaceMeshGenerator:
                 return True
         return False
 
+    def _is_valid_candidate(
+        self,
+        front: SurfaceFront,
+        p0: np.ndarray,
+        p1: np.ndarray,
+        node: NodeElement3D,
+        min_height: float,
+        min_edge_len: float,
+    ) -> bool:
+        """检查候选节点是否满足几何约束（与 2D AFM select_point 等价）"""
+        if node.hash == front.node_elems[0].hash or node.hash == front.node_elems[1].hash:
+            return False
+
+        p2 = np.array(node.coords)
+
+        tri_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash, node.hash])
+        if tri_key in self.triangle_set:
+            return False
+
+        # 退化三角形检查
+        edge_vec = p1 - p0
+        edge_len_sq = np.dot(edge_vec, edge_vec)
+        if edge_len_sq > 1e-24:
+            t = np.dot(p2 - p0, edge_vec) / edge_len_sq
+            closest = p0 + np.clip(t, 0, 1) * edge_vec
+            if np.linalg.norm(p2 - closest) < min_height:
+                return False
+
+        # 最小边长检查
+        d02 = np.linalg.norm(p2 - p0)
+        d12 = np.linalg.norm(p2 - p1)
+        if d02 < min_edge_len or d12 < min_edge_len:
+            return False
+
+        # 相交检查（2D: is_cross + is_cross_rtree）
+        if self._check_intersection(front, node):
+            return False
+
+        return True
+
     def _select_best_node(
         self,
         front: SurfaceFront,
@@ -687,8 +693,7 @@ class SurfaceMeshGenerator:
         candidates: List[NodeElement3D]
     ) -> Optional[NodeElement3D]:
         """
-        选择最佳节点（修复2：理想节点也需通过完整几何验证）
-        （修复8：防止边界阵面连接到非相邻边界节点）
+        选择最佳节点：理想节点与候选节点统一验证，理想节点带质量折扣
 
         Args:
             front: 当前阵面
@@ -701,157 +706,33 @@ class SurfaceMeshGenerator:
         p0 = np.array(front.node_elems[0].coords)
         p1 = np.array(front.node_elems[1].coords)
 
-        front_center = np.array(front.center)
-        tangent = np.array(front.tangent_normal)
-
         front_len = np.linalg.norm(p1 - p0)
-        min_height = front_len * 0.01  # 退化三角形高度阈值
-        min_edge_len = self.sizing_field.global_spacing * 0.3  # 最小边长阈值
+        min_height = front_len * 0.01
+        min_edge_len = self.sizing_field.global_spacing * 0.3
 
-        # 理想点在阵面的哪一侧（正=推进方向）
-        ideal_side = np.dot(np.array(ideal_point) - front_center, tangent)
-
-        # 【修复8】获取当前阵面端点的边界邻居，用于过滤候选
-        n0h = front.node_elems[0].hash
-        n1h = front.node_elems[1].hash
-        front_bnd_neighbors = set()
-        if self._is_boundary_node(n0h):
-            front_bnd_neighbors |= self._boundary_neighbors(n0h)
-        if self._is_boundary_node(n1h):
-            front_bnd_neighbors |= self._boundary_neighbors(n1h)
-
-        scored_candidates = []
-
-        for node in candidates:
-            # 使用 node.hash 而不是 node.idx 来排除阵面端点
-            if node.hash == front.node_elems[0].hash or node.hash == front.node_elems[1].hash:
-                continue
-
-            p2 = np.array(node.coords)
-
-            # 拒绝已存在的三角形（防止重叠）
-            tri_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash, node.hash])
-            if tri_key in self.triangle_set:
-                continue
-
-            # 【修复8】拒绝非相邻边界节点：防止跨边界段连接
-            if front_bnd_neighbors and self._is_boundary_node(node.hash):
-                if node.hash not in front_bnd_neighbors:
-                    continue
-
-            # 法向一致性检查：新三角形法向应与曲面法向夹角 < 90度
-            new_tri_normal = np.cross(p1 - p0, p2 - p0)
-            normal_norm = np.linalg.norm(new_tri_normal)
-            if normal_norm > 1e-12:
-                new_tri_normal = new_tri_normal / normal_norm
-                # 获取新三角形重心处的曲面法向
-                tri_center = (p0 + p1 + p2) / 3.0
-                try:
-                    tri_uv = self.geometry.project_point_to_surface(tuple(tri_center), self.surface)
-                    surf_normal = self.geometry.get_surface_normal(tri_uv[0], tri_uv[1], self.surface)
-                    surf_normal = np.array(surf_normal)
-                    surf_norm = np.linalg.norm(surf_normal)
-                    if surf_norm > 1e-12:
-                        surf_normal = surf_normal / surf_norm
-                        if abs(np.dot(new_tri_normal, surf_normal)) < 0.1:  # 允许小角度偏差（含绕序翻转）
-                            continue  # 法向不一致，拒绝
-                except Exception:
-                    pass  # 投影失败，跳过检查
-
-            # 拒绝在阵面背面的候选节点（与理想点反向）
-            candidate_side = np.dot(p2 - front_center, tangent)
-            if ideal_side > 1e-12 and candidate_side < -1e-12:
-                continue
-            if ideal_side < -1e-12 and candidate_side > 1e-12:
-                continue
-
-            # 拒绝距离阵面边过近的候选节点（退化三角形）
-            edge_vec = p1 - p0
-            edge_len_sq = np.dot(edge_vec, edge_vec)
-            if edge_len_sq > 1e-24:
-                t = np.dot(p2 - p0, edge_vec) / edge_len_sq
-                closest = p0 + np.clip(t, 0, 1) * edge_vec
-                height = np.linalg.norm(p2 - closest)
-                if height < min_height:
-                    continue
-
-            # 拒绝边长过短的候选节点（防止级联细分）
-            d02 = np.linalg.norm(p2 - p0)
-            d12 = np.linalg.norm(p2 - p1)
-            if d02 < min_edge_len or d12 < min_edge_len:
-                continue
-
-            quality = self._compute_triangle_quality(p0, p1, p2)
-
-            if quality > 0.1:
-                scored_candidates.append((quality, node))
-
-        # 【修复2】创建理想节点并执行与候选节点完全相同的几何验证
-        # 对于边界阵面，允许在参数域边界上创建节点
+        # 创建理想节点，加入候选列表统一验证
         is_boundary = front.bc_type == "wall"
         ideal_node = self._create_ideal_node(ideal_point, is_boundary_front=is_boundary)
-
         if ideal_node is not None:
-            p2_ideal = np.array(ideal_point)
-            valid_ideal = True
+            candidates = list(candidates) + [ideal_node]
 
-            # 法向一致性检查
-            new_tri_normal = np.cross(p1 - p0, p2_ideal - p0)
-            normal_norm = np.linalg.norm(new_tri_normal)
-            if normal_norm > 1e-12:
-                new_tri_normal = new_tri_normal / normal_norm
-                tri_center = (p0 + p1 + p2_ideal) / 3.0
-                try:
-                    tri_uv = self.geometry.project_point_to_surface(tuple(tri_center), self.surface)
-                    surf_normal = self.geometry.get_surface_normal(tri_uv[0], tri_uv[1], self.surface)
-                    surf_normal = np.array(surf_normal)
-                    surf_norm = np.linalg.norm(surf_normal)
-                    if surf_norm > 1e-12:
-                        surf_normal = surf_normal / surf_norm
-                        if abs(np.dot(new_tri_normal, surf_normal)) < 0.1:
-                            valid_ideal = False
-                except Exception:
-                    pass
+        scored_candidates = []
+        for node in candidates:
+            if not self._is_valid_candidate(front, p0, p1, node, min_height, min_edge_len):
+                continue
 
-            # 背面检查
-            if valid_ideal:
-                candidate_side = np.dot(p2_ideal - front_center, tangent)
-                if ideal_side > 1e-12 and candidate_side < -1e-12:
-                    valid_ideal = False
-                if ideal_side < -1e-12 and candidate_side > 1e-12:
-                    valid_ideal = False
+            quality = self._compute_triangle_quality(p0, p1, np.array(node.coords))
+            if quality <= 0.1:
+                continue
 
-            # 退化三角形检查
-            if valid_ideal:
-                edge_vec = p1 - p0
-                edge_len_sq = np.dot(edge_vec, edge_vec)
-                if edge_len_sq > 1e-24:
-                    t = np.dot(p2_ideal - p0, edge_vec) / edge_len_sq
-                    closest = p0 + np.clip(t, 0, 1) * edge_vec
-                    height = np.linalg.norm(p2_ideal - closest)
-                    if height < min_height:
-                        valid_ideal = False
+            # 理想节点带质量折扣，倾向选择已有节点
+            if node is ideal_node:
+                quality *= self.quality_discount
 
-            # 边长检查
-            if valid_ideal:
-                d02 = np.linalg.norm(p2_ideal - p0)
-                d12 = np.linalg.norm(p2_ideal - p1)
-                if d02 < min_edge_len or d12 < min_edge_len:
-                    valid_ideal = False
-
-            if valid_ideal:
-                ideal_quality = self._compute_triangle_quality(p0, p1, p2_ideal)
-                ideal_quality *= self.quality_discount
-
-                if ideal_quality > 0:
-                    scored_candidates.append((ideal_quality, ideal_node))
+            scored_candidates.append((quality, node))
 
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
-
-        for quality, node in scored_candidates:
-            return node
-
-        return None
+        return scored_candidates[0][1] if scored_candidates else None
 
     def _compute_triangle_quality(
         self,
@@ -933,15 +814,10 @@ class SurfaceMeshGenerator:
         except Exception:
             normal = (0.0, 0.0, 1.0)
 
-        # 确保 idx 唯一：检查 _used_node_idx（node_dict 可能被 space index 替换为 id-keyed）
-        node_idx = self.num_nodes
-        while node_idx in self._used_node_idx:
-            node_idx += 1
-        self.num_nodes = node_idx + 1
-
+        # idx 延迟到 _update_mesh 节点真正加入时分配，避免未选中节点造成编号间隙
         node = NodeElement3D(
             coords=point,
-            idx=node_idx,
+            idx=-1,
             surface=self.surface,
             uv_params=uv,
             normal=normal
@@ -1119,10 +995,6 @@ class SurfaceMeshGenerator:
         # 退化检查：不允许重复节点（hash 或 idx）
         if n2h == n0h or n2h == n1h:
             return False
-        if node.idx in self._used_node_idx:
-            # idx 已被使用，检查是否是同一个节点（hash 相同则允许）
-            if node.hash not in self.node_hash_set:
-                return False  # idx 被不同节点占用，拒绝
 
         # 边饱和检查：任一边已满则拒绝
         for eh in [frozenset([n0h, n1h]), frozenset([n0h, n2h]), frozenset([n1h, n2h])]:
@@ -1131,6 +1003,8 @@ class SurfaceMeshGenerator:
 
         new_node_added = False
         if node.hash not in self.node_hash_set:
+            # 分配连续 idx（与 2D AFM 一致，避免编号间隙）
+            node.idx = self.num_nodes
             self.node_hash_set.add(node.hash)
             self.node_list.append(node)
             self.node_coords.append(node.coords)
@@ -1139,6 +1013,11 @@ class SurfaceMeshGenerator:
             self._used_node_idx.add(node.idx)
             self.num_nodes += 1
             new_node_added = True
+        else:
+            # 节点已存在：理想节点 idx=-1 时需回填已有节点的 idx
+            existing = self.node_hash_map.get(node.hash)
+            if existing is not None and node.idx < 0:
+                node.idx = existing.idx
 
         # 最终退化检查：三个节点必须互不相同（hash 和 idx 双重检查）
         n0 = front.node_elems[0]
