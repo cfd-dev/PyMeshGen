@@ -29,11 +29,13 @@ class SurfaceSizingField:
         max_spacing: float = 100.0,
         curvature_adaptation: bool = True,
         curvature_factor: float = 0.2,
-        geometry_handler: SurfaceGeometry = None
+        geometry_handler: SurfaceGeometry = None,
+        boundary_decay: float = 1.2,
+        boundary_adaptation: bool = True,
     ):
         """
         初始化曲面尺寸场
-        
+
         Args:
             global_spacing: 全局网格尺寸
             min_spacing: 最小网格尺寸
@@ -41,6 +43,8 @@ class SurfaceSizingField:
             curvature_adaptation: 是否启用曲率自适应
             curvature_factor: 曲率自适应系数 (0~1)
             geometry_handler: 曲面几何操作对象
+            boundary_decay: 边界尺寸衰减系数
+            boundary_adaptation: 是否启用边界驱动尺寸场
         """
         self.global_spacing = global_spacing
         self.min_spacing = min_spacing
@@ -48,9 +52,12 @@ class SurfaceSizingField:
         self.curvature_adaptation = curvature_adaptation
         self.curvature_factor = curvature_factor
         self.geometry_handler = geometry_handler or SurfaceGeometry()
-        
-        self._local_spacing: Dict[int, float] = {}
-        self._surface_curvature_cache: Dict[int, Tuple[float, float, float]] = {}
+        self.boundary_decay = boundary_decay
+        self.boundary_adaptation = boundary_adaptation
+
+        self._boundary_rtree = None
+        self._boundary_front_dict = None
+        self._boundary_registered = False
     
     def spacing_at(
         self,
@@ -60,24 +67,29 @@ class SurfaceSizingField:
     ) -> float:
         """
         获取指定位置的网格尺寸
-        
+
         Args:
             point: 三维坐标
             surface: 所属曲面
             uv: 参数坐标
-        
+
         Returns:
             网格尺寸
         """
         base_spacing = self.global_spacing
-        
+
+        # 边界驱动
+        if self.boundary_adaptation and self._boundary_registered:
+            boundary_spacing = self._compute_boundary_spacing(point)
+            base_spacing = min(base_spacing, boundary_spacing)
+
+        # 曲率驱动
         if self.curvature_adaptation and surface is not None:
             if uv is None:
                 uv = self.geometry_handler.project_point_to_surface(point, surface)
-            
             curvature_spacing = self._compute_curvature_based_spacing(uv[0], uv[1], surface)
             base_spacing = min(base_spacing, curvature_spacing)
-        
+
         return np.clip(base_spacing, self.min_spacing, self.max_spacing)
     
     def _compute_curvature_based_spacing(
@@ -109,64 +121,90 @@ class SurfaceSizingField:
         
         return np.clip(spacing, self.min_spacing, self.max_spacing)
     
-    def set_local_spacing(
-        self,
-        point: Tuple[float, float, float],
-        spacing: float
-    ):
+    def register_boundary_fronts(self, fronts):
         """
-        设置局部网格尺寸
-        
+        注册边界阵面，构建 RTree 空间索引用于边界驱动尺寸场。
+
+        Args:
+            fronts: SurfaceFront 列表
+        """
+        try:
+            from data_structure.rtree_space import build_space_index_3d_with_RTree
+        except ImportError:
+            return
+
+        front_list = list(fronts)
+        if not front_list:
+            return
+
+        _, rtree = build_space_index_3d_with_RTree(front_list)
+        self._boundary_rtree = rtree
+        self._boundary_front_dict = {id(f): f for f in front_list}
+        self._boundary_registered = True
+
+    def _compute_boundary_spacing(self, point: Tuple[float, float, float]) -> float:
+        """
+        基于边界阵面计算点处的网格尺寸（指数衰减公式，同 QuadtreeSizing）。
+
         Args:
             point: 三维坐标
-            spacing: 网格尺寸
-        """
-        point_key = hash(tuple(f"{c:.6f}" for c in point))
-        self._local_spacing[point_key] = spacing
-    
-    def get_gradient_spacing(
-        self,
-        point: Tuple[float, float, float],
-        surface: TopoDS_Face,
-        gradient_factor: float = 0.3
-    ) -> float:
-        """
-        考虑尺寸梯度的网格尺寸
-        
-        Args:
-            point: 三维坐标
-            surface: 曲面
-            gradient_factor: 梯度限制因子
-        
+
         Returns:
-            考虑梯度限制的网格尺寸
+            边界驱动的网格尺寸
         """
-        base_spacing = self.spacing_at(point, surface)
-        
-        uv = self.geometry_handler.project_point_to_surface(point, surface)
-        
-        delta = base_spacing * 0.1
-        du, dv = self.geometry_handler.get_surface_derivatives(uv[0], uv[1], surface)
-        
-        du_norm = np.linalg.norm(du)
-        dv_norm = np.linalg.norm(dv)
-        
-        if du_norm > 1e-12:
-            neighbor_u = self.geometry_handler.evaluate_point(
-                uv[0] + delta / du_norm, uv[1], surface
-            )
-            spacing_u = self.spacing_at(neighbor_u, surface)
-            base_spacing = min(base_spacing, spacing_u * (1 + gradient_factor))
-        
-        if dv_norm > 1e-12:
-            neighbor_v = self.geometry_handler.evaluate_point(
-                uv[0], uv[1] + delta / dv_norm, surface
-            )
-            spacing_v = self.spacing_at(neighbor_v, surface)
-            base_spacing = min(base_spacing, spacing_v * (1 + gradient_factor))
-        
-        return base_spacing
-    
+        if not self._boundary_registered or self._boundary_rtree is None:
+            return self.global_spacing
+
+        search_radius = 6.0 * self.global_spacing
+        px, py, pz = point
+        bbox = (px - search_radius, py - search_radius, pz - search_radius,
+                px + search_radius, py + search_radius, pz + search_radius)
+
+        candidate_ids = list(self._boundary_rtree.intersection(bbox))
+        if not candidate_ids:
+            return self.global_spacing
+
+        p = np.array(point)
+        min_spacing = self.global_spacing
+        decay = self.boundary_decay
+
+        for fid in candidate_ids:
+            front = self._boundary_front_dict.get(fid)
+            if front is None:
+                continue
+
+            p0 = np.array(front.node_elems[0].coords)
+            p1 = np.array(front.node_elems[1].coords)
+            source_size = np.linalg.norm(p1 - p0)
+            if source_size < 1e-12:
+                continue
+
+            dist = self._point_to_segment_distance_3d(p, p0, p1)
+            exponent = 0.5 * dist * (decay - 1.0) / source_size
+            exponent = min(exponent, 50.0)
+            sp = source_size * np.exp(exponent)
+            if sp < min_spacing:
+                min_spacing = sp
+
+        return min(min_spacing, self.global_spacing)
+
+    @staticmethod
+    def _point_to_segment_distance_3d(
+        point: np.ndarray,
+        seg_start: np.ndarray,
+        seg_end: np.ndarray,
+    ) -> float:
+        """计算 3D 点到线段的最短距离"""
+        seg_vec = seg_end - seg_start
+        seg_len = np.linalg.norm(seg_vec)
+        if seg_len < 1e-12:
+            return np.linalg.norm(point - seg_start)
+        seg_unit = seg_vec / seg_len
+        t = np.dot(point - seg_start, seg_unit)
+        t = np.clip(t, 0, seg_len)
+        closest = seg_start + t * seg_unit
+        return np.linalg.norm(point - closest)
+
     def compute_front_spacing(
         self,
         front,

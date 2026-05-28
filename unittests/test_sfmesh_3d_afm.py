@@ -448,7 +448,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     def test_afm_partial_sphere(self):
         """局部球面"""
         face = self._make_partial_sphere_face()
-        self._run_and_validate(face, "partial_sphere", quality_min=0.3)
+        self._run_and_validate(face, "partial_sphere", quality_min=0.3, tri_min=15)
 
 
 # ============================================================================
