@@ -638,13 +638,25 @@ def check_triangle_intersection(
     if _all_same_side(q, p1, n1) or _all_same_side(p, q1, n2):
         return False
 
-    # Step 2.5: 共享边排除
-    # 两个三角形共享一条边（≥2个共享顶点）是拓扑邻接，不是几何穿透。
-    # 改进的共线重叠检测会将共享边识别为"相交"，此处显式排除。
+    # Step 2.5: 共享边排除（含蝴蝶形检测）
+    # 共享一条边（≥2个共享顶点）通常是拓扑邻接，但如果非共享边交叉
+    # （蝴蝶形/bowtie），则仍属于几何相交。
     shared_tol = tolerance * 10.0
     shared_p = [i for i in range(3) if any(np.linalg.norm(p[i] - q[j]) < shared_tol for j in range(3))]
     shared_q = [j for j in range(3) if any(np.linalg.norm(q[j] - p[i]) < shared_tol for i in range(3))]
     if len(shared_p) >= 2 and len(shared_q) >= 2:
+        # 找到非共享顶点，检查非共享边是否交叉
+        non_shared_p = [i for i in range(3) if i not in shared_p]
+        non_shared_q = [j for j in range(3) if j not in shared_q]
+        if non_shared_p and non_shared_q:
+            cp = p[non_shared_p[0]]  # tri1 的非共享顶点
+            cq = q[non_shared_q[0]]  # tri2 的非共享顶点
+            # 检查共享边的两个端点与非共享顶点组成的边是否交叉
+            s1, s2 = p[shared_p[0]], p[shared_p[1]]
+            if segment_segment_distance_3d(s1, cp, s2, cq) < tolerance:
+                return True
+            if segment_segment_distance_3d(s2, cp, s1, cq) < tolerance:
+                return True
         return False
 
     # Step 3: 边-三角形穿透检测

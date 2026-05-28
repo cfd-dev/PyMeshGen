@@ -630,6 +630,12 @@ class TestCheckTriangleIntersection(unittest.TestCase):
         tri2 = self._make_tri([0, 0, 0], [2, 0, 0], [1, -1, 0])
         self.assertFalse(check_triangle_intersection(tri1, tri2))
 
+    def test_shared_edge_bowtie_intersection(self):
+        """共底边但非共享边交叉（蝴蝶形）→ 应检测为相交"""
+        tri1 = self._make_tri([0, 0, 0], [4, 0, 0], [3, 1, 0])
+        tri2 = self._make_tri([0, 0, 0], [4, 0, 0], [1, 1, 0])
+        self.assertTrue(check_triangle_intersection(tri1, tri2))
+
     def test_aabb_no_overlap(self):
         tri1 = self._make_tri([0, 0, 0], [1, 0, 0], [0, 1, 0])
         tri2 = self._make_tri([100, 100, 100], [101, 100, 100], [100, 101, 100])
