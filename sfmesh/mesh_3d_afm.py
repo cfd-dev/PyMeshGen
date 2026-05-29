@@ -11,6 +11,8 @@
 4. generate: 主循环增加陈旧阵面过滤（edge_count >= 2 直接丢弃）
 5. _search_candidates: 自适应搜索半径，防止尺寸过渡区丢失候选
 6. _create_ideal_node: 投影失败时增加 debug 日志
+7. _check_intersection + _triangle_intersects_existing: 共享边蝴蝶形(bowtie)相交检测，
+   防止两个共享一条边的三角形因非共享边交叉而产生几何相交
 """
 import heapq
 import numpy as np
@@ -641,7 +643,23 @@ class SurfaceMeshGenerator:
             existing = self._triangle_dict[tri_id]
             shared = {nd.hash for nd in existing.nodes} & new_hashes
             if len(shared) >= 2:
-                continue  # 共享边，合法邻接
+                # 蝴蝶形检测：共享边但非共享边交叉（bowtie）
+                new_hash_list = list(new_hashes)
+                ex_hash_list = [nd.hash for nd in existing.nodes]
+                non_shared_new = [h for h in new_hash_list if h not in shared]
+                non_shared_ex_idx = [i for i, h in enumerate(ex_hash_list) if h not in shared]
+                if non_shared_new and non_shared_ex_idx:
+                    cp = np.array(self.node_hash_map[non_shared_new[0]].coords)
+                    cq = np.array(existing.nodes[non_shared_ex_idx[0]].coords)
+                    s_indices = [i for i, h in enumerate(ex_hash_list) if h in shared]
+                    if len(s_indices) >= 2:
+                        s1 = np.array(existing.nodes[s_indices[0]].coords)
+                        s2 = np.array(existing.nodes[s_indices[1]].coords)
+                        if segment_segment_distance_3d(s1, cp, s2, cq) < 1e-8:
+                            return True
+                        if segment_segment_distance_3d(s2, cp, s1, cq) < 1e-8:
+                            return True
+                continue
             if check_triangle_intersection(new_tri, existing):
                 return True
         return False
@@ -903,6 +921,23 @@ class SurfaceMeshGenerator:
                 # 共享边：合法邻接，但需确认不是完全重复三角形
                 if existing_node_hashes == new_node_hashes:
                     return True  # 完全重复
+                # 蝴蝶形检测：共享边但非共享边交叉（bowtie）
+                new_node_list = [n0, n1, n2]
+                ex_node_list = existing_tri.nodes
+                non_shared_new = [i for i in range(3) if new_node_list[i].hash not in shared_hashes]
+                non_shared_ex = [i for i in range(3) if ex_node_list[i].hash not in shared_hashes]
+                if non_shared_new and non_shared_ex:
+                    cp = np.array(new_node_list[non_shared_new[0]].coords)
+                    cq = np.array(ex_node_list[non_shared_ex[0]].coords)
+                    # 找到共享边的两个端点（从新三角形中）
+                    s_indices = [i for i in range(3) if new_node_list[i].hash in shared_hashes]
+                    if len(s_indices) >= 2:
+                        s1 = np.array(new_node_list[s_indices[0]].coords)
+                        s2 = np.array(new_node_list[s_indices[1]].coords)
+                        if segment_segment_distance_3d(s1, cp, s2, cq) < 1e-8:
+                            return True
+                        if segment_segment_distance_3d(s2, cp, s1, cq) < 1e-8:
+                            return True
                 continue
 
             if shared_count == 1:
