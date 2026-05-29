@@ -30,9 +30,8 @@ from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .geom_utils import (
     point_in_triangle_3d,
-    segment_segment_distance_3d,
     check_triangle_intersection,
-    _edge_intersects_triangle_core,
+    check_triangle_vs_existing,
     check_edge_triangle_intersection,
     triangle_quality_from_coords,
     check_triangle_degenerate,
@@ -631,39 +630,33 @@ class SurfaceMeshGenerator:
         """检查三角形 (n0,n1,n2) 是否与已有三角形相交（跳过共享边/顶点）"""
         if self.space_index_triangle is None or not self.triangle_list:
             return False
-        new_tri = SurfaceTriangle(n0, n1, n2)
         new_hashes = {n0.hash, n1.hash, n2.hash}
-        pts = np.array([n0.coords, n1.coords, n2.coords])
+        new_hash_list = [n0.hash, n1.hash, n2.hash]
+        new_coords = np.array([n0.coords, n1.coords, n2.coords])
         padding = self.sizing_field.global_spacing * 0.5
         bbox = (
-            pts[:, 0].min() - padding, pts[:, 1].min() - padding, pts[:, 2].min() - padding,
-            pts[:, 0].max() + padding, pts[:, 1].max() + padding, pts[:, 2].max() + padding,
+            new_coords[:, 0].min() - padding, new_coords[:, 1].min() - padding, new_coords[:, 2].min() - padding,
+            new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
         )
         for tri_id in self.space_index_triangle.intersection(bbox):
             if tri_id not in self._triangle_dict:
                 continue
             existing = self._triangle_dict[tri_id]
-            shared = {nd.hash for nd in existing.nodes} & new_hashes
-            if len(shared) >= 2:
-                # 蝴蝶形检测：共享边但非共享边交叉（bowtie）
-                new_hash_list = list(new_hashes)
-                ex_hash_list = [nd.hash for nd in existing.nodes]
-                non_shared_new = [h for h in new_hash_list if h not in shared]
-                non_shared_ex_idx = [i for i, h in enumerate(ex_hash_list) if h not in shared]
-                if non_shared_new and non_shared_ex_idx:
-                    cp = np.array(self.node_hash_map[non_shared_new[0]].coords)
-                    cq = np.array(existing.nodes[non_shared_ex_idx[0]].coords)
-                    s_indices = [i for i, h in enumerate(ex_hash_list) if h in shared]
-                    if len(s_indices) >= 2:
-                        s1 = np.array(existing.nodes[s_indices[0]].coords)
-                        s2 = np.array(existing.nodes[s_indices[1]].coords)
-                        if segment_segment_distance_3d(s1, cp, s2, cq) < 1e-8:
-                            return True
-                        if segment_segment_distance_3d(s2, cp, s1, cq) < 1e-8:
-                            return True
-                continue
-            if check_triangle_intersection(new_tri, existing):
-                return True
+            ex_hash_list = [nd.hash for nd in existing.nodes]
+            shared = set(ex_hash_list) & new_hashes
+            shared_count = len(shared)
+            if shared_count == 0:
+                if check_triangle_intersection(new_coords, existing):
+                    return True
+            else:
+                new_shared_idx = [i for i, h in enumerate(new_hash_list) if h in shared]
+                ex_shared_idx = [i for i, h in enumerate(ex_hash_list) if h in shared]
+                ex_coords = np.array([nd.coords for nd in existing.nodes])
+                if check_triangle_vs_existing(
+                    new_coords, ex_coords, shared_count,
+                    new_shared_idx, ex_shared_idx,
+                ):
+                    return True
         return False
 
     def _is_valid_candidate(
@@ -857,92 +850,32 @@ class SurfaceMeshGenerator:
         )
         candidate_ids = list(self.space_index_triangle.intersection(query_bbox))
 
-        # 创建临时三角形用于相交检测
-        new_tri = SurfaceTriangle(n0, n1, n2)
         # 使用 node.hash（基于坐标）而不是 node.idx 来识别共享节点
-        new_node_hashes = {n0.hash, n1.hash, n2.hash}
+        new_hash_list = [n0.hash, n1.hash, n2.hash]
+        new_node_hashes = set(new_hash_list)
 
         for tri_id in candidate_ids:
             if tri_id not in self._triangle_dict:
                 continue
             existing_tri = self._triangle_dict[tri_id]
+            ex_hash_list = [nd.hash for nd in existing_tri.nodes]
+            shared = set(ex_hash_list) & new_node_hashes
+            shared_count = len(shared)
 
-            existing_node_hashes = {node.hash for node in existing_tri.nodes}
-            shared_hashes = existing_node_hashes & new_node_hashes
-            shared_count = len(shared_hashes)
-
-            if shared_count >= 2:
-                # 共享边：合法邻接，但需确认不是完全重复三角形
-                if existing_node_hashes == new_node_hashes:
-                    return True  # 完全重复
-                # 蝴蝶形检测：共享边但非共享边交叉（bowtie）
-                new_node_list = [n0, n1, n2]
-                ex_node_list = existing_tri.nodes
-                non_shared_new = [i for i in range(3) if new_node_list[i].hash not in shared_hashes]
-                non_shared_ex = [i for i in range(3) if ex_node_list[i].hash not in shared_hashes]
-                if non_shared_new and non_shared_ex:
-                    cp = np.array(new_node_list[non_shared_new[0]].coords)
-                    cq = np.array(ex_node_list[non_shared_ex[0]].coords)
-                    # 找到共享边的两个端点（从新三角形中）
-                    s_indices = [i for i in range(3) if new_node_list[i].hash in shared_hashes]
-                    if len(s_indices) >= 2:
-                        s1 = np.array(new_node_list[s_indices[0]].coords)
-                        s2 = np.array(new_node_list[s_indices[1]].coords)
-                        if segment_segment_distance_3d(s1, cp, s2, cq) < 1e-8:
-                            return True
-                        if segment_segment_distance_3d(s2, cp, s1, cq) < 1e-8:
-                            return True
-                continue
-
-            if shared_count == 1:
-                # 【修复1核心】共享一个顶点时，只检查不涉及共享顶点的边对
-                shared_hash = shared_hashes.pop()
-
-                # 构建不含共享顶点的边列表
-                new_nodes = [n0, n1, n2]
-                ex_nodes = existing_tri.nodes
-
-                new_edges_no_shared = []
-                for a, b in [(0, 1), (1, 2), (2, 0)]:
-                    if new_nodes[a].hash != shared_hash and new_nodes[b].hash != shared_hash:
-                        new_edges_no_shared.append((new_nodes[a], new_nodes[b]))
-
-                ex_edges_no_shared = []
-                for a, b in [(0, 1), (1, 2), (2, 0)]:
-                    if ex_nodes[a].hash != shared_hash and ex_nodes[b].hash != shared_hash:
-                        ex_edges_no_shared.append((ex_nodes[a], ex_nodes[b]))
-
-                # 非共享边之间互相检测交叉
-                for na, nb in new_edges_no_shared:
-                    a1 = np.array(na.coords)
-                    a2 = np.array(nb.coords)
-                    for ea, eb in ex_edges_no_shared:
-                        b1 = np.array(ea.coords)
-                        b2 = np.array(eb.coords)
-                        if segment_segment_distance_3d(a1, a2, b1, b2) < 1e-8:
-                            return True
-
-                # 新三角形的非共享边 vs 现有三角形内部
-                ex_pts = [np.array(ex_nodes[k].coords) for k in range(3)]
-                for na, nb in new_edges_no_shared:
-                    a1 = np.array(na.coords)
-                    a2 = np.array(nb.coords)
-                    if _edge_intersects_triangle_core(a1, a2, ex_pts[0], ex_pts[1], ex_pts[2]):
-                        return True
-
-                # 现有三角形的非共享边 vs 新三角形内部
-                new_pts = [p0, p1, p2]
-                for ea, eb in ex_edges_no_shared:
-                    a1 = np.array(ea.coords)
-                    a2 = np.array(eb.coords)
-                    if _edge_intersects_triangle_core(a1, a2, new_pts[0], new_pts[1], new_pts[2]):
-                        return True
-
-                continue  # 共享顶点且无交叉，合法邻接
-
-            # shared_count == 0: 无共享节点，完整三角形相交检测
-            if check_triangle_intersection(new_tri, existing_tri):
-                return True
+            if shared_count == 0:
+                if check_triangle_intersection(
+                    np.array([p0, p1, p2]), existing_tri
+                ):
+                    return True
+            else:
+                new_shared_idx = [i for i, h in enumerate(new_hash_list) if h in shared]
+                ex_shared_idx = [i for i, h in enumerate(ex_hash_list) if h in shared]
+                ex_coords = np.array([nd.coords for nd in existing_tri.nodes])
+                if check_triangle_vs_existing(
+                    np.array([p0, p1, p2]), ex_coords, shared_count,
+                    new_shared_idx, ex_shared_idx,
+                ):
+                    return True
 
         return False
 

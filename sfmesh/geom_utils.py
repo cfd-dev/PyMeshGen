@@ -781,3 +781,96 @@ def check_triangle_degenerate(
         return True
 
     return False
+
+
+def check_triangle_vs_existing(
+    new_coords: np.ndarray,
+    existing_coords: np.ndarray,
+    shared_count: int,
+    new_shared_indices: list,
+    existing_shared_indices: list,
+    tolerance: float = DEFAULT_TOL,
+) -> bool:
+    """
+    检查新三角形与一个已有三角形是否真正相交（排除合法拓扑邻接）。
+
+    按共享节点数分级检测：
+    - shared_count >= 2: 完全重复检测 + 蝴蝶形(bowtie)检测
+    - shared_count == 1: 非共享边交叉 + 非共享边穿透对方三角形
+    - shared_count == 0: 完整三角形-三角形相交检测
+
+    Args:
+        new_coords: 新三角形顶点坐标 (3, 3)
+        existing_coords: 已有三角形顶点坐标 (3, 3)
+        shared_count: 共享节点数量
+        new_shared_indices: 新三角形中共享节点的索引列表 (值为 0,1,2)
+        existing_shared_indices: 已有三角形中共享节点的索引列表 (值为 0,1,2)
+        tolerance: 几何容差
+
+    Returns:
+        True 表示两三角形存在有效几何相交（应拒绝）
+    """
+    p0, p1, p2 = new_coords[0], new_coords[1], new_coords[2]
+    q0, q1, q2 = existing_coords[0], existing_coords[1], existing_coords[2]
+
+    # ---- shared >= 2: 共享边 ----
+    if shared_count >= 2:
+        # 完全重复检测
+        new_set = {tuple(c) for c in new_coords}
+        ex_set = {tuple(c) for c in existing_coords}
+        if new_set == ex_set:
+            return True
+
+        # 蝴蝶形检测：共享边但非共享边交叉（bowtie）
+        non_shared_new = [i for i in range(3) if i not in new_shared_indices]
+        non_shared_ex = [i for i in range(3) if i not in existing_shared_indices]
+        if non_shared_new and non_shared_ex:
+            cp = new_coords[non_shared_new[0]]
+            cq = existing_coords[non_shared_ex[0]]
+            if len(new_shared_indices) >= 2:
+                s1 = new_coords[new_shared_indices[0]]
+                s2 = new_coords[new_shared_indices[1]]
+                if segment_segment_distance_3d(s1, cp, s2, cq) < tolerance:
+                    return True
+                if segment_segment_distance_3d(s2, cp, s1, cq) < tolerance:
+                    return True
+        return False
+
+    # ---- shared == 1: 共享一个顶点 ----
+    if shared_count == 1:
+        shared_new_idx = new_shared_indices[0]
+        shared_ex_idx = existing_shared_indices[0]
+
+        # 构建不含共享顶点的边列表
+        edges_new = []
+        for a, b in [(0, 1), (1, 2), (2, 0)]:
+            if a != shared_new_idx and b != shared_new_idx:
+                edges_new.append((new_coords[a], new_coords[b]))
+
+        edges_ex = []
+        for a, b in [(0, 1), (1, 2), (2, 0)]:
+            if a != shared_ex_idx and b != shared_ex_idx:
+                edges_ex.append((existing_coords[a], existing_coords[b]))
+
+        # 非共享边之间互相检测交叉
+        for a1, a2 in edges_new:
+            for b1, b2 in edges_ex:
+                if segment_segment_distance_3d(a1, a2, b1, b2) < tolerance:
+                    return True
+
+        # 新三角形的非共享边 vs 现有三角形内部
+        for a1, a2 in edges_new:
+            if _edge_intersects_triangle_core(a1, a2, q0, q1, q2):
+                return True
+
+        # 现有三角形的非共享边 vs 新三角形内部
+        for b1, b2 in edges_ex:
+            if _edge_intersects_triangle_core(b1, b2, p0, p1, p2):
+                return True
+
+        return False
+
+    # ---- shared == 0: 无共享节点，完整相交检测 ----
+    return check_triangle_intersection(
+        new_coords, existing_coords, tolerance
+    )
