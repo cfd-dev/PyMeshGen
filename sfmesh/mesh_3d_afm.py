@@ -13,6 +13,7 @@
 6. _create_ideal_node: 投影失败时增加 debug 日志
 7. _check_intersection + _triangle_intersects_existing: 共享边蝴蝶形(bowtie)相交检测，
    防止两个共享一条边的三角形因非共享边交叉而产生几何相交
+8. _optimize_mesh: 后处理优化（边交换 Delaunay + Laplacian 光滑），保持边界不动
 """
 import heapq
 import numpy as np
@@ -37,7 +38,7 @@ from .geom_utils import (
     check_triangle_degenerate,
 )
 
-from utils.message import info, debug
+from utils.message import info, debug, warning
 from utils.timer import TimeSpan
 from data_structure.rtree_space import (
     build_space_index_3d_with_RTree,
@@ -110,6 +111,7 @@ class SurfaceMeshGenerator:
         self.space_index_triangle = None
         self._triangle_dict: Dict[int, SurfaceTriangle] = {}
         self.edge_count: Dict[frozenset, int] = {}
+        self._init_boundary_hashes: Set[int] = set()  # 初始化时的边界节点 hash（永不更新）
 
         self.num_nodes = 0
         self.num_triangles = 0
@@ -159,6 +161,9 @@ class SurfaceMeshGenerator:
             n1h = front.node_elems[1].hash
             eh = frozenset([n0h, n1h])
             self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
+            # 记录初始边界节点（此时 edge_count 刚初始化，count=1 的边即为边界边）
+            self._init_boundary_hashes.add(n0h)
+            self._init_boundary_hashes.add(n1h)
 
         self._build_space_index()
 
@@ -516,6 +521,9 @@ class SurfaceMeshGenerator:
         timer.show_to_console("曲面网格生成完成")
 
         self._print_statistics()
+
+        # 后处理优化：边交换 + Laplacian 光滑
+        self._optimize_mesh()
 
         return self.triangle_list
 
@@ -1043,6 +1051,270 @@ class SurfaceMeshGenerator:
                 heapq.heappush(self.front_list, new_front2)
 
         return True
+
+    def _optimize_mesh(self, swap_iterations: int = 3, smooth_iterations: int = 3):
+        """
+        网格后处理优化：边交换（Delaunay 准则）+ Laplacian 光滑
+
+        保持边界节点和边界边不动，光滑后的节点投影回曲面。
+
+        Args:
+            swap_iterations: 边交换迭代轮数
+            smooth_iterations: Laplacian 光滑迭代次数
+        """
+        if len(self.triangle_list) < 2:
+            return
+
+        # 构建完整的 node.idx → NodeElement3D 映射（确保包含所有节点）
+        self._node_idx_map: Dict[int, NodeElement3D] = {}
+        for node in self.node_list:
+            self._node_idx_map[node.idx] = node
+        for idx, node in self.node_dict.items():
+            if idx not in self._node_idx_map:
+                self._node_idx_map[idx] = node
+
+        # 使用初始化时记录的边界节点 hash（此时 edge_count 已被三角形更新，不可靠）
+        self._boundary_hashes = set(self._init_boundary_hashes)
+        # 同时记录边界节点的 idx 集合（双重保护）
+        self._boundary_idx = set()
+        for node in self.node_list:
+            if node.hash in self._boundary_hashes:
+                self._boundary_idx.add(node.idx)
+
+        info(f"[优化] 边界节点数: {len(self._boundary_idx)}, 总节点数: {len(self.node_list)}")
+
+        # 记录优化前边界节点坐标，用于验证
+        boundary_coords_before = {
+            node.idx: tuple(node.coords) for node in self.node_list
+            if node.idx in self._boundary_idx
+        }
+
+        # ---- 1. 边交换优化 ----
+        for _ in range(swap_iterations):
+            swapped = self._edge_swap_pass()
+            if swapped == 0:
+                break
+
+        # ---- 2. Laplacian 光滑 ----
+        for _ in range(smooth_iterations):
+            self._laplacian_smooth_pass()
+
+        # 验证边界节点坐标未变化
+        boundary_moved = 0
+        for node in self.node_list:
+            if node.idx in boundary_coords_before:
+                before = boundary_coords_before[node.idx]
+                after = tuple(node.coords)
+                if before != after:
+                    boundary_moved += 1
+                    warning(
+                        f"边界节点 {node.idx} 坐标变化: "
+                        f"({before[0]:.6f},{before[1]:.6f},{before[2]:.6f}) → "
+                        f"({after[0]:.6f},{after[1]:.6f},{after[2]:.6f})"
+                    )
+        if boundary_moved > 0:
+            warning(f"边界节点校验：{boundary_moved}/{len(boundary_coords_before)} 个边界节点坐标发生了变化！")
+        else:
+            info(f"边界节点校验通过：{len(boundary_coords_before)} 个边界节点坐标均未变化")
+
+        # 清理临时数据
+        del self._node_idx_map
+        del self._boundary_hashes
+        del self._boundary_idx
+
+        # 刷新统计
+        self._print_statistics()
+
+    def _build_edge_triangle_map(self) -> Dict[frozenset, List[int]]:
+        """构建边 → 三角形索引列表 的映射"""
+        edge_map: Dict[frozenset, List[int]] = {}
+        for tri_idx, tri in enumerate(self.triangle_list):
+            ids = tri.node_ids
+            for a, b in [(0, 1), (1, 2), (2, 0)]:
+                edge = frozenset([ids[a], ids[b]])
+                edge_map.setdefault(edge, []).append(tri_idx)
+        return edge_map
+
+    def _edge_swap_pass(self) -> int:
+        """
+        一轮边交换：遍历所有内部边，若交换后最小角增大则执行交换。
+
+        Returns:
+            本轮交换次数
+        """
+        edge_map = self._build_edge_triangle_map()
+        boundary_hashes = self._boundary_hashes
+        swapped = 0
+
+        for edge, tri_indices in list(edge_map.items()):
+            if len(tri_indices) != 2:
+                continue
+
+            # 跳过任何涉及边界节点的边（保护边界不动）
+            if edge & boundary_hashes:
+                continue
+            # 双重保护：也用 node.idx 检查
+            edge_ids = set(edge)
+            if edge_ids & self._boundary_idx:
+                continue
+
+            idx0, idx1 = tri_indices
+            tri0 = self.triangle_list[idx0]
+            tri1 = self.triangle_list[idx1]
+
+            ids0 = set(tri0.node_ids)
+            ids1 = set(tri1.node_ids)
+            common = ids0 & ids1
+            if len(common) != 2:
+                continue
+
+            # a-b 是公共边，c 属于 tri0 独有，d 属于 tri1 独有
+            a, b = sorted(common)
+            c = (ids0 - common).pop()
+            d = (ids1 - common).pop()
+
+            # 当前最小角
+            angles_before = self._triangle_min_angle(tri0.node_ids)
+            angles_before = min(angles_before, self._triangle_min_angle(tri1.node_ids))
+
+            # 交换后：a-c-d 和 b-c-d
+            new_ids0 = self._orient_ccw([a, c, d])
+            new_ids1 = self._orient_ccw([b, c, d])
+            if new_ids0 is None or new_ids1 is None:
+                continue
+
+            angles_after = self._triangle_min_angle(new_ids0)
+            angles_after = min(angles_after, self._triangle_min_angle(new_ids1))
+
+            if angles_after <= angles_before:
+                continue
+
+            # 执行交换：创建新的 SurfaceTriangle
+            node_map = self._node_idx_map
+            new_tri0 = SurfaceTriangle(
+                node_map[new_ids0[0]], node_map[new_ids0[1]], node_map[new_ids0[2]],
+                surface=self.surface, idx=tri0.idx,
+            )
+            new_tri1 = SurfaceTriangle(
+                node_map[new_ids1[0]], node_map[new_ids1[1]], node_map[new_ids1[2]],
+                surface=self.surface, idx=tri1.idx,
+            )
+
+            # 检查新三角形退化
+            if new_tri0.area < 1e-16 or new_tri1.area < 1e-16:
+                continue
+
+            # 更新 edge_count：只更新被交换的公共边，其余边保持不变
+            old_shared_edge = frozenset([a, b])
+            new_shared_edge = frozenset([c, d])
+            cnt = self.edge_count.get(old_shared_edge, 0) - 2
+            if cnt <= 0:
+                self.edge_count.pop(old_shared_edge, None)
+            else:
+                self.edge_count[old_shared_edge] = cnt
+            self.edge_count[new_shared_edge] = self.edge_count.get(new_shared_edge, 0) + 2
+
+            self.triangle_list[idx0] = new_tri0
+            self.triangle_list[idx1] = new_tri1
+            self._triangle_dict[new_tri0.hash] = new_tri0
+            self._triangle_dict[new_tri1.hash] = new_tri1
+            swapped += 1
+
+        return swapped
+
+    def _laplacian_smooth_pass(self):
+        """
+        一轮 Laplacian 光滑：将内部节点移向邻居平均位置，投影回曲面。
+        边界节点不动。
+        """
+        boundary_hashes = self._boundary_hashes
+        boundary_idx = self._boundary_idx
+
+        # 构建节点邻居映射 (node.idx → set of neighbor idx)
+        neighbors: Dict[int, Set[int]] = {}
+        for tri in self.triangle_list:
+            ids = tri.node_ids
+            for i in range(3):
+                for j in range(3):
+                    if i != j:
+                        neighbors.setdefault(ids[i], set()).add(ids[j])
+
+        for node in self.node_list:
+            # 双重保护：hash 和 idx 都检查
+            if node.hash in boundary_hashes or node.idx in boundary_idx:
+                continue
+            nbrs = neighbors.get(node.idx)
+            if not nbrs:
+                continue
+
+            # 计算邻居平均坐标
+            avg = np.zeros(3)
+            for nid in nbrs:
+                avg += np.array(self._node_idx_map[nid].coords)
+            avg /= len(nbrs)
+
+            # 投影回曲面
+            try:
+                uv = self.geometry.project_point_to_surface(tuple(avg), self.surface)
+                new_coords = self.geometry.evaluate_point(uv[0], uv[1], self.surface)
+            except Exception:
+                continue
+
+            # 更新节点坐标
+            node.coords = new_coords
+            node.uv_params = uv
+
+        # 刷新 node_coords 和三角形属性
+        self.node_coords = [node.coords for node in self.node_list]
+        for tri in self.triangle_list:
+            tri.normal = tri._compute_normal()
+            tri.area = tri._compute_area()
+            tri.quality = tri._compute_quality()
+            tri.bbox = tri._compute_bbox()
+
+    def _get_node_coords_by_idx(self, idx: int) -> np.ndarray:
+        """通过 node.idx 获取节点坐标"""
+        node = self._node_idx_map.get(idx)
+        if node is not None:
+            return np.array(node.coords)
+        raise KeyError(f"Node idx={idx} not found in _node_idx_map")
+
+    def _triangle_min_angle(self, node_ids: list) -> float:
+        """计算三角形最小角（度）"""
+        p0 = self._get_node_coords_by_idx(node_ids[0])
+        p1 = self._get_node_coords_by_idx(node_ids[1])
+        p2 = self._get_node_coords_by_idx(node_ids[2])
+        angles = []
+        for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
+            va = a - apex
+            vb = b - apex
+            la = np.linalg.norm(va)
+            lb = np.linalg.norm(vb)
+            if la < 1e-15 or lb < 1e-15:
+                return 0.0
+            cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
+            angles.append(np.degrees(np.arccos(cos_a)))
+        return min(angles)
+
+    def _orient_ccw(self, node_ids: list):
+        """确保三角形节点在 3D 中保持一致的绕序（返回 node_ids 或重排版本，退化时返回 None）"""
+        p0 = self._get_node_coords_by_idx(node_ids[0])
+        p1 = self._get_node_coords_by_idx(node_ids[1])
+        p2 = self._get_node_coords_by_idx(node_ids[2])
+        cross = np.cross(p1 - p0, p2 - p0)
+        if np.linalg.norm(cross) < 1e-16:
+            return None
+        # 使用曲面法向判断方向
+        try:
+            uv = self.geometry.project_point_to_surface(
+                tuple((p0 + p1 + p2) / 3.0), self.surface
+            )
+            sn = np.array(self.geometry.get_surface_normal(uv[0], uv[1], self.surface))
+            if np.dot(cross, sn) < 0:
+                return [node_ids[0], node_ids[2], node_ids[1]]
+        except Exception:
+            pass
+        return node_ids
 
     def _print_statistics(self):
         """打印统计信息"""
