@@ -33,7 +33,9 @@ from .geom_utils import (
     segment_segment_distance_3d,
     check_triangle_intersection,
     _edge_intersects_triangle_core,
-    check_edge_triangle_intersection
+    check_edge_triangle_intersection,
+    triangle_quality_from_coords,
+    check_triangle_degenerate,
 )
 
 from utils.message import info, debug
@@ -683,19 +685,7 @@ class SurfaceMeshGenerator:
         if tri_key in self.triangle_set:
             return False
 
-        # 退化三角形检查
-        edge_vec = p1 - p0
-        edge_len_sq = np.dot(edge_vec, edge_vec)
-        if edge_len_sq > 1e-24:
-            t = np.dot(p2 - p0, edge_vec) / edge_len_sq
-            closest = p0 + np.clip(t, 0, 1) * edge_vec
-            if np.linalg.norm(p2 - closest) < min_height:
-                return False
-
-        # 最小边长检查
-        d02 = np.linalg.norm(p2 - p0)
-        d12 = np.linalg.norm(p2 - p1)
-        if d02 < min_edge_len or d12 < min_edge_len:
+        if check_triangle_degenerate(p0, p1, p2, min_height, min_edge_len):
             return False
 
         # 相交检查（2D: is_cross + is_cross_rtree）
@@ -739,7 +729,7 @@ class SurfaceMeshGenerator:
             if not self._is_valid_candidate(front, p0, p1, node, min_height, min_edge_len):
                 continue
 
-            quality = self._compute_triangle_quality(p0, p1, np.array(node.coords))
+            quality = triangle_quality_from_coords(p0, p1, np.array(node.coords))
             if quality <= 0.1:
                 continue
 
@@ -751,42 +741,6 @@ class SurfaceMeshGenerator:
 
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
         return scored_candidates[0][1] if scored_candidates else None
-
-    def _compute_triangle_quality(
-        self,
-        p0: np.ndarray,
-        p1: np.ndarray,
-        p2: np.ndarray
-    ) -> float:
-        """
-        计算三角形质量
-
-        Args:
-            p0, p1, p2: 三角形顶点
-
-        Returns:
-            质量值 (0~1)
-        """
-        a = np.linalg.norm(p1 - p0)
-        b = np.linalg.norm(p2 - p1)
-        c = np.linalg.norm(p0 - p2)
-
-        if a < 1e-12 or b < 1e-12 or c < 1e-12:
-            return 0.0
-
-        s = (a + b + c) / 2.0
-
-        area_sq = s * (s - a) * (s - b) * (s - c)
-        if area_sq <= 0:
-            return 0.0
-
-        area = np.sqrt(area_sq)
-
-        sum_sq = a * a + b * b + c * c
-
-        quality = 4.0 * np.sqrt(3) * area / sum_sq
-
-        return min(1.0, max(0.0, quality))
 
     def _create_ideal_node(
         self,

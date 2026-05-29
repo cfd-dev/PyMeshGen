@@ -709,3 +709,75 @@ def check_edge_triangle_intersection(
         verts[0], verts[1], verts[2],
         tolerance
     )
+
+
+# ============================================================================
+# 三角形质量与退化检测
+# ============================================================================
+
+def triangle_quality_from_coords(
+    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray
+) -> float:
+    """
+    从顶点坐标计算三角形形状质量因子。
+
+    公式: 4√3 · Area / (a² + b² + c²)
+    范围: [0, 1]，1 = 等边三角形
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标 (3,)
+
+    Returns:
+        质量值 (0~1)
+    """
+    a = np.linalg.norm(p1 - p0)
+    b = np.linalg.norm(p2 - p1)
+    c = np.linalg.norm(p0 - p2)
+
+    if a < 1e-12 or b < 1e-12 or c < 1e-12:
+        return 0.0
+
+    s = (a + b + c) / 2.0
+
+    area_sq = s * (s - a) * (s - b) * (s - c)
+    if area_sq <= 0:
+        return 0.0
+
+    area = np.sqrt(area_sq)
+
+    sum_sq = a * a + b * b + c * c
+
+    quality = 4.0 * np.sqrt(3) * area / sum_sq
+
+    return min(1.0, max(0.0, quality))
+
+
+def check_triangle_degenerate(
+    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray,
+    min_height: float, min_edge_len: float
+) -> bool:
+    """
+    检查三角形是否退化：顶点到对边距离过小 或 边长过短。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标 (3,)
+        min_height: 最小高度阈值（p2 到边 p0p1 的距离）
+        min_edge_len: 最小边长阈值（边 p0p2 和 p1p2）
+
+    Returns:
+        True 表示三角形退化（应拒绝）
+    """
+    edge_vec = p1 - p0
+    edge_len_sq = np.dot(edge_vec, edge_vec)
+    if edge_len_sq > 1e-24:
+        t = np.dot(p2 - p0, edge_vec) / edge_len_sq
+        closest = p0 + np.clip(t, 0, 1) * edge_vec
+        if np.linalg.norm(p2 - closest) < min_height:
+            return True
+
+    d02 = np.linalg.norm(p2 - p0)
+    d12 = np.linalg.norm(p2 - p1)
+    if d02 < min_edge_len or d12 < min_edge_len:
+        return True
+
+    return False
