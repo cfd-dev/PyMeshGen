@@ -453,6 +453,142 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
 
 
 # ============================================================================
+# 立方体多面网格测试
+# ============================================================================
+
+class TestCubeAFM(unittest.TestCase):
+    """
+    立方体多面 AFM 测试
+
+    立方体由 6 个平面面组成，每条边被 2 个面共享。
+    测试多面网格生成的完整性：逐面生成、拓扑验证、质量验证。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _make_box_faces(x=2.0, y=2.0, z=2.0):
+        """创建立方体并返回 6 个面"""
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_FACE
+        from OCC.Core.gp import gp_Pnt
+
+        box = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), x, y, z).Shape()
+        faces = []
+        explorer = TopExp_Explorer(box, TopAbs_FACE)
+        while explorer.More():
+            faces.append(explorer.Current())
+            explorer.Next()
+        return faces
+
+    def test_cube_single_face(self):
+        """立方体单面：验证单个平面面的网格生成"""
+        faces = self._make_box_faces()
+        self.assertEqual(len(faces), 6, "立方体应有 6 个面")
+
+        face = faces[0]
+        sizing = SurfaceSizingField(global_spacing=0.5)
+        line_mesh = discretize_shape_edges(face, sizing)
+
+        generator = SurfaceMeshGenerator(
+            surface=face,
+            global_spacing=0.5,
+            curvature_adaptation=False,
+            max_iterations=5000,
+            line_mesh=line_mesh,
+        )
+        triangles = generator.generate()
+
+        self.assertGreater(len(triangles), 10, "立方体单面三角形数量不足")
+        validate_mesh_topology(triangles, "cube_single_face", self)
+
+        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        self.assertGreater(quality['quality_mean'], 0.5,
+                           f"立方体单面平均质量过低: {quality['quality_mean']:.4f}")
+
+        output_file = self.output_dir / "afm_cube_single_face.vtk"
+        generator.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists())
+
+    def test_cube_all_faces(self):
+        """立方体全六面：逐面生成网格并验证"""
+        faces = self._make_box_faces()
+        self.assertEqual(len(faces), 6)
+
+        spacing = 0.5
+        all_triangles = []
+
+        for i, face in enumerate(faces):
+            sizing = SurfaceSizingField(global_spacing=spacing)
+            line_mesh = discretize_shape_edges(face, sizing)
+
+            generator = SurfaceMeshGenerator(
+                surface=face,
+                global_spacing=spacing,
+                curvature_adaptation=False,
+                max_iterations=5000,
+                line_mesh=line_mesh,
+            )
+            triangles = generator.generate()
+
+            self.assertGreater(len(triangles), 5,
+                               f"立方体面 {i} 三角形数量不足 ({len(triangles)})")
+            validate_mesh_topology(triangles, f"cube_face_{i}", self)
+
+            all_triangles.extend(triangles)
+
+        self.assertEqual(len(faces), 6)
+        self.assertGreater(len(all_triangles), 50,
+                           f"立方体总三角形数量不足 ({len(all_triangles)})")
+
+        quality = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        self.assertGreater(quality['quality_mean'], 0.4,
+                           f"立方体整体平均质量过低: {quality['quality_mean']:.4f}")
+
+        output_file = self.output_dir / "afm_cube_all_faces.vtk"
+        _export_combined_mesh(all_triangles, str(output_file))
+        self.assertTrue(output_file.exists())
+
+    def test_cube_fine_mesh(self):
+        """立方体细密网格：spacing=0.25，验证更细网格下的稳定性"""
+        faces = self._make_box_faces()
+        spacing = 0.25
+        all_triangles = []
+
+        for i, face in enumerate(faces):
+            sizing = SurfaceSizingField(global_spacing=spacing)
+            line_mesh = discretize_shape_edges(face, sizing)
+
+            generator = SurfaceMeshGenerator(
+                surface=face,
+                global_spacing=spacing,
+                curvature_adaptation=False,
+                max_iterations=10000,
+                line_mesh=line_mesh,
+            )
+            triangles = generator.generate()
+            self.assertGreater(len(triangles), 10,
+                               f"立方体细密面 {i} 三角形数量不足")
+            validate_mesh_topology(triangles, f"cube_fine_face_{i}", self)
+            all_triangles.extend(triangles)
+
+        self.assertGreater(len(all_triangles), 150,
+                           f"立方体细密网格总数量不足 ({len(all_triangles)})")
+
+        quality = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        self.assertGreater(quality['quality_mean'], 0.4,
+                           f"立方体细密网格平均质量过低: {quality['quality_mean']:.4f}")
+
+        output_file = self.output_dir / "afm_cube_fine.vtk"
+        _export_combined_mesh(all_triangles, str(output_file))
+        self.assertTrue(output_file.exists())
+
+
+# ============================================================================
 # CAD 文件集成测试
 # ============================================================================
 

@@ -2,9 +2,11 @@ import unittest
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from unittests.test_sfmesh_3d_afm import TestArbitrary3DSurfaceAFM
+from unittests.test_sfmesh_3d_afm import TestArbitrary3DSurfaceAFM, TestCubeAFM
 
-suite = unittest.TestLoader().loadTestsFromTestCase(TestArbitrary3DSurfaceAFM)
+suite = unittest.TestSuite()
+suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestArbitrary3DSurfaceAFM))
+suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestCubeAFM))
 runner = unittest.TextTestRunner(verbosity=2, stream=sys.stderr)
 result = runner.run(suite)
 print('Tests run:', result.testsRun)
