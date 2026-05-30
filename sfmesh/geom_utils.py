@@ -12,8 +12,11 @@
 - 线段间距离：参数化最近点求解（含平行退化回退）
 """
 
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Dict, Set
+from collections import Counter
 import numpy as np
+
+from utils.message import info
 
 # ============================================================================
 # 全局常量与配置
@@ -874,3 +877,172 @@ def check_triangle_vs_existing(
     return check_triangle_intersection(
         new_coords, existing_coords, tolerance
     )
+
+
+# ============================================================================
+# 网格拓扑分析工具
+# ============================================================================
+
+def classify_edges(triangles):
+    """
+    统计网格边的使用情况，分类为边界边、内部边和非流形边。
+
+    Args:
+        triangles: 三角形列表，每个元素需有 node_ids 属性返回 [id0, id1, id2]
+
+    Returns:
+        (edge_count, boundary_edges, interior_edges, non_manifold_edges)
+        - edge_count: Dict[frozenset, int] 所有边的使用计数
+        - boundary_edges: Dict[frozenset, int] 仅被1个三角形使用的边
+        - interior_edges: Dict[frozenset, int] 被2个三角形使用的边
+        - non_manifold_edges: Dict[frozenset, int] 被3个及以上三角形使用的边
+    """
+    edge_count: Dict[frozenset, int] = Counter()
+    for tri in triangles:
+        nids = tri.node_ids
+        for k in range(3):
+            e = frozenset([nids[k], nids[(k + 1) % 3]])
+            edge_count[e] += 1
+
+    boundary_edges = {e: cnt for e, cnt in edge_count.items() if cnt == 1}
+    interior_edges = {e: cnt for e, cnt in edge_count.items() if cnt == 2}
+    non_manifold_edges = {e: cnt for e, cnt in edge_count.items() if cnt > 2}
+    return edge_count, boundary_edges, interior_edges, non_manifold_edges
+
+
+def trace_boundary_loops(edge_count: Dict[frozenset, int]) -> List[List[int]]:
+    """
+    从边计数中追踪所有边界闭环。
+
+    Args:
+        edge_count: 边使用计数字典（frozenset → int）
+
+    Returns:
+        所有边界闭环列表，每个闭环是有序节点 ID 列表（首尾不重复）。
+    """
+    adj: Dict[int, List[int]] = {}
+    for eh, cnt in edge_count.items():
+        if cnt == 1:
+            n0, n1 = tuple(eh)
+            adj.setdefault(n0, []).append(n1)
+            adj.setdefault(n1, []).append(n0)
+
+    visited: Set[int] = set()
+    loops = []
+
+    for start in adj:
+        if start in visited:
+            continue
+        loop = [start]
+        visited.add(start)
+        prev = None
+        current = start
+        max_steps = len(adj) + 1
+        for _ in range(max_steps):
+            neighbors = adj.get(current, [])
+            nexts = [n for n in neighbors if n != prev]
+            if not nexts:
+                break
+            next_node = nexts[0]
+            if next_node == start:
+                break
+            if next_node in visited:
+                break
+            loop.append(next_node)
+            visited.add(next_node)
+            prev, current = current, next_node
+        loops.append(loop)
+
+    return loops
+
+
+def euler_characteristic(num_nodes: int, num_edges: int, num_faces: int) -> int:
+    """
+    计算欧拉示性数 χ = V - E + F。
+
+    对于圆盘拓扑（有边界的曲面），预期 χ = 1。
+    对于球面拓扑（无边界的封闭曲面），预期 χ = 2。
+
+    Args:
+        num_nodes: 节点数 V
+        num_edges: 边数 E
+        num_faces: 面数 F
+
+    Returns:
+        欧拉示性数
+    """
+    return num_nodes - num_edges + num_faces
+
+
+def validate_mesh_topology(triangles, verbose: bool = True) -> dict:
+    """
+    验证网格拓扑完整性并输出统计信息。
+
+    检查项目：
+    - 边分类（边界/内部/非流形）
+    - 边界闭环
+    - 欧拉示性数
+    - 三角形质量统计
+
+    Args:
+        triangles: 三角形列表
+        verbose: 是否输出详细信息
+
+    Returns:
+        包含所有拓扑指标的字典
+    """
+    from .mesh_quality import SurfaceMeshQuality
+
+    num_faces = len(triangles)
+    if num_faces == 0:
+        return {'num_faces': 0}
+
+    # 边分类
+    edge_count, boundary_edges, interior_edges, non_manifold_edges = classify_edges(triangles)
+    num_edges = len(edge_count)
+
+    # 节点数（从三角形中提取唯一节点 ID）
+    all_node_ids: Set[int] = set()
+    for tri in triangles:
+        all_node_ids.update(tri.node_ids)
+    num_nodes = len(all_node_ids)
+
+    # 边界闭环
+    loops = trace_boundary_loops(edge_count)
+
+    # 欧拉示性数
+    chi = euler_characteristic(num_nodes, num_edges, num_faces)
+
+    # 质量统计
+    quality_stats = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+
+    result = {
+        'num_nodes': num_nodes,
+        'num_edges': num_edges,
+        'num_faces': num_faces,
+        'boundary_edges': len(boundary_edges),
+        'interior_edges': len(interior_edges),
+        'non_manifold_edges': len(non_manifold_edges),
+        'num_boundary_loops': len(loops),
+        'boundary_loop_sizes': [len(l) for l in loops],
+        'euler_characteristic': chi,
+        'quality_mean': quality_stats.get('quality_mean', 0.0),
+        'quality_min': quality_stats.get('quality_min', 0.0),
+        'poor_quality_count': quality_stats.get('poor_quality_count', 0),
+    }
+
+    if verbose:
+        info(f"[拓扑] 节点={num_nodes}, 边={num_edges}, 面={num_faces}")
+        info(f"[拓扑] 边界边={len(boundary_edges)}, 内部边={len(interior_edges)}, "
+             f"非流形边={len(non_manifold_edges)}")
+        info(f"[拓扑] 边界环={len(loops)}: {[len(l) for l in loops]}")
+        info(f"[拓扑] 欧拉示性数={chi}")
+        if non_manifold_edges:
+            info(f"[拓扑] 警告: 存在 {len(non_manifold_edges)} 条非流形边")
+        if chi != 1 and chi != 2:
+            info(f"[拓扑] 警告: 欧拉示性数异常 (预期 1 或 2, 实际 {chi})")
+        info(f"[质量] 平均={quality_stats.get('quality_mean', 0):.4f}, "
+             f"最小={quality_stats.get('quality_min', 0):.4f}, "
+             f"低质量(<0.3)={quality_stats.get('poor_quality_count', 0)}")
+
+    return result

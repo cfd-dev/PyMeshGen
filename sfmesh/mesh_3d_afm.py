@@ -16,6 +16,7 @@
 8. _optimize_mesh: 后处理优化（边交换 Delaunay + Laplacian 光滑），保持边界不动
 """
 import heapq
+import math
 import numpy as np
 from typing import List, Dict, Tuple, Optional, Any, Set
 from OCC.Core.TopoDS import TopoDS_Face
@@ -36,6 +37,8 @@ from .geom_utils import (
     check_edge_triangle_intersection,
     triangle_quality_from_coords,
     check_triangle_degenerate,
+    segment_segment_distance_3d,
+    validate_mesh_topology,
 )
 
 from utils.message import info, debug, warning
@@ -167,8 +170,47 @@ class SurfaceMeshGenerator:
 
         self._build_space_index()
 
+        # 基于曲率的最大边长限制：防止跨越高曲率区域的大三角形
+        # 对于球面，限制边长使平面三角形偏离曲面 < 0.15
+        self._max_edge_len = self._compute_max_edge_len()
+
         info(f"初始阵面数量: {len(self.front_list)}")
         info(f"初始节点数量: {len(self.node_list)}")
+        info(f"最大边长限制: {self._max_edge_len:.4f}")
+
+    def _compute_max_edge_len(self) -> float:
+        """
+        基于曲面最大曲率计算最大允许边长。
+
+        对于半径 R 的球面，边长 L 的平面三角形偏离曲面约:
+            δ ≈ R * (1 - sqrt(1 - (L/2R)²))
+        限制 δ < max_deviation → L < 2R * sqrt(1-(1-δ/R)²)
+
+        Returns:
+            最大允许边长
+        """
+        max_deviation = 0.15  # 最大允许偏离量
+        max_edge_by_spacing = self.sizing_field.global_spacing * 3.0
+
+        try:
+            # 在参数域中心采样最大曲率
+            u_min, u_max, v_min, v_max = self._get_surface_bounds()
+            u_mid = (u_min + u_max) / 2
+            v_mid = (v_min + v_max) / 2
+            _, _, max_curv = self.geometry.get_surface_curvature(
+                u_mid, v_mid, self.surface
+            )
+            if max_curv > 1e-12:
+                radius = 1.0 / max_curv
+                if radius > max_deviation:
+                    max_edge_curv = 2.0 * radius * math.sqrt(
+                        1.0 - (1.0 - max_deviation / radius) ** 2
+                    )
+                    return min(max_edge_curv, max_edge_by_spacing)
+        except Exception:
+            pass
+
+        return max_edge_by_spacing
 
     def _get_surface_bounds(self):
         """获取曲面参数域边界"""
@@ -211,7 +253,7 @@ class SurfaceMeshGenerator:
 
     def _trace_boundary_loop(self) -> List[int]:
         """
-        从 edge_count 中追踪边界闭环，返回有序节点 hash 列表。
+        从 edge_count 中追踪一个边界闭环，返回有序节点 hash 列表。
 
         Returns:
             边界节点 hash 的有序列表（闭环，首尾不重复），
@@ -249,6 +291,49 @@ class SurfaceMeshGenerator:
 
         return loop
 
+    def _trace_all_boundary_loops(self) -> List[List[int]]:
+        """
+        追踪所有边界闭环。
+
+        Returns:
+            所有边界闭环的列表，每个闭环是有序节点 hash 列表。
+        """
+        adj: Dict[int, List[int]] = {}
+        for eh, cnt in self.edge_count.items():
+            if cnt == 1:
+                n0, n1 = tuple(eh)
+                adj.setdefault(n0, []).append(n1)
+                adj.setdefault(n1, []).append(n0)
+
+        visited: Set[int] = set()
+        loops = []
+
+        for start in adj:
+            if start in visited:
+                continue
+            # 从 start 开始追踪闭环
+            loop = [start]
+            visited.add(start)
+            prev = None
+            current = start
+            max_steps = len(adj) + 1
+            for _ in range(max_steps):
+                neighbors = adj.get(current, [])
+                nexts = [n for n in neighbors if n != prev]
+                if not nexts:
+                    break
+                next_node = nexts[0]
+                if next_node == start:
+                    break
+                if next_node in visited:
+                    break
+                loop.append(next_node)
+                visited.add(next_node)
+                prev, current = current, next_node
+            loops.append(loop)
+
+        return loops
+
     def _process_boundary_loop(self) -> int:
         """
         边界闭环塌缩：检测角点并创建三角形，将边界逐层向内推进。
@@ -259,16 +344,22 @@ class SurfaceMeshGenerator:
         Returns:
             创建的三角形数量
         """
+        info("开始边界闭环塌缩处理...")
         created = 0
         max_passes = 100
+        debug_interval = 10
 
-        for _ in range(max_passes):
+        for pass_idx in range(max_passes):
             loop = self._trace_boundary_loop()
             n_loop = len(loop)
             if n_loop < 3:
                 break
 
-            corner_threshold = 0.5
+            if pass_idx % debug_interval == 0:
+                info(f"边界塌缩 pass {pass_idx}: 环长度={n_loop}, 已创建={created}")
+
+            # 对于长环，使用更严格的角点阈值
+            corner_threshold = 0.3 if n_loop > 20 else 0.5
             nodes_to_collapse = []
 
             for i in range(n_loop):
@@ -320,30 +411,401 @@ class SurfaceMeshGenerator:
                         nodes_to_collapse.append(i)
 
             if not nodes_to_collapse:
+                if pass_idx % debug_interval == 0:
+                    info(f"边界塌缩 pass {pass_idx}: 无塌缩候选，退出")
                 break
 
-            i = nodes_to_collapse[0]
+            # 尝试所有候选节点，找到第一个可以成功塌缩的
+            collapsed = False
+            for i in nodes_to_collapse:
+                if n_loop < 3:
+                    break
+
+                node_h = loop[i]
+                prev_h = loop[(i - 1) % n_loop]
+                next_h = loop[(i + 1) % n_loop]
+
+                tri_key = frozenset([prev_h, node_h, next_h])
+                if tri_key in self.triangle_set:
+                    continue
+
+                prev_node = self.node_hash_map.get(prev_h)
+                node_node = self.node_hash_map.get(node_h)
+                next_node = self.node_hash_map.get(next_h)
+                if not prev_node or not node_node or not next_node:
+                    continue
+
+                if prev_h == node_h or prev_h == next_h or node_h == next_h:
+                    continue
+
+                # 三角形大小检查：防止创建过大的三角形
+                p_prev = np.array(prev_node.coords)
+                p_node = np.array(node_node.coords)
+                p_next = np.array(next_node.coords)
+                edge1_len = np.linalg.norm(p_node - p_prev)
+                edge2_len = np.linalg.norm(p_next - p_node)
+                edge3_len = np.linalg.norm(p_prev - p_next)
+                max_edge = max(edge1_len, edge2_len, edge3_len)
+                if max_edge > self._max_edge_len * 1.5:
+                    # 三角形太大，跳过这个节点
+                    continue
+
+                # 边饱和检查
+                skip = False
+                for eh in [frozenset([prev_h, node_h]),
+                           frozenset([node_h, next_h]),
+                           frozenset([prev_h, next_h])]:
+                    if self.edge_count.get(eh, 0) >= 2:
+                        skip = True
+                        break
+                if skip:
+                    continue
+
+                # 相交检查（宽松：只检查节点包含 + 最小距离，允许曲面上的三角形接近）
+                if self._ear_penetrates_existing(prev_node, node_node, next_node):
+                    continue
+                # 最小边距离检查：防止耳朵三角形与已有三角形过于接近
+                if self._ear_too_close(prev_node, node_node, next_node,
+                                        min_dist=self.sizing_field.global_spacing * 0.08):
+                    continue
+
+                # 使用局部法向判断绕序
+                n_prev = self._get_local_surface_normal(prev_node)
+                n_node = self._get_local_surface_normal(node_node)
+                n_next = self._get_local_surface_normal(next_node)
+                avg_normal = (n_prev + n_node + n_next) / 3.0
+                an_len = np.linalg.norm(avg_normal)
+                if an_len > 1e-12:
+                    avg_normal /= an_len
+
+                p_prev = np.array(prev_node.coords)
+                p_node = np.array(node_node.coords)
+                p_next = np.array(next_node.coords)
+                tri_normal = np.cross(p_next - p_prev, p_node - p_prev)
+
+                if np.dot(tri_normal, avg_normal) >= 0:
+                    tri = SurfaceTriangle(prev_node, next_node, node_node,
+                                          surface=self.surface, idx=self.num_triangles)
+                else:
+                    tri = SurfaceTriangle(prev_node, node_node, next_node,
+                                          surface=self.surface, idx=self.num_triangles)
+
+                self.triangle_list.append(tri)
+                self.triangle_set.add(tri_key)
+                self.num_triangles += 1
+                created += 1
+                collapsed = True
+
+                for eh in [frozenset([prev_h, node_h]),
+                           frozenset([node_h, next_h]),
+                           frozenset([prev_h, next_h])]:
+                    self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
+
+                if self.space_index_triangle is None:
+                    self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
+                else:
+                    self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
+                        [tri], self.space_index_triangle, self._triangle_dict,
+                    )
+
+                # 边界环塌缩时，不添加新front到front_list
+                # 新的边界边 prev→next 已经通过 edge_count 更新，会在下一次 _trace_boundary_loop 中被发现
+
+                loop.pop(i)
+                break  # 成功创建三角形，跳出内层循环
+
+            if not collapsed:
+                # 所有候选都失败了，退出外层循环
+                break
+
+        return created
+
+    def _refine_boundary_loop(self, max_edge_ratio: float = 1.2) -> int:
+        """
+        细化边界环：将过长的边界边拆分为更短的边。
+
+        在边界塌缩之前调用，确保边界边长度不超过 max_edge_ratio * global_spacing。
+        新节点投影到曲面上，并加入节点和边界数据结构。
+
+        Args:
+            max_edge_ratio: 最大边长与 global_spacing 的比值
+
+        Returns:
+            新增节点数量
+        """
+        max_edge_len = self.sizing_field.global_spacing * max_edge_ratio
+        added = 0
+        max_rounds = 10
+
+        for _ in range(max_rounds):
+            loop = self._trace_boundary_loop()
+            n_loop = len(loop)
             if n_loop < 3:
                 break
 
-            node_h = loop[i]
-            prev_h = loop[(i - 1) % n_loop]
-            next_h = loop[(i + 1) % n_loop]
+            split_done = False
+            for i in range(n_loop):
+                h0 = loop[i]
+                h1 = loop[(i + 1) % n_loop]
+                if h0 not in self.node_hash_map or h1 not in self.node_hash_map:
+                    continue
 
-            tri_key = frozenset([prev_h, node_h, next_h])
-            if tri_key in self.triangle_set:
+                p0 = np.array(self.node_hash_map[h0].coords)
+                p1 = np.array(self.node_hash_map[h1].coords)
+                edge_len = np.linalg.norm(p1 - p0)
+
+                if edge_len <= max_edge_len:
+                    continue
+
+                # 在边中点插入新节点
+                mid = (p0 + p1) / 2.0
+                try:
+                    uv = self.geometry.project_point_to_surface(tuple(mid), self.surface)
+                    mid_coords = self.geometry.evaluate_point(uv[0], uv[1], self.surface)
+                    normal = self.geometry.get_surface_normal(uv[0], uv[1], self.surface)
+                except Exception:
+                    continue
+
+                mid_node = NodeElement3D(
+                    coords=mid_coords,
+                    idx=self.num_nodes,
+                    surface=self.surface,
+                    uv_params=uv,
+                    normal=normal
+                )
+
+                # 注册新节点
+                self.node_hash_set.add(mid_node.hash)
+                self.node_list.append(mid_node)
+                self.node_coords.append(mid_node.coords)
+                self.node_dict[mid_node.idx] = mid_node
+                self.node_hash_map[mid_node.hash] = mid_node
+                self._used_node_idx.add(mid_node.idx)
+                self.num_nodes += 1
+
+                # 更新边计数：移除旧边 h0-h1，添加 h0-mid 和 mid-h1
+                old_edge = frozenset([h0, h1])
+                old_count = self.edge_count.get(old_edge, 0)
+                if old_count > 1:
+                    self.edge_count[old_edge] = old_count - 1
+                else:
+                    self.edge_count.pop(old_edge, None)
+
+                self.edge_count[frozenset([h0, mid_node.hash])] = 1
+                self.edge_count[frozenset([mid_node.hash, h1])] = 1
+
+                added += 1
+                split_done = True
+                break  # 重新追踪边界环
+
+            if not split_done:
                 break
 
-            prev_node = self.node_hash_map.get(prev_h)
-            node_node = self.node_hash_map.get(node_h)
-            next_node = self.node_hash_map.get(next_h)
-            if not prev_node or not node_node or not next_node:
+        if added > 0:
+            info(f"边界环细化: 新增 {added} 个节点")
+        return added
+
+    def _ear_penetrates_existing(self, n0, n1, n2) -> bool:
+        """
+        检查耳朵三角形是否穿透已有三角形（节点包含检查）。
+
+        与 _triangle_intersects_existing_loose 的区别：
+        - 只检查节点包含，不检查边相交
+        - 跳过共享节点的三角形（它们是相邻的，不是穿透）
+        - 用于边界闭合，允许曲面上的三角形接近
+
+        Returns:
+            True 表示穿透（应拒绝）
+        """
+        if self.space_index_triangle is None or not self.triangle_list:
+            return False
+        new_hashes = {n0.hash, n1.hash, n2.hash}
+        new_coords = np.array([n0.coords, n1.coords, n2.coords])
+        padding = self.sizing_field.global_spacing * 0.5
+        bbox = (
+            new_coords[:, 0].min() - padding, new_coords[:, 1].min() - padding, new_coords[:, 2].min() - padding,
+            new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
+        )
+
+        for tri_id in self.space_index_triangle.intersection(bbox):
+            if tri_id not in self._triangle_dict:
+                continue
+            existing = self._triangle_dict[tri_id]
+            ex_hash_list = [nd.hash for nd in existing.nodes]
+            shared = set(ex_hash_list) & new_hashes
+            # 跳过共享节点的三角形
+            if shared:
+                continue
+            ex_coords = np.array([nd.coords for nd in existing.nodes])
+            # 检查新三角形的节点是否在已有三角形内部
+            for pt in new_coords:
+                if point_in_triangle_3d(pt, ex_coords[0], ex_coords[1], ex_coords[2]):
+                    return True
+            # 检查已有三角形的节点是否在新三角形内部
+            for pt in ex_coords:
+                if point_in_triangle_3d(pt, new_coords[0], new_coords[1], new_coords[2]):
+                    return True
+        return False
+
+    def _ear_too_close(self, n0, n1, n2, min_dist: float) -> bool:
+        """
+        检查耳朵三角形与已有三角形的最小边距离是否过小。
+
+        与 _check_min_edge_distance 类似，但跳过共享节点的三角形。
+
+        Returns:
+            True 表示距离过小（应拒绝）
+        """
+        if self.space_index_triangle is None or not self.triangle_list:
+            return False
+        new_hashes = {n0.hash, n1.hash, n2.hash}
+        new_coords = np.array([n0.coords, n1.coords, n2.coords])
+        padding = self.sizing_field.global_spacing * 0.5
+        bbox = (
+            new_coords[:, 0].min() - padding, new_coords[:, 1].min() - padding, new_coords[:, 2].min() - padding,
+            new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
+        )
+
+        edges_new = [
+            (new_coords[0], new_coords[1]),
+            (new_coords[1], new_coords[2]),
+            (new_coords[2], new_coords[0])
+        ]
+
+        for tri_id in self.space_index_triangle.intersection(bbox):
+            if tri_id not in self._triangle_dict:
+                continue
+            existing = self._triangle_dict[tri_id]
+            ex_hash_list = [nd.hash for nd in existing.nodes]
+            shared = set(ex_hash_list) & new_hashes
+            if shared:
+                continue
+            ex_coords = np.array([nd.coords for nd in existing.nodes])
+            edges_ex = [
+                (ex_coords[0], ex_coords[1]),
+                (ex_coords[1], ex_coords[2]),
+                (ex_coords[2], ex_coords[0])
+            ]
+            for a1, a2 in edges_new:
+                for b1, b2 in edges_ex:
+                    dist = segment_segment_distance_3d(a1, a2, b1, b2)
+                    if dist < min_dist:
+                        return True
+        return False
+
+    def _process_boundary_loop_conservative(self) -> int:
+        """
+        保守的边界闭环塌缩：遍历边界环，尝试将每个节点作为"耳朵"塌缩。
+
+        使用几何准则（尺寸 + 法向一致性）而非相交检测来判断耳朵有效性。
+        在曲面上，平面三角形天然会与相邻三角形接近，相交检测会产生误报。
+
+        Returns:
+            创建的三角形数量
+        """
+        created = 0
+        max_passes = 500
+
+        for pass_idx in range(max_passes):
+            loop = self._trace_boundary_loop()
+            n_loop = len(loop)
+            if n_loop < 3:
                 break
 
-            if prev_h == node_h or prev_h == next_h or node_h == next_h:
+            if pass_idx % 50 == 0:
+                info(f"保守边界塌缩 pass {pass_idx}: 环长度={n_loop}, 已创建={created}")
+
+            # 尝试所有节点作为耳朵候选，按"耳朵大小"排序
+            candidates = []
+            for i in range(n_loop):
+                node_h = loop[i]
+                prev_h = loop[(i - 1) % n_loop]
+                next_h = loop[(i + 1) % n_loop]
+
+                tri_key = frozenset([prev_h, node_h, next_h])
+                if tri_key in self.triangle_set:
+                    continue
+
+                if (prev_h not in self.node_hash_map or
+                    node_h not in self.node_hash_map or
+                    next_h not in self.node_hash_map):
+                    continue
+
+                if prev_h == node_h or prev_h == next_h or node_h == next_h:
+                    continue
+
+                prev_node = self.node_hash_map[prev_h]
+                node_node = self.node_hash_map[node_h]
+                next_node = self.node_hash_map[next_h]
+
+                p_prev = np.array(prev_node.coords)
+                p_node = np.array(node_node.coords)
+                p_next = np.array(next_node.coords)
+
+                edge1_len = np.linalg.norm(p_node - p_prev)
+                edge2_len = np.linalg.norm(p_next - p_node)
+                edge3_len = np.linalg.norm(p_prev - p_next)
+                max_edge = max(edge1_len, edge2_len, edge3_len)
+
+                # 三角形太大则跳过
+                if max_edge > self._max_edge_len * 1.5:
+                    continue
+
+                # 边饱和检查
+                skip = False
+                for eh in [frozenset([prev_h, node_h]),
+                           frozenset([node_h, next_h]),
+                           frozenset([prev_h, next_h])]:
+                    if self.edge_count.get(eh, 0) >= 2:
+                        skip = True
+                        break
+                if skip:
+                    continue
+
+                # 法向一致性检查：耳朵三角形法向应与曲面法向一致
+                n_prev = self._get_local_surface_normal(prev_node)
+                n_node = self._get_local_surface_normal(node_node)
+                n_next = self._get_local_surface_normal(next_node)
+                avg_normal = (n_prev + n_node + n_next) / 3.0
+                an_len = np.linalg.norm(avg_normal)
+                if an_len > 1e-12:
+                    avg_normal /= an_len
+
+                tri_normal = np.cross(p_next - p_prev, p_node - p_prev)
+                tn_len = np.linalg.norm(tri_normal)
+                if tn_len < 1e-12:
+                    continue  # 退化三角形
+
+                # 法向应一致（点积 > 0）
+                if np.dot(tri_normal, avg_normal) <= 0:
+                    continue
+
+                # 三角形质量检查
+                quality = triangle_quality_from_coords(p_prev, p_node, p_next)
+                if quality < 0.1:
+                    continue
+
+                # 节点包含检查：防止耳朵三角形穿透已有三角形
+                if self._ear_penetrates_existing(prev_node, node_node, next_node):
+                    continue
+
+                score = edge1_len + edge2_len + edge3_len
+                candidates.append((score, i, prev_h, node_h, next_h, tri_key))
+
+            if not candidates:
+                if pass_idx % 50 == 0:
+                    info(f"保守边界塌缩 pass {pass_idx}: 无候选，退出")
                 break
 
-            # 边饱和检查
+            # 优先塌缩小耳朵
+            candidates.sort(key=lambda x: x[0])
+            _, i, prev_h, node_h, next_h, tri_key = candidates[0]
+
+            prev_node = self.node_hash_map[prev_h]
+            node_node = self.node_hash_map[node_h]
+            next_node = self.node_hash_map[next_h]
+
+            # 最终边饱和检查（防止多轮处理导致的竞态）
             skip = False
             for eh in [frozenset([prev_h, node_h]),
                        frozenset([node_h, next_h]),
@@ -352,11 +814,7 @@ class SurfaceMeshGenerator:
                     skip = True
                     break
             if skip:
-                break
-
-            # 相交检查
-            if self._triangle_intersects_existing(prev_node, node_node, next_node):
-                break
+                continue
 
             # 使用局部法向判断绕序
             n_prev = self._get_local_surface_normal(prev_node)
@@ -396,18 +854,6 @@ class SurfaceMeshGenerator:
                     [tri], self.space_index_triangle, self._triangle_dict,
                 )
 
-            # 新边界边 prev→next 需要加入 front_list（旧的两条边已被三角形吸收变为内部边）
-            new_front = SurfaceFront(
-                prev_node, next_node,
-                surface=self.surface,
-                idx=len(self.front_list) + 1,
-                bc_type="wall"
-            )
-            new_front.al = 3.0
-            heapq.heappush(self.front_list, new_front)
-
-            loop.pop(i)
-
         return created
 
     def _close_remaining_triangles(self) -> int:
@@ -434,8 +880,8 @@ class SurfaceMeshGenerator:
             if self.edge_count.get(eh, 0) >= 2:
                 return 0
 
-        # 相交检查
-        if self._triangle_intersects_existing(a_node, b_node, c_node):
+        # 相交检查（闭合三角形时不检查最小距离，允许边界闭合）
+        if self._triangle_intersects_existing(a_node, b_node, c_node, check_min_dist=False):
             return 0
 
         # 使用局部法向
@@ -504,13 +950,14 @@ class SurfaceMeshGenerator:
 
             if selected_node is None:
                 base_front.al *= 1.2
-                if base_front.al < 20:
+                # 增加阈值，允许更积极地搜索
+                if base_front.al < 80:
                     heapq.heappush(self.front_list, base_front)
                 continue
 
             if not self._update_mesh(base_front, selected_node):
                 base_front.al *= 1.2
-                if base_front.al < 20:
+                if base_front.al < 80:
                     heapq.heappush(self.front_list, base_front)
                 continue
 
@@ -520,10 +967,41 @@ class SurfaceMeshGenerator:
 
         timer.show_to_console("曲面网格生成完成")
 
+        # 处理所有剩余边界环
+        info("开始处理剩余边界环...")
+        total_boundary_created = 0
+
+        # 多轮细化 + 塌缩：先细化长边，再塌缩耳朵，重复直到稳定
+        for refine_round in range(5):
+            refined = self._refine_boundary_loop(max_edge_ratio=0.8)
+            if refined == 0:
+                break
+            created = 0
+            for _ in range(50):
+                c = self._process_boundary_loop()
+                created += c
+                if c == 0:
+                    break
+            total_boundary_created += created
+            if created == 0 and refined == 0:
+                break
+
+        info(f"边界环处理完成: 共创建 {total_boundary_created} 个三角形")
+
+        # 闭合剩余3节点环
+        close_created = 0
+        for _ in range(100):
+            c = self._close_remaining_triangles()
+            if c == 0:
+                break
+            close_created += c
+        if close_created > 0:
+            info(f"闭合剩余三角形: {close_created} 个")
+
         self._print_statistics()
 
-        # 后处理优化：边交换 + Laplacian 光滑
-        self._optimize_mesh()
+        # 后处理优化：边交换 + Laplacian 光滑（暂时关闭，调试用）
+        # self._optimize_mesh()
 
         return self.triangle_list
 
@@ -634,7 +1112,7 @@ class SurfaceMeshGenerator:
             pass
         return np.array([0.0, 0.0, 1.0])
 
-    def _triangle_intersects_existing(self, n0, n1, n2) -> bool:
+    def _triangle_intersects_existing(self, n0, n1, n2, check_min_dist: bool = True) -> bool:
         """检查三角形 (n0,n1,n2) 是否与已有三角形相交（跳过共享边/顶点）"""
         if self.space_index_triangle is None or not self.triangle_list:
             return False
@@ -646,6 +1124,10 @@ class SurfaceMeshGenerator:
             new_coords[:, 0].min() - padding, new_coords[:, 1].min() - padding, new_coords[:, 2].min() - padding,
             new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
         )
+        # 最小边-边距离阈值（防止曲面上三角形过于接近）
+        # 对于球面等曲面，三角形天然较近，使用更小的阈值
+        min_edge_dist = self.sizing_field.global_spacing * 0.02
+
         for tri_id in self.space_index_triangle.intersection(bbox):
             if tri_id not in self._triangle_dict:
                 continue
@@ -656,6 +1138,9 @@ class SurfaceMeshGenerator:
             if shared_count == 0:
                 if check_triangle_intersection(new_coords, existing):
                     return True
+                # 检查最小边-边距离（仅在启用时检查）
+                if check_min_dist and self._check_min_edge_distance(new_coords, existing, min_edge_dist):
+                    return True
             else:
                 new_shared_idx = [i for i, h in enumerate(new_hash_list) if h in shared]
                 ex_shared_idx = [i for i, h in enumerate(ex_hash_list) if h in shared]
@@ -664,6 +1149,82 @@ class SurfaceMeshGenerator:
                     new_coords, ex_coords, shared_count,
                     new_shared_idx, ex_shared_idx,
                 ):
+                    return True
+        return False
+
+    def _triangle_intersects_existing_loose(self, n0, n1, n2) -> bool:
+        """
+        宽松的相交检查：只检查节点包含，不检查边相交。
+        用于边界环塌缩，允许边界闭合。
+        """
+        if self.space_index_triangle is None or not self.triangle_list:
+            return False
+        new_hashes = {n0.hash, n1.hash, n2.hash}
+        new_coords = np.array([n0.coords, n1.coords, n2.coords])
+        padding = self.sizing_field.global_spacing * 0.5
+        bbox = (
+            new_coords[:, 0].min() - padding, new_coords[:, 1].min() - padding, new_coords[:, 2].min() - padding,
+            new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
+        )
+
+        for tri_id in self.space_index_triangle.intersection(bbox):
+            if tri_id not in self._triangle_dict:
+                continue
+            existing = self._triangle_dict[tri_id]
+            ex_hash_list = [nd.hash for nd in existing.nodes]
+            shared = set(ex_hash_list) & new_hashes
+            # 跳过共享边的三角形
+            if len(shared) >= 2:
+                continue
+            # 跳过共享1个节点的三角形
+            if len(shared) == 1:
+                continue
+            # 无共享节点：检查是否有节点在对方内部
+            ex_coords = np.array([nd.coords for nd in existing.nodes])
+            from .geom_utils import point_in_triangle_3d
+            # 检查新三角形的节点是否在已有三角形内部
+            for pt in new_coords:
+                if point_in_triangle_3d(pt, ex_coords[0], ex_coords[1], ex_coords[2]):
+                    return True
+            # 检查已有三角形的节点是否在新三角形内部
+            for pt in ex_coords:
+                if point_in_triangle_3d(pt, new_coords[0], new_coords[1], new_coords[2]):
+                    return True
+        return False
+
+    def _check_min_edge_distance(
+        self,
+        new_coords: np.ndarray,
+        existing_tri,
+        min_dist: float
+    ) -> bool:
+        """
+        检查新三角形与已有三角形的边-边距离是否过小
+
+        Args:
+            new_coords: 新三角形顶点坐标 (3, 3)
+            existing_tri: 已有三角形对象
+            min_dist: 最小允许距离
+
+        Returns:
+            True 表示距离过小（应拒绝）
+        """
+        ex_coords = np.array([nd.coords for nd in existing_tri.nodes])
+        edges_new = [
+            (new_coords[0], new_coords[1]),
+            (new_coords[1], new_coords[2]),
+            (new_coords[2], new_coords[0])
+        ]
+        edges_ex = [
+            (ex_coords[0], ex_coords[1]),
+            (ex_coords[1], ex_coords[2]),
+            (ex_coords[2], ex_coords[0])
+        ]
+
+        for a1, a2 in edges_new:
+            for b1, b2 in edges_ex:
+                dist = segment_segment_distance_3d(a1, a2, b1, b2)
+                if dist < min_dist:
                     return True
         return False
 
@@ -684,6 +1245,12 @@ class SurfaceMeshGenerator:
 
         tri_key = frozenset([front.node_elems[0].hash, front.node_elems[1].hash, node.hash])
         if tri_key in self.triangle_set:
+            return False
+
+        # 最大边长限制：防止跨越球面直径的大三角形
+        max_edge = self._max_edge_len
+        if (np.linalg.norm(p2 - p0) > max_edge or
+            np.linalg.norm(p2 - p1) > max_edge):
             return False
 
         if check_triangle_degenerate(p0, p1, p2, min_height, min_edge_len):
@@ -862,6 +1429,10 @@ class SurfaceMeshGenerator:
         new_hash_list = [n0.hash, n1.hash, n2.hash]
         new_node_hashes = set(new_hash_list)
 
+        # 最小边-边距离阈值（防止曲面上三角形过于接近）
+        # 对于球面等曲面，三角形天然较近，使用更小的阈值
+        min_edge_dist = self.sizing_field.global_spacing * 0.02
+
         for tri_id in candidate_ids:
             if tri_id not in self._triangle_dict:
                 continue
@@ -873,6 +1444,11 @@ class SurfaceMeshGenerator:
             if shared_count == 0:
                 if check_triangle_intersection(
                     np.array([p0, p1, p2]), existing_tri
+                ):
+                    return True
+                # 检查最小边-边距离
+                if self._check_min_edge_distance(
+                    np.array([p0, p1, p2]), existing_tri, min_edge_dist
                 ):
                     return True
             else:
@@ -1317,9 +1893,9 @@ class SurfaceMeshGenerator:
         return node_ids
 
     def _print_statistics(self):
-        """打印统计信息"""
+        """打印统计信息（质量 + 拓扑）"""
         if self.triangle_list:
-            SurfaceMeshQuality.evaluate_mesh(self.triangle_list, verbose=True)
+            validate_mesh_topology(self.triangle_list, verbose=True)
 
     def export_to_vtk(self, filename: str):
         """

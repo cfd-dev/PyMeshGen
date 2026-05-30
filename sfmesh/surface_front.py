@@ -730,6 +730,9 @@ def discretize_shape_edges(shape, sizing_field) -> dict:
                     node_dict[coords_key] = idx
                     global_idx += 1
                 edge_nodes.append({'coords': coords, 'idx': idx})
+            # 跳过退化边（弧长接近零，例如球面极点处的边）
+            if arc_length < 1e-8:
+                continue
             line_mesh[edge_key] = edge_nodes
             continue
 
@@ -766,6 +769,9 @@ def discretize_shape_edges(shape, sizing_field) -> dict:
 
             edge_nodes.append({'coords': coords, 'idx': idx})
 
+        # 跳过退化边（弧长接近零，例如球面极点处的边）
+        if arc_length < 1e-8:
+            continue
         line_mesh[edge_key] = edge_nodes
 
     return line_mesh

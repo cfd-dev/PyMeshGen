@@ -356,20 +356,20 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
 
     @staticmethod
     def _make_partial_sphere_face():
-        """局部球面片（u:0~π, v:π/6~π/3，远离极点的非退化区域）"""
+        """半球面片（u:0~π, v:0.1~π/2，避免极点退化和 u 接缝）"""
         from OCC.Core.Geom import Geom_SphericalSurface
         from OCC.Core.gp import gp_Ax3, gp_Pnt, gp_Dir
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
         ax3 = gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))
         sphere = Geom_SphericalSurface(ax3, 2.0)
-        return BRepBuilderAPI_MakeFace(sphere, 0, math.pi, math.pi / 6, math.pi / 3, 1e-6).Face()
+        return BRepBuilderAPI_MakeFace(sphere, 0, math.pi, 0.1, math.pi / 2, 1e-6).Face()
 
     # ---------------------------------------------------------------
     # 通用运行与验证
     # ---------------------------------------------------------------
 
     def _run_and_validate(self, face, name, quality_min=None, tri_min=None,
-                          use_line_mesh=True, spacing=1.0):
+                          use_line_mesh=True, spacing=1.0, max_iterations=20000):
         """在给定面上运行 3D AFM 并执行完整验证套件"""
         quality_min = quality_min or self.QUALITY_MIN
         tri_min = tri_min or self.TRI_MIN
@@ -378,7 +378,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
             surface=face,
             global_spacing=spacing,
             curvature_adaptation=True,
-            max_iterations=20000,
+            max_iterations=max_iterations,
         )
 
         if use_line_mesh:
@@ -446,9 +446,10 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         self._run_and_validate(face, "hyperbolic_paraboloid", quality_min=0.25)
 
     def test_afm_partial_sphere(self):
-        """局部球面"""
+        """半球面"""
         face = self._make_partial_sphere_face()
-        self._run_and_validate(face, "partial_sphere", quality_min=0.3, tri_min=15)
+        self._run_and_validate(face, "partial_sphere", quality_min=0.25, tri_min=200,
+                               spacing=0.33, max_iterations=50000)
 
 
 # ============================================================================
