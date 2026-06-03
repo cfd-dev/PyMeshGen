@@ -67,7 +67,63 @@ def validate_mesh_topology(triangles: list, name: str, test_case: unittest.TestC
         f"{name}: 非流形边比例 {bad_ratio:.4f} ({bad_edges}/{total_edges})"
     )
 
-    # 3. 自相交检查（仅检查无共享节点的三角形对，AABB预过滤）
+    # 3. 欧拉示性数检查 (χ = V - E + F)
+    all_node_ids = set()
+    for t in triangles:
+        for j in range(3):
+            all_node_ids.add(t.nodes[j].idx)
+    V = len(all_node_ids)
+    E = len(edge_count)
+    F = len(triangles)
+
+    # 追踪边界环
+    boundary_adj = {}
+    for e, cnt in edge_count.items():
+        if cnt == 1:
+            n0, n1 = e
+            boundary_adj.setdefault(n0, []).append(n1)
+            boundary_adj.setdefault(n1, []).append(n0)
+
+    boundary_visited = set()
+    boundary_loops = []
+    for start in boundary_adj:
+        if start in boundary_visited:
+            continue
+        loop = [start]
+        boundary_visited.add(start)
+        prev = None
+        current = start
+        for _ in range(len(boundary_adj) + 1):
+            nbrs = boundary_adj.get(current, [])
+            nexts = [n for n in nbrs if n != prev]
+            if not nexts:
+                break
+            nxt = nexts[0]
+            if nxt == start:
+                break
+            if nxt in boundary_visited:
+                break
+            loop.append(nxt)
+            boundary_visited.add(nxt)
+            prev, current = current, nxt
+        boundary_loops.append(loop)
+
+    num_boundary_loops = len(boundary_loops)
+    bad_edges = sum(1 for v in edge_count.values() if v > 2)
+
+    chi = V - E + F
+    # 连通开曲面: χ = 2 - 2g - B (g=亏格, B=边界环数)
+    # 对于亏格0的曲面: χ = 2 - B (盘=1, 柱面=0, 环面=-2)
+    expected_chi = 2 - num_boundary_loops
+    if abs(chi - expected_chi) > 2:
+        loop_sizes = sorted([len(lp) for lp in boundary_loops], reverse=True)
+        test_case.fail(
+            f"{name}: 欧拉示性数异常 (χ={chi}, 预期≈{expected_chi}, "
+            f"V={V}, E={E}, F={F}), 边界环={num_boundary_loops} "
+            f"尺寸={loop_sizes}, 非流形边={bad_edges}"
+        )
+
+    # 4. 自相交检查（仅检查无共享节点的三角形对，AABB预过滤）
     if not check_intersection:
         return
 
@@ -395,6 +451,11 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
             f"{name}: 三角形数量不足 ({len(triangles)} < {tri_min})"
         )
 
+        # 先导出 VTK（便于调试时查看网格）
+        output_file = self.output_dir / f"afm_{name}.vtk"
+        generator.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), f"{name}: VTK 文件未生成")
+
         # 拓扑验证
         validate_mesh_topology(triangles, name, self)
 
@@ -410,11 +471,6 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
             face, triangles, name, self,
             coverage_threshold=self.COVERAGE_THRESHOLD
         )
-
-        # 导出 VTK
-        output_file = self.output_dir / f"afm_{name}.vtk"
-        generator.export_to_vtk(str(output_file))
-        self.assertTrue(output_file.exists(), f"{name}: VTK 文件未生成")
 
         return quality, triangles
 
