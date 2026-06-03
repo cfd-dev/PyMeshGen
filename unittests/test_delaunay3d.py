@@ -9,7 +9,7 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from sfmesh.surface_front import discretize_shape_edges
+from sfmesh.surface_front import discretize_shape_edges, SurfaceTriangle, NodeElement3D
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.sizing_field import SurfaceSizingField
 from delaunay3d.bowyer_watson import BowyerWatsonTetGen
@@ -17,6 +17,45 @@ from delaunay3d.sizing import UniformSizing3D
 from data_structure.basic_elements import Tetrahedron
 from utils.geom_toolkit import tetrahedron_volume, tetrahedron_signed_volume
 from optimize.mesh_quality import tetrahedron_shape_quality
+
+
+def read_stl(filename):
+    """读取 ASCII STL 文件，返回 SurfaceTriangle 列表"""
+    triangles = []
+    node_cache = {}
+
+    with open(filename, "r") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    i = 0
+    while i < len(lines):
+        if lines[i].startswith("facet normal"):
+            vertices = []
+            i += 2  # skip "facet normal ..." and "outer loop"
+            while not lines[i].startswith("endloop"):
+                if lines[i].startswith("vertex"):
+                    parts = lines[i].split()
+                    coord = tuple(map(float, parts[1:4]))
+                    if coord not in node_cache:
+                        node_elem = NodeElement3D(
+                            coord, idx=len(node_cache),
+                            uv_params=(0.0, 0.0),
+                        )
+                        node_cache[coord] = node_elem
+                    vertices.append(node_cache[coord])
+                i += 1
+            i += 1  # skip "endloop"
+            i += 1  # skip "endfacet"
+            if len(vertices) == 3:
+                tri = SurfaceTriangle(
+                    vertices[0], vertices[1], vertices[2],
+                    idx=len(triangles),
+                )
+                triangles.append(tri)
+        else:
+            i += 1
+
+    return triangles
 
 
 def generate_cube_surface(cube_size, spacing):
@@ -639,6 +678,106 @@ class TestBowyerWatsonGeometry(unittest.TestCase):
         stats = tetgen.get_quality_stats()
         print(f"\n圆柱体网格: {num_cells} 四面体, "
               f"质量均值={stats.get('quality_mean', 0):.4f}")
+
+
+class TestBowyerWatsonSphereSTL(unittest.TestCase):
+    """Bowyer-Watson 球体 STL 四面体网格生成测试
+
+    从 sphere.stl 读取球面网格，在球体内部生成四面体网格。
+    球心约在原点，半径约 1.0。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.stl_path = Path(project_root) / "unittests" / "test_files" / "3d_cases" / "sphere.stl"
+        cls.sphere_radius = 1.0
+        cls.volume_spacing = 0.3
+        cls.triangles = read_stl(str(cls.stl_path))
+        cls.tetgen = None
+        cls.unstr_grid = None
+
+    def _run_tetgen(self):
+        if self.__class__.unstr_grid is None:
+            tetgen, unstr_grid = run_bowyer_watson(self.triangles, self.volume_spacing)
+            self.__class__.tetgen = tetgen
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.tetgen, self.__class__.unstr_grid
+
+    def test_stl_load(self):
+        """验证 STL 文件加载成功"""
+        self.assertGreater(len(self.triangles), 100,
+                           f"球面三角形不足: {len(self.triangles)}")
+        print(f"\n球面三角形: {len(self.triangles)}")
+
+    def test_sphere_volume_mesh(self):
+        """验证球体内部生成四面体网格"""
+        tetgen, unstr_grid = self._run_tetgen()
+        self.assertIsNotNone(unstr_grid, "球体网格生成失败")
+        num_cells = len([c for c in unstr_grid.cell_container
+                         if isinstance(c, Tetrahedron)])
+        self.assertGreater(num_cells, 0, "未生成四面体")
+        print(f"\n球体四面体: {num_cells}, 节点: {tetgen.num_nodes}")
+
+    def test_sphere_no_degenerate(self):
+        """验证无退化四面体"""
+        tetgen, unstr_grid = self._run_tetgen()
+        degenerate = 0
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Tetrahedron):
+                vol = tetrahedron_volume(cell.p1, cell.p2, cell.p3, cell.p4)
+                if vol <= 1e-12:
+                    degenerate += 1
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
+
+    def test_sphere_volume_coverage(self):
+        """验证体积覆盖率接近 100%"""
+        tetgen, unstr_grid = self._run_tetgen()
+        total_vol = sum(
+            tetrahedron_volume(c.p1, c.p2, c.p3, c.p4)
+            for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron)
+        )
+        expected = (4.0 / 3.0) * np.pi * self.sphere_radius ** 3
+        coverage = total_vol / expected
+        self.assertGreater(coverage, 0.90,
+                           f"体积覆盖率不足: {coverage:.4f}")
+        self.assertLess(coverage, 1.10,
+                        f"体积覆盖率过高: {coverage:.4f}")
+        print(f"\n球体体积覆盖率: {coverage:.4f}, "
+              f"计算={total_vol:.4f}, 理论={expected:.4f}")
+
+    def test_sphere_nodes_bounded(self):
+        """验证所有节点在球体内部"""
+        tetgen, _ = self._run_tetgen()
+        coords = np.array(tetgen.node_coords)
+        dists = np.linalg.norm(coords, axis=1)
+        max_dist = dists.max()
+        self.assertLess(max_dist, self.sphere_radius * 1.05,
+                        f"节点超出球体: max_dist={max_dist:.4f}")
+        print(f"\n节点最大距离: {max_dist:.4f} (半径={self.sphere_radius})")
+
+    def test_sphere_quality(self):
+        """验证网格质量"""
+        tetgen, _ = self._run_tetgen()
+        stats = tetgen.get_quality_stats()
+        mean_q = stats.get('quality_mean', 0)
+        self.assertGreater(mean_q, 0.3,
+                           f"平均质量过低: {mean_q:.4f}")
+        self.assertGreater(stats.get('quality_min', 0), -1e-10,
+                           f"最小质量异常: {stats.get('quality_min', 0):.4f}")
+        print(f"\n球体质量: 均值={mean_q:.4f}, "
+              f"最小={stats.get('quality_min', 0):.4f}")
+
+    def test_sphere_vtk_export(self):
+        """验证 VTK 导出"""
+        tetgen, _ = self._run_tetgen()
+        output_file = self.output_dir / "delaunay_sphere_stl.vtk"
+        tetgen.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未创建")
+        self.assertGreater(output_file.stat().st_size, 0, "VTK 文件为空")
+        print(f"\nVTK 输出: {output_file}")
 
 
 class TestBowyerWatsonVTKExport(unittest.TestCase):
