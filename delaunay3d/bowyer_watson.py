@@ -42,6 +42,10 @@ class BowyerWatsonTetGen:
         self.boundary_halfspaces = []
         self._boundary_planes = []
 
+        # 预计算表面三角形数据（用于有符号距离计算）
+        self._surf_tri_verts = None   # (N, 3, 3) float64
+        self._surf_tri_normals = None  # (N, 3) float64 inward
+
         # 统计
         self._surface_node_count = 0
         self._interior_node_count = 0
@@ -105,21 +109,110 @@ class BowyerWatsonTetGen:
 
         return planes
 
+    def _precompute_surface_tri_data(self):
+        """预计算表面三角形顶点和法向量，用于有符号距离计算"""
+        n_tris = len(self.surface_triangles)
+        verts = np.empty((n_tris, 3, 3), dtype=np.float64)
+        normals = np.empty((n_tris, 3), dtype=np.float64)
+
+        for i, tri in enumerate(self.surface_triangles):
+            for j in range(3):
+                verts[i, j] = tri.nodes[j].coords
+            # 使用 boundary_halfspaces 中已计算的内法向量
+            normal, ref = self.boundary_halfspaces[i]
+            normals[i] = normal
+
+        self._surf_tri_verts = verts
+        self._surf_tri_normals = normals
+
+    @staticmethod
+    def _closest_point_on_triangle(p, a, b, c):
+        """计算点 p 到三角形 (a, b, c) 的最近点"""
+        ab = b - a
+        ac = c - a
+        ap = p - a
+
+        d1 = np.dot(ab, ap)
+        d2 = np.dot(ac, ap)
+        if d1 <= 0.0 and d2 <= 0.0:
+            return a  # 最近点是顶点 a
+
+        bp = p - b
+        d3 = np.dot(ab, bp)
+        d4 = np.dot(ac, bp)
+        if d3 >= 0.0 and d4 <= d3:
+            return b  # 最近点是顶点 b
+
+        vc = d1 * d4 - d3 * d2
+        if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+            v = d1 / (d1 - d3)
+            return a + v * ab  # 最近点在边 ab 上
+
+        cp = p - c
+        d5 = np.dot(ab, cp)
+        d6 = np.dot(ac, cp)
+        if d6 >= 0.0 and d5 <= d6:
+            return c  # 最近点是顶点 c
+
+        vb = d5 * d2 - d1 * d6
+        if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+            w = d2 / (d2 - d6)
+            return a + w * ac  # 最近点在边 ac 上
+
+        va = d3 * d6 - d5 * d4
+        if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+            w = (d4 - d3) / ((d4 - d3) + (d5 - d6))
+            return b + w * (c - b)  # 最近点在边 bc 上
+
+        # 最近点在三角形内部
+        denom = 1.0 / (va + vb + vc)
+        v = vb * denom
+        w = vc * denom
+        return a + ab * v + ac * w
+
+    def _signed_distance_to_surface(self, point):
+        """计算点到表面网格的有符号距离
+
+        负值表示点在表面内部，正值表示在外部。
+        使用最近三角形的内法向量确定符号。
+        """
+        if self._surf_tri_verts is None:
+            self._precompute_surface_tri_data()
+
+        p = np.array(point, dtype=np.float64)
+        min_dist = np.inf
+        sign = -1.0  # 默认内部
+
+        for i in range(len(self._surf_tri_verts)):
+            a = self._surf_tri_verts[i, 0]
+            b = self._surf_tri_verts[i, 1]
+            c = self._surf_tri_verts[i, 2]
+            n = self._surf_tri_normals[i]
+
+            closest = self._closest_point_on_triangle(p, a, b, c)
+            diff = p - closest
+            dist = np.linalg.norm(diff)
+
+            if dist < min_dist:
+                min_dist = dist
+                # 用内法向量确定符号：正投影 = 在内侧（内部）
+                proj = np.dot(diff, n)
+                sign = -1.0 if proj >= 0.0 else 1.0
+
+        return sign * min_dist
+
     def _is_inside_boundary(self, point):
         """检查点是否在封闭体积内部
 
-        对于凸几何体（球、圆柱、盒子等），点在内部当且仅当
-        在所有边界面的内侧。
+        使用有符号距离到表面网格：负值 = 内部，正值 = 外部。
+        对于曲面（如球面），这比平面半空间检查更准确。
         """
-        if not self._boundary_planes:
+        if not self.boundary_halfspaces:
             return True
 
-        pt = np.array(point)
-        tol = self.sizing_system.global_spacing * 0.01
-        for normal, d_val in self._boundary_planes:
-            if np.dot(normal, pt) < d_val - tol:
-                return False
-        return True
+        sd = self._signed_distance_to_surface(point)
+        # 使用小正容差，允许表面上的点
+        return sd <= self.sizing_system.global_spacing * 0.01
 
     def _generate_interior_nodes(self):
         """在边界内部生成规则网格节点"""
@@ -1144,8 +1237,8 @@ class BowyerWatsonTetGen:
                 (list(normal), list(coords[0]))
             )
 
-        self._boundary_planes = self._compute_boundary_planes()
-        info(f"边界平面: {len(self._boundary_planes)}")
+        self._precompute_surface_tri_data()
+        info(f"表面三角形: {len(self.surface_triangles)}, 已预计算有符号距离数据")
 
         # 2. 生成内部节点
         interior_nodes = self._generate_interior_nodes()
