@@ -305,20 +305,76 @@ def tetrahedron_volume(p1, p2, p3, p4):
     p2_z = p2[2] if len(p2) > 2 else 0
     p3_z = p3[2] if len(p3) > 2 else 0
     p4_z = p4[2] if len(p4) > 2 else 0
-    
+
     # 向量法计算体积
     v1 = [p2[0] - p1[0], p2[1] - p1[1], p2_z - p1_z]
     v2 = [p3[0] - p1[0], p3[1] - p1[1], p3_z - p1_z]
     v3 = [p4[0] - p1[0], p4[1] - p1[1], p4_z - p1_z]
-    
+
     # 计算三重标量积（行列式）
     det = (
         v1[0] * (v2[1] * v3[2] - v2[2] * v3[1]) -
         v1[1] * (v2[0] * v3[2] - v2[2] * v3[0]) +
         v1[2] * (v2[0] * v3[1] - v2[1] * v3[0])
     )
-    
+
     return abs(det) / 6.0
+
+
+def tetrahedron_signed_volume(p1, p2, p3, p4):
+    """计算四面体有符号体积（正值=正向绕向，负值=反向绕向）"""
+    p1_z = p1[2] if len(p1) > 2 else 0
+    p2_z = p2[2] if len(p2) > 2 else 0
+    p3_z = p3[2] if len(p3) > 2 else 0
+    p4_z = p4[2] if len(p4) > 2 else 0
+
+    v1 = [p2[0] - p1[0], p2[1] - p1[1], p2_z - p1_z]
+    v2 = [p3[0] - p1[0], p3[1] - p1[1], p3_z - p1_z]
+    v3 = [p4[0] - p1[0], p4[1] - p1[1], p4_z - p1_z]
+
+    det = (
+        v1[0] * (v2[1] * v3[2] - v2[2] * v3[1]) -
+        v1[1] * (v2[0] * v3[2] - v2[2] * v3[0]) +
+        v1[2] * (v2[0] * v3[1] - v2[1] * v3[0])
+    )
+
+    return det / 6.0
+
+
+def circumsphere(p1, p2, p3, p4):
+    """计算四面体外接球心和半径平方
+
+    返回: (center, radius_squared)
+    """
+    import numpy as np
+    v0 = np.array(p1, dtype=float)
+    v1 = np.array(p2, dtype=float)
+    v2 = np.array(p3, dtype=float)
+    v3 = np.array(p4, dtype=float)
+
+    e1 = v1 - v0
+    e2 = v2 - v0
+    e3 = v3 - v0
+
+    s1 = np.dot(e1, e1)
+    s2 = np.dot(e2, e2)
+    s3 = np.dot(e3, e3)
+
+    det = np.dot(e1, np.cross(e2, e3))
+
+    if abs(det) < 1e-30:
+        # 退化情况：使用最小包围球
+        center = (v0 + v1 + v2 + v3) / 4.0
+        r2 = max(np.linalg.norm(v - center) ** 2 for v in [v0, v1, v2, v3])
+        return center.tolist(), r2
+
+    t1 = np.cross(e1, e2)
+    t2 = np.cross(e3, e1)
+
+    center = v0 + (s3 * t1 + s2 * t2 + s1 * np.cross(e2, e3)) / (2.0 * det)
+    r2 = float(np.linalg.norm(v0 - center) ** 2)
+
+    return center.tolist(), r2
 
 
 def pyramid_volume(p1, p2, p3, p4, p5):

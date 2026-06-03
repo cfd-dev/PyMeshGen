@@ -562,6 +562,42 @@ def tetrahedron_shape_quality(p1, p2, p3, p4):
     return quality
 
 
+def tetrahedron_shape_quality_v2(p1, p2, p3, p4):
+    """计算四面体形状质量（基于外接球的形状偏斜度）
+
+    项目设计文档 3.2.2 节：
+    Q_shape = 1 - 6*sqrt(2) * V / L_rms^3
+    其中 L_rms^2 = (1/6) * sum(l_i^2)
+
+    返回值: 1.0 = 正四面体（最优），0.0 = 退化
+    """
+    from utils.geom_toolkit import tetrahedron_volume, calculate_distance
+
+    edges = [
+        calculate_distance(p1, p2),
+        calculate_distance(p2, p3),
+        calculate_distance(p3, p1),
+        calculate_distance(p1, p4),
+        calculate_distance(p2, p4),
+        calculate_distance(p3, p4),
+    ]
+
+    volume = tetrahedron_volume(p1, p2, p3, p4)
+    lrms2 = sum(e ** 2 for e in edges) / 6.0
+
+    if lrms2 == 0 or volume <= 0:
+        return 0.0
+
+    lrms3 = lrms2 * (lrms2 ** 0.5)
+    shreg = 6.0 * (2.0 ** 0.5)
+
+    quality = shreg * volume / lrms3
+    # 裁剪到 [0, 1] 范围
+    quality = max(0.0, min(1.0, quality))
+
+    return quality
+
+
 def tetrahedron_skewness(p1, p2, p3, p4):
     """计算四面体的偏斜度（基于二面角）"""
     # 计算四面体的六个二面角
