@@ -49,6 +49,36 @@ def generate_cube_surface(cube_size, spacing):
     return all_triangles
 
 
+def generate_cube_surface_fine(cube_size, spacing):
+    """生成立方体细密曲面网格（逐面生成，max_iterations=10000）"""
+    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_FACE
+    from OCC.Core.gp import gp_Pnt
+
+    box = BRepPrimAPI_MakeBox(gp_Pnt(0, 0, 0), cube_size, cube_size, cube_size).Shape()
+    faces = []
+    explorer = TopExp_Explorer(box, TopAbs_FACE)
+    while explorer.More():
+        faces.append(explorer.Current())
+        explorer.Next()
+
+    all_triangles = []
+    for face in faces:
+        sizing = SurfaceSizingField(global_spacing=spacing)
+        line_mesh = discretize_shape_edges(face, sizing)
+        generator = SurfaceMeshGenerator(
+            surface=face,
+            global_spacing=spacing,
+            curvature_adaptation=False,
+            max_iterations=10000,
+            line_mesh=line_mesh,
+        )
+        all_triangles.extend(generator.generate())
+
+    return all_triangles
+
+
 def run_bowyer_watson(surface_triangles, volume_spacing):
     """运行 BowyerWatsonTetGen 并返回结果"""
     sizing = UniformSizing3D(volume_spacing)
@@ -149,6 +179,105 @@ class TestBowyerWatsonCube(unittest.TestCase):
 
         self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
         print(f"\n四面体总数: {len(unstr_grid.cell_container)}, 退化: {degenerate}")
+
+
+class TestBowyerWatsonCubeFineMesh(unittest.TestCase):
+    """Bowyer-Watson 立方体细密面网格四面体生成测试
+
+    使用 spacing=0.25 的细密面网格作为输入，验证 Delaunay 四面体生成。
+    对应 test_sfmesh_3d_afm.TestCubeAFM.test_cube_fine_mesh 的体网格版本。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.cube_size = 2.0
+        cls.surface_spacing = 0.25
+        cls.volume_spacing = 0.5
+        cls.all_triangles = generate_cube_surface_fine(cls.cube_size, cls.surface_spacing)
+        cls.tetgen = None
+        cls.unstr_grid = None
+
+    def _run_tetgen(self):
+        if self.__class__.unstr_grid is None:
+            tetgen, unstr_grid = run_bowyer_watson(self.all_triangles, self.volume_spacing)
+            self.__class__.tetgen = tetgen
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.tetgen, self.__class__.unstr_grid
+
+    def test_fine_surface_mesh_count(self):
+        """验证细密面网格三角形数量 > 150"""
+        self.assertGreater(len(self.all_triangles), 150,
+                           f"细密面网格三角形不足: {len(self.all_triangles)}")
+        print(f"\n细密面网格三角形: {len(self.all_triangles)}")
+
+    def test_fine_volume_mesh_generation(self):
+        """验证细密面网格能生成四面体网格"""
+        tetgen, unstr_grid = self._run_tetgen()
+        self.assertIsNotNone(unstr_grid, "细密面网格四面体生成失败")
+        num_cells = len([c for c in unstr_grid.cell_container
+                         if isinstance(c, Tetrahedron)])
+        self.assertGreater(num_cells, 0, "未生成四面体")
+        print(f"\n细密网格四面体: {num_cells}, 节点: {tetgen.num_nodes}")
+
+    def test_fine_no_degenerate_tets(self):
+        """验证无退化四面体"""
+        tetgen, unstr_grid = self._run_tetgen()
+        degenerate = 0
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Tetrahedron):
+                vol = tetrahedron_volume(cell.p1, cell.p2, cell.p3, cell.p4)
+                if vol <= 1e-12:
+                    degenerate += 1
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
+
+    def test_fine_volume_coverage(self):
+        """验证体积覆盖率接近 100%"""
+        tetgen, unstr_grid = self._run_tetgen()
+        total_vol = sum(
+            tetrahedron_volume(c.p1, c.p2, c.p3, c.p4)
+            for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron)
+        )
+        expected = self.cube_size ** 3
+        coverage = total_vol / expected
+        self.assertGreater(coverage, 0.95,
+                           f"体积覆盖率不足: {coverage:.4f}")
+        self.assertLess(coverage, 1.05,
+                        f"体积覆盖率过高: {coverage:.4f}")
+        print(f"\n体积覆盖率: {coverage:.4f}")
+
+    def test_fine_boundary_containment(self):
+        """验证所有节点在立方体边界内"""
+        tetgen, _ = self._run_tetgen()
+        coords = np.array(tetgen.node_coords)
+        mins = coords.min(axis=0)
+        maxs = coords.max(axis=0)
+        tol = 1e-6
+        for i, name in enumerate(['x', 'y', 'z']):
+            self.assertGreaterEqual(mins[i], -tol,
+                                    f"节点超出{name}下界: {mins[i]}")
+            self.assertLessEqual(maxs[i], self.cube_size + tol,
+                                 f"节点超出{name}上界: {maxs[i]}")
+
+    def test_fine_quality_mean(self):
+        """验证平均质量 > 0.5"""
+        tetgen, _ = self._run_tetgen()
+        stats = tetgen.get_quality_stats()
+        mean_q = stats.get('quality_mean', 0)
+        self.assertGreater(mean_q, 0.5,
+                           f"平均质量过低: {mean_q:.4f}")
+        print(f"\n质量均值: {mean_q:.4f}, 最小: {stats.get('quality_min', 0):.4f}")
+
+    def test_fine_vtk_export(self):
+        """验证 VTK 导出"""
+        tetgen, _ = self._run_tetgen()
+        output_file = self.output_dir / "delaunay_cube_fine.vtk"
+        tetgen.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未创建")
+        self.assertGreater(output_file.stat().st_size, 0, "VTK 文件为空")
+        print(f"\nVTK 输出: {output_file}")
 
 
 class TestBowyerWatsonVolumeCoverage(unittest.TestCase):
