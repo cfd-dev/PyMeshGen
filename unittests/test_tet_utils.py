@@ -13,6 +13,9 @@ from delaunay3d.tet_utils import (
     create_super_tetrahedron_coords,
     compute_max_edge_length,
     node_hash,
+    build_node_to_cells,
+    validate_tetrahedron,
+    compute_surface_max_edge_length,
 )
 
 
@@ -381,6 +384,139 @@ class TestNodeHash(unittest.TestCase):
         h2 = node_hash([1.0000002, 2.0, 3.0])
         # 6位小数截断后应该相同
         self.assertEqual(h1, h2)
+
+
+class TestBuildNodeToCells(unittest.TestCase):
+    """节点到单元映射测试"""
+
+    def test_single_tet(self):
+        """单个四面体的节点映射"""
+        tets = [MockTetrahedron(0, 1, 2, 3)]
+        node_cells = build_node_to_cells(tets)
+        self.assertEqual(len(node_cells), 4)
+        for nid in range(4):
+            self.assertIn(nid, node_cells)
+            self.assertEqual(len(node_cells[nid]), 1)
+            self.assertEqual(node_cells[nid][0], 0)
+
+    def test_two_tets(self):
+        """两个四面体的节点映射"""
+        tets = [
+            MockTetrahedron(0, 1, 2, 3),
+            MockTetrahedron(0, 1, 2, 4),
+        ]
+        node_cells = build_node_to_cells(tets)
+        # 节点0,1,2应该在两个四面体中
+        for nid in [0, 1, 2]:
+            self.assertEqual(len(node_cells[nid]), 2)
+        # 节点3,4应该只在一个四面体中
+        self.assertEqual(len(node_cells[3]), 1)
+        self.assertEqual(len(node_cells[4]), 1)
+
+    def test_empty_list(self):
+        """空列表"""
+        node_cells = build_node_to_cells([])
+        self.assertEqual(len(node_cells), 0)
+
+
+class TestValidateTetrahedron(unittest.TestCase):
+    """四面体验证测试"""
+
+    def test_valid_tet(self):
+        """有效四面体"""
+        tet = MockTetrahedron(0, 1, 2, 3)
+        tet.p1 = [0.0, 0.0, 0.0]
+        tet.p2 = [1.0, 0.0, 0.0]
+        tet.p3 = [0.0, 1.0, 0.0]
+        tet.p4 = [0.0, 0.0, 1.0]
+        self.assertTrue(validate_tetrahedron(tet))
+
+    def test_degenerate_tet(self):
+        """退化四面体（零体积）"""
+        tet = MockTetrahedron(0, 1, 2, 3)
+        tet.p1 = [0.0, 0.0, 0.0]
+        tet.p2 = [1.0, 0.0, 0.0]
+        tet.p3 = [2.0, 0.0, 0.0]  # 共线
+        tet.p4 = [0.0, 1.0, 0.0]
+        self.assertFalse(validate_tetrahedron(tet))
+
+    def test_with_boundary_check(self):
+        """带边界检查的验证"""
+        tet = MockTetrahedron(0, 1, 2, 3)
+        tet.p1 = [0.0, 0.0, 0.0]
+        tet.p2 = [1.0, 0.0, 0.0]
+        tet.p3 = [0.0, 1.0, 0.0]
+        tet.p4 = [0.0, 0.0, 1.0]
+
+        # 边界检查函数：形心在单位盒内
+        def check_boundary(centroid):
+            return all(0 <= c <= 1 for c in centroid)
+
+        self.assertTrue(validate_tetrahedron(tet, check_boundary))
+
+    def test_outside_boundary(self):
+        """形心在边界外"""
+        tet = MockTetrahedron(0, 1, 2, 3)
+        tet.p1 = [10.0, 10.0, 10.0]
+        tet.p2 = [11.0, 10.0, 10.0]
+        tet.p3 = [10.0, 11.0, 10.0]
+        tet.p4 = [10.0, 10.0, 11.0]
+
+        # 边界检查函数：形心在单位盒内
+        def check_boundary(centroid):
+            return all(0 <= c <= 1 for c in centroid)
+
+        self.assertFalse(validate_tetrahedron(tet, check_boundary))
+
+
+class MockSurfaceTriangle:
+    """模拟表面三角形"""
+    def __init__(self, nodes):
+        self.nodes = nodes
+        self.node_ids = [n.idx for n in nodes]
+
+
+class MockNode3D:
+    """模拟3D节点"""
+    def __init__(self, coords, idx=0):
+        self.coords = tuple(coords)
+        self.idx = idx
+
+
+class TestComputeSurfaceMaxEdgeLength(unittest.TestCase):
+    """表面最大边长计算测试"""
+
+    def test_single_triangle(self):
+        """单个三角形"""
+        nodes = [
+            MockNode3D([0, 0, 0], 0),
+            MockNode3D([1, 0, 0], 1),
+            MockNode3D([0, 1, 0], 2),
+        ]
+        tri = MockSurfaceTriangle(nodes)
+        max_len = compute_surface_max_edge_length([tri])
+        self.assertAlmostEqual(max_len, np.sqrt(2), places=10)
+
+    def test_multiple_triangles(self):
+        """多个三角形"""
+        tri1 = MockSurfaceTriangle([
+            MockNode3D([0, 0, 0], 0),
+            MockNode3D([1, 0, 0], 1),
+            MockNode3D([0, 1, 0], 2),
+        ])
+        tri2 = MockSurfaceTriangle([
+            MockNode3D([0, 0, 0], 0),
+            MockNode3D([3, 0, 0], 3),  # 更长的边
+            MockNode3D([1.5, 1, 0], 4),
+        ])
+        max_len = compute_surface_max_edge_length([tri1, tri2])
+        # 最长边是 [0,0,0] 到 [3,0,0] = 3.0
+        self.assertAlmostEqual(max_len, 3.0, places=10)
+
+    def test_empty_list(self):
+        """空列表"""
+        max_len = compute_surface_max_edge_length([])
+        self.assertEqual(max_len, 1.0)
 
 
 if __name__ == '__main__':

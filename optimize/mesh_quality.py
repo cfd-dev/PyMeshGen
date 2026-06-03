@@ -676,6 +676,42 @@ def tetrahedron_aspect_ratio(p1, p2, p3, p4):
     return max_edge / min_edge if min_edge > 1e-12 else 0.0
 
 
+def compute_mesh_quality_stats(cell_container):
+    """计算四面体网格质量统计
+
+    Args:
+        cell_container: list[Tetrahedron], 四面体列表（需有 p1, p2, p3, p4, node_ids 属性）
+
+    Returns:
+        dict: 质量统计信息，包含 num_cells, num_nodes, quality_mean, quality_min,
+              quality_max, volume_total, volume_min, volume_max
+    """
+    if not cell_container:
+        return {}
+
+    qualities = []
+    volumes = []
+    for cell in cell_container:
+        if hasattr(cell, 'p1') and hasattr(cell, 'p2') and hasattr(cell, 'p3') and hasattr(cell, 'p4'):
+            q = tetrahedron_shape_quality(cell.p1, cell.p2, cell.p3, cell.p4)
+            v = tetrahedron_volume(cell.p1, cell.p2, cell.p3, cell.p4)
+            qualities.append(q)
+            volumes.append(v)
+
+    if not qualities:
+        return {}
+
+    return {
+        'num_cells': len(cell_container),
+        'quality_mean': sum(qualities) / len(qualities),
+        'quality_min': min(qualities),
+        'quality_max': max(qualities),
+        'volume_total': sum(volumes),
+        'volume_min': min(volumes),
+        'volume_max': max(volumes),
+    }
+
+
 def pyramid_shape_quality(p1, p2, p3, p4, p5):
     """计算金字塔网格质量（基于体积与棱长平方比）
     金字塔由一个四边形底面(p1,p2,p3,p4)和一个顶点(p5)组成

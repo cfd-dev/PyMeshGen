@@ -6,16 +6,18 @@ from utils.geom_toolkit import (
     tetrahedron_volume, tetrahedron_signed_volume,
     calculate_distance, circumsphere,
 )
-from optimize.mesh_quality import tetrahedron_shape_quality, tetrahedron_shape_quality_v2
+from optimize.mesh_quality import tetrahedron_shape_quality, tetrahedron_shape_quality_v2, compute_mesh_quality_stats
 from data_structure.basic_elements import NodeElement, Tetrahedron
 from data_structure.unstructured_grid import Unstructured_Grid
 from utils.timer import TimeSpan
 from utils.message import info, warning, error
+from fileIO.vtk_io import write_vtk
 from delaunay3d.sizing import UniformSizing3D
 from delaunay3d.tet_utils import (
     tet_faces, tet_edges, tet_centroid, in_circumsphere,
     find_boundary_faces, build_face_to_tets, build_edge_to_tets,
     create_super_tetrahedron_coords, compute_max_edge_length, node_hash,
+    build_node_to_cells, validate_tetrahedron, compute_surface_max_edge_length,
 )
 
 
@@ -56,19 +58,8 @@ class BowyerWatsonTetGen:
 
     @staticmethod
     def _compute_max_edge_length(surface_triangles):
-        """从边界面网格计算最大边长"""
-        max_len = 0.0
-        for tri in surface_triangles:
-            nodes = tri.nodes
-            for i in range(3):
-                for j in range(i + 1, 3):
-                    dx = nodes[i].coords[0] - nodes[j].coords[0]
-                    dy = nodes[i].coords[1] - nodes[j].coords[1]
-                    dz = nodes[i].coords[2] - nodes[j].coords[2]
-                    edge_len = (dx * dx + dy * dy + dz * dz) ** 0.5
-                    if edge_len > max_len:
-                        max_len = edge_len
-        return max_len if max_len > 0 else 1.0
+        """从边界面网格计算最大边长（委托给 tet_utils）"""
+        return compute_surface_max_edge_length(surface_triangles)
 
     @staticmethod
     def _compute_max_edge_length_v2(tet):
@@ -127,7 +118,10 @@ class BowyerWatsonTetGen:
         return bool(self._classify_points_batch([point])[0])
 
     def _generate_interior_nodes(self):
-        """在边界内部生成规则网格节点（批量射线投射判断）"""
+        """在边界内部生成自适应网格节点（批量射线投射判断）
+
+        使用尺寸场确定局部间距，实现自适应节点分布。
+        """
         if not self.node_coords:
             return []
 
@@ -135,12 +129,19 @@ class BowyerWatsonTetGen:
         mins = coords.min(axis=0)
         maxs = coords.max(axis=0)
 
-        spacing = self.sizing_system.global_spacing
+        # 使用全局间距生成基础网格，然后根据尺寸场过滤
+        base_spacing = self.sizing_system.global_spacing
 
-        # 生成所有候选网格点
-        x_range = np.arange(mins[0] + spacing * 0.5, maxs[0], spacing)
-        y_range = np.arange(mins[1] + spacing * 0.5, maxs[1], spacing)
-        z_range = np.arange(mins[2] + spacing * 0.5, maxs[2], spacing)
+        # 生成所有候选网格点（使用最小可能间距）
+        # 计算尺寸场中的最小间距
+        min_spacing = base_spacing
+        if hasattr(self.sizing_system, 'min_size') and self.sizing_system.min_size > 0:
+            min_spacing = min(base_spacing, self.sizing_system.min_size)
+
+        # 使用最小间距生成候选点
+        x_range = np.arange(mins[0] + min_spacing * 0.5, maxs[0], min_spacing)
+        y_range = np.arange(mins[1] + min_spacing * 0.5, maxs[1], min_spacing)
+        z_range = np.arange(mins[2] + min_spacing * 0.5, maxs[2], min_spacing)
 
         xx, yy, zz = np.meshgrid(x_range, y_range, z_range, indexing='ij')
         all_points = np.column_stack([xx.ravel(), yy.ravel(), zz.ravel()])
@@ -153,17 +154,36 @@ class BowyerWatsonTetGen:
             if not inside_mask[i]:
                 continue
             point = all_points[i].tolist()
-            nhash = node_hash(point)
-            if nhash not in self.node_hash_list:
-                node_elem = NodeElement(
-                    point, self.num_nodes,
-                    part_name="interior-node", bc_type="interior",
-                )
-                interior_nodes.append(node_elem)
-                self.node_coords.append(point)
-                self.node_elem_by_hash[nhash] = node_elem
-                self.node_hash_list.add(nhash)
-                self.num_nodes += 1
+
+            # 获取该点处的局部间距
+            local_spacing = self.sizing_system.spacing_at(point)
+
+            # 根据局部间距决定是否保留该点
+            # 使用网格对齐策略：只保留距离为 local_spacing 倍数的点
+            offset_x = (point[0] - mins[0]) % local_spacing
+            offset_y = (point[1] - mins[1]) % local_spacing
+            offset_z = (point[2] - mins[2]) % local_spacing
+
+            # 检查是否接近网格点（容差为 min_spacing 的 10%）
+            tol = min_spacing * 0.1
+            if (offset_x < tol or offset_x > local_spacing - tol or
+                abs(offset_x - local_spacing * 0.5) < tol):
+                if (offset_y < tol or offset_y > local_spacing - tol or
+                    abs(offset_y - local_spacing * 0.5) < tol):
+                    if (offset_z < tol or offset_z > local_spacing - tol or
+                        abs(offset_z - local_spacing * 0.5) < tol):
+
+                        nhash = node_hash(point)
+                        if nhash not in self.node_hash_list:
+                            node_elem = NodeElement(
+                                point, self.num_nodes,
+                                part_name="interior-node", bc_type="interior",
+                            )
+                            interior_nodes.append(node_elem)
+                            self.node_coords.append(point)
+                            self.node_elem_by_hash[nhash] = node_elem
+                            self.node_hash_list.add(nhash)
+                            self.num_nodes += 1
 
         self._interior_node_count = len(interior_nodes)
         return interior_nodes
@@ -325,14 +345,8 @@ class BowyerWatsonTetGen:
             if any(nid in super_ids for nid in tet.node_ids):
                 continue
 
-            # 检查有符号体积
-            sv = tetrahedron_signed_volume(tet.p1, tet.p2, tet.p3, tet.p4)
-            if sv <= 1e-15:
-                continue
-
-            # 检查形心是否在边界内
-            centroid = tet_centroid(tet.p1, tet.p2, tet.p3, tet.p4)
-            if not self._is_inside_boundary(centroid):
+            # 验证四面体有效性（体积 + 边界包含，委托给 tet_utils）
+            if not validate_tetrahedron(tet, self._is_inside_boundary):
                 continue
 
             valid_tets.append(tet)
@@ -803,16 +817,12 @@ class BowyerWatsonTetGen:
         return restored
 
     def _laplacian_smooth(self, iterations=3):
-        """Laplacian 光滑内部节点（8.2.1节）"""
-        # 构建节点-单元邻接
-        node_cells = {}  # node_idx -> list of cell indices
-        for ci, cell in enumerate(self.cell_container):
-            if not isinstance(cell, Tetrahedron):
-                continue
-            for nid in cell.node_ids:
-                if nid not in node_cells:
-                    node_cells[nid] = []
-                node_cells[nid].append(ci)
+        """Laplacian 光滑内部节点（8.2.1节）
+
+        使用尺寸场确定局部移动限制，实现自适应光滑。
+        """
+        # 构建节点-单元邻接（委托给 tet_utils）
+        node_cells = build_node_to_cells(self.cell_container)
 
         # 找出与表面节点相邻的内部节点（这些节点不应远离表面）
         boundary_adjacent = set()
@@ -862,9 +872,10 @@ class BowyerWatsonTetGen:
                 if total_weight > 1e-30:
                     new_pos = weighted_sum / total_weight
 
-                    # 限制移动幅度
+                    # 使用尺寸场确定局部移动限制
                     old_pos = np.array(self.node_coords[nid])
-                    max_move = self.sizing_system.global_spacing * 0.5
+                    local_spacing = self.sizing_system.spacing_at(old_pos.tolist())
+                    max_move = local_spacing * 0.5
 
                     # 对于靠近表面的节点，跳过光滑，防止远离表面造成间隙
                     if nid in boundary_adjacent:
@@ -916,15 +927,15 @@ class BowyerWatsonTetGen:
         """细化超尺寸四面体
 
         对最大边长超过目标间距的四面体，在其外接球心处插入新节点，
-        然后重新三角化。
+        然后重新三角化。使用尺寸场确定局部目标尺寸。
         """
-        target = self.sizing_system.global_spacing
-        threshold = target * 1.5  # 超过1.5倍间距才细化
-
         for iteration in range(max_iterations):
-            # 找出超尺寸四面体
+            # 找出超尺寸四面体（根据局部尺寸判断）
             oversized = []
             for tet in tets:
+                centroid = tet_centroid(tet.p1, tet.p2, tet.p3, tet.p4)
+                local_target = self.sizing_system.spacing_at(centroid)
+                threshold = local_target * 1.5  # 超过1.5倍间距才细化
                 if compute_max_edge_length(tet) > threshold:
                     oversized.append(tet)
 
@@ -937,6 +948,8 @@ class BowyerWatsonTetGen:
             new_nodes = []
             for tet in oversized:
                 center, r2 = circumsphere(tet.p1, tet.p2, tet.p3, tet.p4)
+                # 获取该点处的局部目标尺寸
+                local_target = self.sizing_system.spacing_at(center)
                 # 检查是否在边界内
                 if self._is_inside_boundary(center):
                     # 检查是否与已有节点太近
@@ -945,7 +958,7 @@ class BowyerWatsonTetGen:
                         dx = nc[0] - center[0]
                         dy = nc[1] - center[1]
                         dz = nc[2] - center[2]
-                        if (dx*dx + dy*dy + dz*dz) < (target * 0.3) ** 2:
+                        if (dx*dx + dy*dy + dz*dz) < (local_target * 0.3) ** 2:
                             too_close = True
                             break
                     if not too_close:
@@ -1122,50 +1135,14 @@ class BowyerWatsonTetGen:
 
     def export_to_vtk(self, filename):
         """导出四面体网格为 VTK 文件"""
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write("# vtk DataFile Version 3.0\n")
-            f.write("Tetrahedral Mesh\n")
-            f.write("ASCII\n")
-            f.write("DATASET UNSTRUCTURED_GRID\n")
-
-            f.write(f"POINTS {len(self.node_coords)} float\n")
-            for coord in self.node_coords:
-                f.write(f"{coord[0]:.8f} {coord[1]:.8f} {coord[2]:.8f}\n")
-
-            n_cells = len(self.cell_container)
-            f.write(f"\nCELLS {n_cells} {5 * n_cells}\n")
-            for cell in self.cell_container:
-                ids = cell.node_ids
-                f.write(f"4 {ids[0]} {ids[1]} {ids[2]} {ids[3]}\n")
-
-            f.write(f"\nCELL_TYPES {n_cells}\n")
-            for _ in range(n_cells):
-                f.write("10\n")
+        from data_structure.vtk_types import VTKCellType
+        cell_idx_container = [list(cell.node_ids) for cell in self.cell_container]
+        cell_type_container = [VTKCellType.TETRA] * len(self.cell_container)
+        write_vtk(filename, self.node_coords, cell_idx_container, [], cell_type_container)
 
     def get_quality_stats(self):
-        """计算网格质量统计"""
-        if not self.cell_container:
-            return {}
-
-        qualities = []
-        volumes = []
-        for cell in self.cell_container:
-            if isinstance(cell, Tetrahedron):
-                q = tetrahedron_shape_quality(cell.p1, cell.p2, cell.p3, cell.p4)
-                v = tetrahedron_volume(cell.p1, cell.p2, cell.p3, cell.p4)
-                qualities.append(q)
-                volumes.append(v)
-
-        if not qualities:
-            return {}
-
-        return {
-            'num_cells': len(self.cell_container),
-            'num_nodes': self.num_nodes,
-            'quality_mean': sum(qualities) / len(qualities),
-            'quality_min': min(qualities),
-            'quality_max': max(qualities),
-            'volume_total': sum(volumes),
-            'volume_min': min(volumes),
-            'volume_max': max(volumes),
-        }
+        """计算网格质量统计（委托给 optimize.mesh_quality）"""
+        stats = compute_mesh_quality_stats(self.cell_container)
+        if stats:
+            stats['num_nodes'] = self.num_nodes
+        return stats

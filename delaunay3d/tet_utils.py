@@ -207,3 +207,74 @@ def node_hash(coords):
         int: 哈希值
     """
     return hash(tuple(f"{c:.6f}" for c in coords))
+
+
+def build_node_to_cells(cell_container):
+    """构建节点到单元的映射
+
+    Args:
+        cell_container: list[Tetrahedron], 四面体列表（需有 node_ids 属性）
+
+    Returns:
+        dict: node_idx -> list of cell_indices
+    """
+    node_cells = {}
+    for ci, cell in enumerate(cell_container):
+        if not hasattr(cell, 'node_ids'):
+            continue
+        for nid in cell.node_ids:
+            if nid not in node_cells:
+                node_cells[nid] = []
+            node_cells[nid].append(ci)
+    return node_cells
+
+
+def validate_tetrahedron(tet, check_boundary_func=None):
+    """验证四面体有效性
+
+    检查：
+    1. 有符号体积 > 0
+    2. 形心在边界内（可选）
+
+    Args:
+        tet: Tetrahedron 对象（需有 p1, p2, p3, p4 属性）
+        check_boundary_func: 可选的边界检查函数，接受坐标列表返回 bool
+
+    Returns:
+        bool: True 表示四面体有效
+    """
+    from utils.geom_toolkit import tetrahedron_signed_volume
+
+    sv = tetrahedron_signed_volume(tet.p1, tet.p2, tet.p3, tet.p4)
+    if sv <= 1e-15:
+        return False
+
+    if check_boundary_func is not None:
+        centroid = tet_centroid(tet.p1, tet.p2, tet.p3, tet.p4)
+        if not check_boundary_func(centroid):
+            return False
+
+    return True
+
+
+def compute_surface_max_edge_length(surface_triangles):
+    """从表面三角形网格计算最大边长
+
+    Args:
+        surface_triangles: list of SurfaceTriangle 对象（需有 nodes 属性）
+
+    Returns:
+        float: 最大边长
+    """
+    max_len = 0.0
+    for tri in surface_triangles:
+        nodes = tri.nodes
+        for i in range(3):
+            for j in range(i + 1, 3):
+                dx = nodes[i].coords[0] - nodes[j].coords[0]
+                dy = nodes[i].coords[1] - nodes[j].coords[1]
+                dz = nodes[i].coords[2] - nodes[j].coords[2]
+                edge_len = (dx * dx + dy * dy + dz * dz) ** 0.5
+                if edge_len > max_len:
+                    max_len = edge_len
+    return max_len if max_len > 0 else 1.0
