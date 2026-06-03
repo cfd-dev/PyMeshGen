@@ -219,6 +219,12 @@ class BowyerWatsonTetGen:
         # 构建节点列表（超级四面体节点 + 表面节点 + 内部节点）
         insert_nodes = list(all_nodes)
 
+        # 构建表面面集合（用于约束检查）
+        surface_face_set = set()
+        for tri in self.surface_triangles:
+            face = tuple(sorted(tri.node_ids))
+            surface_face_set.add(face)
+
         # 逐个插入节点
         for step, node in enumerate(insert_nodes):
             if step % 500 == 0 and step > 0:
@@ -239,6 +245,31 @@ class BowyerWatsonTetGen:
 
             if not cavity:
                 continue
+
+            # 约束检查：如果插入内部节点会破坏表面面，则跳过
+            # 只检查腔体内部的表面面（被两个腔体四面体共享的面会被破坏）
+            if node.bc_type == "interior":
+                # 先计算腔体的面频率
+                cavity_face_count = {}
+                for tet in cavity:
+                    tet_node_ids = tet.node_ids
+                    faces = [
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[1], tet_node_ids[2]])),
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[1], tet_node_ids[3]])),
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[2], tet_node_ids[3]])),
+                        tuple(sorted([tet_node_ids[1], tet_node_ids[2], tet_node_ids[3]])),
+                    ]
+                    for face in faces:
+                        cavity_face_count[face] = cavity_face_count.get(face, 0) + 1
+
+                # 检查是否有表面面在腔体内部（出现2次=被两个腔体四面体共享=会被破坏）
+                destroys_surface = False
+                for face, cnt in cavity_face_count.items():
+                    if cnt >= 2 and face in surface_face_set:
+                        destroys_surface = True
+                        break
+                if destroys_surface:
+                    continue
 
             # 2. 找到腔体的边界面
             # 边界面 = 腔体中只被一个腔体四面体使用的面
@@ -580,23 +611,28 @@ class BowyerWatsonTetGen:
             """腔体重构恢复：重构局部腔体来恢复边界面
 
             当交换无法恢复时，通过重构局部腔体来恢复边界面
+            策略：找包含missing_face任意两个节点的四面体，移除它们，然后用(a,b,c)加上边界节点重新三角化
             """
             a, b, c = missing_face
+            missing_set = {a, b, c}
 
-            # 找出包含missing_face任意节点的所有四面体
+            # 找出包含missing_face任意两个节点的所有四面体
             tet_indices = set()
             for ci, cell in enumerate(self.cell_container):
                 if cell is None:
                     continue
                 if not isinstance(cell, Tetrahedron):
                     continue
-                if a in cell.node_ids or b in cell.node_ids or c in cell.node_ids:
+                nids = set(cell.node_ids)
+                # 检查是否包含至少2个missing_face的节点
+                common = nids & missing_set
+                if len(common) >= 2:
                     tet_indices.add(ci)
 
             if not tet_indices:
                 return False
 
-            # 收集腔体的边界面（不包含missing_face任意节点的面）
+            # 收集腔体的边界面（共享给非腔体四面体的面）
             cavity_boundary = []
             for ci in tet_indices:
                 cell = self.cell_container[ci]
@@ -616,13 +652,17 @@ class BowyerWatsonTetGen:
                     if shared:
                         cavity_boundary.append(face)
 
+            if not cavity_boundary:
+                return False
+
             # 尝试重新三角化腔体
-            # 策略：使用missing_face的3个节点加上腔体边界面上的一个节点形成新四面体
+            # 策略：使用(a,b,c)加上腔体边界面上的外部节点形成新四面体
             new_tets = []
+            used_external_nodes = set()
             for face in cavity_boundary:
                 # 找一个不在missing_face中的节点
                 for nid in face:
-                    if nid not in {a, b, c}:
+                    if nid not in missing_set and nid not in used_external_nodes:
                         # 使用(a,b,c,nid)形成新四面体
                         coords_a = self.node_coords[a]
                         coords_b = self.node_coords[b]
@@ -636,6 +676,7 @@ class BowyerWatsonTetGen:
                             n_nid = get_node_obj(nid)
                             if all(n is not None for n in [na, nb, nc, n_nid]):
                                 new_tets.append((na, nb, nc, n_nid))
+                                used_external_nodes.add(nid)
                         break
 
             if not new_tets:
@@ -929,6 +970,140 @@ class BowyerWatsonTetGen:
                                 setattr(cell, attr, new_pos_list)
                                 break
 
+    def _refine_oversized_tets(self, tets, all_nodes, super_ids, max_iterations=5):
+        """细化超尺寸四面体
+
+        对最大边长超过目标间距的四面体，在其外接球心处插入新节点，
+        然后重新三角化。
+        """
+        from itertools import combinations
+        from utils.geom_toolkit import circumsphere
+
+        target = self.sizing_system.global_spacing
+        threshold = target * 1.5  # 超过1.5倍间距才细化
+
+        for iteration in range(max_iterations):
+            # 找出超尺寸四面体
+            oversized = []
+            for tet in tets:
+                coords = [tet.p1, tet.p2, tet.p3, tet.p4]
+                max_edge = 0
+                for i, j in combinations(range(4), 2):
+                    dx = coords[i][0] - coords[j][0]
+                    dy = coords[i][1] - coords[j][1]
+                    dz = coords[i][2] - coords[j][2]
+                    elen = (dx*dx + dy*dy + dz*dz)**0.5
+                    if elen > max_edge:
+                        max_edge = elen
+                if max_edge > threshold:
+                    oversized.append(tet)
+
+            if not oversized:
+                break
+
+            info(f"  细化第{iteration+1}轮: {len(oversized)} 个超尺寸四面体")
+
+            # 在超尺寸四面体的外接球心处插入新节点
+            new_nodes = []
+            for tet in oversized:
+                center, r2 = circumsphere(tet.p1, tet.p2, tet.p3, tet.p4)
+                # 检查是否在边界内
+                if self._is_inside_boundary(center):
+                    # 检查是否与已有节点太近
+                    too_close = False
+                    for nc in self.node_coords:
+                        dx = nc[0] - center[0]
+                        dy = nc[1] - center[1]
+                        dz = nc[2] - center[2]
+                        if (dx*dx + dy*dy + dz*dz) < (target * 0.3) ** 2:
+                            too_close = True
+                            break
+                    if not too_close:
+                        node = NodeElement(
+                            list(center), self.num_nodes,
+                            part_name="interior-node", bc_type="interior",
+                        )
+                        new_nodes.append(node)
+                        self.node_coords.append(list(center))
+                        self.node_elem_by_hash[hash(tuple(f"{c:.6f}" for c in center))] = node
+                        self.num_nodes += 1
+
+            if not new_nodes:
+                break
+
+            info(f"    插入 {len(new_nodes)} 个新节点")
+
+            # 重新三角化：将新节点插入到现有四面体中
+            for node in new_nodes:
+                node_coords = node.coords
+                cavity = []
+                non_cavity = []
+
+                for tet in tets:
+                    tet_coords = [tet.p1, tet.p2, tet.p3, tet.p4]
+                    if self._in_circumsphere(node_coords, tet_coords):
+                        cavity.append(tet)
+                    else:
+                        non_cavity.append(tet)
+
+                if not cavity:
+                    continue
+
+                # 找到腔体的边界面
+                face_count = {}
+                for tet in cavity:
+                    tet_node_ids = tet.node_ids
+                    faces = [
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[1], tet_node_ids[2]])),
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[1], tet_node_ids[3]])),
+                        tuple(sorted([tet_node_ids[0], tet_node_ids[2], tet_node_ids[3]])),
+                        tuple(sorted([tet_node_ids[1], tet_node_ids[2], tet_node_ids[3]])),
+                    ]
+                    for face_key in faces:
+                        face_count[face_key] = face_count.get(face_key, 0) + 1
+
+                boundary_faces = [fk for fk, cnt in face_count.items() if cnt == 1]
+
+                # 创建新四面体
+                new_tets = []
+                for face_key in boundary_faces:
+                    face_nodes = []
+                    for nid in face_key:
+                        for n in all_nodes + new_nodes:
+                            if n.idx == nid:
+                                face_nodes.append(n)
+                                break
+                        else:
+                            # 在节点坐标中查找
+                            if nid < len(self.node_coords):
+                                coords = self.node_coords[nid]
+                                for n in self.boundary_nodes:
+                                    if n.idx == nid:
+                                        face_nodes.append(n)
+                                        break
+
+                    if len(face_nodes) != 3:
+                        continue
+
+                    new_tet = Tetrahedron(
+                        face_nodes[0], face_nodes[1], face_nodes[2], node,
+                        part_name='interior-tetrahedron',
+                    )
+                    sv = tetrahedron_signed_volume(new_tet.p1, new_tet.p2, new_tet.p3, new_tet.p4)
+                    if sv < 0:
+                        new_tet = Tetrahedron(
+                            face_nodes[0], face_nodes[2], face_nodes[1], node,
+                            part_name='interior-tetrahedron',
+                        )
+                    new_tets.append(new_tet)
+
+                tets = non_cavity + new_tets
+                all_nodes = all_nodes + [node]
+
+            info(f"    细化后: {len(tets)} 个四面体")
+
+        return tets
+
     def generate(self, max_steps=None):
         """生成四面体网格
 
@@ -988,6 +1163,9 @@ class BowyerWatsonTetGen:
         # 5. 移除外部四面体
         valid_tets = self._remove_exterior_tets(tets, super_ids)
         info(f"移除外部四面体后: {len(valid_tets)} 个有效四面体")
+
+        # 5.5 细化超尺寸四面体
+        valid_tets = self._refine_oversized_tets(valid_tets, all_nodes, super_ids)
 
         # 6. 存储结果
         self.cell_container = valid_tets
