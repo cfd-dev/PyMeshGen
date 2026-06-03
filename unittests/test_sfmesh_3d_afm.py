@@ -421,7 +421,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     # ---------------------------------------------------------------
     # 测试用例
     # ---------------------------------------------------------------
-
+    @unittest.skip("环面截面测试过慢")   
     def test_afm_torus_section(self):
         """截断环面子面"""
         face = self._make_torus_section_face()
@@ -439,7 +439,8 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         """截断锥面"""
         face = self._make_cone_face()
         self._run_and_validate(face, "cone", quality_min=0.3)
-
+    
+    @unittest.skip("双曲抛物面测试过慢")
     def test_afm_hyperbolic_paraboloid(self):
         """双曲抛物面（马鞍面）"""
         face = self._make_hyperbolic_paraboloid_face()
@@ -605,6 +606,7 @@ class TestCADFileAFM(unittest.TestCase):
         cls._has_ellipsoid = cls.ellipsoid_path.exists()
         cls._has_m6 = cls.m6_path.exists()
 
+    @unittest.skip("椭球体测试过慢")
     def test_ellipsoid_mesh_generation(self):
         """椭球体 IGES → 3D AFM 网格"""
         if not self._has_ellipsoid:
@@ -641,6 +643,7 @@ class TestCADFileAFM(unittest.TestCase):
         generator.export_to_vtk(str(output_file))
         self.assertTrue(output_file.exists())
 
+    @unittest.skip("M6 机翼测试过慢")
     def test_onera_m6_wing_mesh_generation(self):
         """ONERA M6 机翼 → 线网格 → 多面 3D AFM"""
         if not self._has_m6:

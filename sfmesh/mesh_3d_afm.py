@@ -1001,7 +1001,7 @@ class SurfaceMeshGenerator:
         self._print_statistics()
 
         # 后处理优化：边交换 + Laplacian 光滑（暂时关闭，调试用）
-        # self._optimize_mesh()
+        self._optimize_mesh()
 
         return self.triangle_list
 
