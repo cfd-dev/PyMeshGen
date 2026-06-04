@@ -9,7 +9,6 @@ from typing import Tuple, Optional, Any, Dict, List
 from OCC.Core.TopoDS import TopoDS_Face
 
 from .surface_geometry import SurfaceGeometry
-from .geom_utils import point_to_segment_distance_3d
 
 
 class SurfaceSizingField:
@@ -195,8 +194,16 @@ class SurfaceSizingField:
         seg_start: np.ndarray,
         seg_end: np.ndarray,
     ) -> float:
-        """计算 3D 点到线段的最短距离（委托给 geom_utils.point_to_segment_distance_3d）"""
-        return point_to_segment_distance_3d(point, seg_start, seg_end)
+        """计算 3D 点到线段的最短距离"""
+        seg_vec = seg_end - seg_start
+        seg_len = np.linalg.norm(seg_vec)
+        if seg_len < 1e-12:
+            return np.linalg.norm(point - seg_start)
+        seg_unit = seg_vec / seg_len
+        t = np.dot(point - seg_start, seg_unit)
+        t = np.clip(t, 0, seg_len)
+        closest = seg_start + t * seg_unit
+        return np.linalg.norm(point - closest)
 
     def compute_front_spacing(
         self,
@@ -378,5 +385,28 @@ class AdaptiveSizingField(SurfaceSizingField):
         seg_start: np.ndarray,
         seg_end: np.ndarray
     ) -> float:
-        """计算点到线段的最短距离（委托给 geom_utils.point_to_segment_distance_3d）"""
-        return point_to_segment_distance_3d(point, seg_start, seg_end)
+        """
+        计算点到线段的最短距离
+        
+        Args:
+            point: 点坐标
+            seg_start: 线段起点
+            seg_end: 线段终点
+        
+        Returns:
+            最短距离
+        """
+        seg_vec = seg_end - seg_start
+        seg_len = np.linalg.norm(seg_vec)
+        
+        if seg_len < 1e-12:
+            return np.linalg.norm(point - seg_start)
+        
+        seg_unit = seg_vec / seg_len
+        point_vec = point - seg_start
+        
+        t = np.dot(point_vec, seg_unit)
+        t = np.clip(t, 0, seg_len)
+        
+        closest = seg_start + t * seg_unit
+        return np.linalg.norm(point - closest)

@@ -12,7 +12,7 @@
 - 线段间距离：参数化最近点求解（含平行退化回退）
 """
 
-from typing import List, Tuple, Optional, Union, Dict, Set, Any
+from typing import List, Tuple, Optional, Union, Dict, Set
 from collections import Counter
 import numpy as np
 
@@ -861,9 +861,15 @@ def check_triangle_vs_existing(
                 if segment_segment_distance_3d(a1, a2, b1, b2) < tolerance:
                     return True
 
-        # 注意：在曲面上，共享一个顶点的三角形的非共享边可能在3D空间
-        # 穿过对方三角形的"内部"（因为曲面弯曲），这是合法的。
-        # 因此跳过 edge_intersects_triangle_core 检查。
+        # 新三角形的非共享边 vs 现有三角形内部
+        for a1, a2 in edges_new:
+            if _edge_intersects_triangle_core(a1, a2, q0, q1, q2):
+                return True
+
+        # 现有三角形的非共享边 vs 新三角形内部
+        for b1, b2 in edges_ex:
+            if _edge_intersects_triangle_core(b1, b2, p0, p1, p2):
+                return True
 
         return False
 
@@ -871,150 +877,6 @@ def check_triangle_vs_existing(
     return check_triangle_intersection(
         new_coords, existing_coords, tolerance
     )
-
-
-# ============================================================================
-# 通用几何计算工具
-# ============================================================================
-
-def point_to_segment_distance_3d(
-    point: np.ndarray,
-    seg_start: np.ndarray,
-    seg_end: np.ndarray,
-) -> float:
-    """
-    计算 3D 点到线段的最短距离。
-
-    将点投影到线段所在直线上，裁剪参数到 [0, 1]，返回最近点距离。
-    退化线段（长度≈0）退化为点到点距离。
-
-    Args:
-        point: 查询点 (3,)
-        seg_start: 线段起点 (3,)
-        seg_end: 线段终点 (3,)
-
-    Returns:
-        最短欧氏距离
-    """
-    seg_vec = seg_end - seg_start
-    seg_len = np.linalg.norm(seg_vec)
-    if seg_len < 1e-12:
-        return float(np.linalg.norm(point - seg_start))
-    seg_unit = seg_vec / seg_len
-    t = np.dot(point - seg_start, seg_unit)
-    t = np.clip(t, 0, seg_len)
-    closest = seg_start + t * seg_unit
-    return float(np.linalg.norm(point - closest))
-
-
-def get_most_visible_plane(normal: np.ndarray) -> Tuple[int, int]:
-    """
-    找到法向量最可见的坐标平面（排除法向量绝对值最大的分量）。
-
-    用于将 3D 几何投影到 2D 进行相交检测，避免投影退化。
-    与 project_to_2d 互补：本函数返回轴索引，project_to_2d 返回投影坐标。
-
-    Args:
-        normal: (3,) 法向量
-
-    Returns:
-        (ir, is) 两个坐标轴索引，表示投影平面的两个轴
-    """
-    abs_n = np.abs(normal)
-    if abs_n[0] >= abs_n[1] and abs_n[0] >= abs_n[2]:
-        return (1, 2)
-    elif abs_n[1] >= abs_n[2]:
-        return (0, 2)
-    else:
-        return (0, 1)
-
-
-def segments_cross_strict_2d(
-    p1: Tuple[float, float], p2: Tuple[float, float],
-    q1: Tuple[float, float], q2: Tuple[float, float],
-    eps: float = 1e-8,
-) -> bool:
-    """
-    检查两条 2D 线段是否严格相交（交点在开区间 (0,1) 内）。
-
-    与 segments_intersect_2d 不同，本函数排除端点处的相交（T 型、端点重合），
-    仅检测两条线段内部真正穿过的 case。适用于 advancing front 中需要
-    排除拓扑邻接（共享端点）的场景。
-
-    Args:
-        p1, p2: 线段 A 端点 (r, s)
-        q1, q2: 线段 B 端点 (r, s)
-        eps: 参数区间的内缩容差，t ∈ (eps, 1-eps)
-
-    Returns:
-        True 表示两线段严格内部相交
-    """
-    dr = p2[0] - p1[0]
-    ds = p2[1] - p1[1]
-    er = q2[0] - q1[0]
-    es = q2[1] - q1[1]
-
-    denom = dr * es - ds * er
-    if abs(denom) < 1e-30:
-        return False
-
-    t = ((q1[0] - p1[0]) * es - (q1[1] - p1[1]) * er) / denom
-    u = ((q1[0] - p1[0]) * ds - (q1[1] - p1[1]) * dr) / denom
-
-    return eps < t < 1.0 - eps and eps < u < 1.0 - eps
-
-
-def triangle_min_angle_from_coords(
-    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray
-) -> float:
-    """
-    从顶点坐标计算三角形最小内角（度）。
-
-    遍历三个顶点，计算每个顶点处的内角，返回最小值。
-    退化三角形（零边长）返回 0.0。
-
-    Args:
-        p0, p1, p2: 三角形顶点坐标 (3,)
-
-    Returns:
-        最小内角（度）
-    """
-    angles = []
-    for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
-        va = a - apex
-        vb = b - apex
-        la = np.linalg.norm(va)
-        lb = np.linalg.norm(vb)
-        if la < 1e-15 or lb < 1e-15:
-            return 0.0
-        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
-        angles.append(np.degrees(np.arccos(cos_a)))
-    return min(angles)
-
-
-def triangle_max_angle_from_coords(
-    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray
-) -> float:
-    """
-    从顶点坐标计算三角形最大内角（度）。
-
-    Args:
-        p0, p1, p2: 三角形顶点坐标 (3,)
-
-    Returns:
-        最大内角（度）
-    """
-    angles = []
-    for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
-        va = a - apex
-        vb = b - apex
-        la = np.linalg.norm(va)
-        lb = np.linalg.norm(vb)
-        if la < 1e-15 or lb < 1e-15:
-            return 180.0
-        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
-        angles.append(np.degrees(np.arccos(cos_a)))
-    return max(angles)
 
 
 # ============================================================================

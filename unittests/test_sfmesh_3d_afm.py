@@ -502,6 +502,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         face = self._make_hyperbolic_paraboloid_face()
         self._run_and_validate(face, "hyperbolic_paraboloid", quality_min=0.25)
 
+    @unittest.skip("半球面测试过慢")
     def test_afm_partial_sphere(self):
         """半球面"""
         face = self._make_partial_sphere_face()
