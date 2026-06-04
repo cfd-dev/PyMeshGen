@@ -17,10 +17,7 @@ from utils.message import info, warning, error
 from fileIO.vtk_io import write_vtk
 from adfront3.front3d import Front3D
 from adfront3.sizing3d import UniformSizing3D
-from adfront3.geom3d import (
-    point_in_tet, tets_intersect, bbox_overlap_3d,
-    edge_intersects_triangle, tet_intersects_triangle, point_in_triangle,
-)
+from adfront3.geom3d import point_in_tet, intersect_tet_triangle, intersect_tet_triangle2, intersect_triangle_line
 from meshsize.size_field_3d import SizeField3D
 
 
@@ -73,7 +70,6 @@ class Adfront3:
         self.node_hash_list = set()
         self.node_elem_by_hash = {}
         self.cell_hash_list = set()
-        self.face_usage = {}
 
         self.deleted_facekeys = set()  # 已消耗的阵面 face_key（惰性删除）
         self._raycast_data = None  # ray casting 数据
@@ -186,6 +182,7 @@ class Adfront3:
         """主推进循环，生成四面体网格，返回 Unstructured_Grid"""
         timer = TimeSpan("开始三维四面体网格生成...")
         step = 0
+        retry_count = 0  # 当前阵面连续失败次数
 
         if max_steps is None:
             # 根据体积和间距估算最大步数
@@ -205,20 +202,32 @@ class Adfront3:
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
 
-            self.add_new_point(spacing)
             self.search_candidates(self.base_front.al * spacing)
 
             selected = self.select_point()
 
             if selected is None:
+                retry_count += 1
                 self.base_front.al *= 1.2
+
+                # 连续失败 3 次后反转阵面法向量（参考 Netgen cnt1=4）
+                if retry_count >= 3:
+                    ne = self.base_front.node_elems
+                    ne[0], ne[2] = ne[2], ne[0]
+                    self.base_front.normal = [
+                        -c for c in self.base_front.normal
+                    ]
+                    retry_count = 0
+
                 if self.base_front.al > 20:
                     if self.debug_level >= 1:
                         warning(f"阵面{self.base_front.node_ids}搜索半径超过20，放弃该阵面")
+                    retry_count = 0
                     continue
                 heapq.heappush(self.front_list, self.base_front)
                 continue
 
+            retry_count = 0
             self.update_data()
 
             if step % self.progress_interval == 0:
@@ -309,12 +318,21 @@ class Adfront3:
             ]
 
     def select_point(self):
-        """从候选点中选择最佳推进点，优先使用已有节点，回退到 pbest"""
+        """从候选点中选择最佳推进点
+
+        策略：
+        1. 先尝试已有候选节点（不创建新几何，按质量降序）
+        2. 尝试 pbest（理想推进距离）
+        3. 如果 pbest 失败，尝试更近的新点（spacing/2, spacing/4）
+        """
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
         p2 = self.base_front.node_elems[2].coords
 
-        # 1. 优先使用已有候选节点
+        self.pselected = None
+        self.best_flag = False
+
+        # 1. 先尝试已有候选节点，按质量降序排列
         scored_candidates = []
         for node_elem in self.node_candidates:
             if node_elem in self.base_front.node_elems:
@@ -325,8 +343,6 @@ class Adfront3:
 
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
 
-        self.pselected = None
-        self.best_flag = False
         for quality, node_elem in scored_candidates:
             if not self._is_correct_side(node_elem):
                 continue
@@ -335,21 +351,41 @@ class Adfront3:
             if self._is_cross(node_elem):
                 continue
             self.pselected = node_elem
-            break
-
-        if self.pselected is not None:
             return self.pselected
 
-        # 2. 回退到理想新点 pbest
-        if self.pbest is not None:
-            quality = tetrahedron_shape_quality(p0, p1, p2, self.pbest.coords)
-            if quality > 0.1:
-                if (self._is_correct_side(self.pbest) and
-                    self._is_inside_boundary(self.pbest.coords) and
-                    not self._is_cross(self.pbest)):
-                    self.pselected = self.pbest
-                    self.best_flag = True
-                    return self.pselected
+        # 2. 尝试 pbest 及更近的新点
+        center = self.base_front.center
+        normal = self.base_front.normal
+        spacing = self.sizing_system.spacing_at(center)
+
+        for dist_factor in [1.0, 0.5, 0.25]:
+            dist = spacing * dist_factor
+            candidate_coords = [
+                center[0] + normal[0] * dist,
+                center[1] + normal[1] * dist,
+                center[2] + normal[2] * dist,
+            ]
+            candidate = NodeElement(
+                candidate_coords, self.num_nodes,
+                part_name="interior-node", bc_type="interior",
+            )
+            candidate.bbox = [candidate_coords[0], candidate_coords[1], candidate_coords[2],
+                              candidate_coords[0], candidate_coords[1], candidate_coords[2]]
+
+            quality = tetrahedron_shape_quality(p0, p1, p2, candidate_coords)
+            if quality <= 0.1:
+                continue
+            if not self._is_correct_side(candidate):
+                continue
+            if not self._is_inside_boundary(candidate_coords):
+                continue
+            if self._is_cross(candidate):
+                continue
+            self.pselected = candidate
+            self.best_flag = True
+            if dist_factor < 1.0:
+                self.pbest = candidate
+            return self.pselected
 
         return self.pselected
 
@@ -366,70 +402,92 @@ class Adfront3:
             return True
         return classify_points_inside([np.array(point)], self._raycast_data)[0]
 
+    def _point_in_tet_strict(self, point, tet_coords):
+        """检查点是否严格在四面体内部（使用有符号体积法）
+
+        与 geom3d.point_in_tet 相同逻辑，作为快速早期排除。
+        """
+        pts = [np.array(c) for c in tet_coords]
+        pt = np.array(point)
+
+        ref = np.dot(pts[1] - pts[0], np.cross(pts[2] - pts[0], pts[3] - pts[0]))
+        if abs(ref) < 1e-30:
+            return False
+
+        eps = 1e-10 * abs(ref)
+        for i in range(4):
+            j = (i + 2) % 4
+            k = (i + 3) % 4
+            v = float(np.dot(pt - pts[i], np.cross(pts[j] - pts[i], pts[k] - pts[i])))
+            signed_v = ((-1) ** i) * v
+            if signed_v < eps:
+                return False
+        return True
+
     def _is_cross(self, node_elem):
-        """检查新四面体是否与现有单元或阵面相交"""
-        # 检查候选点是否在现有四面体内部
-        pt_coords = node_elem.coords
-        for cell in self.cell_candidates:
-            if isinstance(cell, Tetrahedron):
-                if self._point_in_tet(pt_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
-                    return True
+        """检查候选四面体是否与现有阵面或单元相交
+
+        参考 Netgen 策略：对每个候选面/单元调用 IntersectTetTriangle + IntersectTetTriangle2。
+        """
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
         p2 = self.base_front.node_elems[2]
         p3 = node_elem
 
-        new_tet_nodes = {p0.idx, p1.idx, p2.idx, p3.idx}
         new_tet_coords = [p0.coords, p1.coords, p2.coords, p3.coords]
+        new_tet_ids = [p0.idx, p1.idx, p2.idx, p3.idx]
+        new_tet_id_set = set(new_tet_ids)
 
-        # 检查新四面体的所有面是否已饱和（每个面最多被2个四面体共享）
-        new_tet_hashes = [p0.hash, p1.hash, p2.hash, p3.hash]
-        for i in range(4):
-            for j in range(i+1, 4):
-                for k in range(j+1, 4):
-                    face_key = tuple(sorted([new_tet_hashes[i], new_tet_hashes[j], new_tet_hashes[k]]))
-                    if self.face_usage.get(face_key, 0) >= 2:
-                        return True
-
-        # 检查与现有四面体的相交
+        # 1. 检查候选点是否严格在现有四面体内（排除边界情况）
         for cell in self.cell_candidates:
             if not isinstance(cell, Tetrahedron):
                 continue
-            shared = new_tet_nodes & set(cell.node_ids)
-            if len(shared) >= 2:
+            cell_coords = [cell.p1, cell.p2, cell.p3, cell.p4]
+            if self._point_in_tet_strict(p3.coords, cell_coords):
+                return True
+
+        # 2. 检查与现有单元的相交（参考 Netgen: IntersectTetTriangle + IntersectTetTriangle2）
+        for cell in self.cell_candidates:
+            if not isinstance(cell, Tetrahedron):
                 continue
-            if self._bbox_overlap_3d(new_tet_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
-                if self._tets_intersect(new_tet_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
+            cell_coords = [cell.p1, cell.p2, cell.p3, cell.p4]
+            cell_ids = cell.node_ids
+            # 检查每个面
+            faces = [(0,1,2), (0,1,3), (0,2,3), (1,2,3)]
+            for i0, i1, i2 in faces:
+                tri_coords = [cell_coords[i0], cell_coords[i1], cell_coords[i2]]
+                tri_ids = [cell_ids[i0], cell_ids[i1], cell_ids[i2]]
+                if intersect_tet_triangle(new_tet_coords, tri_coords, new_tet_ids, tri_ids):
                     return True
+                if intersect_tet_triangle2(new_tet_coords, tri_coords, new_tet_ids, tri_ids):
+                    return True
+
+        # 3. 检查与非邻接阵面的相交
+        for front in self.front_candidates:
+            if front is self.base_front:
+                continue
+            if front.is_satisfied:
+                continue
+            # 跳过边界面（固定几何，不参与相交判断）
+            if front.bc_type == "wall":
+                continue
+            tri_coords = [n.coords for n in front.node_elems]
+            tri_ids = front.node_ids
+            if intersect_tet_triangle(new_tet_coords, tri_coords, new_tet_ids, tri_ids):
+                return True
+            if intersect_tet_triangle2(new_tet_coords, tri_coords, new_tet_ids, tri_ids):
+                return True
 
         return False
 
-    def _tet_intersects_triangle(self, tet_coords, tri_coords):
-        """检查四面体是否与三角形相交（边-面交叉检测）"""
-        return tet_intersects_triangle(tet_coords, tri_coords)
-
-    def _point_in_triangle(self, point, tri_coords):
-        """检查点是否在三角形内部（使用重心坐标）"""
-        return point_in_triangle(point, tri_coords)
-
-    def _bbox_overlap_3d(self, coords1, coords2):
-        """检查两个点集的包围盒是否重叠"""
-        return bbox_overlap_3d(coords1, coords2)
-
-    def _point_in_tet(self, p, tet_coords):
-        """检查点是否在四面体内部（使用有符号体积法）"""
-        return point_in_tet(p, tet_coords)
-
-    def _tets_intersect(self, coords1, coords2):
-        """检查两个四面体是否相交"""
-        return tets_intersect(coords1, coords2)
-
-    def _edge_intersects_triangle(self, edge, tri_coords):
-        """检查线段是否与三角形相交"""
-        return edge_intersects_triangle(edge, tri_coords)
-
     def update_data(self):
-        """创建四面体，更新节点、阵面和单元"""
+        """创建四面体，更新节点、阵面和单元
+
+        使用 left/right 机制跟踪阵面消耗状态：
+        - 边界面(wall)创建时即标记为两侧已占据
+        - 内界面每被一个四面体使用调用 set_left_right_auto()
+        - 两侧都被占据后标记删除
+        """
         if self.pselected is None:
             return
 
@@ -440,19 +498,23 @@ class Adfront3:
         p2 = self.base_front.node_elems[2]
         p3 = self.pselected
 
-        # 三个新阵面（不含基准面）
+        # 三个新阵面（不含基准面），法向量指向四面体外侧（未填充区域）
+        # 绕向规则：每个面的法向量必须远离对顶点
+        #   面(p2,p1,p3) 对顶点p0,  面(p0,p3,p2) 对顶点p1,  面(p3,p1,p0) 对顶点p2
         new_faces = [
-            Front3D(p1, p2, p3, idx=-1, bc_type="interior", part_name="interior"),
-            Front3D(p2, p0, p3, idx=-1, bc_type="interior", part_name="interior"),
-            Front3D(p0, p1, p3, idx=-1, bc_type="interior", part_name="interior"),
+            Front3D(p2, p1, p3, idx=-1, bc_type="interior", part_name="interior"),
+            Front3D(p0, p3, p2, idx=-1, bc_type="interior", part_name="interior"),
+            Front3D(p3, p1, p0, idx=-1, bc_type="interior", part_name="interior"),
         ]
 
-        # 标记基准面已消耗（边界面标记为完全消耗，防止在同侧创建第二个四面体）
+        # 标记基准面已消耗
         base_face_key = self.base_front.face_key
         if self.base_front.bc_type == "wall":
-            self.face_usage[base_face_key] = 2  # 边界面只能在一侧使用
+            # 边界面只能在一侧创建四面体，直接标记为两侧已占据
+            self.base_front.left = 1
+            self.base_front.right = 1
         else:
-            self.face_usage[base_face_key] = self.face_usage.get(base_face_key, 0) + 1
+            self.base_front.set_left_right_auto()
         self.deleted_facekeys.add(base_face_key)
 
         # 从空间索引中移除基准面
@@ -497,20 +559,27 @@ class Adfront3:
                 self.pselected.idx = existing.idx
 
     def _update_fronts(self, new_fronts):
-        """更新阵面列表：新面若已存在则标记删除（内部面），否则添加"""
+        """更新阵面列表：新面若已存在则标记删除（内部面），否则添加
+
+        使用 left/right 机制：若面已存在（第二次使用），标记其 left 侧
+        已被占据。两侧都被占据后删除。
+        """
         for front in new_fronts:
             face_key = front.face_key
-            if face_key in self.face_usage:
-                # 第二次使用，标记为已消耗（惰性删除）
-                self.face_usage[face_key] += 1
+            if face_key in self.front_id_by_facekey:
+                # 面已存在（第二次使用），标记 left 侧已被占据
+                existing_fid = self.front_id_by_facekey.get(face_key)
+                existing = self.front_dict.get(existing_fid)
+                if existing is not None:
+                    existing.left = 1
+                # 标记为已消耗（惰性删除）
                 self.deleted_facekeys.add(face_key)
-                # 从空间索引中移除
-                fid = self.front_id_by_facekey.pop(face_key, None)
-                if fid is not None and fid in self.front_dict:
-                    del self.front_dict[fid]
+                self.front_id_by_facekey.pop(face_key, None)
+                if existing_fid is not None and existing_fid in self.front_dict:
+                    del self.front_dict[existing_fid]
             else:
-                # 首次使用，添加到阵面列表
-                self.face_usage[face_key] = 1
+                # 首次使用，标记 right 侧已被占据，添加到阵面列表
+                front.right = 1
                 self.front_list.append(front)
                 self.add_elems_to_space_index(
                     [front], self.space_index_front, self.front_dict

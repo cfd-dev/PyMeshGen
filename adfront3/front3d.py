@@ -10,6 +10,7 @@ class Front3D:
         'node_elems', 'idx', 'bc_type', 'part_name',
         'priority', 'al', 'center', 'area', 'normal',
         'bbox', 'hash', 'node_ids', 'face_key',
+        'left', 'right',
     ]
 
     def __init__(self, node_elem1, node_elem2, node_elem3,
@@ -60,7 +61,31 @@ class Front3D:
         self.face_key = tuple(sorted([node_elem1.hash, node_elem2.hash, node_elem3.hash]))
         self.hash = hash(self.face_key)
 
+        # left/right 计数：两侧都被四面体占据后删除该阵面
+        self.left = 0
+        self.right = 0
+
+    def set_left_right_auto(self):
+        """标记一个四面体占据了该面的一侧。
+
+        如果右侧已被占据则标记左侧，否则标记右侧。
+        两侧都被占据后该阵面应被删除。
+        """
+        if self.right <= 0:
+            self.right = 1
+        else:
+            self.left = 1
+
+    @property
+    def is_satisfied(self):
+        """该阵面两侧是否都已被四面体占据"""
+        return self.left > 0 and self.right > 0
+
     def __lt__(self, other):
+        if self.is_satisfied:
+            return False
+        if other.is_satisfied:
+            return True
         if self.priority != other.priority:
             return self.priority
         return self.area < other.area

@@ -14,6 +14,7 @@ if str(project_root) not in sys.path:
 from adfront3.geom3d import (
     point_in_tet, tets_intersect, bbox_overlap_3d,
     edge_intersects_triangle, tet_intersects_triangle, point_in_triangle,
+    intersect_triangle_line, intersect_triangle_triangle, intersect_tet_triangle,
 )
 
 
@@ -359,6 +360,127 @@ class TestPointInTriangle(unittest.TestCase):
     def test_negative_outside(self):
         """负坐标点应在外部"""
         self.assertFalse(point_in_triangle((-0.1, 0.0, 0.0), TRI_XY))
+
+
+class TestIntersectTriangleLine(unittest.TestCase):
+    """intersect_triangle_line (Netgen移植) 测试"""
+
+    def test_piercing_center(self):
+        """线段穿过三角形中心"""
+        tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        line = [(0.2, 0.2, -1), (0.2, 0.2, 1)]
+        self.assertTrue(intersect_triangle_line(tri, line))
+
+    def test_miss(self):
+        """线段与三角形不相交"""
+        tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        line = [(2, 2, -1), (2, 2, 1)]
+        self.assertFalse(intersect_triangle_line(tri, line))
+
+    def test_parallel(self):
+        """线段平行于三角形平面"""
+        tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        line = [(0, 0, 1), (1, 0, 1)]
+        self.assertFalse(intersect_triangle_line(tri, line))
+
+    def test_endpoint_near_triangle(self):
+        """线段端点非常接近三角形但在外侧（t≈0），容差内算相交"""
+        tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        line = [(0.2, 0.2, 0), (0.2, 0.2, 1)]
+        # t≈0, 在容差范围内，实现允许此情况
+        self.assertTrue(intersect_triangle_line(tri, line))
+
+    def test_degenerate_triangle(self):
+        """退化三角形应返回 False"""
+        tri = [(0, 0, 0), (1, 0, 0), (2, 0, 0)]
+        line = [(0.5, 0, -1), (0.5, 0, 1)]
+        self.assertFalse(intersect_triangle_line(tri, line))
+
+
+class TestIntersectTriangleTriangle(unittest.TestCase):
+    """intersect_triangle_triangle (Netgen移植) 测试"""
+
+    def test_crossing(self):
+        """两个三角形交叉"""
+        tri1 = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        tri2 = [(0.2, 0.2, -1), (0.2, 0.2, 1), (1, 0, 0.5)]
+        self.assertTrue(intersect_triangle_triangle(tri1, tri2))
+
+    def test_separate(self):
+        """两个三角形不相交"""
+        tri1 = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        tri2 = [(5, 5, 5), (6, 5, 5), (5, 6, 5)]
+        self.assertFalse(intersect_triangle_triangle(tri1, tri2))
+
+    def test_shared_vertex_not_intersect(self):
+        """共享1个顶点不算相交"""
+        tri1 = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        tri2 = [(0, 0, 0), (1, 0, 1), (0, 1, 1)]
+        self.assertFalse(intersect_triangle_triangle(tri1, tri2))
+
+    def test_shared_vertex_by_id(self):
+        """通过节点ID检测共享顶点"""
+        tri1 = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        tri2 = [(0, 0, 0), (1, 0, 1), (0, 1, 1)]
+        tri1_ids = [10, 20, 30]
+        tri2_ids = [10, 40, 50]
+        self.assertFalse(intersect_triangle_triangle(tri1, tri2, tri1_ids, tri2_ids))
+
+    def test_shared_edge_not_intersect(self):
+        """共享2个顶点（公共边）不算相交"""
+        tri1 = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        tri2 = [(0, 0, 0), (1, 0, 0), (0, 0, 1)]
+        self.assertFalse(intersect_triangle_triangle(tri1, tri2))
+
+
+class TestIntersectTetTriangle(unittest.TestCase):
+    """intersect_tet_triangle (Netgen移植) 测试"""
+
+    TET = [(0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)]
+
+    def test_0shared_penetrating(self):
+        """Case 0: 无共享顶点，三角形穿过四面体"""
+        tri = [(-0.5, 0.2, 0.3), (1.5, 0.2, 0.3), (0.2, 1.5, 0.3)]
+        self.assertTrue(intersect_tet_triangle(self.TET, tri))
+
+    def test_0shared_separate(self):
+        """Case 0: 无共享顶点，完全分离"""
+        tri = [(5, 5, 5), (6, 5, 5), (5, 6, 5)]
+        self.assertFalse(intersect_tet_triangle(self.TET, tri))
+
+    def test_0shared_below(self):
+        """Case 0: 三角形在四面体下方，无相交"""
+        tri = [(0.1, 0.1, -1), (0.8, 0.1, -1), (0.1, 0.8, -1)]
+        self.assertFalse(intersect_tet_triangle(self.TET, tri))
+
+    def test_1shared_planes_overlap(self):
+        """Case 1: 共享1个顶点，平面交叉"""
+        tri = [(0, 0, 0), (1, 0, 1), (0, 1, 1)]
+        self.assertTrue(intersect_tet_triangle(self.TET, tri))
+
+    def test_2shared_common_edge(self):
+        """Case 2: 共享2个顶点（公共边），三角形顶点在tet锥内"""
+        # TET: (0,0,0),(1,0,0),(0,1,0),(0,0,1)
+        # 共享边 (0,0,0)-(1,0,0)，非共享tet顶点: (0,1,0),(0,0,1)
+        # 非共享tri顶点 (1,1,1) 投影到xz平面 = (0,1,1) = 1*(0,1,0) + 1*(0,0,1)
+        # → lam1=1, lam2=1，均≥0 → 在tet锥内 → 相交
+        tri = [(0, 0, 0), (1, 0, 0), (1, 1, 1)]
+        self.assertTrue(intersect_tet_triangle(self.TET, tri))
+
+    def test_3shared_common_face(self):
+        """Case 3: 共享3个顶点（共面），不算相交"""
+        tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+        self.assertFalse(intersect_tet_triangle(self.TET, tri))
+
+    def test_0shared_vertex_inside_tet(self):
+        """Case 0: 三角形顶点在四面体内"""
+        tri = [(0.1, 0.1, 0.1), (0.5, 0.1, 0.1), (0.1, 0.5, 0.1)]
+        self.assertTrue(intersect_tet_triangle(self.TET, tri))
+
+    def test_0shared_edge_pierces_face(self):
+        """Case 0: 四面体边穿过三角形"""
+        tri = [(-1, -1, 0.5), (1, -1, 0.5), (0, 1, 0.5)]
+        self.assertTrue(intersect_tet_triangle(self.TET, tri))
 
 
 if __name__ == "__main__":
