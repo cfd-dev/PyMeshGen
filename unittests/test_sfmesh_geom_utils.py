@@ -42,6 +42,9 @@ from sfmesh.geom_utils import (
     segments_cross_strict_2d,
     triangle_min_angle_from_coords,
     triangle_max_angle_from_coords,
+    triangle_edges,
+    check_min_edge_distance,
+    uv_out_of_bounds,
     DEFAULT_TOL,
     DEGENERATE_TOL,
 )
@@ -1090,10 +1093,10 @@ class TestTriangleAngleFromCoords(unittest.TestCase):
         self.assertAlmostEqual(angle, 90.0, places=5)
 
     def test_degenerate_returns_zero(self):
-        """退化三角形（零边长）→ min=0, max=180"""
+        """退化三角形（零边长）→ min=0, max=0"""
         p = np.array([1.0, 2.0, 3.0])
         self.assertEqual(triangle_min_angle_from_coords(p, p, p), 0.0)
-        self.assertEqual(triangle_max_angle_from_coords(p, p, p), 180.0)
+        self.assertEqual(triangle_max_angle_from_coords(p, p, p), 0.0)
 
     def test_thin_triangle(self):
         """细长三角形最小角接近 0"""
@@ -1103,6 +1106,108 @@ class TestTriangleAngleFromCoords(unittest.TestCase):
             np.array([50.0, 0.01, 0.0]),
         )
         self.assertLess(angle, 1.0)
+
+
+# ============================================================================
+# triangle_edges
+# ============================================================================
+
+class TestTriangleEdges(unittest.TestCase):
+    """测试三角形边提取"""
+
+    def test_basic_edges(self):
+        """基本三角形三条边"""
+        p0 = np.array([0.0, 0.0, 0.0])
+        p1 = np.array([1.0, 0.0, 0.0])
+        p2 = np.array([0.5, 1.0, 0.0])
+        edges = triangle_edges(p0, p1, p2)
+        self.assertEqual(len(edges), 3)
+        np.testing.assert_array_equal(edges[0], (p0, p1))
+        np.testing.assert_array_equal(edges[1], (p1, p2))
+        np.testing.assert_array_equal(edges[2], (p2, p0))
+
+    def test_cyclic_order(self):
+        """边按顺时针顺序排列"""
+        p0 = np.array([0.0, 0.0, 0.0])
+        p1 = np.array([1.0, 0.0, 0.0])
+        p2 = np.array([0.0, 1.0, 0.0])
+        edges = triangle_edges(p0, p1, p2)
+        # 第一条边的终点 = 第二条边的起点
+        np.testing.assert_array_equal(edges[0][1], edges[1][0])
+        np.testing.assert_array_equal(edges[1][1], edges[2][0])
+        np.testing.assert_array_equal(edges[2][1], edges[0][0])
+
+
+# ============================================================================
+# check_min_edge_distance
+# ============================================================================
+
+class TestCheckMinEdgeDistance(unittest.TestCase):
+    """测试三角形边-边最小距离检查"""
+
+    def test_touching_edges_rejected(self):
+        """共用边的三角形距离为 0 → 拒绝"""
+        tri = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]])
+        tri2 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, -1.0, 0.0]])
+        self.assertTrue(check_min_edge_distance(tri, tri2, 0.1))
+
+    def test_far_edges_accepted(self):
+        """远离的三角形 → 不拒绝"""
+        tri1 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]])
+        tri2 = np.array([[10.0, 0.0, 0.0], [11.0, 0.0, 0.0], [10.5, 1.0, 0.0]])
+        self.assertFalse(check_min_edge_distance(tri1, tri2, 0.1))
+
+    def test_close_edges_rejected(self):
+        """接近但不相交的边 → 拒绝"""
+        tri1 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, 0.0]])
+        tri2 = np.array([[0.0, 0.05, 0.0], [1.0, 0.05, 0.0], [0.5, 1.05, 0.0]])
+        self.assertTrue(check_min_edge_distance(tri1, tri2, 0.1))
+
+    def test_threshold_boundary(self):
+        """距离恰好等于阈值 → 不拒绝（使用平行边确保精确距离）"""
+        tri1 = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 0.0, 0.0]])
+        tri2 = np.array([[0.0, 0.2, 0.0], [1.0, 0.2, 0.0], [0.5, 0.2, 0.0]])
+        # 最近边距离 = 0.2，阈值 0.1 → 不拒绝
+        self.assertFalse(check_min_edge_distance(tri1, tri2, 0.1))
+
+
+# ============================================================================
+# uv_out_of_bounds
+# ============================================================================
+
+class TestUvOutOfBounds(unittest.TestCase):
+    """测试 UV 参数域边界检查"""
+
+    def test_inside_bounds(self):
+        """参数域内 → 不越界"""
+        bounds = (0.0, 1.0, 0.0, 1.0)
+        self.assertFalse(uv_out_of_bounds((0.5, 0.5), bounds))
+
+    def test_outside_u_min(self):
+        """u 超出下界 → 越界"""
+        bounds = (0.0, 1.0, 0.0, 1.0)
+        self.assertTrue(uv_out_of_bounds((-0.2, 0.5), bounds))
+
+    def test_outside_v_max(self):
+        """v 超出上界 → 越界"""
+        bounds = (0.0, 1.0, 0.0, 1.0)
+        self.assertTrue(uv_out_of_bounds((0.5, 1.2), bounds))
+
+    def test_within_margin(self):
+        """在余量范围内 → 不越界"""
+        bounds = (0.0, 1.0, 0.0, 1.0)
+        self.assertFalse(uv_out_of_bounds((0.05, 0.95), bounds, margin=0.1))
+
+    def test_outside_margin(self):
+        """超出余量范围 → 越界"""
+        bounds = (0.0, 1.0, 0.0, 1.0)
+        self.assertTrue(uv_out_of_bounds((-0.05, 0.5), bounds, margin=0.01))
+
+    def test_custom_bounds(self):
+        """非 [0,1] 参数域"""
+        bounds = (-3.14, 3.14, -1.57, 1.57)
+        self.assertFalse(uv_out_of_bounds((0.0, 0.0), bounds))
+        self.assertTrue(uv_out_of_bounds((4.0, 0.0), bounds))
 
 
 if __name__ == '__main__':

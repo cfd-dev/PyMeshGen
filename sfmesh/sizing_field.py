@@ -9,6 +9,7 @@ from typing import Tuple, Optional, Any, Dict, List
 from OCC.Core.TopoDS import TopoDS_Face
 
 from .surface_geometry import SurfaceGeometry
+from .geom_utils import point_to_segment_distance_3d
 
 
 class SurfaceSizingField:
@@ -179,7 +180,7 @@ class SurfaceSizingField:
             if source_size < 1e-12:
                 continue
 
-            dist = self._point_to_segment_distance_3d(p, p0, p1)
+            dist = point_to_segment_distance_3d(p, p0, p1)
             exponent = 0.5 * dist * (decay - 1.0) / source_size
             exponent = min(exponent, 50.0)
             sp = source_size * np.exp(exponent)
@@ -187,23 +188,6 @@ class SurfaceSizingField:
                 min_spacing = sp
 
         return min(min_spacing, self.global_spacing)
-
-    @staticmethod
-    def _point_to_segment_distance_3d(
-        point: np.ndarray,
-        seg_start: np.ndarray,
-        seg_end: np.ndarray,
-    ) -> float:
-        """计算 3D 点到线段的最短距离"""
-        seg_vec = seg_end - seg_start
-        seg_len = np.linalg.norm(seg_vec)
-        if seg_len < 1e-12:
-            return np.linalg.norm(point - seg_start)
-        seg_unit = seg_vec / seg_len
-        t = np.dot(point - seg_start, seg_unit)
-        t = np.clip(t, 0, seg_len)
-        closest = seg_start + t * seg_unit
-        return np.linalg.norm(point - closest)
 
     def compute_front_spacing(
         self,
@@ -371,42 +355,10 @@ class AdaptiveSizingField(SurfaceSizingField):
                 p1 = np.array(feat_line[i])
                 p2 = np.array(feat_line[i + 1])
                 
-                dist = self._point_to_segment_distance(point_arr, p1, p2)
+                dist = point_to_segment_distance_3d(point_arr, p1, p2)
                 
                 if dist < radius:
                     spacing = self.global_spacing * ratio * (dist / radius + 0.1)
                     min_spacing = min(min_spacing, spacing)
         
         return np.clip(min_spacing, self.min_spacing, self.max_spacing)
-    
-    def _point_to_segment_distance(
-        self,
-        point: np.ndarray,
-        seg_start: np.ndarray,
-        seg_end: np.ndarray
-    ) -> float:
-        """
-        计算点到线段的最短距离
-        
-        Args:
-            point: 点坐标
-            seg_start: 线段起点
-            seg_end: 线段终点
-        
-        Returns:
-            最短距离
-        """
-        seg_vec = seg_end - seg_start
-        seg_len = np.linalg.norm(seg_vec)
-        
-        if seg_len < 1e-12:
-            return np.linalg.norm(point - seg_start)
-        
-        seg_unit = seg_vec / seg_len
-        point_vec = point - seg_start
-        
-        t = np.dot(point_vec, seg_unit)
-        t = np.clip(t, 0, seg_len)
-        
-        closest = seg_start + t * seg_unit
-        return np.linalg.norm(point - closest)

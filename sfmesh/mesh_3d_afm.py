@@ -39,6 +39,10 @@ from .geom_utils import (
     check_triangle_degenerate,
     segment_segment_distance_3d,
     validate_mesh_topology,
+    triangle_min_angle_from_coords,
+    check_min_edge_distance,
+    uv_out_of_bounds,
+    triangle_edges,
 )
 
 from utils.message import info, debug, warning
@@ -225,14 +229,7 @@ class SurfaceMeshGenerator:
 
     def _uv_out_of_bounds(self, uv, margin=0.1):
         """检查 UV 是否超出面的参数域"""
-        u_min, u_max, v_min, v_max = self._surface_bounds
-        u_range = u_max - u_min
-        v_range = v_max - v_min
-        u_margin = max(u_range * margin, 1e-6)
-        v_margin = max(v_range * margin, 1e-6)
-        u, v = uv
-        return (u < u_min - u_margin or u > u_max + u_margin or
-                v < v_min - v_margin or v > v_max + v_margin)
+        return uv_out_of_bounds(uv, self._surface_bounds, margin)
 
     def _build_space_index(self):
         """构建空间索引"""
@@ -666,11 +663,7 @@ class SurfaceMeshGenerator:
             new_coords[:, 0].max() + padding, new_coords[:, 1].max() + padding, new_coords[:, 2].max() + padding,
         )
 
-        edges_new = [
-            (new_coords[0], new_coords[1]),
-            (new_coords[1], new_coords[2]),
-            (new_coords[2], new_coords[0])
-        ]
+        edges_new = triangle_edges(new_coords[0], new_coords[1], new_coords[2])
 
         for tri_id in self.space_index_triangle.intersection(bbox):
             if tri_id not in self._triangle_dict:
@@ -681,11 +674,7 @@ class SurfaceMeshGenerator:
             if shared:
                 continue
             ex_coords = np.array([nd.coords for nd in existing.nodes])
-            edges_ex = [
-                (ex_coords[0], ex_coords[1]),
-                (ex_coords[1], ex_coords[2]),
-                (ex_coords[2], ex_coords[0])
-            ]
+            edges_ex = triangle_edges(ex_coords[0], ex_coords[1], ex_coords[2])
             for a1, a2 in edges_new:
                 for b1, b2 in edges_ex:
                     dist = segment_segment_distance_3d(a1, a2, b1, b2)
@@ -1210,23 +1199,7 @@ class SurfaceMeshGenerator:
             True 表示距离过小（应拒绝）
         """
         ex_coords = np.array([nd.coords for nd in existing_tri.nodes])
-        edges_new = [
-            (new_coords[0], new_coords[1]),
-            (new_coords[1], new_coords[2]),
-            (new_coords[2], new_coords[0])
-        ]
-        edges_ex = [
-            (ex_coords[0], ex_coords[1]),
-            (ex_coords[1], ex_coords[2]),
-            (ex_coords[2], ex_coords[0])
-        ]
-
-        for a1, a2 in edges_new:
-            for b1, b2 in edges_ex:
-                dist = segment_segment_distance_3d(a1, a2, b1, b2)
-                if dist < min_dist:
-                    return True
-        return False
+        return check_min_edge_distance(new_coords, ex_coords, min_dist)
 
     def _is_valid_candidate(
         self,
@@ -1860,17 +1833,7 @@ class SurfaceMeshGenerator:
         p0 = self._get_node_coords_by_idx(node_ids[0])
         p1 = self._get_node_coords_by_idx(node_ids[1])
         p2 = self._get_node_coords_by_idx(node_ids[2])
-        angles = []
-        for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
-            va = a - apex
-            vb = b - apex
-            la = np.linalg.norm(va)
-            lb = np.linalg.norm(vb)
-            if la < 1e-15 or lb < 1e-15:
-                return 0.0
-            cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
-            angles.append(np.degrees(np.arccos(cos_a)))
-        return min(angles)
+        return triangle_min_angle_from_coords(p0, p1, p2)
 
     def _orient_ccw(self, node_ids: list):
         """确保三角形节点在 3D 中保持一致的绕序（返回 node_ids 或重排版本，退化时返回 None）"""

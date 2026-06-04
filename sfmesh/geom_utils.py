@@ -880,6 +880,203 @@ def check_triangle_vs_existing(
 
 
 # ============================================================================
+# 三角形辅助工具
+# ============================================================================
+
+def triangle_edges(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray):
+    """
+    返回三角形的三条边（有序对）。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标
+
+    Returns:
+        [(p0, p1), (p1, p2), (p2, p0)]
+    """
+    return [(p0, p1), (p1, p2), (p2, p0)]
+
+
+def triangle_min_angle_from_coords(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
+    """
+    计算三角形最小内角（度）。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标
+
+    Returns:
+        最小内角（度），退化三角形返回 0.0
+    """
+    angles = []
+    for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
+        va = a - apex
+        vb = b - apex
+        la = np.linalg.norm(va)
+        lb = np.linalg.norm(vb)
+        if la < 1e-15 or lb < 1e-15:
+            return 0.0
+        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
+        angles.append(np.degrees(np.arccos(cos_a)))
+    return min(angles)
+
+
+def triangle_max_angle_from_coords(p0: np.ndarray, p1: np.ndarray, p2: np.ndarray) -> float:
+    """
+    计算三角形最大内角（度）。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标
+
+    Returns:
+        最大内角（度），退化三角形返回 0.0
+    """
+    angles = []
+    for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
+        va = a - apex
+        vb = b - apex
+        la = np.linalg.norm(va)
+        lb = np.linalg.norm(vb)
+        if la < 1e-15 or lb < 1e-15:
+            return 0.0
+        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
+        angles.append(np.degrees(np.arccos(cos_a)))
+    return max(angles)
+
+
+def point_to_segment_distance_3d(
+    point: np.ndarray,
+    seg_start: np.ndarray,
+    seg_end: np.ndarray,
+) -> float:
+    """
+    计算 3D 点到线段的最短距离。
+
+    Args:
+        point: (3,) 查询点
+        seg_start: (3,) 线段起点
+        seg_end: (3,) 线段终点
+
+    Returns:
+        最短距离
+    """
+    d = seg_end - seg_start
+    seg_len_sq = np.dot(d, d)
+    if seg_len_sq < 1e-30:
+        return np.linalg.norm(point - seg_start)
+    t = np.clip(np.dot(point - seg_start, d) / seg_len_sq, 0.0, 1.0)
+    closest = seg_start + t * d
+    return np.linalg.norm(point - closest)
+
+
+def check_min_edge_distance(
+    new_coords: np.ndarray,
+    existing_coords: np.ndarray,
+    min_dist: float,
+) -> bool:
+    """
+    检查两个三角形的边-边最小距离是否小于阈值。
+
+    Args:
+        new_coords: 新三角形顶点坐标 (3, 3)
+        existing_coords: 已有三角形顶点坐标 (3, 3)
+        min_dist: 最小允许距离
+
+    Returns:
+        True 表示距离过小（应拒绝）
+    """
+    edges_new = triangle_edges(new_coords[0], new_coords[1], new_coords[2])
+    edges_ex = triangle_edges(existing_coords[0], existing_coords[1], existing_coords[2])
+    for a1, a2 in edges_new:
+        for b1, b2 in edges_ex:
+            if segment_segment_distance_3d(a1, a2, b1, b2) < min_dist:
+                return True
+    return False
+
+
+def uv_out_of_bounds(
+    uv: Tuple[float, float],
+    bounds: Tuple[float, float, float, float],
+    margin: float = 0.1,
+) -> bool:
+    """
+    检查 UV 参数坐标是否超出面的参数域。
+
+    Args:
+        uv: (u, v) 参数坐标
+        bounds: (u_min, u_max, v_min, v_max) 参数域
+        margin: 边界余量比例
+
+    Returns:
+        True 表示超出参数域
+    """
+    u_min, u_max, v_min, v_max = bounds
+    u_range = u_max - u_min
+    v_range = v_max - v_min
+    u_margin = max(u_range * margin, 1e-6)
+    v_margin = max(v_range * margin, 1e-6)
+    u, v = uv
+    return (u < u_min - u_margin or u > u_max + u_margin or
+            v < v_min - v_margin or v > v_max + v_margin)
+
+
+def get_most_visible_plane(normal: np.ndarray) -> Tuple[int, int]:
+    """
+    根据法向量选择最可见的投影平面（返回要保留的两个轴索引）。
+
+    丢弃法向量绝对值最大的分量，保留其余两个分量。
+
+    Args:
+        normal: (3,) 法向量
+
+    Returns:
+        (axis_i, axis_j) 要保留的两个轴索引
+    """
+    abs_n = np.abs(normal)
+    drop = np.argmax(abs_n)
+    axes = [0, 1, 2]
+    axes.pop(drop)
+    return tuple(axes)
+
+
+def segments_cross_strict_2d(
+    p1: Tuple[float, float],
+    p2: Tuple[float, float],
+    q1: Tuple[float, float],
+    q2: Tuple[float, float],
+    eps: float = 1e-8,
+) -> bool:
+    """
+    严格 2D 线段相交检测（排除端点接触和 T 型相交）。
+
+    使用叉积符号测试，要求交点参数在 (eps, 1-eps) 范围内。
+
+    Args:
+        p1, p2: 第一条线段端点
+        q1, q2: 第二条线段端点
+        eps: 端点排除容差
+
+    Returns:
+        True 表示两线段严格相交
+    """
+    p1 = np.array(p1, dtype=float)
+    p2 = np.array(p2, dtype=float)
+    q1 = np.array(q1, dtype=float)
+    q2 = np.array(q2, dtype=float)
+
+    d1 = p2 - p1
+    d2 = q2 - q1
+    d1_cross_d2 = d1[0] * d2[1] - d1[1] * d2[0]
+
+    if abs(d1_cross_d2) < 1e-12:
+        return False  # 平行或共线
+
+    dq = q1 - p1
+    t = (dq[0] * d2[1] - dq[1] * d2[0]) / d1_cross_d2
+    u = (dq[0] * d1[1] - dq[1] * d1[0]) / d1_cross_d2
+
+    return eps < t < 1.0 - eps and eps < u < 1.0 - eps
+
+
+# ============================================================================
 # 网格拓扑分析工具
 # ============================================================================
 
