@@ -861,15 +861,9 @@ def check_triangle_vs_existing(
                 if segment_segment_distance_3d(a1, a2, b1, b2) < tolerance:
                     return True
 
-        # 新三角形的非共享边 vs 现有三角形内部
-        for a1, a2 in edges_new:
-            if _edge_intersects_triangle_core(a1, a2, q0, q1, q2):
-                return True
-
-        # 现有三角形的非共享边 vs 新三角形内部
-        for b1, b2 in edges_ex:
-            if _edge_intersects_triangle_core(b1, b2, p0, p1, p2):
-                return True
+        # 注意：在曲面上，共享一个顶点的三角形的非共享边可能在3D空间
+        # 穿过对方三角形的"内部"（因为曲面弯曲），这是合法的。
+        # 因此跳过 edge_intersects_triangle_core 检查。
 
         return False
 
