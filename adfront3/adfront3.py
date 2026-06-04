@@ -2,7 +2,7 @@ import heapq
 import numpy as np
 
 from utils.geom_toolkit import tetrahedron_volume, calculate_distance
-from optimize.mesh_quality import tetrahedron_shape_quality
+from optimize.mesh_quality import tetrahedron_shape_quality, compute_mesh_quality_stats
 from data_structure.basic_elements import NodeElement, Tetrahedron, is_node_element
 from data_structure.unstructured_grid import Unstructured_Grid
 from data_structure.rtree_space import (
@@ -10,10 +10,18 @@ from data_structure.rtree_space import (
     get_candidate_elements_id_3d,
     add_elems_to_space_index_3d_with_RTree,
 )
+from data_structure.vtk_types import VTKCellType
+from utils.ray_casting import build_spatial_grid, classify_points_inside
 from utils.timer import TimeSpan
 from utils.message import info, warning, error
+from fileIO.vtk_io import write_vtk
 from adfront3.front3d import Front3D
 from adfront3.sizing3d import UniformSizing3D
+from adfront3.geom3d import (
+    point_in_tet, tets_intersect, bbox_overlap_3d,
+    edge_intersects_triangle, tet_intersects_triangle, point_in_triangle,
+)
+from meshsize.size_field_3d import SizeField3D
 
 
 class Adfront3:
@@ -21,7 +29,7 @@ class Adfront3:
 
     def __init__(self, surface_triangles, sizing_system=None, debug_level=0):
         self.debug_level = debug_level
-        self.al = 3.0
+        self.al = 6.0
         self.discount = 0.8
         self.progress_interval = 100
 
@@ -30,7 +38,8 @@ class Adfront3:
         # 根据边界面网格自动确定最大间距
         max_spacing = self._compute_max_edge_length(surface_triangles)
         if sizing_system is None:
-            sizing_system = UniformSizing3D(max_spacing)
+            from adfront3.sizing3d import SurfaceSizing3D
+            sizing_system = SurfaceSizing3D(surface_triangles)
         self.sizing_system = sizing_system
 
         self.front_list = []
@@ -66,8 +75,8 @@ class Adfront3:
         self.cell_hash_list = set()
         self.face_usage = {}
 
-        self.boundary_halfspaces = []  # (inward_normal, ref_point) for containment check
-        self.base_face_used = set()  # 已作为基准面使用过的 face_key
+        self.deleted_facekeys = set()  # 已消耗的阵面 face_key（惰性删除）
+        self._raycast_data = None  # ray casting 数据
         self.initialize()
 
     def initialize(self):
@@ -133,17 +142,20 @@ class Adfront3:
             self.front_list.append(front)
             front_idx += 1
 
-            # 记录边界半空间用于包含检测
-            if front.area > 1e-30:
-                self.boundary_halfspaces.append(
-                    (list(front.normal), list(front.node_elems[0].coords))
-                )
-
         heapq.heapify(self.front_list)
         self._build_spatial_index()
+        self._init_raycast_data()
 
         if self.debug_level >= 1:
             info(f"初始化完成: 节点={self.num_nodes}, 阵面={len(self.front_list)}")
+
+    def _init_raycast_data(self):
+        """初始化射线投射数据用于边界包含检测"""
+        tri_verts = []
+        for tri in self.surface_triangles:
+            verts = [list(n.coords) for n in tri.nodes]
+            tri_verts.append(verts)
+        self._raycast_data = build_spatial_grid(np.array(tri_verts))
 
     def _build_spatial_index(self):
         """构建三维 RTree 空间索引"""
@@ -164,6 +176,12 @@ class Adfront3:
             for front in self.front_list:
                 self.front_id_by_facekey[front.face_key] = id(front)
 
+        # 初始化空的单元空间索引
+        from rtree import index as rtree_index
+        p = rtree_index.Property()
+        p.dimension = 3
+        self.space_index_cell = rtree_index.Index(properties=p)
+
     def generate(self, max_steps=None):
         """主推进循环，生成四面体网格，返回 Unstructured_Grid"""
         timer = TimeSpan("开始三维四面体网格生成...")
@@ -180,9 +198,9 @@ class Adfront3:
             step += 1
             self.base_front = heapq.heappop(self.front_list)
 
-            # 跳过已使用过的基准面或已被消耗的阵面
+            # 跳过已消耗的阵面（惰性删除）
             base_fk = self.base_front.face_key
-            if base_fk in self.base_face_used or self.face_usage.get(base_fk, 0) >= 2:
+            if base_fk in self.deleted_facekeys:
                 continue
 
             spacing = self.sizing_system.spacing_at(self.base_front.center)
@@ -238,39 +256,25 @@ class Adfront3:
         return float(np.prod(maxs - mins))
 
     def add_new_point(self, spacing):
-        """沿法向量方向推进生成理想点 pbest"""
+        """沿法向量方向推进生成理想点 pbest
+
+        参考公式: sp = sqrt(6)/3 * avg_edge_length（正四面体高）
+        spacing 已是局部目标边长，直接用作推进距离。
+        """
         center = self.base_front.center
         normal = self.base_front.normal
 
-        # 尝试不同的推进距离，选择第一个在边界内部的
-        for factor in [1.0, 0.5, 0.25, 0.1, 0.05]:
-            advance = spacing * factor
-            candidate = [
-                center[0] + normal[0] * advance,
-                center[1] + normal[1] * advance,
-                center[2] + normal[2] * advance,
-            ]
-            if self._is_inside_boundary(candidate):
-                self.pbest = NodeElement(
-                    candidate, self.num_nodes,
-                    part_name="interior-node", bc_type="interior",
-                )
-                self.pbest.bbox = [candidate[0], candidate[1], candidate[2],
-                                   candidate[0], candidate[1], candidate[2]]
-                return self.pbest
-
-        # 所有推进距离都在边界外，使用微小偏移
-        eps = spacing * 0.01
-        pbest = [
-            center[0] + normal[0] * eps,
-            center[1] + normal[1] * eps,
-            center[2] + normal[2] * eps,
+        candidate = [
+            center[0] + normal[0] * spacing,
+            center[1] + normal[1] * spacing,
+            center[2] + normal[2] * spacing,
         ]
         self.pbest = NodeElement(
-            pbest, self.num_nodes,
+            candidate, self.num_nodes,
             part_name="interior-node", bc_type="interior",
         )
-        self.pbest.bbox = [pbest[0], pbest[1], pbest[2], pbest[0], pbest[1], pbest[2]]
+        self.pbest.bbox = [candidate[0], candidate[1], candidate[2],
+                           candidate[0], candidate[1], candidate[2]]
         return self.pbest
 
     def search_candidates(self, search_radius):
@@ -305,18 +309,18 @@ class Adfront3:
             ]
 
     def select_point(self):
-        """从候选点中选择最佳推进点，优先使用已有节点"""
+        """从候选点中选择最佳推进点，优先使用已有节点，回退到 pbest"""
         p0 = self.base_front.node_elems[0].coords
         p1 = self.base_front.node_elems[1].coords
         p2 = self.base_front.node_elems[2].coords
 
+        # 1. 优先使用已有候选节点
         scored_candidates = []
         for node_elem in self.node_candidates:
-            # 跳过基准面自身的节点
             if node_elem in self.base_front.node_elems:
                 continue
             quality = tetrahedron_shape_quality(p0, p1, p2, node_elem.coords)
-            if quality > 0:
+            if quality > 0.1:
                 scored_candidates.append((quality, node_elem))
 
         scored_candidates.sort(key=lambda x: x[0], reverse=True)
@@ -324,7 +328,8 @@ class Adfront3:
         self.pselected = None
         self.best_flag = False
         for quality, node_elem in scored_candidates:
-            # 包含性检查（对凸域，_is_inside_boundary 已隐含 _is_correct_side）
+            if not self._is_correct_side(node_elem):
+                continue
             if not self._is_inside_boundary(node_elem.coords):
                 continue
             if self._is_cross(node_elem):
@@ -332,9 +337,19 @@ class Adfront3:
             self.pselected = node_elem
             break
 
-        if self.pselected is None:
-            if self.debug_level >= 2:
-                warning(f"阵面{self.base_front.node_ids}未找到合适推进点，扩大搜索范围")
+        if self.pselected is not None:
+            return self.pselected
+
+        # 2. 回退到理想新点 pbest
+        if self.pbest is not None:
+            quality = tetrahedron_shape_quality(p0, p1, p2, self.pbest.coords)
+            if quality > 0.1:
+                if (self._is_correct_side(self.pbest) and
+                    self._is_inside_boundary(self.pbest.coords) and
+                    not self._is_cross(self.pbest)):
+                    self.pselected = self.pbest
+                    self.best_flag = True
+                    return self.pselected
 
         return self.pselected
 
@@ -346,16 +361,19 @@ class Adfront3:
         return np.dot(v, normal) > 1e-12
 
     def _is_inside_boundary(self, point):
-        """检查点是否在封闭体积内部（所有边界半空间内侧）"""
-        pt = np.array(point)
-        for normal, ref in self.boundary_halfspaces:
-            v = pt - np.array(ref)
-            if np.dot(v, normal) < -1e-6:
-                return False
-        return True
+        """检查点是否在封闭体积内部（射线投射法，适用于任意封闭曲面）"""
+        if self._raycast_data is None:
+            return True
+        return classify_points_inside([np.array(point)], self._raycast_data)[0]
 
     def _is_cross(self, node_elem):
-        """检查新四面体是否与现有单元相交"""
+        """检查新四面体是否与现有单元或阵面相交"""
+        # 检查候选点是否在现有四面体内部
+        pt_coords = node_elem.coords
+        for cell in self.cell_candidates:
+            if isinstance(cell, Tetrahedron):
+                if self._point_in_tet(pt_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
+                    return True
         p0 = self.base_front.node_elems[0]
         p1 = self.base_front.node_elems[1]
         p2 = self.base_front.node_elems[2]
@@ -378,97 +396,37 @@ class Adfront3:
             if not isinstance(cell, Tetrahedron):
                 continue
             shared = new_tet_nodes & set(cell.node_ids)
-            if len(shared) >= 3:
-                continue
             if len(shared) >= 2:
                 continue
-            # 无共享或1个共享节点：检查包围盒和点包含
             if self._bbox_overlap_3d(new_tet_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
                 if self._tets_intersect(new_tet_coords, [cell.p1, cell.p2, cell.p3, cell.p4]):
                     return True
 
         return False
 
+    def _tet_intersects_triangle(self, tet_coords, tri_coords):
+        """检查四面体是否与三角形相交（边-面交叉检测）"""
+        return tet_intersects_triangle(tet_coords, tri_coords)
+
+    def _point_in_triangle(self, point, tri_coords):
+        """检查点是否在三角形内部（使用重心坐标）"""
+        return point_in_triangle(point, tri_coords)
+
     def _bbox_overlap_3d(self, coords1, coords2):
         """检查两个点集的包围盒是否重叠"""
-        eps = 1e-10
-        min1 = [min(c[i] for c in coords1) - eps for i in range(3)]
-        max1 = [max(c[i] for c in coords1) + eps for i in range(3)]
-        min2 = [min(c[i] for c in coords2) - eps for i in range(3)]
-        max2 = [max(c[i] for c in coords2) + eps for i in range(3)]
-        return all(min1[i] <= max2[i] and max1[i] >= min2[i] for i in range(3))
+        return bbox_overlap_3d(coords1, coords2)
 
     def _point_in_tet(self, p, tet_coords):
         """检查点是否在四面体内部（使用有符号体积法）"""
-        p0, p1, p2, p3 = [np.array(c) for c in tet_coords]
-        pt = np.array(p)
-
-        v0 = np.dot(pt - p0, np.cross(p1 - p0, p2 - p0))
-        v1 = np.dot(pt - p0, np.cross(p2 - p0, p3 - p0))
-        v2 = np.dot(pt - p1, np.cross(p3 - p1, p0 - p1))
-        v3 = np.dot(pt - p2, np.cross(p0 - p2, p3 - p2))
-
-        ref = np.dot(p3 - p0, np.cross(p1 - p0, p2 - p0))
-        if abs(ref) < 1e-30:
-            return False
-
-        if ref > 0:
-            return v0 > 1e-10 and v1 > 1e-10 and v2 > 1e-10 and v3 > 1e-10
-        else:
-            return v0 < -1e-10 and v1 < -1e-10 and v2 < -1e-10 and v3 < -1e-10
+        return point_in_tet(p, tet_coords)
 
     def _tets_intersect(self, coords1, coords2):
         """检查两个四面体是否相交"""
-        for c in coords1:
-            if self._point_in_tet(c, coords2):
-                return True
-        for c in coords2:
-            if self._point_in_tet(c, coords1):
-                return True
-        return False
+        return tets_intersect(coords1, coords2)
 
     def _edge_intersects_triangle(self, edge, tri_coords):
         """检查线段是否与三角形相交"""
-        p0 = np.array(edge[0])
-        p1 = np.array(edge[1])
-        a, b, c = [np.array(x) for x in tri_coords]
-
-        edge_vec = p1 - p0
-        edge_len = np.linalg.norm(edge_vec)
-        if edge_len < 1e-30:
-            return False
-
-        normal = np.cross(b - a, c - a)
-        normal_len = np.linalg.norm(normal)
-        if normal_len < 1e-30:
-            return False
-        normal = normal / normal_len
-
-        denom = np.dot(normal, edge_vec)
-        if abs(denom) < 1e-12:
-            return False
-
-        t = np.dot(normal, a - p0) / denom
-        if t < 1e-8 or t > 1 - 1e-8:
-            return False
-
-        hit = p0 + t * edge_vec
-
-        v0 = c - a
-        v1 = b - a
-        v2 = hit - a
-
-        dot00 = np.dot(v0, v0)
-        dot01 = np.dot(v0, v1)
-        dot02 = np.dot(v0, v2)
-        dot11 = np.dot(v1, v1)
-        dot12 = np.dot(v1, v2)
-
-        inv_denom = 1.0 / (dot00 * dot11 - dot01 * dot01 + 1e-30)
-        u = (dot11 * dot02 - dot01 * dot12) * inv_denom
-        v = (dot00 * dot12 - dot01 * dot02) * inv_denom
-
-        return u >= -1e-8 and v >= -1e-8 and (u + v) <= 1 + 1e-8
+        return edge_intersects_triangle(edge, tri_coords)
 
     def update_data(self):
         """创建四面体，更新节点、阵面和单元"""
@@ -489,10 +447,18 @@ class Adfront3:
             Front3D(p0, p1, p3, idx=-1, bc_type="interior", part_name="interior"),
         ]
 
-        # 先记录基准面已被消耗（在处理新面之前，确保匹配检测正确）
+        # 标记基准面已消耗（边界面标记为完全消耗，防止在同侧创建第二个四面体）
         base_face_key = self.base_front.face_key
-        self.face_usage[base_face_key] = self.face_usage.get(base_face_key, 0) + 1
-        self.base_face_used.add(base_face_key)
+        if self.base_front.bc_type == "wall":
+            self.face_usage[base_face_key] = 2  # 边界面只能在一侧使用
+        else:
+            self.face_usage[base_face_key] = self.face_usage.get(base_face_key, 0) + 1
+        self.deleted_facekeys.add(base_face_key)
+
+        # 从空间索引中移除基准面
+        base_fid = self.front_id_by_facekey.pop(base_face_key, None)
+        if base_fid is not None and base_fid in self.front_dict:
+            del self.front_dict[base_fid]
 
         self._update_fronts(new_faces)
 
@@ -501,14 +467,17 @@ class Adfront3:
             part_name='interior-tetrahedron',
             idx=self.num_cells,
         )
+        # 设置 bbox 用于 RTree 空间索引
+        all_coords = [new_tet.p1, new_tet.p2, new_tet.p3, new_tet.p4]
+        new_tet.bbox = [
+            min(c[0] for c in all_coords),
+            min(c[1] for c in all_coords),
+            min(c[2] for c in all_coords),
+            max(c[0] for c in all_coords),
+            max(c[1] for c in all_coords),
+            max(c[2] for c in all_coords),
+        ]
         self._update_cells(new_tet)
-
-        # 移除基准阵面（已从堆中弹出，需从索引中清除）
-        base_fid = self.front_id_by_facekey.pop(base_face_key, None)
-        if base_fid is not None and base_fid in self.front_dict:
-            del self.front_dict[base_fid]
-
-        heapq.heapify(self.front_list)
 
     def _update_nodes(self):
         """更新节点列表"""
@@ -528,15 +497,17 @@ class Adfront3:
                 self.pselected.idx = existing.idx
 
     def _update_fronts(self, new_fronts):
-        """更新阵面列表：新面若已存在则移除（内部面），否则添加"""
+        """更新阵面列表：新面若已存在则标记删除（内部面），否则添加"""
         for front in new_fronts:
             face_key = front.face_key
             if face_key in self.face_usage:
-                # 第二次使用，移除已有阵面（变为内部面）
+                # 第二次使用，标记为已消耗（惰性删除）
                 self.face_usage[face_key] += 1
-                self._remove_front_by_hash(face_key)
-                if self.debug_level >= 2:
-                    print(f'  CONSUMED face {face_key}, remaining: {len(self.front_list)}')
+                self.deleted_facekeys.add(face_key)
+                # 从空间索引中移除
+                fid = self.front_id_by_facekey.pop(face_key, None)
+                if fid is not None and fid in self.front_dict:
+                    del self.front_dict[fid]
             else:
                 # 首次使用，添加到阵面列表
                 self.face_usage[face_key] = 1
@@ -545,14 +516,6 @@ class Adfront3:
                     [front], self.space_index_front, self.front_dict
                 )
                 self.front_id_by_facekey[face_key] = id(front)
-
-    def _remove_front_by_hash(self, face_key):
-        """从阵面列表中移除指定 face_key 的阵面"""
-        self.front_list = [f for f in self.front_list if f.face_key != face_key]
-        # 使用 face_key -> id 映射从 front_dict 中移除
-        fid = self.front_id_by_facekey.pop(face_key, None)
-        if fid is not None and fid in self.front_dict:
-            del self.front_dict[fid]
 
     def _update_cells(self, new_cell):
         """更新单元列表"""
@@ -582,51 +545,11 @@ class Adfront3:
         )
 
     def export_to_vtk(self, filename):
-        """导出四面体网格为 VTK 文件"""
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write("# vtk DataFile Version 3.0\n")
-            f.write("Tetrahedral Mesh\n")
-            f.write("ASCII\n")
-            f.write("DATASET UNSTRUCTURED_GRID\n")
-
-            f.write(f"POINTS {len(self.node_coords)} float\n")
-            for coord in self.node_coords:
-                f.write(f"{coord[0]:.8f} {coord[1]:.8f} {coord[2]:.8f}\n")
-
-            n_cells = len(self.cell_container)
-            f.write(f"\nCELLS {n_cells} {5 * n_cells}\n")
-            for cell in self.cell_container:
-                ids = cell.node_ids
-                f.write(f"4 {ids[0]} {ids[1]} {ids[2]} {ids[3]}\n")
-
-            f.write(f"\nCELL_TYPES {n_cells}\n")
-            for _ in range(n_cells):
-                f.write("10\n")
+        """导出四面体网格为 VTK 文件（委托给 fileIO.vtk_io）"""
+        cell_idx = [list(c.node_ids) for c in self.cell_container]
+        cell_types = [VTKCellType.TETRA] * len(self.cell_container)
+        write_vtk(filename, self.node_coords, cell_idx, [], cell_types)
 
     def get_quality_stats(self):
-        """计算网格质量统计"""
-        if not self.cell_container:
-            return {}
-
-        qualities = []
-        volumes = []
-        for cell in self.cell_container:
-            if isinstance(cell, Tetrahedron):
-                q = tetrahedron_shape_quality(cell.p1, cell.p2, cell.p3, cell.p4)
-                v = tetrahedron_volume(cell.p1, cell.p2, cell.p3, cell.p4)
-                qualities.append(q)
-                volumes.append(v)
-
-        if not qualities:
-            return {}
-
-        return {
-            'num_cells': len(self.cell_container),
-            'num_nodes': self.num_nodes,
-            'quality_mean': sum(qualities) / len(qualities),
-            'quality_min': min(qualities),
-            'quality_max': max(qualities),
-            'volume_total': sum(volumes),
-            'volume_min': min(volumes),
-            'volume_max': max(volumes),
-        }
+        """计算网格质量统计（委托给 optimize.mesh_quality）"""
+        return compute_mesh_quality_stats(self.cell_container)

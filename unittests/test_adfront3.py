@@ -148,5 +148,257 @@ class TestAdfront3Cube(unittest.TestCase):
         print(f"\n四面体总数: {len(unstr_grid.cell_container)}, 退化: {degenerate}")
 
 
+class TestAdfront3CubeFineMesh(unittest.TestCase):
+    """立方体细网格四面体网格生成测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.cube_size = 2.0
+        cls.spacing = 0.25
+        cls.all_triangles = TestAdfront3Cube._generate_cube_surface(cls.cube_size, cls.spacing)
+        cls.adfront3 = None
+        cls.unstr_grid = None
+
+    def _run_adfront3(self):
+        if self.__class__.unstr_grid is None:
+            adfront3 = Adfront3(self.all_triangles, debug_level=0)
+            unstr_grid = adfront3.generate()
+            self.__class__.adfront3 = adfront3
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.adfront3, self.__class__.unstr_grid
+
+    def test_fine_volume_mesh(self):
+        """细网格：验证四面体网格生成"""
+        adfront3, unstr_grid = self._run_adfront3()
+        self.assertIsNotNone(unstr_grid)
+        self.assertGreater(unstr_grid.num_cells, 0)
+
+    def test_fine_no_degenerate_tets(self):
+        """细网格：无退化四面体"""
+        adfront3, unstr_grid = self._run_adfront3()
+        degenerate = sum(
+            1 for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron) and tetrahedron_volume(c.p1, c.p2, c.p3, c.p4) <= 1e-12
+        )
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
+
+    def test_fine_volume_coverage(self):
+        """细网格：体积覆盖率 > 25%"""
+        adfront3, unstr_grid = self._run_adfront3()
+        total_vol = sum(
+            tetrahedron_volume(c.p1, c.p2, c.p3, c.p4)
+            for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron)
+        )
+        expected = self.cube_size ** 3
+        coverage = total_vol / expected
+        self.assertGreater(coverage, 0.25, f"覆盖率不足: {coverage:.4f}")
+
+    def test_fine_boundary_containment(self):
+        """细网格：所有节点在边界内"""
+        adfront3, _ = self._run_adfront3()
+        import numpy as np
+        coords = np.array(adfront3.node_coords)
+        mins = coords.min(axis=0)
+        maxs = coords.max(axis=0)
+        tol = 1e-6
+        for d in range(3):
+            self.assertGreaterEqual(mins[d], -tol)
+            self.assertLessEqual(maxs[d], self.cube_size + tol)
+
+    def test_fine_quality_mean(self):
+        """细网格：平均质量 > 0.5"""
+        adfront3, _ = self._run_adfront3()
+        stats = adfront3.get_quality_stats()
+        self.assertGreater(stats.get('quality_mean', 0), 0.5,
+                           f"平均质量过低: {stats.get('quality_mean', 0):.4f}")
+
+
+class TestAdfront3Sphere(unittest.TestCase):
+    """球体四面体网格生成测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.radius = 1.0
+        cls.all_triangles = cls._load_sphere_stl()
+        cls.adfront3 = None
+        cls.unstr_grid = None
+
+    @staticmethod
+    def _read_stl(filename):
+        """读取 ASCII STL 文件，返回 SurfaceTriangle 列表"""
+        from sfmesh.surface_front import SurfaceTriangle, NodeElement3D
+
+        triangles = []
+        node_cache = {}
+
+        with open(filename, "r") as f:
+            lines = [line.strip() for line in f if line.strip()]
+
+        i = 0
+        while i < len(lines):
+            if lines[i].startswith("facet normal"):
+                vertices = []
+                i += 2
+                while not lines[i].startswith("endloop"):
+                    if lines[i].startswith("vertex"):
+                        parts = lines[i].split()
+                        coord = tuple(map(float, parts[1:4]))
+                        if coord not in node_cache:
+                            node_elem = NodeElement3D(
+                                coord, idx=len(node_cache),
+                                uv_params=(0.0, 0.0),
+                            )
+                            node_cache[coord] = node_elem
+                        vertices.append(node_cache[coord])
+                    i += 1
+                i += 1
+                i += 1
+                if len(vertices) == 3:
+                    tri = SurfaceTriangle(
+                        vertices[0], vertices[1], vertices[2],
+                        idx=len(triangles),
+                    )
+                    triangles.append(tri)
+            else:
+                i += 1
+
+        return triangles
+
+    @classmethod
+    def _load_sphere_stl(cls):
+        """加载球体 STL 文件"""
+        stl_path = Path(project_root) / "unittests" / "test_files" / "3d_cases" / "sphere.stl"
+        return cls._read_stl(str(stl_path))
+
+    def _run_adfront3(self):
+        if self.__class__.unstr_grid is None:
+            adfront3 = Adfront3(self.all_triangles, debug_level=0)
+            unstr_grid = adfront3.generate()
+            self.__class__.adfront3 = adfront3
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.adfront3, self.__class__.unstr_grid
+
+    def test_sphere_volume_mesh(self):
+        """球体：验证四面体网格生成"""
+        self.assertGreater(len(self.all_triangles), 50,
+                           f"曲面三角形数量不足: {len(self.all_triangles)}")
+        adfront3, unstr_grid = self._run_adfront3()
+        self.assertIsNotNone(unstr_grid, "球体网格生成失败")
+        self.assertGreater(unstr_grid.num_cells, 0, "未生成球体四面体")
+
+        output_file = self.output_dir / "adfront3_sphere.vtk"
+        adfront3.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists())
+
+        stats = adfront3.get_quality_stats()
+        print(f"\n球体网格: {stats.get('num_cells', 0)} 四面体, "
+              f"节点={stats.get('num_nodes', 0)}, "
+              f"质量均值={stats.get('quality_mean', 0):.4f}")
+
+    def test_sphere_no_degenerate(self):
+        """球体：无退化四面体"""
+        adfront3, unstr_grid = self._run_adfront3()
+        degenerate = sum(
+            1 for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron) and tetrahedron_volume(c.p1, c.p2, c.p3, c.p4) <= 1e-12
+        )
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
+
+    def test_sphere_volume_coverage(self):
+        """球体：体积覆盖率 > 60%"""
+        adfront3, unstr_grid = self._run_adfront3()
+        import numpy as np
+        total_vol = sum(
+            tetrahedron_volume(c.p1, c.p2, c.p3, c.p4)
+            for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron)
+        )
+        expected = (4.0 / 3.0) * np.pi * self.radius ** 3
+        coverage = total_vol / expected
+        self.assertGreater(coverage, 0.60,
+                           f"球体体积覆盖率不足: {coverage:.4f}")
+        print(f"\n球体覆盖率: {coverage:.4f}")
+
+    def test_sphere_nodes_bounded(self):
+        """球体：所有节点在球体内"""
+        adfront3, _ = self._run_adfront3()
+        import numpy as np
+        coords = np.array(adfront3.node_coords)
+        dists = np.linalg.norm(coords, axis=1)
+        max_dist = dists.max()
+        self.assertLess(max_dist, self.radius * 1.1,
+                        f"节点超出球体: max_dist={max_dist:.4f}")
+
+    def test_sphere_quality(self):
+        """球体：质量统计"""
+        adfront3, _ = self._run_adfront3()
+        stats = adfront3.get_quality_stats()
+        self.assertGreater(stats.get('quality_mean', 0), 0.1,
+                           f"平均质量过低: {stats.get('quality_mean', 0):.4f}")
+        self.assertGreater(stats.get('quality_min', 0), -1e-10,
+                           f"最小质量异常: {stats.get('quality_min', 0):.4f}")
+
+
+class TestAdfront3Quality(unittest.TestCase):
+    """阵面推进法网格质量测试"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.cube_size = 2.0
+        cls.spacing = 0.5
+        cls.all_triangles = TestAdfront3Cube._generate_cube_surface(cls.cube_size, cls.spacing)
+        cls.adfront3 = None
+        cls.unstr_grid = None
+
+    def _run_adfront3(self):
+        if self.__class__.unstr_grid is None:
+            adfront3 = Adfront3(self.all_triangles, debug_level=0)
+            unstr_grid = adfront3.generate()
+            self.__class__.adfront3 = adfront3
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.adfront3, self.__class__.unstr_grid
+
+    def test_quality_range(self):
+        """所有四面体质量在有效范围内"""
+        adfront3, _ = self._run_adfront3()
+        for cell in adfront3.cell_container:
+            if isinstance(cell, Tetrahedron):
+                q = tetrahedron_shape_quality(cell.p1, cell.p2, cell.p3, cell.p4)
+                self.assertGreaterEqual(q, -1e-10, f"质量异常: {q}")
+                self.assertLessEqual(q, 1.0 + 1e-10, f"质量超范围: {q}")
+
+    def test_quality_mean_threshold(self):
+        """平均质量 > 0.5"""
+        adfront3, _ = self._run_adfront3()
+        stats = adfront3.get_quality_stats()
+        self.assertGreater(stats.get('quality_mean', 0), 0.5,
+                           f"平均质量过低: {stats.get('quality_mean', 0):.4f}")
+
+    def test_no_negative_quality(self):
+        """无负质量四面体"""
+        adfront3, _ = self._run_adfront3()
+        neg_count = sum(
+            1 for c in adfront3.cell_container
+            if isinstance(c, Tetrahedron)
+            and tetrahedron_shape_quality(c.p1, c.p2, c.p3, c.p4) < -1e-10
+        )
+        self.assertEqual(neg_count, 0, f"发现{neg_count}个负质量四面体")
+
+    def test_vtk_export(self):
+        """VTK 导出验证"""
+        adfront3, _ = self._run_adfront3()
+        output_file = self.output_dir / "adfront3_quality.vtk"
+        adfront3.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists())
+        self.assertGreater(output_file.stat().st_size, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
