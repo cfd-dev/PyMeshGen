@@ -578,19 +578,13 @@ class Tetrahedron:
 
         self.part_name = part_name
         self.idx = idx
-        # 生成几何级哈希
-        coord_hash = hash(
-            (
-                tuple(f"{coord:.6f}" for coord in self.p1),
-                tuple(f"{coord:.6f}" for coord in self.p2),
-                tuple(f"{coord:.6f}" for coord in self.p3),
-                tuple(f"{coord:.6f}" for coord in self.p4),
-            )
-        )
-        # 生成逻辑级哈希
-        id_hash = hash(tuple(sorted(self.node_ids))) if self.node_ids else 0
-        # 组合哈希
-        self.hash = hash((coord_hash, id_hash))
+        # 先按浮点数值排序（避免负数字典序错误），再转字符串生成哈希
+        sorted_ids = tuple(sorted(self.node_ids)) if self.node_ids else None
+        sorted_coords = tuple(sorted(
+            [tuple(self.p1), tuple(self.p2), tuple(self.p3), tuple(self.p4)]
+        ))
+        coord_hash = hash(tuple(tuple(f"{c:.6f}" for c in pt) for pt in sorted_coords))
+        self.hash = hash((sorted_ids, coord_hash))
 
         self.volume = None
         self.quality = None
