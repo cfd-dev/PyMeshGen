@@ -31,6 +31,7 @@ from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .geom_utils import (
+    point_in_triangle_2d,
     point_in_triangle_3d,
     check_triangle_intersection,
     check_triangle_vs_existing,
@@ -39,6 +40,10 @@ from .geom_utils import (
     check_triangle_degenerate,
     segment_segment_distance_3d,
     validate_mesh_topology,
+    ,
+    segments_cross_strict_2d,
+    triangle_min_angle_from_coords,
+    point_to_segment_distance_3d,
 )
 
 from utils.message import info, debug, warning
@@ -1972,25 +1977,8 @@ class SurfaceMeshGenerator:
         return True
 
     def _get_most_visible_plane(self, normal: np.ndarray) -> Tuple[int, int]:
-        """
-        找到法向量最可见的坐标平面。
-
-        投影到该平面进行 2D 相交检测，避免 3D 曲面误判。
-
-        Args:
-            normal: 三角形法向量
-
-        Returns:
-            (ir, is) 两个坐标轴索引
-        """
-        abs_n = np.abs(normal)
-        # 排除分量最大的轴（法向量指向的轴），使用另外两个轴
-        if abs_n[0] >= abs_n[1] and abs_n[0] >= abs_n[2]:
-            return (1, 2)  # YZ 平面
-        elif abs_n[1] >= abs_n[2]:
-            return (0, 2)  # XZ 平面
-        else:
-            return (0, 1)  # XY 平面
+        """找到法向量最可见的坐标平面（委托给 geom_utils.）"""
+        return get_most_visible_plane(normal)
 
     def _new_edges_intersect_boundary_2d(
         self,
@@ -2310,30 +2298,8 @@ class SurfaceMeshGenerator:
             # 新三角形的三条边（3D）
             new_edges_3d = [(p0, p1), (p1, p2), (p2, p0)]
 
-            # 检查边交叉（排除共享端点，带3D距离过滤）
-            def _segments_cross_strict(
-                p1r, p1s, p2r, p2s,
-                q1r, q1s, q2r, q2s
-            ) -> bool:
-                """检查两条线段是否严格相交（不在端点处）"""
-                dr = p2r - p1r
-                ds = p2s - p1s
-                er = q2r - q1r
-                es = q2s - q1s
-
-                denom = dr * es - ds * er
-                if abs(denom) < 1e-30:
-                    return False
-
-                t = ((q1r - p1r) * es - (q1s - p1s) * er) / denom
-                u = ((q1r - p1r) * ds - (q1s - p1s) * dr) / denom
-
-                # 严格相交：t 和 u 都在 (0, 1) 开区间内
-                eps = 1e-8
-                return eps < t < 1.0 - eps and eps < u < 1.0 - eps
-
+            # 3D 距离近似（中点距离）用于快速过滤
             def _edge_dist_3d(p1_3d, p2_3d, q1_3d, q2_3d) -> float:
-                """计算两条3D线段之间的最小距离（近似：中点距离）"""
                 mp = (p1_3d + p2_3d) / 2.0
                 mq = (q1_3d + q2_3d) / 2.0
                 return np.linalg.norm(mp - mq)
@@ -2348,35 +2314,16 @@ class SurfaceMeshGenerator:
                         if _edge_dist_3d(new_edges_3d[ne_idx][0], new_edges_3d[ne_idx][1],
                                          ex_edges_3d[ee_idx][0], ex_edges_3d[ee_idx][1]) > edge_cross_dist:
                             continue
-                        if _segments_cross_strict(
-                            ne[0][0], ne[0][1], ne[1][0], ne[1][1],
-                            ee[0][0], ee[0][1], ee[1][0], ee[1][1]
-                        ):
+                        if segments_cross_strict_2d(ne[0], ne[1], ee[0], ee[1]):
                             return True
 
-            # 点在三角形内检测（叉积法）——两种模式都做
-
-            def _point_in_tri_2d(pr: float, ps: float,
-                                 v0: Tuple[float, float],
-                                 v1: Tuple[float, float],
-                                 v2: Tuple[float, float]) -> bool:
-                d1 = (v1[0] - v0[0]) * (ps - v0[1]) - (v1[1] - v0[1]) * (pr - v0[0])
-                if d1 < -1e-10:
-                    return False
-                d2 = (v2[0] - v1[0]) * (ps - v1[1]) - (v2[1] - v1[1]) * (pr - v1[0])
-                if d2 < -1e-10:
-                    return False
-                d3 = (v0[0] - v2[0]) * (ps - v2[1]) - (v0[1] - v2[1]) * (pr - v2[0])
-                if d3 < -1e-10:
-                    return False
-                return True
+            # 点在三角形内检测（委托给 geom_utils.point_in_triangle_2d）
 
             # 检查新三角形顶点是否在已有三角形内（跳过共享节点）
             for i in range(3):
                 if tri_hashes & {n0.hash, n1.hash, n2.hash}:
                     pass  # 所有都是新三角形的节点
-                if _point_in_tri_2d(new_pts[i][0], new_pts[i][1],
-                                    ex_pts[0], ex_pts[1], ex_pts[2]):
+                if point_in_triangle_2d(new_pts[i], ex_pts[0], ex_pts[1], ex_pts[2]):
                     # 排除共享节点（它们恰好在边界上）
                     if not any(abs(new_pts[i][0] - ep[0]) < 1e-12 and
                                abs(new_pts[i][1] - ep[1]) < 1e-12
@@ -2387,8 +2334,7 @@ class SurfaceMeshGenerator:
             for i in range(3):
                 if ex_node_list[i].hash in shared:
                     continue  # 跳过共享节点
-                if _point_in_tri_2d(ex_pts[i][0], ex_pts[i][1],
-                                    new_pts[0], new_pts[1], new_pts[2]):
+                if point_in_triangle_2d(ex_pts[i], new_pts[0], new_pts[1], new_pts[2]):
                     return True
 
         return False
@@ -4071,21 +4017,11 @@ class SurfaceMeshGenerator:
         raise KeyError(f"Node idx={idx} not found in _node_idx_map")
 
     def _triangle_min_angle(self, node_ids: list) -> float:
-        """计算三角形最小角（度）"""
+        """计算三角形最小角（度），委托给 geom_utils.triangle_min_angle_from_coords"""
         p0 = self._get_node_coords_by_idx(node_ids[0])
         p1 = self._get_node_coords_by_idx(node_ids[1])
         p2 = self._get_node_coords_by_idx(node_ids[2])
-        angles = []
-        for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
-            va = a - apex
-            vb = b - apex
-            la = np.linalg.norm(va)
-            lb = np.linalg.norm(vb)
-            if la < 1e-15 or lb < 1e-15:
-                return 0.0
-            cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
-            angles.append(np.degrees(np.arccos(cos_a)))
-        return min(angles)
+        return triangle_min_angle_from_coords(p0, p1, p2)
 
     def _orient_ccw(self, node_ids: list):
         """确保三角形节点在 3D 中保持一致的绕序（返回 node_ids 或重排版本，退化时返回 None）"""

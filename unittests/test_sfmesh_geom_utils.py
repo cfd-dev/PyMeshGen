@@ -37,6 +37,11 @@ from sfmesh.geom_utils import (
     trace_boundary_loops,
     euler_characteristic,
     validate_mesh_topology,
+    point_to_segment_distance_3d,
+    ,
+    segments_cross_strict_2d,
+    triangle_min_angle_from_coords,
+    triangle_max_angle_from_coords,
     DEFAULT_TOL,
     DEGENERATE_TOL,
 )
@@ -919,6 +924,185 @@ class TestValidateMeshTopology(unittest.TestCase):
         """空网格"""
         result = validate_mesh_topology([], verbose=False)
         self.assertEqual(result['num_faces'], 0)
+
+
+# ============================================================================
+# point_to_segment_distance_3d
+# ============================================================================
+
+class TestPointToSegmentDistance3D(unittest.TestCase):
+    """测试 3D 点到线段距离（从 sizing_field 提取的公共函数）"""
+
+    def test_midpoint_perpendicular(self):
+        """点到线段中点的垂直距离"""
+        point = np.array([0.5, 1.0, 0.0])
+        dist = point_to_segment_distance_3d(point, np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0]))
+        self.assertAlmostEqual(dist, 1.0, places=10)
+
+    def test_closest_to_endpoint(self):
+        """最近点是端点"""
+        point = np.array([-1.0, 0.0, 0.0])
+        dist = point_to_segment_distance_3d(point, np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0]))
+        self.assertAlmostEqual(dist, 1.0, places=10)
+
+    def test_point_on_segment(self):
+        """点在线段上"""
+        point = np.array([0.5, 0.0, 0.0])
+        dist = point_to_segment_distance_3d(point, np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0]))
+        self.assertAlmostEqual(dist, 0.0, places=10)
+
+    def test_degenerate_segment(self):
+        """退化线段（长度为零）"""
+        point = np.array([3.0, 4.0, 0.0])
+        dist = point_to_segment_distance_3d(point, np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.0, 0.0]))
+        self.assertAlmostEqual(dist, 5.0, places=10)
+
+    def test_3d_diagonal(self):
+        """3D 对角线段"""
+        point = np.array([0.0, 0.0, 0.0])
+        dist = point_to_segment_distance_3d(point, np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0]))
+        expected = np.sqrt(2) / 2
+        self.assertAlmostEqual(dist, expected, places=10)
+
+
+# ============================================================================
+#
+# ============================================================================
+
+class TestGetMostVisiblePlane(unittest.TestCase):
+    """测试最可见投影平面选择"""
+
+    def test_normal_along_x(self):
+        """法向量沿 X → YZ 平面"""
+        self.assertEqual(get_most_visible_plane(np.array([1.0, 0.0, 0.0])), (1, 2))
+
+    def test_normal_along_y(self):
+        """法向量沿 Y → XZ 平面"""
+        self.assertEqual(get_most_visible_plane(np.array([0.0, 1.0, 0.0])), (0, 2))
+
+    def test_normal_along_z(self):
+        """法向量沿 Z → XY 平面"""
+        self.assertEqual(get_most_visible_plane(np.array([0.0, 0.0, 1.0])), (0, 1))
+
+    def test_diagonal_normal(self):
+        """对角法向量：Y 分量最大 → XZ 平面"""
+        self.assertEqual(get_most_visible_plane(np.array([0.3, 0.9, 0.2])), (0, 2))
+
+    def test_negative_normal(self):
+        """负法向量：绝对值决定"""
+        self.assertEqual(get_most_visible_plane(np.array([0.0, 0.0, -1.0])), (0, 1))
+
+
+# ============================================================================
+# segments_cross_strict_2d
+# ============================================================================
+
+class TestSegmentsCrossStrict2D(unittest.TestCase):
+    """测试严格 2D 线段相交（排除端点）"""
+
+    def test_cross_at_midpoint(self):
+        """中点处十字交叉"""
+        self.assertTrue(segments_cross_strict_2d(
+            (0.0, 0.0), (2.0, 2.0),
+            (0.0, 2.0), (2.0, 0.0),
+        ))
+
+    def test_endpoint_contact_not_cross(self):
+        """端点接触不算严格相交"""
+        self.assertFalse(segments_cross_strict_2d(
+            (0.0, 0.0), (1.0, 0.0),
+            (1.0, 0.0), (1.0, 1.0),
+        ))
+
+    def test_t_intersection_not_strict(self):
+        """T 型相交（端点在另一线段上）不算严格相交"""
+        self.assertFalse(segments_cross_strict_2d(
+            (0.0, 0.0), (2.0, 0.0),
+            (1.0, 0.0), (1.0, 1.0),
+        ))
+
+    def test_parallel_no_cross(self):
+        """平行线段"""
+        self.assertFalse(segments_cross_strict_2d(
+            (0.0, 0.0), (2.0, 0.0),
+            (0.0, 1.0), (2.0, 1.0),
+        ))
+
+    def test_disjoint_no_cross(self):
+        """不相交"""
+        self.assertFalse(segments_cross_strict_2d(
+            (0.0, 0.0), (1.0, 0.0),
+            (5.0, 5.0), (6.0, 6.0),
+        ))
+
+    def test_near_cross(self):
+        """几乎在端点处相交（在 eps=1e-8 内）"""
+        # 交点在 t≈0.001，仍在 (eps, 1-eps) 内
+        self.assertTrue(segments_cross_strict_2d(
+            (0.0, 0.0), (10.0, 0.0),
+            (0.01, -1.0), (0.01, 1.0),
+        ))
+
+
+# ============================================================================
+# triangle_min_angle_from_coords / triangle_max_angle_from_coords
+# ============================================================================
+
+class TestTriangleAngleFromCoords(unittest.TestCase):
+    """测试三角形角度计算（从 mesh_3d_afm 提取的公共函数）"""
+
+    def test_equilateral_min_angle(self):
+        """等边三角形最小角 = 60°"""
+        h = np.sqrt(3) / 2
+        angle = triangle_min_angle_from_coords(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([1.0, 0.0, 0.0]),
+            np.array([0.5, h, 0.0]),
+        )
+        self.assertAlmostEqual(angle, 60.0, places=5)
+
+    def test_equilateral_max_angle(self):
+        """等边三角形最大角 = 60°"""
+        h = np.sqrt(3) / 2
+        angle = triangle_max_angle_from_coords(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([1.0, 0.0, 0.0]),
+            np.array([0.5, h, 0.0]),
+        )
+        self.assertAlmostEqual(angle, 60.0, places=5)
+
+    def test_right_triangle_min_angle(self):
+        """直角三角形最小角 < 45°"""
+        angle = triangle_min_angle_from_coords(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([3.0, 0.0, 0.0]),
+            np.array([0.0, 4.0, 0.0]),
+        )
+        self.assertLess(angle, 45.0)
+
+    def test_right_triangle_max_angle(self):
+        """直角三角形最大角 = 90°"""
+        angle = triangle_max_angle_from_coords(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([3.0, 0.0, 0.0]),
+            np.array([0.0, 4.0, 0.0]),
+        )
+        self.assertAlmostEqual(angle, 90.0, places=5)
+
+    def test_degenerate_returns_zero(self):
+        """退化三角形（零边长）→ min=0, max=180"""
+        p = np.array([1.0, 2.0, 3.0])
+        self.assertEqual(triangle_min_angle_from_coords(p, p, p), 0.0)
+        self.assertEqual(triangle_max_angle_from_coords(p, p, p), 180.0)
+
+    def test_thin_triangle(self):
+        """细长三角形最小角接近 0"""
+        angle = triangle_min_angle_from_coords(
+            np.array([0.0, 0.0, 0.0]),
+            np.array([100.0, 0.0, 0.0]),
+            np.array([50.0, 0.01, 0.0]),
+        )
+        self.assertLess(angle, 1.0)
 
 
 if __name__ == '__main__':
