@@ -133,6 +133,28 @@ class TestAdfront3Cube(unittest.TestCase):
         print(f"\n边界范围: [{mins[0]:.4f},{mins[1]:.4f},{mins[2]:.4f}] "
               f"到 [{maxs[0]:.4f},{maxs[1]:.4f},{maxs[2]:.4f}]")
 
+    def test_cube_euler_characteristic(self):
+        """立方体：欧拉示性数应为 2（拓扑球面）"""
+        adfront3, unstr_grid = self._run_adfront3()
+
+        import numpy as np
+        nodes = set()
+        edges = set()
+        faces = set()
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Tetrahedron):
+                nids = cell.node_ids
+                nodes.update(nids)
+                for i, j in [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]:
+                    edges.add(tuple(sorted((nids[i], nids[j]))))
+                for tri in [(0,1,2),(0,1,3),(0,2,3),(1,2,3)]:
+                    faces.add(tuple(sorted((nids[tri[0]], nids[tri[1]], nids[tri[2]]))))
+
+        V, E, F = len(nodes), len(edges), len(faces)
+        chi = V - E + F
+        self.assertEqual(chi, 2, f"欧拉示性数异常: χ={chi} (V={V}, E={E}, F={F})")
+        print(f"\n欧拉示性数: χ={chi} (V={V}, E={E}, F={F})")
+
     def test_cube_no_degenerate_tets(self):
         """验证无退化四面体（所有体积 > 0）"""
         adfront3, unstr_grid = self._run_adfront3()
@@ -174,6 +196,27 @@ class TestAdfront3CubeFineMesh(unittest.TestCase):
         adfront3, unstr_grid = self._run_adfront3()
         self.assertIsNotNone(unstr_grid)
         self.assertGreater(unstr_grid.num_cells, 0)
+
+    def test_fine_euler_characteristic(self):
+        """细网格：欧拉示性数应为 2（拓扑球面）"""
+        adfront3, unstr_grid = self._run_adfront3()
+
+        nodes = set()
+        edges = set()
+        faces = set()
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Tetrahedron):
+                nids = cell.node_ids
+                nodes.update(nids)
+                for i, j in [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]:
+                    edges.add(tuple(sorted((nids[i], nids[j]))))
+                for tri in [(0,1,2),(0,1,3),(0,2,3),(1,2,3)]:
+                    faces.add(tuple(sorted((nids[tri[0]], nids[tri[1]], nids[tri[2]]))))
+
+        V, E, F = len(nodes), len(edges), len(faces)
+        chi = V - E + F
+        self.assertEqual(chi, 2, f"欧拉示性数异常: χ={chi} (V={V}, E={E}, F={F})")
+        print(f"\n欧拉示性数: χ={chi} (V={V}, E={E}, F={F})")
 
     def test_fine_no_degenerate_tets(self):
         """细网格：无退化四面体"""
@@ -300,6 +343,27 @@ class TestAdfront3Sphere(unittest.TestCase):
               f"节点={stats.get('num_nodes', 0)}, "
               f"质量均值={stats.get('quality_mean', 0):.4f}")
 
+    def test_sphere_euler_characteristic(self):
+        """球体：欧拉示性数应为 2（拓扑球面）"""
+        adfront3, unstr_grid = self._run_adfront3()
+
+        nodes = set()
+        edges = set()
+        faces = set()
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Tetrahedron):
+                nids = cell.node_ids
+                nodes.update(nids)
+                for i, j in [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]:
+                    edges.add(tuple(sorted((nids[i], nids[j]))))
+                for tri in [(0,1,2),(0,1,3),(0,2,3),(1,2,3)]:
+                    faces.add(tuple(sorted((nids[tri[0]], nids[tri[1]], nids[tri[2]]))))
+
+        V, E, F = len(nodes), len(edges), len(faces)
+        chi = V - E + F
+        self.assertEqual(chi, 2, f"欧拉示性数异常: χ={chi} (V={V}, E={E}, F={F})")
+        print(f"\n球体欧拉示性数: χ={chi} (V={V}, E={E}, F={F})")
+
     def test_sphere_no_degenerate(self):
         """球体：无退化四面体"""
         adfront3, unstr_grid = self._run_adfront3()
@@ -364,6 +428,27 @@ class TestAdfront3Quality(unittest.TestCase):
             self.__class__.adfront3 = adfront3
             self.__class__.unstr_grid = unstr_grid
         return self.__class__.adfront3, self.__class__.unstr_grid
+
+    def test_euler_characteristic(self):
+        """欧拉示性数应为 2（拓扑球面）"""
+        adfront3, _ = self._run_adfront3()
+
+        nodes = set()
+        edges = set()
+        faces = set()
+        for cell in adfront3.cell_container:
+            if isinstance(cell, Tetrahedron):
+                nids = cell.node_ids
+                nodes.update(nids)
+                for i, j in [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]:
+                    edges.add(tuple(sorted((nids[i], nids[j]))))
+                for tri in [(0,1,2),(0,1,3),(0,2,3),(1,2,3)]:
+                    faces.add(tuple(sorted((nids[tri[0]], nids[tri[1]], nids[tri[2]]))))
+
+        V, E, F = len(nodes), len(edges), len(faces)
+        chi = V - E + F
+        self.assertEqual(chi, 2, f"欧拉示性数异常: χ={chi} (V={V}, E={E}, F={F})")
+        print(f"\n欧拉示性数: χ={chi} (V={V}, E={E}, F={F})")
 
     def test_quality_range(self):
         """所有四面体质量在有效范围内"""
