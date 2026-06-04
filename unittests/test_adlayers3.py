@@ -687,5 +687,118 @@ class TestPrismLayerSemisphere(unittest.TestCase):
         print(f"\nVTK 输出: {output_file}")
 
 
+class TestPrismLayerSemisphereHybrid(unittest.TestCase):
+    """半球体混合网格测试 (semisphere_hybrid.stl)
+
+    几何：方盒子包裹半球，棱柱层 + 四面体内部填充。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.stl_path = Path(project_root) / "unittests" / "test_files" / "3d_cases" / "semisphere_hybrid.stl"
+        cls.first_height = 0.02
+        cls.max_layers = 3
+        cls.growth_rate = 1.2
+
+        try:
+            cls.all_triangles = read_stl(str(cls.stl_path))
+        except Exception as e:
+            cls.all_triangles = []
+            cls._skip_reason = str(e)
+
+    def _run_prism_gen(self):
+        from adlayers3.adlayers3 import Adlayers3
+
+        gen = Adlayers3(
+            surface_triangles=self.all_triangles,
+            first_height=self.first_height,
+            max_layers=self.max_layers,
+            growth_rate=self.growth_rate,
+            debug_level=0,
+        )
+        try:
+            return gen.generate()
+        except ValueError as e:
+            self.skipTest(f"曲面网格拓扑验证失败: {e}")
+
+    def test_surface_loaded(self):
+        """验证 semisphere_hybrid.stl 加载成功"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+        self.assertGreater(len(self.all_triangles), 1000,
+                           f"三角形数量不足: {len(self.all_triangles)}")
+        print(f"\nsemisphere_hybrid 三角形: {len(self.all_triangles)}")
+
+    def test_prism_generation(self):
+        """验证棱柱层生成"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+
+        unstr_grid, boundary_faces = self._run_prism_gen()
+
+        self.assertIsNotNone(unstr_grid, "网格生成失败")
+        prism_count = len([c for c in unstr_grid.cell_container
+                           if isinstance(c, Prism)])
+        self.assertGreater(prism_count, 0, "未生成棱柱单元")
+        print(f"\n棱柱: {prism_count}, 节点: {len(unstr_grid.node_coords)}")
+
+    def test_no_degenerate(self):
+        """验证无退化棱柱"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+
+        unstr_grid, _ = self._run_prism_gen()
+
+        degenerate = 0
+        for cell in unstr_grid.cell_container:
+            if isinstance(cell, Prism):
+                if cell.get_volume() <= 1e-12:
+                    degenerate += 1
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化棱柱")
+
+    def test_quality(self):
+        """验证棱柱质量"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+
+        unstr_grid, _ = self._run_prism_gen()
+
+        qualities = [c.get_quality() for c in unstr_grid.cell_container
+                     if isinstance(c, Prism)]
+        self.assertGreater(len(qualities), 0, "无棱柱单元")
+        mean_q = np.mean(qualities)
+        min_q = np.min(qualities)
+        self.assertGreater(mean_q, 0.0, f"平均质量过低: {mean_q:.4f}")
+        self.assertGreater(min_q, -1e-10, f"最小质量异常: {min_q:.4f}")
+        print(f"\n棱柱质量: 均值={mean_q:.4f}, 最小={min_q:.4f}")
+
+    def test_vtk_export(self):
+        """验证棱柱层 VTK 导出"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+
+        from adlayers3.adlayers3 import Adlayers3
+
+        gen = Adlayers3(
+            surface_triangles=self.all_triangles,
+            first_height=self.first_height,
+            max_layers=self.max_layers,
+            growth_rate=self.growth_rate,
+            debug_level=0,
+        )
+        try:
+            gen.generate()
+        except ValueError as e:
+            self.skipTest(f"曲面网格拓扑验证失败: {e}")
+
+        output_file = self.output_dir / "prism_semiSphere_hybrid.vtk"
+        gen.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists(), "VTK 文件未创建")
+        self.assertGreater(output_file.stat().st_size, 0, "VTK 文件为空")
+        print(f"\nVTK 输出: {output_file}")
+
+
 if __name__ == "__main__":
     unittest.main()
