@@ -165,7 +165,7 @@ def angle_based_smoothing(unstr_grid, iterations=1):
                 vvm_pos = node_coords_2d[vvm_idx]  # Current neighbor
                 vvn_pos = node_coords_2d[vvn_idx]  # Next neighbor
                 
-                # 以 vvm 为旋转中心构造向量（与 smoothing.cpp 一致）
+                # 以 vvm 为旋转中心构造向量
                 v = curr_node_pos - vvm_pos  # Vector from vvm to current node
                 v1 = vvp_pos - vvm_pos  # Vector from vvm to vvp
                 v2 = vvn_pos - vvm_pos  # Vector from vvm to vvn
@@ -294,7 +294,7 @@ def smart_angle_based_smoothing(unstr_grid, iterations=1):
                 vvm_pos = node_coords_2d[vvm_idx]  # Current neighbor
                 vvn_pos = node_coords_2d[vvn_idx]  # Next neighbor
                 
-                # 以 vvm 为旋转中心构造向量（与 smoothing.cpp 一致）
+                # 以 vvm 为旋转中心构造向量
                 v = curr_node_pos - vvm_pos  # Vector from vvm to current node
                 v1 = vvp_pos - vvm_pos  # Vector from vvm to vvp
                 v2 = vvn_pos - vvm_pos  # Vector from vvm to vvn
@@ -421,7 +421,7 @@ def getme_method(unstr_grid, iterations=1):
                 if area_before <= 0 or quality_before <= 0:
                     continue
                 
-                # Apply transformation to get new triangle (match smoothing.cpp formulas)
+                # Apply transformation to get new triangle
                 y1 = np.array([
                     (p1[0] + p3[0]) / 2.0 + np.sqrt(3.0) / 2.0 * (p1[1] - p3[1]),
                     (p1[1] + p3[1]) / 2.0 + np.sqrt(3.0) / 2.0 * (p3[0] - p1[0]),

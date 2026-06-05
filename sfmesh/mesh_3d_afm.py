@@ -2507,8 +2507,6 @@ class SurfaceMeshGenerator:
         """
         阵面修剪：当阵面端点角度很小时，直接连接到相邻阵面的节点。
 
-        
-
         通过 edge_count 查找边界邻居，避免遍历整个 front_list。
 
         Args:
@@ -2598,8 +2596,6 @@ class SurfaceMeshGenerator:
     def _close_simple_front(self, front: SurfaceFront) -> bool:
         """
         闭合简单阵面：当端点有边界邻居时，尝试闭合为三角形。
-
-        
 
         通过 edge_count 查找边界邻居，避免遍历整个 front_list。
 
