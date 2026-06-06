@@ -10,11 +10,11 @@ class Front3D:
         'node_elems', 'idx', 'bc_type', 'part_name',
         'priority', 'al', 'center', 'area', 'normal',
         'bbox', 'hash', 'node_ids', 'face_key',
-        'left', 'right',
+        'left', 'right', 'qualclass', 'frontnr_sum',
     ]
 
     def __init__(self, node_elem1, node_elem2, node_elem3,
-                 idx=None, bc_type=None, part_name=None, al=3.0):
+                 idx=None, bc_type=None, part_name=None, al=1.5):
         if not (is_node_element(node_elem1)
                 and is_node_element(node_elem2)
                 and is_node_element(node_elem3)):
@@ -27,6 +27,8 @@ class Front3D:
         self.part_name = part_name
         self.priority = False
         self.al = al
+        self.qualclass = 1
+        self.frontnr_sum = 0
 
         p0 = np.array(node_elem1.coords, dtype=float)
         p1 = np.array(node_elem2.coords, dtype=float)
@@ -88,6 +90,10 @@ class Front3D:
             return True
         if self.priority != other.priority:
             return self.priority
+        hi_self = self.qualclass + self.frontnr_sum
+        hi_other = other.qualclass + other.frontnr_sum
+        if hi_self != hi_other:
+            return hi_self < hi_other
         return self.area < other.area
 
     def __eq__(self, other):

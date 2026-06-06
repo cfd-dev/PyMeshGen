@@ -30,8 +30,11 @@ for subdir in SUBDIRS:
         sys.path.append(str(subdir_path))
 
 # Import main functions for easy access
-from .core import generate_mesh
-from .data_structure.parameters import Parameters
+try:
+    from .core import generate_mesh
+    from .data_structure.parameters import Parameters
+except ImportError:
+    pass
 
 def _load_version():
     version_file = project_root / "VERSION"

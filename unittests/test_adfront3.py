@@ -15,8 +15,13 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+import importlib
 from sfmesh.surface_front import SurfaceTriangle, NodeElement3D
-from adfront3.adfront3 import Adfront3
+
+# 动态导入避免循环导入问题
+_adfront3_netgen = importlib.import_module('adfront3.adfront3_netgen')
+Adfront3 = _adfront3_netgen.AdFront3Netgen
+
 from data_structure.basic_elements import Tetrahedron
 from utils.geom_toolkit import tetrahedron_volume
 from optimize.mesh_quality import tetrahedron_shape_quality
@@ -407,6 +412,91 @@ class TestAdfront3Quality(unittest.TestCase):
         adfront3.export_to_vtk(str(output_file))
         self.assertTrue(output_file.exists())
         self.assertGreater(output_file.stat().st_size, 0)
+
+
+class TestAdfront3CubeMed(unittest.TestCase):
+    """立方体中密度四面体网格生成测试 (cube-med.stl, 192 表面三角形)"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.output_dir = Path(project_root) / "unittests" / "test_files" / "test_outputs"
+        cls.output_dir.mkdir(parents=True, exist_ok=True)
+        cls.stl_path = Path(project_root) / "unittests" / "test_files" / "3d_cases" / "cube-med.stl"
+
+        try:
+            cls.all_triangles = read_stl(str(cls.stl_path))
+        except Exception as e:
+            cls.all_triangles = []
+            cls._skip_reason = str(e)
+
+        cls.adfront3 = None
+        cls.unstr_grid = None
+
+    def _run_adfront3(self):
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+        if self.__class__.unstr_grid is None:
+            adfront3 = Adfront3(self.all_triangles, debug_level=0)
+            unstr_grid = adfront3.generate()
+            self.__class__.adfront3 = adfront3
+            self.__class__.unstr_grid = unstr_grid
+        return self.__class__.adfront3, self.__class__.unstr_grid
+
+    def test_surface_loaded(self):
+        """验证 cube-med.stl 加载成功"""
+        if not self.all_triangles:
+            self.skipTest(getattr(self, '_skip_reason', 'STL加载失败'))
+        self.assertGreater(len(self.all_triangles), 50,
+                           f"三角形数量不足: {len(self.all_triangles)}")
+        print(f"\ncube-med 三角形: {len(self.all_triangles)}")
+
+    def test_med_volume_mesh(self):
+        """中密度立方体：验证四面体网格生成"""
+        adfront3, unstr_grid = self._run_adfront3()
+        self.assertIsNotNone(unstr_grid)
+        self.assertGreater(unstr_grid.num_cells, 0)
+
+        # 导出 VTK
+        output_file = self.output_dir / "adfront3_cube_med.vtk"
+        adfront3.export_to_vtk(str(output_file))
+        self.assertTrue(output_file.exists())
+
+        stats = adfront3.get_quality_stats()
+        print(f"\n四面体: {stats.get('num_cells', 0)}, "
+              f"节点: {stats.get('num_nodes', 0)}, "
+              f"质量均值: {stats.get('quality_mean', 0):.4f}")
+
+    def test_med_no_degenerate_tets(self):
+        """中密度立方体：无退化四面体"""
+        adfront3, unstr_grid = self._run_adfront3()
+        degenerate = sum(
+            1 for c in unstr_grid.cell_container
+            if isinstance(c, Tetrahedron) and tetrahedron_volume(c.p1, c.p2, c.p3, c.p4) <= 1e-12
+        )
+        self.assertEqual(degenerate, 0, f"发现{degenerate}个退化四面体")
+
+    def test_med_boundary_containment(self):
+        """中密度立方体：所有节点在边界内"""
+        adfront3, _ = self._run_adfront3()
+        import numpy as np
+        coords = np.array(adfront3.node_coords)
+        mins = coords.min(axis=0)
+        maxs = coords.max(axis=0)
+
+        tri_coords = np.array([n.coords for t in self.all_triangles for n in t.nodes])
+        stl_mins = tri_coords.min(axis=0)
+        stl_maxs = tri_coords.max(axis=0)
+        tol = 1e-6
+        for d in range(3):
+            self.assertGreaterEqual(mins[d], stl_mins[d] - tol)
+            self.assertLessEqual(maxs[d], stl_maxs[d] + tol)
+
+    def test_med_quality_mean(self):
+        """中密度立方体：平均质量 > 0.5"""
+        adfront3, _ = self._run_adfront3()
+        stats = adfront3.get_quality_stats()
+        self.assertGreater(stats.get('quality_mean', 0), 0.5,
+                           f"平均质量过低: {stats.get('quality_mean', 0):.4f}")
 
 
 if __name__ == "__main__":
