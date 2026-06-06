@@ -158,6 +158,11 @@ class SurfaceMeshGenerator:
         # 注册边界阵面到尺寸场（用于边界驱动尺寸场）
         self.sizing_field.register_boundary_fronts(self.front_list)
 
+        # 构建背景网格（预计算曲率 + 边界衰减 + 梯度限制）
+        self.sizing_field.build_background_mesh(
+            self.surface, fronts=self.front_list, resolution=21
+        )
+
         for front in self.front_list:
             for node in front.node_elems:
                 if node.hash not in self.node_hash_set:

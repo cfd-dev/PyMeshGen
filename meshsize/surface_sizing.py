@@ -75,6 +75,8 @@ class SurfaceSizingField:
         self._boundary_front_dict = None
         self._boundary_registered = False
 
+        self.background_mesh = None  # SurfaceBackgroundMesh 实例（可选）
+
     def spacing_at(
         self,
         point: Tuple[float, float, float],
@@ -92,6 +94,11 @@ class SurfaceSizingField:
         Returns:
             网格尺寸
         """
+        # 背景网格模式：曲率 + 边界衰减均已预计算，直接插值
+        if self.background_mesh is not None:
+            return self.background_mesh.spacing_at(point)
+
+        # 原始模式：实时计算
         base_spacing = self.global_spacing
 
         # 边界驱动
@@ -157,6 +164,36 @@ class SurfaceSizingField:
         self._boundary_rtree = rtree
         self._boundary_front_dict = {id(f): f for f in front_list}
         self._boundary_registered = True
+
+    def build_background_mesh(self, surface, fronts=None, resolution=21):
+        """
+        构建背景网格，预计算曲率和边界衰减。
+
+        Args:
+            surface: TopoDS_Face 曲面
+            fronts: SurfaceFront 列表（可选，用于边界衰减）
+            resolution: 每方向采样数（默认 21）
+
+        Returns:
+            构建好的 SurfaceBackgroundMesh 实例
+        """
+        from meshsize.surface_bg_mesh import SurfaceBackgroundMesh
+
+        self.background_mesh = SurfaceBackgroundMesh(
+            surface=surface,
+            geometry_handler=self.geometry_handler,
+            global_spacing=self.global_spacing,
+            min_spacing=self.min_spacing,
+            max_spacing=self.max_spacing,
+            curvature_factor=self.curvature_factor,
+            boundary_decay=self.boundary_decay,
+            resolution=resolution,
+        )
+        self.background_mesh.build()
+        if fronts:
+            self.background_mesh.apply_boundary_decay(fronts)
+        self.background_mesh.enforce_gradient()
+        return self.background_mesh
 
     def _compute_boundary_spacing(self, point: Tuple[float, float, float]) -> float:
         """

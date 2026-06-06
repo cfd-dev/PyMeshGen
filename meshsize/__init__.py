@@ -14,6 +14,7 @@ from .size_field_3d import SizeField3D
 from .size_sources import PointSource, BoxSource, SphereSource
 from .octree import Octree
 from .surface_sizing import SurfaceSizingField, AdaptiveSizingField, decay_spacing
+from .surface_bg_mesh import SurfaceBackgroundMesh
 from utils.geom_toolkit import point_to_segment_distance_3d
 
 # Make them available at the package level
@@ -26,6 +27,7 @@ __all__ = [
     'Octree',
     'SurfaceSizingField',
     'AdaptiveSizingField',
+    'SurfaceBackgroundMesh',
     'point_to_segment_distance_3d',
     'decay_spacing',
 ]
