@@ -115,6 +115,7 @@ class SurfaceMeshGenerator:
         self._triangle_dict: Dict[int, SurfaceTriangle] = {}
         self.edge_count: Dict[frozenset, int] = {}
         self._init_boundary_hashes: Set[int] = set()  # 初始化时的边界节点 hash（永不更新）
+        self._node_to_triangles: Dict[int, Set[int]] = {}  # node.idx -> set of triangle indices
 
         self.num_nodes = 0
         self.num_triangles = 0
@@ -182,6 +183,9 @@ class SurfaceMeshGenerator:
             # 记录初始边界节点（此时 edge_count 刚初始化，count=1 的边即为边界边）
             self._init_boundary_hashes.add(n0h)
             self._init_boundary_hashes.add(n1h)
+
+            # 初始阵面的角度优先级（无三角形时扇面角=0，所有初始阵面等优先级）
+            front.angle_priority = 0.0
 
         self._build_space_index()
 
@@ -1789,11 +1793,19 @@ class SurfaceMeshGenerator:
                 continue
 
             spacing = self.sizing_field.compute_front_spacing(base_front, self.surface)
+
+            # 刷新角度优先级（堆中的值可能是陈旧的）
+            base_front.angle_priority = self._compute_front_angle_priority(base_front)
+
             ideal_point, ideal_uv = self._compute_ideal_point(base_front, spacing)
             candidates = self._search_candidates(ideal_point, base_front.al * spacing)
-            selected_node = self._select_best_node(base_front, ideal_point, candidates)
+            selected_node = self._select_best_node(base_front, ideal_point, candidates, spacing)
 
             if selected_node is None:
+                # 裁剪：连接到相邻阵面的对端节点（扇区数==1时）
+                trim_node = self._trim_front(base_front)
+                if trim_node is not None and self._update_mesh(base_front, trim_node):
+                    continue
                 # 确保 al 至少为 2.0，避免搜索半径过小
                 if base_front.al < 2.0:
                     base_front.al = 2.0
@@ -2025,6 +2037,55 @@ class SurfaceMeshGenerator:
 
         return (ideal_point, ideal_uv)
 
+    def _compute_trial_points(
+        self,
+        front: SurfaceFront,
+        spacing: float
+    ) -> List[Tuple[Tuple[float, float, float], Tuple[float, float]]]:
+        """
+        在多个距离处生成试探点
+
+        沿切平面垂直方向，在 {h, 0.75h, 0.5h, 0.375h, 0.25h, 0.125h} 距离处
+        生成候选位置，增加找到有效节点的概率。
+
+        Args:
+            front: 当前阵面
+            spacing: 网格尺寸
+
+        Returns:
+            (point_coords, uv_params) 列表，从最远到最近排列
+        """
+        fractions = [1.0, 0.75, 0.5, 0.375, 0.25, 0.125]
+        distance = self.sizing_field.compute_ideal_point_distance(front, self.surface)
+        tangent = front.tangent_normal
+        center = front.center
+        is_boundary = front.bc_type == "wall"
+        u_min, u_max, v_min, v_max = self._get_surface_bounds()
+
+        trial_points = []
+        for frac in fractions:
+            d = distance * frac
+            try:
+                point, uv = self.geometry.compute_ideal_point_on_surface(
+                    center, tangent, d, self.surface,
+                )
+                if is_boundary:
+                    u = max(u_min, min(u_max, uv[0]))
+                    v = max(v_min, min(v_max, uv[1]))
+                    if u != uv[0] or v != uv[1]:
+                        uv = (u, v)
+                        point = self.geometry.evaluate_point(u, v, self.surface)
+                else:
+                    margin = 0.05
+                    if (uv[0] < u_min - margin or uv[0] > u_max + margin or
+                            uv[1] < v_min - margin or uv[1] > v_max + margin):
+                        continue
+                trial_points.append((point, uv))
+            except Exception:
+                continue
+
+        return trial_points
+
     def _compute_reverse_ideal_point(
         self,
         front: SurfaceFront,
@@ -2125,6 +2186,140 @@ class SurfaceMeshGenerator:
         except Exception:
             pass
         return np.array([0.0, 0.0, 1.0])
+
+    def _compute_node_fan_angle(self, node: NodeElement3D) -> float:
+        """
+        计算节点处的扇面角（已完成三角形在该节点处的角度之和）。
+
+        对于边界节点，扇面角是网格内部
+        在该节点处的张角；对于内部节点，扇面角应接近 2*pi。
+        较小的扇面角表示尖角/凹区，需要优先处理。
+
+        Args:
+            node: 目标节点
+
+        Returns:
+            扇面角（弧度），范围 [0, 2*pi]
+        """
+        tri_indices = self._node_to_triangles.get(node.idx, set())
+        if not tri_indices:
+            return 0.0
+
+        p_node = np.array(node.coords)
+        fan_angle = 0.0
+
+        for tri_idx in tri_indices:
+            tri = self.triangle_list[tri_idx]
+            # 找到该三角形中 node 的两个邻居
+            other_coords = []
+            for nd in tri.nodes:
+                if nd.idx != node.idx:
+                    other_coords.append(np.array(nd.coords))
+
+            if len(other_coords) != 2:
+                continue
+
+            v0 = other_coords[0] - p_node
+            v1 = other_coords[1] - p_node
+            v0_len = np.linalg.norm(v0)
+            v1_len = np.linalg.norm(v1)
+            if v0_len < 1e-15 or v1_len < 1e-15:
+                continue
+
+            cos_a = np.clip(np.dot(v0, v1) / (v0_len * v1_len), -1.0, 1.0)
+            angle = math.acos(cos_a)
+            fan_angle += angle
+
+        return min(fan_angle, 2.0 * math.pi)
+
+    def _compute_front_angle_priority(self, front: SurfaceFront) -> float:
+        """
+        计算阵面的角度优先级：min(节点0扇面角, 节点1扇面角)。
+
+        角度越小的阵面越优先处理，防止前沿在凹区自交。
+
+        Args:
+            front: 当前阵面
+
+        Returns:
+            角度优先级（弧度），越小越优先
+        """
+        a0 = self._compute_node_fan_angle(front.node_elems[0])
+        a1 = self._compute_node_fan_angle(front.node_elems[1])
+        return min(a0, a1)
+
+    def _trim_front(self, front: SurfaceFront) -> Optional[NodeElement3D]:
+        """
+        阵面裁剪：当端点只有一个相邻阵面（扇区数==1）时，直接连接到相邻阵面的对端节点。
+
+        在 selected_node 为 None 时调用，作为 create_ideal_node 失败后的回退策略。
+
+        Args:
+            front: 当前阵面
+
+        Returns:
+            裁剪候选节点，如果无法裁剪返回 None
+        """
+        p0 = np.array(front.node_elems[0].coords)
+        p1 = np.array(front.node_elems[1].coords)
+        front_len = np.linalg.norm(p1 - p0)
+        min_height = front_len * 0.01
+        min_edge_len = self.sizing_field.global_spacing * 0.3
+
+        for i in range(2):
+            node_i = front.node_elems[i]
+            node_i_hash = node_i.hash
+
+            # 在 front_list 中查找共享此节点的其他阵面
+            adjacent = []
+            for f in self.front_list:
+                if f is front:
+                    continue
+                h0 = f.node_elems[0].hash
+                h1 = f.node_elems[1].hash
+                if h0 == node_i_hash or h1 == node_i_hash:
+                    adjacent.append(f)
+
+            # 扇区数 != 1 则跳过
+            if len(adjacent) != 1:
+                continue
+
+            adj_front = adjacent[0]
+            # 获取相邻阵面的对端节点（不共享的那个）
+            if adj_front.node_elems[0].hash == node_i_hash:
+                opposite_node = adj_front.node_elems[1]
+            else:
+                opposite_node = adj_front.node_elems[0]
+
+            # 跳过与阵面端点相同的节点
+            if (opposite_node.hash == front.node_elems[0].hash or
+                    opposite_node.hash == front.node_elems[1].hash):
+                continue
+
+            p2 = np.array(opposite_node.coords)
+
+            # 退化检查
+            tri_key = frozenset([front.node_elems[0].hash,
+                                 front.node_elems[1].hash,
+                                 opposite_node.hash])
+            if tri_key in self.triangle_set:
+                continue
+
+            if check_triangle_degenerate(p0, p1, p2, min_height, min_edge_len):
+                continue
+
+            # 质量检查
+            quality = triangle_quality_from_coords(p0, p1, p2)
+            if quality <= 0.05:
+                continue
+
+            # 相交检查
+            if self._check_intersection(front, opposite_node):
+                continue
+
+            return opposite_node
+
+        return None
 
     def _triangle_intersects_existing(self, n0, n1, n2, check_min_dist: bool = True) -> bool:
         """检查三角形 (n0,n1,n2) 是否与已有三角形相交（跳过共享边/顶点）"""
@@ -2280,16 +2475,20 @@ class SurfaceMeshGenerator:
         self,
         front: SurfaceFront,
         ideal_point: Tuple[float, float, float],
-        candidates: List[NodeElement3D]
+        candidates: List[NodeElement3D],
+        spacing: float = 1.0,
     ) -> Optional[NodeElement3D]:
         """
         选择最佳节点：理想节点与候选节点统一验证，理想节点带质量折扣。
-        当理想节点和已有候选都失败时，尝试在多个距离处创建试探节点。
+        当理想节点和已有候选都失败时，在多个距离处生成试探节点。
+
+        优先级：create_ideal_node -> select_close_node -> create_trie_node
 
         Args:
             front: 当前阵面
             ideal_point: 理想点
             candidates: 候选节点列表
+            spacing: 网格尺寸（用于生成试探节点）
 
         Returns:
             最佳节点，如果没有合适的返回None
@@ -2300,15 +2499,18 @@ class SurfaceMeshGenerator:
         front_len = np.linalg.norm(p1 - p0)
         min_height = front_len * 0.01
         min_edge_len = self.sizing_field.global_spacing * 0.3
+        is_boundary = front.bc_type == "wall"
 
         # 创建理想节点，加入候选列表统一验证
-        is_boundary = front.bc_type == "wall"
         ideal_node = self._create_ideal_node(ideal_point, is_boundary_front=is_boundary)
         if ideal_node is not None:
-            candidates = list(candidates) + [ideal_node]
+            all_candidates = list(candidates) + [ideal_node]
+        else:
+            all_candidates = list(candidates)
 
+        # 第一轮：评估理想节点 + 已有候选
         scored_candidates = []
-        for node in candidates:
+        for node in all_candidates:
             if not self._is_valid_candidate(front, p0, p1, node, min_height, min_edge_len):
                 continue
 
@@ -2321,6 +2523,27 @@ class SurfaceMeshGenerator:
                 quality *= self.quality_discount
 
             scored_candidates.append((quality, node))
+
+        if scored_candidates:
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            return scored_candidates[0][1]
+
+        # 第二轮：理想节点和已有候选都失败，在多个距离处生成试探节点
+        # 试探节点距离： {h, 0.75h, 0.5h, 0.375h, 0.25h, 0.125h}
+        trial_points = self._compute_trial_points(front, spacing)
+        for tp, _ in trial_points:
+            trial_node = self._create_ideal_node(tp, is_boundary_front=is_boundary)
+            if trial_node is None:
+                continue
+
+            if not self._is_valid_candidate(front, p0, p1, trial_node, min_height, min_edge_len):
+                continue
+
+            quality = triangle_quality_from_coords(p0, p1, np.array(trial_node.coords))
+            if quality <= 0.1:
+                continue
+
+            scored_candidates.append((quality, trial_node))
 
         if scored_candidates:
             scored_candidates.sort(key=lambda x: x[0], reverse=True)
@@ -2588,6 +2811,11 @@ class SurfaceMeshGenerator:
         ]))
         self.num_triangles += 1
 
+        # 维护 node -> triangles 索引（用于角度优先级计算）
+        tri_idx = self.num_triangles - 1
+        for nd in triangle.nodes:
+            self._node_to_triangles.setdefault(nd.idx, set()).add(tri_idx)
+
         # 更新边计数
         for eh in [frozenset([n0h, n1h]), frozenset([n0h, n2h]), frozenset([n1h, n2h])]:
             self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
@@ -2628,6 +2856,8 @@ class SurfaceMeshGenerator:
             # 边界阵面设置 al=0 确保优先处理，维护边界连贯性
             if bc_type != "interior":
                 new_front1.al = 0.0
+            # 设置角度优先级
+            new_front1.angle_priority = self._compute_front_angle_priority(new_front1)
             if new_front1.length > min_front_len:
                 heapq.heappush(self.front_list, new_front1)
 
@@ -2641,6 +2871,8 @@ class SurfaceMeshGenerator:
             )
             if bc_type != "interior":
                 new_front2.al = 0.0
+            # 设置角度优先级
+            new_front2.angle_priority = self._compute_front_angle_priority(new_front2)
             if new_front2.length > min_front_len:
                 heapq.heappush(self.front_list, new_front2)
 

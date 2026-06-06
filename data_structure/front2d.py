@@ -30,6 +30,7 @@ class Front:
         "tangent_normal",
         "left_triangle",
         "right_triangle",
+        "angle_priority",
     ]
 
     def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0, layer_count=0):
@@ -44,6 +45,7 @@ class Front:
         self.part_name = part_name  # 边界所属部件
 
         self.priority = False  # 优先推进标记
+        self.angle_priority = 3.14159  # 阵面角度优先级（越小越优先）
         self.early_stop_flag = False  # 提前停止标志
         self.layer_count = layer_count  # 阵面实际推进层数
         self.al = al  # 候选点搜索范围系数
@@ -147,9 +149,12 @@ class Front:
         return self.tangent_normal
 
     def __lt__(self, other):
-        # 优先比较priority属性，其次比较长度
+        # 优先比较priority属性，其次比较角度优先级，最后比较长度
         if self.priority != other.priority:
             return self.priority > other.priority  # True值优先
+        # 角度优先级：越小越优先（尖角/凹区需要优先处理）
+        if abs(self.angle_priority - other.angle_priority) > 1e-6:
+            return self.angle_priority < other.angle_priority
         return self.length < other.length
 
     def __eq__(self, other):
