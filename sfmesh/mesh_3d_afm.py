@@ -116,6 +116,7 @@ class SurfaceMeshGenerator:
         self.edge_count: Dict[frozenset, int] = {}
         self._init_boundary_hashes: Set[int] = set()  # 初始化时的边界节点 hash（永不更新）
         self._node_to_triangles: Dict[int, Set[int]] = {}  # node.idx -> set of triangle indices
+        self._feature_edges: Set[frozenset] = set()  # 特征边（二面角大于阈值的边）
 
         self.num_nodes = 0
         self.num_triangles = 0
@@ -1888,6 +1889,9 @@ class SurfaceMeshGenerator:
 
         self._print_statistics()
 
+        # 检测特征边（用于保护优化阶段不交换特征边）
+        self._detect_feature_edges()
+
         # 后处理优化：边交换 + Laplacian 光滑
         self._optimize_mesh()
 
@@ -2270,7 +2274,7 @@ class SurfaceMeshGenerator:
             node_i = front.node_elems[i]
             node_i_hash = node_i.hash
 
-            # 在 front_list 中查找共享此节点的其他阵面
+            # 在 front_list 中查找共享此节点的其他活跃阵面（排除陈旧阵面）
             adjacent = []
             for f in self.front_list:
                 if f is front:
@@ -2278,6 +2282,9 @@ class SurfaceMeshGenerator:
                 h0 = f.node_elems[0].hash
                 h1 = f.node_elems[1].hash
                 if h0 == node_i_hash or h1 == node_i_hash:
+                    # 跳过陈旧阵面（边已被2个三角形占用）
+                    if self.edge_count.get(frozenset([h0, h1]), 0) >= 2:
+                        continue
                     adjacent.append(f)
 
             # 扇区数 != 1 则跳过
@@ -2969,6 +2976,48 @@ class SurfaceMeshGenerator:
                 edge_map.setdefault(edge, []).append(tri_idx)
         return edge_map
 
+    def _detect_feature_edges(self, feature_angle_deg: float = 30.0):
+        """
+        检测特征边：通过相邻三角形的二面角识别特征边。
+
+        特征边是两个相邻三角形之间二面角大于阈值的边，
+        通常出现在几何特征处（棱边、折痕等）。
+
+        Args:
+            feature_angle_deg: 特征角度阈值（度），超过此角度的边被视为特征边
+        """
+        self._feature_edges.clear()
+        edge_map = self._build_edge_triangle_map()
+        feature_angle_rad = math.radians(feature_angle_deg)
+        cos_threshold = math.cos(math.pi - feature_angle_rad)  # cos(π - θ)
+
+        for edge, tri_indices in edge_map.items():
+            if len(tri_indices) != 2:
+                continue
+
+            idx0, idx1 = tri_indices
+            tri0 = self.triangle_list[idx0]
+            tri1 = self.triangle_list[idx1]
+
+            # 计算法向量
+            n0 = np.array(tri0.normal)
+            n1 = np.array(tri1.normal)
+            n0_len = np.linalg.norm(n0)
+            n1_len = np.linalg.norm(n1)
+            if n0_len < 1e-12 or n1_len < 1e-12:
+                continue
+            n0 = n0 / n0_len
+            n1 = n1 / n1_len
+
+            # 二面角：π - arccos(n0·n1)
+            cos_angle = np.clip(np.dot(n0, n1), -1.0, 1.0)
+            # 如果 cos_angle < cos_threshold，说明二面角 > feature_angle
+            if cos_angle < cos_threshold:
+                self._feature_edges.add(edge)
+
+        if self._feature_edges:
+            info(f"特征边检测: 发现 {len(self._feature_edges)} 条特征边")
+
     def _swap_causes_intersection(self, new_tri, skip_indices: Set[int]) -> bool:
         """
         检查新三角形是否与已有三角形相交（用于边交换验证）。
@@ -3036,6 +3085,10 @@ class SurfaceMeshGenerator:
             # 双重保护：也用 node.idx 检查
             edge_ids = set(edge)
             if edge_ids & self._boundary_idx:
+                continue
+
+            # 跳过特征边（保护几何特征不被交换破坏）
+            if edge in self._feature_edges:
                 continue
 
             tri0 = self.triangle_list[idx0]
