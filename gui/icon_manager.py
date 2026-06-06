@@ -179,8 +179,8 @@ class IconManager:
             self._draw_geometry_cylinder_icon(painter, size, accent_color)
         elif icon_name in ['line-mesh-generate', 'line_mesh_generate', 'line-discretize']:
             self._draw_line_mesh_icon(painter, size, primary_color)
-        elif icon_name in ['create-region', 'create_region']:
-            self._draw_create_region_icon(painter, size, secondary_color)
+        elif icon_name in ['create-domain', 'create_domain']:
+            self._draw_create_domain_icon(painter, size, secondary_color)
         elif icon_name == 'zoom-in':
             self._draw_zoom_in_icon(painter, size, primary_color)
         elif icon_name == 'zoom-out':
@@ -1004,7 +1004,7 @@ class IconManager:
         painter.drawLine(6, 6 + size // 6, 6, size - size // 6 - 6)
         painter.drawLine(size - 6, 6 + size // 6, size - 6, size - size // 6 - 6)
     
-    def _draw_create_region_icon(self, painter, size, color):
+    def _draw_create_domain_icon(self, painter, size, color):
         """Draw create region icon - polygon with arrows showing direction"""
         painter.setPen(QPen(color, 2))
         

@@ -368,9 +368,9 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['line_mesh'] = line_mesh_group.add_large_button("线网格", icon=get_icon('line-mesh-generate'), tooltip="生成线网格 (Ctrl+L)")
         layout.addWidget(line_mesh_group)
 
-        region_group = RibbonGroup("区域创建")
-        self.buttons['geometry']['create_region'] = region_group.add_large_button("创建区域", icon=get_icon('create-region'), tooltip="创建区域 - 选择多条Connector形成封闭区域")
-        layout.addWidget(region_group)
+        domain_group = RibbonGroup("区域创建")
+        self.buttons['geometry']['create_domain'] = domain_group.add_large_button("创建区域", icon=get_icon('create-domain'), tooltip="创建区域 - 选择多条Connector形成封闭区域")
+        layout.addWidget(domain_group)
 
         layout.addStretch(1)
 
@@ -441,7 +441,7 @@ class RibbonWidget(QWidget):
         self.buttons['geometry']['create_geometry'].clicked.connect(_wrap(main_window.open_geometry_create_dialog, "创建几何"))
         self.buttons['geometry']['delete_geometry'].clicked.connect(_wrap(main_window.open_geometry_delete_dialog, "删除几何"))
         self.buttons['geometry']['line_mesh'].clicked.connect(_wrap(main_window.open_line_mesh_dialog, "打开线网格生成对话框"))
-        self.buttons['geometry']['create_region'].clicked.connect(_wrap(main_window.open_create_region_dialog, "打开创建区域对话框"))
+        self.buttons['geometry']['create_domain'].clicked.connect(_wrap(main_window.open_create_domain_dialog, "打开创建区域对话框"))
 
         # View tab callbacks
         self.buttons['view']['reset'].clicked.connect(_wrap(main_window.view_controller.reset_view, "重置视图"))

@@ -233,18 +233,18 @@ class MeshOperations:
                 return
 
             # 检查是否有有效的输入数据
-            has_region_data = hasattr(self.gui, 'region_data') and self.gui.region_data
+            has_domain_data = hasattr(self.gui, 'domain_data') and self.gui.domain_data
             has_line_mesh_data = hasattr(self.gui, 'line_connectors') and self.gui.line_connectors
             has_imported_mesh = hasattr(self.gui, 'current_mesh') and self.gui.current_mesh
             
-            if not has_region_data and not has_line_mesh_data and not has_imported_mesh:
+            if not has_domain_data and not has_line_mesh_data and not has_imported_mesh:
                 QMessageBox.warning(self.gui, "警告", "请先创建区域、生成线网格或导入网格文件")
                 self.gui.log_info("未找到有效的输入数据，无法生成网格")
                 self.gui.update_status("未找到有效的输入数据")
                 return
 
             # 只有在非区域数据和非线网格数据的情况下才检查parts_params
-            if not has_region_data and not has_line_mesh_data:
+            if not has_domain_data and not has_line_mesh_data:
                 if not hasattr(self.gui, 'parts_params') or not self.gui.parts_params:
                     QMessageBox.warning(self.gui, "警告", "请先配置部件参数")
                     self.gui.log_info("未配置部件参数，无法生成网格")
@@ -263,7 +263,7 @@ class MeshOperations:
                 input_file = os.path.abspath(input_file)
 
             # 只有在非区域数据和非线网格数据的情况下才检查mesh_data和parts_info
-            if not has_region_data and not has_line_mesh_data:
+            if not has_domain_data and not has_line_mesh_data:
                 has_mesh_data = False
                 if isinstance(self.gui.current_mesh, dict):
                     has_mesh_data = 'node_coords' in self.gui.current_mesh and 'cells' in self.gui.current_mesh
@@ -292,7 +292,7 @@ class MeshOperations:
             }
 
             # 只有在非区域数据和非线网格数据的情况下才处理部件信息
-            if not has_region_data and not has_line_mesh_data:
+            if not has_domain_data and not has_line_mesh_data:
                 parts_info = self.gui._get_parts_info() if hasattr(self.gui, '_get_parts_info') else None
                 if parts_info and not self.gui.parts_params:
                     for part_name in parts_info.keys():
@@ -335,15 +335,15 @@ class MeshOperations:
                 # 优先使用区域数据（如果存在）
                 parts = None
                 
-                if hasattr(self.gui, 'region_data') and self.gui.region_data:
-                    connectors = self.gui.region_data.get('connectors') or []
+                if hasattr(self.gui, 'domain_data') and self.gui.domain_data:
+                    connectors = self.gui.domain_data.get('connectors') or []
 
                     # 检测 OCC 几何 → 使用 sfmesh 曲面网格生成
                     has_occ_edges = any(hasattr(c, 'occ_edge') and c.occ_edge is not None for c in connectors)
                     has_occ_geometry = hasattr(self.gui, 'current_geometry') and self.gui.current_geometry is not None
                     if has_occ_edges and has_occ_geometry:
-                        from gui.surface_mesh_generation import generate_surface_mesh_from_region
-                        occ_face = self.gui.region_data.get('occ_face')
+                        from gui.surface_mesh_generation import generate_surface_mesh_from_domain
+                        occ_face = self.gui.domain_data.get('occ_face')
                         if occ_face is None:
                             # 从 current_geometry 提取第一个 face
                             try:
@@ -356,7 +356,7 @@ class MeshOperations:
                                 pass
                         if occ_face is not None:
                             spacing = params.global_spacing if hasattr(params, 'global_spacing') else 1.0
-                            result_mesh = generate_surface_mesh_from_region(connectors, occ_face, spacing)
+                            result_mesh = generate_surface_mesh_from_domain(connectors, occ_face, spacing)
                             if result_mesh:
                                 self.gui.current_mesh = result_mesh
                                 self.gui.display_mesh()

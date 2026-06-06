@@ -10,7 +10,7 @@ from data_structure.unstructured_grid import Unstructured_Grid
 from utils.message import info
 
 
-def generate_surface_mesh_from_region(
+def generate_surface_mesh_from_domain(
     connectors: list,
     occ_face,
     spacing: float = 1.0,
