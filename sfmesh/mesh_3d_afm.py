@@ -2531,6 +2531,14 @@ class SurfaceMeshGenerator:
                 break
 
         # ---- 2. Laplacian 光滑 ----
+        # 边交换可能改变三角形拓扑，重建 _node_idx_map 以确保完整
+        self._node_idx_map.clear()
+        for node in self.node_list:
+            self._node_idx_map[node.idx] = node
+        for idx, node in self.node_dict.items():
+            if idx not in self._node_idx_map:
+                self._node_idx_map[idx] = node
+
         for _ in range(smooth_iterations):
             self._laplacian_smooth_pass()
 
@@ -2770,9 +2778,14 @@ class SurfaceMeshGenerator:
 
             # 计算邻居平均坐标
             avg = np.zeros(3)
+            valid_nbrs = 0
             for nid in nbrs:
-                avg += np.array(self._node_idx_map[nid].coords)
-            avg /= len(nbrs)
+                if nid in self._node_idx_map:
+                    avg += np.array(self._node_idx_map[nid].coords)
+                    valid_nbrs += 1
+            if valid_nbrs == 0:
+                continue
+            avg /= valid_nbrs
 
             # 松弛：只移动一部分
             old_coords = np.array(node.coords)
