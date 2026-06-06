@@ -10,7 +10,7 @@ from .surface_front import (
     create_initial_fronts_from_surface,
 )
 from .surface_geometry import SurfaceGeometry
-from .sizing_field import SurfaceSizingField
+from meshsize.surface_sizing import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .mesh_3d_afm import SurfaceMeshGenerator
 from .mesh_parametric import generate_sphere_mesh, generate_ellipsoid_mesh

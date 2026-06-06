@@ -95,6 +95,23 @@ def point_to_segment_distance(point, segment_start, segment_end):
     return np.linalg.norm(point - projection)
 
 
+def point_to_segment_distance_3d(
+    point: np.ndarray,
+    seg_start: np.ndarray,
+    seg_end: np.ndarray,
+) -> float:
+    """计算 3D 点到线段的最短距离（numpy 数组输入）"""
+    seg_vec = seg_end - seg_start
+    seg_len = np.linalg.norm(seg_vec)
+    if seg_len < 1e-12:
+        return np.linalg.norm(point - seg_start)
+    seg_unit = seg_vec / seg_len
+    t = np.dot(point - seg_start, seg_unit)
+    t = np.clip(t, 0, seg_len)
+    closest = seg_start + t * seg_unit
+    return np.linalg.norm(point - closest)
+
+
 def cross_2d(origin, point_a, point_b):
     """计算二维向量 OA 和 OB 的叉积 z 分量。"""
     return (point_a[0] - origin[0]) * (point_b[1] - origin[1]) - (

@@ -11,7 +11,7 @@ if str(project_root) not in sys.path:
 
 from sfmesh.surface_front import create_initial_fronts_from_surface, SurfaceTriangle, NodeElement3D
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
-from sfmesh.sizing_field import SurfaceSizingField
+from meshsize.surface_sizing import SurfaceSizingField
 from sfmesh.surface_geometry import SurfaceGeometry
 from delaunay3d.bowyer_watson import BowyerWatsonTetGen
 from delaunay3d.sizing import UniformSizing3D

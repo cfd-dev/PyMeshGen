@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 from utils.timer import TimeSpan
 from utils.message import info, debug, verbose
+from meshsize.surface_sizing import decay_spacing
 
 
 class QuadTreeNode:
@@ -436,12 +437,6 @@ class QuadtreeSizing:
     def compute_spacing_decay(self):
         """计算考虑表面节点影响的网格尺寸"""
 
-        def source_spacing(base_size, dist, decay):
-            """基于指数衰减的尺寸计算"""
-            pwr = 0.5 * dist * (decay - 1.0) / base_size
-            pwr = min(pwr, 50.0)  # 限制最大指数
-            return base_size * math.exp(pwr)
-
         verbose(f"计算尺寸场decay...")
 
         if self.decay < 1.0:
@@ -468,7 +463,7 @@ class QuadtreeSizing:
                 dist = math.sqrt(dx**2 + dy**2)
 
                 # 计算该表面节点影响的尺寸
-                sp = source_spacing(target_size, dist, self.decay)
+                sp = decay_spacing(target_size, dist, self.decay)
                 min_sp = min(min_sp, sp)
 
             # 限制最小尺寸不超过全局尺寸

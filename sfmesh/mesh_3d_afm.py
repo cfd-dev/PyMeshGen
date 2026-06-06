@@ -28,7 +28,7 @@ from .surface_front import (
     create_initial_fronts_from_surface
 )
 from .surface_geometry import SurfaceGeometry
-from .sizing_field import SurfaceSizingField
+from meshsize.surface_sizing import SurfaceSizingField
 from .mesh_quality import SurfaceMeshQuality
 from .geom_utils import (
     point_in_triangle_3d,
@@ -489,23 +489,15 @@ class SurfaceMeshGenerator:
                         tri = SurfaceTriangle(prev_node, node_node, next_node,
                                               surface=self.surface, idx=self.num_triangles)
 
-                    self.triangle_list.append(tri)
-                    self.triangle_set.add(tri_key)
-                    self.num_triangles += 1
+                    edge_hashes = [frozenset([prev_h, node_h]),
+                                   frozenset([node_h, next_h]),
+                                   frozenset([prev_h, next_h])]
+
+                    if not self._commit_boundary_triangle(tri, tri_key, edge_hashes):
+                        continue  # 相交被拒绝，尝试下一个候选
+
                     created += 1
                     any_success = True
-
-                    for eh in [frozenset([prev_h, node_h]),
-                               frozenset([node_h, next_h]),
-                               frozenset([prev_h, next_h])]:
-                        self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
-
-                    if self.space_index_triangle is None:
-                        self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
-                    else:
-                        self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
-                            [tri], self.space_index_triangle, self._triangle_dict,
-                        )
 
                     break  # 成功创建三角形，跳出当前环的候选循环，重新追踪所有环
 
@@ -604,12 +596,10 @@ class SurfaceMeshGenerator:
 
     def _ear_penetrates_existing(self, n0, n1, n2) -> bool:
         """
-        检查耳朵三角形是否穿透已有三角形（节点包含检查）。
+        检查耳朵三角形是否穿透已有三角形。
 
-        与 _triangle_intersects_existing_loose 的区别：
-        - 只检查节点包含，不检查边相交
-        - 跳过共享节点的三角形（它们是相邻的，不是穿透）
-        - 用于边界闭合，允许曲面上的三角形接近
+        使用完整的三角形相交检测（边-边相交 + 顶点包含），
+        跳过共享节点的三角形（拓扑邻接，非几何穿透）。
 
         Returns:
             True 表示穿透（应拒绝）
@@ -617,6 +607,7 @@ class SurfaceMeshGenerator:
         if self.space_index_triangle is None or not self.triangle_list:
             return False
         new_hashes = {n0.hash, n1.hash, n2.hash}
+        new_tri = SurfaceTriangle(n0, n1, n2, surface=self.surface)
         new_coords = np.array([n0.coords, n1.coords, n2.coords])
         padding = self.sizing_field.global_spacing * 0.5
         bbox = (
@@ -631,17 +622,134 @@ class SurfaceMeshGenerator:
             ex_hash_list = [nd.hash for nd in existing.nodes]
             shared = set(ex_hash_list) & new_hashes
             # 跳过共享节点的三角形
-            if shared:
+            if len(shared) >= 2:
                 continue
-            ex_coords = np.array([nd.coords for nd in existing.nodes])
-            # 检查新三角形的节点是否在已有三角形内部
-            for pt in new_coords:
-                if point_in_triangle_3d(pt, ex_coords[0], ex_coords[1], ex_coords[2]):
-                    return True
-            # 检查已有三角形的节点是否在新三角形内部
-            for pt in ex_coords:
-                if point_in_triangle_3d(pt, new_coords[0], new_coords[1], new_coords[2]):
-                    return True
+            if check_triangle_intersection(new_tri, existing):
+                return True
+        return False
+
+    def _commit_boundary_triangle(
+        self, tri: SurfaceTriangle, tri_key: frozenset, edge_hashes: list
+    ) -> bool:
+        """
+        提交边界三角形：添加到所有数据结构，后验相交检查，失败则回滚。
+
+        防御性检查：
+        1. 边饱和度（任一边 count >= 2 则拒绝，防止非流形）
+        2. 边界节点度数（添加后任一节点边界边数 > 2 则拒绝，防止 T 型交汇）
+        3. 三角形去重
+        4. 后验几何相交检查
+
+        Args:
+            tri: 要提交的三角形
+            tri_key: 三角形的 frozenset(hash) 键
+            edge_hashes: 三条边的 frozenset(hash) 列表
+
+        Returns:
+            True 表示成功提交，False 表示被拒绝
+        """
+        # 防御性边饱和度检查：防止非流形边
+        for eh in edge_hashes:
+            if self.edge_count.get(eh, 0) >= 2:
+                return False
+
+        # 边界节点度数检查：防止 T 型交汇
+        node_hashes = [nd.hash for nd in tri.nodes]
+        tri_edges_set = {frozenset([node_hashes[i], node_hashes[j]])
+                         for i, j in [(0, 1), (1, 2), (0, 2)]}
+        for nh in node_hashes:
+            boundary_from_other = 0
+            for existing_eh, cnt in self.edge_count.items():
+                if cnt == 1 and nh in existing_eh and existing_eh not in tri_edges_set:
+                    boundary_from_other += 1
+            tri_boundary = 0
+            for te in tri_edges_set:
+                if nh not in te:
+                    continue
+                current_cnt = self.edge_count.get(te, 0)
+                if current_cnt == 0:
+                    tri_boundary += 1
+            total = boundary_from_other + tri_boundary
+            if total > 3:
+                return False
+
+        self.triangle_list.append(tri)
+        self.triangle_set.add(tri_key)
+        self.num_triangles += 1
+
+        for eh in edge_hashes:
+            self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
+
+        if self.space_index_triangle is None:
+            self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
+        else:
+            self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
+                [tri], self.space_index_triangle, self._triangle_dict,
+            )
+
+        if self._new_tri_intersects_others(tri):
+            self.triangle_list.pop()
+            self.triangle_set.discard(tri_key)
+            self.num_triangles -= 1
+            for eh in edge_hashes:
+                cnt = self.edge_count.get(eh, 0) - 1
+                if cnt <= 0:
+                    self.edge_count.pop(eh, None)
+                else:
+                    self.edge_count[eh] = cnt
+            self._triangle_dict.pop(id(tri), None)
+            return False
+
+        return True
+
+    def _new_tri_intersects_others(self, tri: SurfaceTriangle) -> bool:
+        """
+        后验检查：新添加的三角形是否与空间索引中的非邻接三角形相交。
+
+        用于边界闭合后兜底，防止漏检的穿透。
+
+        Returns:
+            True 表示存在相交（应撤销该三角形）
+        """
+        if self.space_index_triangle is None:
+            return False
+        new_hashes = {nd.hash for nd in tri.nodes}
+        coords = np.array([nd.coords for nd in tri.nodes])
+        padding = self.sizing_field.global_spacing * 0.5
+        bbox = (
+            coords[:, 0].min() - padding, coords[:, 1].min() - padding, coords[:, 2].min() - padding,
+            coords[:, 0].max() + padding, coords[:, 1].max() + padding, coords[:, 2].max() + padding,
+        )
+        # 边-边距离容差：极近的非邻接三角形视为穿透
+        edge_tol = self.sizing_field.global_spacing * 0.01
+        new_coords = coords
+        edges_new = [
+            (new_coords[0], new_coords[1]),
+            (new_coords[1], new_coords[2]),
+            (new_coords[2], new_coords[0]),
+        ]
+        for tri_id in self.space_index_triangle.intersection(bbox):
+            if tri_id not in self._triangle_dict:
+                continue
+            other = self._triangle_dict[tri_id]
+            if other.idx == tri.idx:
+                continue
+            shared = {nd.hash for nd in other.nodes} & new_hashes
+            if len(shared) >= 2:
+                continue
+            if check_triangle_intersection(tri, other):
+                return True
+            # 兜底：边-边距离极近 → 视为穿透
+            other_coords = np.array([nd.coords for nd in other.nodes])
+            edges_other = [
+                (other_coords[0], other_coords[1]),
+                (other_coords[1], other_coords[2]),
+                (other_coords[2], other_coords[0]),
+            ]
+            for a1, a2 in edges_new:
+                for b1, b2 in edges_other:
+                    if segment_segment_distance_3d(a1, a2, b1, b2) < edge_tol:
+                        return True
         return False
 
     def _ear_too_close(self, n0, n1, n2, min_dist: float) -> bool:
@@ -832,23 +940,15 @@ class SurfaceMeshGenerator:
                     tri = SurfaceTriangle(prev_node, node_node, next_node,
                                           surface=self.surface, idx=self.num_triangles)
 
-                self.triangle_list.append(tri)
-                self.triangle_set.add(tri_key)
-                self.num_triangles += 1
+                edge_hashes = [frozenset([prev_h, node_h]),
+                               frozenset([node_h, next_h]),
+                               frozenset([prev_h, next_h])]
+
+                if not self._commit_boundary_triangle(tri, tri_key, edge_hashes):
+                    continue  # 相交被拒绝，尝试下一个候选
+
                 created += 1
                 any_success = True
-
-                for eh in [frozenset([prev_h, node_h]),
-                           frozenset([node_h, next_h]),
-                           frozenset([prev_h, next_h])]:
-                    self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
-
-                if self.space_index_triangle is None:
-                    self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
-                else:
-                    self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
-                        [tri], self.space_index_triangle, self._triangle_dict,
-                    )
 
                 break  # 成功创建一个三角形，重新追踪所有环
 
@@ -1004,23 +1104,15 @@ class SurfaceMeshGenerator:
                         tri = SurfaceTriangle(node, nbr1, nbr2,
                                               surface=self.surface, idx=self.num_triangles)
 
-                    self.triangle_list.append(tri)
-                    self.triangle_set.add(tri_key)
-                    self.num_triangles += 1
+                    edge_hashes = [frozenset([node_h, nbr1_h]),
+                                   frozenset([node_h, nbr2_h]),
+                                   frozenset([nbr1_h, nbr2_h])]
+
+                    if not self._commit_boundary_triangle(tri, tri_key, edge_hashes):
+                        continue  # 相交被拒绝，尝试下一个候选
+
                     created += 1
                     any_success = True
-
-                    for eh in [frozenset([node_h, nbr1_h]),
-                               frozenset([node_h, nbr2_h]),
-                               frozenset([nbr1_h, nbr2_h])]:
-                        self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
-
-                    if self.space_index_triangle is None:
-                        self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
-                    else:
-                        self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
-                            [tri], self.space_index_triangle, self._triangle_dict,
-                        )
 
                     break  # 成功创建一个三角形，重新追踪边界
 
@@ -1110,20 +1202,12 @@ class SurfaceMeshGenerator:
                 tri = SurfaceTriangle(a_node, b_node, c_node,
                                       surface=self.surface, idx=self.num_triangles)
 
-            self.triangle_list.append(tri)
-            self.triangle_set.add(tri_key)
-            self.num_triangles += 1
+            edge_hashes = [frozenset([a_h, b_h]), frozenset([b_h, c_h]), frozenset([c_h, a_h])]
+
+            if not self._commit_boundary_triangle(tri, tri_key, edge_hashes):
+                continue  # 相交被拒绝
+
             created += 1
-
-            for eh in [frozenset([a_h, b_h]), frozenset([b_h, c_h]), frozenset([c_h, a_h])]:
-                self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
-
-            if self.space_index_triangle is None:
-                self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
-            else:
-                self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
-                    [tri], self.space_index_triangle, self._triangle_dict,
-                )
 
         return created
 
@@ -1597,21 +1681,8 @@ class SurfaceMeshGenerator:
         else:
             tri = SurfaceTriangle(n0, n1, n2, surface=self.surface, idx=self.num_triangles)
 
-        self.triangle_list.append(tri)
-        self.triangle_set.add(tri_key)
-        self.num_triangles += 1
-
-        for eh in [frozenset([n0h, n1h]), frozenset([n1h, n2h]), frozenset([n2h, n0h])]:
-            self.edge_count[eh] = self.edge_count.get(eh, 0) + 1
-
-        if self.space_index_triangle is None:
-            self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree([tri])
-        else:
-            self.space_index_triangle, self._triangle_dict = add_elems_to_space_index_3d_with_RTree(
-                [tri], self.space_index_triangle, self._triangle_dict,
-            )
-
-        return True
+        edge_hashes = [frozenset([n0h, n1h]), frozenset([n1h, n2h]), frozenset([n2h, n0h])]
+        return self._commit_boundary_triangle(tri, tri_key, edge_hashes)
 
     def _fallback_connect_boundary(self, front: SurfaceFront) -> Optional[NodeElement3D]:
         """
@@ -1800,10 +1871,93 @@ class SurfaceMeshGenerator:
 
         self._print_statistics()
 
-        # 后处理优化：边交换 + Laplacian 光滑（暂时关闭，调试用）
+        # 后处理优化：边交换 + Laplacian 光滑
         self._optimize_mesh()
 
+        # 修复非流形边（基于实际三角形拓扑，兜底防御）
+        fixed = self._fix_non_manifold_edges()
+        if fixed > 0:
+            info(f"修复非流形边: 移除 {fixed} 个三角形")
+
         return self.triangle_list
+
+    def _fix_non_manifold_edges(self) -> int:
+        """
+        修复非流形边：基于实际三角形拓扑检测 count > 2 的边，
+        移除多余三角形（保留质量最好的 2 个）。
+
+        使用 node.idx 而非 hash，避免 hash 不一致导致漏检。
+
+        Returns:
+            移除的三角形数量
+        """
+        from collections import Counter
+
+        # 1. 用 node.idx 构建边计数
+        idx_edge_count: Dict[Tuple[int, int], List[int]] = {}
+        for tri_idx, tri in enumerate(self.triangle_list):
+            nids = [n.idx for n in tri.nodes]
+            for k in range(3):
+                e = tuple(sorted((nids[k], nids[(k + 1) % 3])))
+                idx_edge_count.setdefault(e, []).append(tri_idx)
+
+        # 2. 找到非流形边（count > 2）
+        non_manifold = {e: tris for e, tris in idx_edge_count.items() if len(tris) > 2}
+        if not non_manifold:
+            return 0
+
+        # 3. 标记需要移除的三角形（每条非流形边保留质量最好的 2 个）
+        to_remove: Set[int] = set()
+        for edge, tri_indices in non_manifold.items():
+            # 按质量排序
+            scored = []
+            for ti in tri_indices:
+                tri = self.triangle_list[ti]
+                pts = np.array([n.coords for n in tri.nodes])
+                q = triangle_quality_from_coords(pts[0], pts[1], pts[2])
+                scored.append((q, ti))
+            scored.sort(reverse=True)  # 质量高的在前
+            # 移除多余的（保留前 2 个）
+            for _, ti in scored[2:]:
+                to_remove.add(ti)
+
+        if not to_remove:
+            return 0
+
+        # 4. 移除三角形（从后往前，避免索引偏移）
+        removed = 0
+        for tri_idx in sorted(to_remove, reverse=True):
+            tri = self.triangle_list[tri_idx]
+            tri_key = frozenset(n.hash for n in tri.nodes)
+
+            # 从 triangle_list 移除
+            self.triangle_list.pop(tri_idx)
+            self.triangle_set.discard(tri_key)
+            self.num_triangles -= 1
+            removed += 1
+
+            # 更新 hash-based edge_count
+            for k in range(3):
+                n0 = tri.nodes[k]
+                n1 = tri.nodes[(k + 1) % 3]
+                eh = frozenset([n0.hash, n1.hash])
+                cnt = self.edge_count.get(eh, 0) - 1
+                if cnt <= 0:
+                    self.edge_count.pop(eh, None)
+                else:
+                    self.edge_count[eh] = cnt
+
+            # 从空间索引移除
+            if id(tri) in self._triangle_dict:
+                del self._triangle_dict[id(tri)]
+
+        # 重建空间索引
+        if self.triangle_list:
+            self._triangle_dict, self.space_index_triangle = build_space_index_3d_with_RTree(
+                self.triangle_list
+            )
+
+        return removed
 
     def _compute_ideal_point(
         self,
@@ -2716,8 +2870,13 @@ class SurfaceMeshGenerator:
                 continue
 
             # 更新 edge_count：只更新被交换的公共边，其余边保持不变
-            old_shared_edge = frozenset([a, b])
-            new_shared_edge = frozenset([c, d])
+            # 注意：edge_count 使用 node hash 作为 key，不是 node idx
+            node_a = node_map[a]
+            node_b = node_map[b]
+            node_c = node_map[c]
+            node_d = node_map[d]
+            old_shared_edge = frozenset([node_a.hash, node_b.hash])
+            new_shared_edge = frozenset([node_c.hash, node_d.hash])
             cnt = self.edge_count.get(old_shared_edge, 0) - 2
             if cnt <= 0:
                 self.edge_count.pop(old_shared_edge, None)

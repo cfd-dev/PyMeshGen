@@ -8,20 +8,30 @@ import numpy as np
 from typing import Tuple, Optional, Any, Dict, List
 from OCC.Core.TopoDS import TopoDS_Face
 
-from .surface_geometry import SurfaceGeometry
+from utils.geom_toolkit import point_to_segment_distance_3d
+
+
+def decay_spacing(base_size: float, dist: float, decay: float) -> float:
+    """指数衰减尺寸公式
+
+    spacing = base_size * exp(0.5 * dist * (decay - 1.0) / base_size)
+    """
+    pwr = 0.5 * dist * (decay - 1.0) / base_size
+    pwr = min(pwr, 50.0)
+    return base_size * np.exp(pwr)
 
 
 class SurfaceSizingField:
     """
     曲面尺寸场
-    
+
     控制曲面网格的单元尺寸
     支持：
     - 均匀尺寸场
     - 基于曲率的自适应尺寸场
     - 用户自定义尺寸场
     """
-    
+
     def __init__(
         self,
         global_spacing: float = 1.0,
@@ -29,7 +39,7 @@ class SurfaceSizingField:
         max_spacing: float = 100.0,
         curvature_adaptation: bool = True,
         curvature_factor: float = 0.2,
-        geometry_handler: SurfaceGeometry = None,
+        geometry_handler=None,
         boundary_decay: float = 1.2,
         boundary_adaptation: bool = True,
     ):
@@ -42,7 +52,7 @@ class SurfaceSizingField:
             max_spacing: 最大网格尺寸
             curvature_adaptation: 是否启用曲率自适应
             curvature_factor: 曲率自适应系数 (0~1)
-            geometry_handler: 曲面几何操作对象
+            geometry_handler: 曲面几何操作对象 (sfmesh.surface_geometry.SurfaceGeometry)
             boundary_decay: 边界尺寸衰减系数
             boundary_adaptation: 是否启用边界驱动尺寸场
         """
@@ -51,14 +61,20 @@ class SurfaceSizingField:
         self.max_spacing = max_spacing
         self.curvature_adaptation = curvature_adaptation
         self.curvature_factor = curvature_factor
-        self.geometry_handler = geometry_handler or SurfaceGeometry()
         self.boundary_decay = boundary_decay
         self.boundary_adaptation = boundary_adaptation
+
+        # 延迟导入 SurfaceGeometry 以避免循环依赖
+        if geometry_handler is None:
+            from sfmesh.surface_geometry import SurfaceGeometry
+            self.geometry_handler = SurfaceGeometry()
+        else:
+            self.geometry_handler = geometry_handler
 
         self._boundary_rtree = None
         self._boundary_front_dict = None
         self._boundary_registered = False
-    
+
     def spacing_at(
         self,
         point: Tuple[float, float, float],
@@ -91,7 +107,7 @@ class SurfaceSizingField:
             base_spacing = min(base_spacing, curvature_spacing)
 
         return np.clip(base_spacing, self.min_spacing, self.max_spacing)
-    
+
     def _compute_curvature_based_spacing(
         self,
         u: float,
@@ -100,27 +116,27 @@ class SurfaceSizingField:
     ) -> float:
         """
         基于曲率计算网格尺寸
-        
+
         Args:
             u, v: 参数坐标
             surface: 曲面
-        
+
         Returns:
             基于曲率的网格尺寸
         """
         mean_curv, gauss_curv, max_curv = self.geometry_handler.get_surface_curvature(
             u, v, surface
         )
-        
+
         if max_curv < 1e-12:
             return self.max_spacing
-        
+
         radius = 1.0 / max_curv
-        
+
         spacing = self.curvature_factor * radius
-        
+
         return np.clip(spacing, self.min_spacing, self.max_spacing)
-    
+
     def register_boundary_fronts(self, fronts):
         """
         注册边界阵面，构建 RTree 空间索引用于边界驱动尺寸场。
@@ -179,31 +195,12 @@ class SurfaceSizingField:
             if source_size < 1e-12:
                 continue
 
-            dist = self._point_to_segment_distance_3d(p, p0, p1)
-            exponent = 0.5 * dist * (decay - 1.0) / source_size
-            exponent = min(exponent, 50.0)
-            sp = source_size * np.exp(exponent)
+            dist = point_to_segment_distance_3d(p, p0, p1)
+            sp = decay_spacing(source_size, dist, decay)
             if sp < min_spacing:
                 min_spacing = sp
 
         return min(min_spacing, self.global_spacing)
-
-    @staticmethod
-    def _point_to_segment_distance_3d(
-        point: np.ndarray,
-        seg_start: np.ndarray,
-        seg_end: np.ndarray,
-    ) -> float:
-        """计算 3D 点到线段的最短距离"""
-        seg_vec = seg_end - seg_start
-        seg_len = np.linalg.norm(seg_vec)
-        if seg_len < 1e-12:
-            return np.linalg.norm(point - seg_start)
-        seg_unit = seg_vec / seg_len
-        t = np.dot(point - seg_start, seg_unit)
-        t = np.clip(t, 0, seg_len)
-        closest = seg_start + t * seg_unit
-        return np.linalg.norm(point - closest)
 
     def compute_front_spacing(
         self,
@@ -212,17 +209,17 @@ class SurfaceSizingField:
     ) -> float:
         """
         计算阵面处的网格尺寸
-        
+
         Args:
             front: 曲面阵面对象
             surface: 曲面
-        
+
         Returns:
             阵面处的网格尺寸
         """
         center = front.center
         return self.spacing_at(center, surface)
-    
+
     def compute_ideal_point_distance(
         self,
         front,
@@ -244,10 +241,10 @@ class SurfaceSizingField:
 class AdaptiveSizingField(SurfaceSizingField):
     """
     自适应曲面尺寸场
-    
+
     支持更复杂的尺寸控制策略
     """
-    
+
     def __init__(
         self,
         global_spacing: float = 1.0,
@@ -257,11 +254,11 @@ class AdaptiveSizingField(SurfaceSizingField):
         curvature_factor: float = 0.2,
         proximity_adaptation: bool = True,
         proximity_factor: float = 0.5,
-        geometry_handler: SurfaceGeometry = None
+        geometry_handler=None
     ):
         """
         初始化自适应尺寸场
-        
+
         Args:
             global_spacing: 全局网格尺寸
             min_spacing: 最小网格尺寸
@@ -280,13 +277,13 @@ class AdaptiveSizingField(SurfaceSizingField):
             curvature_factor=curvature_factor,
             geometry_handler=geometry_handler
         )
-        
+
         self.proximity_adaptation = proximity_adaptation
         self.proximity_factor = proximity_factor
-        
+
         self._feature_points: List[Tuple[float, float, float]] = []
         self._feature_lines: List[List[Tuple[float, float, float]]] = []
-    
+
     def add_feature_point(
         self,
         point: Tuple[float, float, float],
@@ -295,14 +292,14 @@ class AdaptiveSizingField(SurfaceSizingField):
     ):
         """
         添加特征点（如角点、尖点等）
-        
+
         Args:
             point: 特征点坐标
             refinement_radius: 细化半径
             refinement_ratio: 细化比例
         """
         self._feature_points.append((point, refinement_radius, refinement_ratio))
-    
+
     def add_feature_line(
         self,
         points: List[Tuple[float, float, float]],
@@ -311,14 +308,14 @@ class AdaptiveSizingField(SurfaceSizingField):
     ):
         """
         添加特征线（如棱线、脊线等）
-        
+
         Args:
             points: 特征线上的点序列
             refinement_radius: 细化半径
             refinement_ratio: 细化比例
         """
         self._feature_lines.append((points, refinement_radius, refinement_ratio))
-    
+
     def spacing_at(
         self,
         point: Tuple[float, float, float],
@@ -327,86 +324,54 @@ class AdaptiveSizingField(SurfaceSizingField):
     ) -> float:
         """
         获取指定位置的网格尺寸（考虑特征）
-        
+
         Args:
             point: 三维坐标
             surface: 所属曲面
             uv: 参数坐标
-        
+
         Returns:
             网格尺寸
         """
         base_spacing = super().spacing_at(point, surface, uv)
-        
+
         if self.proximity_adaptation:
             feature_spacing = self._compute_feature_spacing(point)
             base_spacing = min(base_spacing, feature_spacing)
-        
+
         return base_spacing
-    
+
     def _compute_feature_spacing(
         self,
         point: Tuple[float, float, float]
     ) -> float:
         """
         计算基于特征的网格尺寸
-        
+
         Args:
             point: 三维坐标
-        
+
         Returns:
             基于特征的网格尺寸
         """
         min_spacing = self.max_spacing
         point_arr = np.array(point)
-        
+
         for feat_point, radius, ratio in self._feature_points:
             dist = np.linalg.norm(point_arr - np.array(feat_point))
             if dist < radius:
                 spacing = self.global_spacing * ratio * (dist / radius + 0.1)
                 min_spacing = min(min_spacing, spacing)
-        
+
         for feat_line, radius, ratio in self._feature_lines:
             for i in range(len(feat_line) - 1):
                 p1 = np.array(feat_line[i])
                 p2 = np.array(feat_line[i + 1])
-                
-                dist = self._point_to_segment_distance(point_arr, p1, p2)
-                
+
+                dist = point_to_segment_distance_3d(point_arr, p1, p2)
+
                 if dist < radius:
                     spacing = self.global_spacing * ratio * (dist / radius + 0.1)
                     min_spacing = min(min_spacing, spacing)
-        
+
         return np.clip(min_spacing, self.min_spacing, self.max_spacing)
-    
-    def _point_to_segment_distance(
-        self,
-        point: np.ndarray,
-        seg_start: np.ndarray,
-        seg_end: np.ndarray
-    ) -> float:
-        """
-        计算点到线段的最短距离
-        
-        Args:
-            point: 点坐标
-            seg_start: 线段起点
-            seg_end: 线段终点
-        
-        Returns:
-            最短距离
-        """
-        seg_vec = seg_end - seg_start
-        seg_len = np.linalg.norm(seg_vec)
-        
-        if seg_len < 1e-12:
-            return np.linalg.norm(point - seg_start)
-        
-        seg_unit = seg_vec / seg_len
-        point_vec = point - seg_start
-        
-        t = np.dot(point_vec, seg_unit)
-        t = np.clip(t, 0, seg_len)
-        
-        closest = seg_start + t * seg_unit
-        return np.linalg.norm(point - closest)

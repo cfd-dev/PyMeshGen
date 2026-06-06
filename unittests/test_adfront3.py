@@ -8,7 +8,7 @@ if str(project_root) not in sys.path:
 
 from sfmesh.surface_front import create_initial_fronts_from_surface
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
-from sfmesh.sizing_field import SurfaceSizingField
+from meshsize.surface_sizing import SurfaceSizingField
 from sfmesh.surface_geometry import SurfaceGeometry
 from adfront3.adfront3 import Adfront3
 from adfront3.sizing3d import UniformSizing3D

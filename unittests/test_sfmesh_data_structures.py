@@ -18,7 +18,8 @@ if str(project_root) not in sys.path:
 
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront
 from sfmesh.mesh_quality import SurfaceMeshQuality
-from sfmesh.sizing_field import SurfaceSizingField
+from meshsize.surface_sizing import SurfaceSizingField
+from utils.geom_toolkit import point_to_segment_distance_3d
 
 
 # ============================================================================
@@ -507,7 +508,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([0.5, 1.0, 0.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([1.0, 0.0, 0.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 1.0, places=10)
 
     def test_point_to_segment_endpoint(self):
@@ -515,7 +516,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([-1.0, 0.0, 0.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([1.0, 0.0, 0.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 1.0, places=10)
 
     def test_point_on_segment(self):
@@ -523,7 +524,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([0.5, 0.0, 0.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([1.0, 0.0, 0.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 0.0, places=10)
 
     def test_degenerate_segment(self):
@@ -531,7 +532,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([3.0, 4.0, 0.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([0.0, 0.0, 0.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 5.0, places=10)
 
     def test_3d_segment(self):
@@ -539,7 +540,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([0.0, 0.0, 1.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([0.0, 0.0, 2.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 0.0, places=10)
 
     def test_diagonal_segment(self):
@@ -547,7 +548,7 @@ class TestSizingFieldUtilities(unittest.TestCase):
         point = np.array([0.0, 1.0, 0.0])
         seg_start = np.array([0.0, 0.0, 0.0])
         seg_end = np.array([1.0, 0.0, 0.0])
-        dist = SurfaceSizingField._point_to_segment_distance_3d(point, seg_start, seg_end)
+        dist = point_to_segment_distance_3d(point, seg_start, seg_end)
         self.assertAlmostEqual(dist, 1.0, places=10)
 
 
