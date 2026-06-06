@@ -2922,9 +2922,15 @@ class SurfaceMeshGenerator:
             if node.idx in self._boundary_idx
         }
 
-        # ---- 1. 边交换优化 ----
+        # ---- 1. 边交换优化（角度准则）----
         for _ in range(swap_iterations):
             swapped = self._edge_swap_pass()
+            if swapped == 0:
+                break
+
+        # ---- 1b. 边交换优化（度数准则）----
+        for _ in range(swap_iterations):
+            swapped = self._degree_swap_pass()
             if swapped == 0:
                 break
 
@@ -3057,6 +3063,105 @@ class SurfaceMeshGenerator:
                 return True
         return False
 
+    def _node_degree(self, node_idx: int) -> int:
+        """返回节点的度数（相邻三角形数量）"""
+        return len(self._node_to_triangles.get(node_idx, set()))
+
+    def _try_execute_swap(
+        self,
+        idx0: int,
+        idx1: int,
+        new_ids0: List[int],
+        new_ids1: List[int],
+        dirty_indices: Set[int]
+    ) -> bool:
+        """
+        尝试执行边交换：验证新三角形并更新网格数据。
+
+        Args:
+            idx0, idx1: 被替换的两个三角形索引
+            new_ids0, new_ids1: 新三角形的节点索引列表
+            dirty_indices: 已修改三角形索引集合（会被更新）
+
+        Returns:
+            是否成功交换
+        """
+        node_map = self._node_idx_map
+        tri0 = self.triangle_list[idx0]
+        tri1 = self.triangle_list[idx1]
+
+        new_tri0 = SurfaceTriangle(
+            node_map[new_ids0[0]], node_map[new_ids0[1]], node_map[new_ids0[2]],
+            surface=self.surface, idx=tri0.idx,
+        )
+        new_tri1 = SurfaceTriangle(
+            node_map[new_ids1[0]], node_map[new_ids1[1]], node_map[new_ids1[2]],
+            surface=self.surface, idx=tri1.idx,
+        )
+
+        if new_tri0.area < 1e-16 or new_tri1.area < 1e-16:
+            return False
+
+        new_key0 = frozenset(nd.hash for nd in new_tri0.nodes)
+        new_key1 = frozenset(nd.hash for nd in new_tri1.nodes)
+        old_key0 = frozenset(nd.hash for nd in tri0.nodes)
+        old_key1 = frozenset(nd.hash for nd in tri1.nodes)
+
+        self.triangle_set.discard(old_key0)
+        self.triangle_set.discard(old_key1)
+        if new_key0 in self.triangle_set or new_key1 in self.triangle_set:
+            self.triangle_set.add(old_key0)
+            self.triangle_set.add(old_key1)
+            return False
+
+        skip_ids = {idx0, idx1}
+        if self._swap_causes_intersection(new_tri0, skip_ids) or \
+           self._swap_causes_intersection(new_tri1, skip_ids):
+            self.triangle_set.add(old_key0)
+            self.triangle_set.add(old_key1)
+            return False
+
+        # 找到公共边的两个节点（a, b）和独有节点（c, d）
+        ids0 = set(tri0.node_ids)
+        ids1 = set(tri1.node_ids)
+        common = ids0 & ids1
+        a, b = sorted(common)
+        c = (ids0 - common).pop()
+        d = (ids1 - common).pop()
+
+        node_a = node_map[a]
+        node_b = node_map[b]
+        node_c = node_map[c]
+        node_d = node_map[d]
+        old_shared_edge = frozenset([node_a.hash, node_b.hash])
+        new_shared_edge = frozenset([node_c.hash, node_d.hash])
+        cnt = self.edge_count.get(old_shared_edge, 0) - 2
+        if cnt <= 0:
+            self.edge_count.pop(old_shared_edge, None)
+        else:
+            self.edge_count[old_shared_edge] = cnt
+        self.edge_count[new_shared_edge] = self.edge_count.get(new_shared_edge, 0) + 2
+
+        self.triangle_list[idx0] = new_tri0
+        self.triangle_list[idx1] = new_tri1
+        self._triangle_dict[new_tri0.hash] = new_tri0
+        self._triangle_dict[new_tri1.hash] = new_tri1
+        self.triangle_set.add(new_key0)
+        self.triangle_set.add(new_key1)
+        dirty_indices.add(idx0)
+        dirty_indices.add(idx1)
+
+        # 更新 _node_to_triangles 索引
+        for old_tri_idx in [idx0, idx1]:
+            for nd in [tri0, tri1][old_tri_idx == idx0].nodes:
+                self._node_to_triangles.get(nd.idx, set()).discard(old_tri_idx)
+        for new_tri_idx in [idx0, idx1]:
+            new_tri = self.triangle_list[new_tri_idx]
+            for nd in new_tri.nodes:
+                self._node_to_triangles.setdefault(nd.idx, set()).add(new_tri_idx)
+
+        return True
+
     def _edge_swap_pass(self) -> int:
         """
         一轮边交换：遍历所有内部边，若交换后最小角增大则执行交换。
@@ -3184,6 +3289,82 @@ class SurfaceMeshGenerator:
             dirty_indices.add(idx0)
             dirty_indices.add(idx1)
             swapped += 1
+
+        return swapped
+
+    def _degree_swap_pass(self) -> int:
+        """
+        一轮基于度的边交换：目标是让节点度数接近 6（理想度数）。
+
+        准则：d_shared0 + d_shared1 - d_opp0 - d_opp1 >= 2
+        其中 d_shared 是公共边两端节点的度数，d_opp 是独有节点的度数。
+        交换后还需通过角度一致性检查（angles_after >= angles_before * 0.5）。
+
+        Returns:
+            本轮交换次数
+        """
+        edge_map = self._build_edge_triangle_map()
+        boundary_hashes = self._boundary_hashes
+        swapped = 0
+        dirty_indices: Set[int] = set()
+
+        for edge, tri_indices in list(edge_map.items()):
+            if len(tri_indices) != 2:
+                continue
+
+            idx0, idx1 = tri_indices
+            if idx0 in dirty_indices or idx1 in dirty_indices:
+                continue
+
+            if edge & boundary_hashes:
+                continue
+            edge_ids = set(edge)
+            if edge_ids & self._boundary_idx:
+                continue
+            if edge in self._feature_edges:
+                continue
+
+            tri0 = self.triangle_list[idx0]
+            tri1 = self.triangle_list[idx1]
+
+            ids0 = set(tri0.node_ids)
+            ids1 = set(tri1.node_ids)
+            common = ids0 & ids1
+            if len(common) != 2:
+                continue
+
+            a, b = sorted(common)
+            c = (ids0 - common).pop()
+            d = (ids1 - common).pop()
+
+            # 度数准则：公共边节点度数之和 - 独有节点度数之和 >= 2
+            d_a = self._node_degree(a)
+            d_b = self._node_degree(b)
+            d_c = self._node_degree(c)
+            d_d = self._node_degree(d)
+            degree_criterion = d_a + d_b - d_c - d_d
+
+            if degree_criterion < 2:
+                continue
+
+            # 角度一致性检查：交换后最小角不能太差
+            angles_before = self._triangle_min_angle(tri0.node_ids)
+            angles_before = min(angles_before, self._triangle_min_angle(tri1.node_ids))
+
+            new_ids0 = self._orient_ccw([a, c, d])
+            new_ids1 = self._orient_ccw([b, c, d])
+            if new_ids0 is None or new_ids1 is None:
+                continue
+
+            angles_after = self._triangle_min_angle(new_ids0)
+            angles_after = min(angles_after, self._triangle_min_angle(new_ids1))
+
+            # 角度不能退化太多（允许 50% 的退化）
+            if angles_after < angles_before * 0.5:
+                continue
+
+            if self._try_execute_swap(idx0, idx1, new_ids0, new_ids1, dirty_indices):
+                swapped += 1
 
         return swapped
 
