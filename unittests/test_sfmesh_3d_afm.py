@@ -25,8 +25,26 @@ ensure_occ_loaded()
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.shape_generators import _export_combined_mesh
 from sfmesh.mesh_quality import SurfaceMeshQuality, check_triangle_intersection
-from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, discretize_shape_edges
+from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, create_initial_fronts_from_surface
 from sfmesh.sizing_field import SurfaceSizingField
+
+
+class _SimpleConnector:
+    """测试用简单 Connector，仅持有 front_list"""
+    def __init__(self, front_list, part_name="default"):
+        self.front_list = front_list
+        self.part_name = part_name
+
+
+def _create_connectors_from_face(face, spacing):
+    """从 OCC Face 创建测试用 Connector 列表"""
+    from sfmesh.surface_geometry import SurfaceGeometry
+    geometry = SurfaceGeometry()
+    sizing = SurfaceSizingField(global_spacing=spacing, geometry_handler=geometry)
+    fronts = create_initial_fronts_from_surface(face, geometry, sizing)
+    if not fronts:
+        return []
+    return [_SimpleConnector(fronts)]
 
 
 # ============================================================================
@@ -234,16 +252,15 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
     def test_planar_square_basic(self):
         """正方形平面：基本生成 + 拓扑验证"""
         face = self._make_planar_face(10.0, 10.0)
-        sizing = SurfaceSizingField(global_spacing=2.0)
-        line_mesh = discretize_shape_edges(face, sizing)
-        self.assertGreater(len(line_mesh), 0, "平面边界线网格为空")
+        connectors = _create_connectors_from_face(face, 2.0)
+        self.assertGreater(len(connectors), 0, "平面边界 connectors 为空")
 
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=2.0,
             curvature_adaptation=False,  # 平面不需要曲率自适应
             max_iterations=5000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         triangles = generator.generate()
 
@@ -266,15 +283,14 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
     def test_planar_rectangle_aspect_ratio(self):
         """长方形平面：验证非正方形域的网格生成"""
         face = self._make_planar_face(20.0, 5.0)
-        sizing = SurfaceSizingField(global_spacing=1.5)
-        line_mesh = discretize_shape_edges(face, sizing)
+        connectors = _create_connectors_from_face(face, 1.5)
 
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=1.5,
             curvature_adaptation=False,
             max_iterations=5000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         triangles = generator.generate()
 
@@ -294,15 +310,14 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
     def test_planar_fine_spacing(self):
         """细密网格：验证小尺寸下算法稳定性"""
         face = self._make_planar_face(5.0, 5.0)
-        sizing = SurfaceSizingField(global_spacing=0.5)
-        line_mesh = discretize_shape_edges(face, sizing)
+        connectors = _create_connectors_from_face(face, 0.5)
 
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=0.5,
             curvature_adaptation=False,
             max_iterations=20000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         triangles = generator.generate()
 
@@ -321,8 +336,8 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
         generator.export_to_vtk(str(output_file))
         self.assertTrue(output_file.exists())
 
-    def test_planar_no_line_mesh(self):
-        """平面不使用预离散线网格（纯自动边界）"""
+    def test_planar_no_connectors(self):
+        """平面不使用 connectors（纯自动边界）"""
         face = self._make_planar_face(8.0, 8.0)
 
         generator = SurfaceMeshGenerator(
@@ -330,7 +345,7 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
             global_spacing=2.0,
             curvature_adaptation=False,
             max_iterations=5000,
-            line_mesh=None,  # 不使用预离散线网格
+            connectors=None,  # 不使用预离散 connectors
         )
         triangles = generator.generate()
 
@@ -425,7 +440,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     # ---------------------------------------------------------------
 
     def _run_and_validate(self, face, name, quality_min=None, tri_min=None,
-                          use_line_mesh=True, spacing=1.0, max_iterations=20000):
+                          use_connectors=True, spacing=1.0, max_iterations=20000):
         """在给定面上运行 3D AFM 并执行完整验证套件"""
         quality_min = quality_min or self.QUALITY_MIN
         tri_min = tri_min or self.TRI_MIN
@@ -437,11 +452,10 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
             max_iterations=max_iterations,
         )
 
-        if use_line_mesh:
-            sizing = SurfaceSizingField(global_spacing=spacing)
-            line_mesh = discretize_shape_edges(face, sizing)
-            self.assertGreater(len(line_mesh), 0, f"{name}: 边界线网格为空")
-            kwargs['line_mesh'] = line_mesh
+        if use_connectors:
+            connectors = _create_connectors_from_face(face, spacing)
+            self.assertGreater(len(connectors), 0, f"{name}: 边界 connectors 为空")
+            kwargs['connectors'] = connectors
 
         generator = SurfaceMeshGenerator(**kwargs)
         triangles = generator.generate()
@@ -549,15 +563,14 @@ class TestCubeAFM(unittest.TestCase):
         self.assertEqual(len(faces), 6, "立方体应有 6 个面")
 
         face = faces[0]
-        sizing = SurfaceSizingField(global_spacing=0.5)
-        line_mesh = discretize_shape_edges(face, sizing)
+        connectors = _create_connectors_from_face(face, 0.5)
 
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=0.5,
             curvature_adaptation=False,
             max_iterations=5000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         triangles = generator.generate()
 
@@ -581,15 +594,14 @@ class TestCubeAFM(unittest.TestCase):
         all_triangles = []
 
         for i, face in enumerate(faces):
-            sizing = SurfaceSizingField(global_spacing=spacing)
-            line_mesh = discretize_shape_edges(face, sizing)
+            connectors = _create_connectors_from_face(face, spacing)
 
             generator = SurfaceMeshGenerator(
                 surface=face,
                 global_spacing=spacing,
                 curvature_adaptation=False,
                 max_iterations=5000,
-                line_mesh=line_mesh,
+                connectors=connectors,
             )
             triangles = generator.generate()
 
@@ -618,15 +630,14 @@ class TestCubeAFM(unittest.TestCase):
         all_triangles = []
 
         for i, face in enumerate(faces):
-            sizing = SurfaceSizingField(global_spacing=spacing)
-            line_mesh = discretize_shape_edges(face, sizing)
+            connectors = _create_connectors_from_face(face, spacing)
 
             generator = SurfaceMeshGenerator(
                 surface=face,
                 global_spacing=spacing,
                 curvature_adaptation=False,
                 max_iterations=10000,
-                line_mesh=line_mesh,
+                connectors=connectors,
             )
             triangles = generator.generate()
             self.assertGreater(len(triangles), 10,
@@ -711,9 +722,6 @@ class TestCADFileAFM(unittest.TestCase):
         from OCC.Core.TopAbs import TopAbs_FACE
 
         shape = import_geometry_file(str(self.m6_path))
-        sizing = SurfaceSizingField(global_spacing=2000.0)
-        line_mesh = discretize_shape_edges(shape, sizing)
-        self.assertGreater(len(line_mesh), 0, "M6 线网格为空")
 
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
         faces = []
@@ -724,11 +732,12 @@ class TestCADFileAFM(unittest.TestCase):
 
         all_triangles = []
         for face in faces:
+            connectors = _create_connectors_from_face(face, 2000.0)
             gen = SurfaceMeshGenerator(
                 surface=face,
                 global_spacing=2000.0,
                 max_iterations=10000,
-                line_mesh=line_mesh,
+                connectors=connectors,
             )
             tris = gen.generate()
             # 每个面独立验证拓扑（跨面共享边界节点会导致面间三角形重叠）

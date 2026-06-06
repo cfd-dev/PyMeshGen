@@ -6,9 +6,10 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from sfmesh.surface_front import discretize_shape_edges
+from sfmesh.surface_front import create_initial_fronts_from_surface
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.sizing_field import SurfaceSizingField
+from sfmesh.surface_geometry import SurfaceGeometry
 from adfront3.adfront3 import Adfront3
 from adfront3.sizing3d import UniformSizing3D
 from data_structure.basic_elements import Tetrahedron
@@ -46,14 +47,20 @@ class TestAdfront3Cube(unittest.TestCase):
 
         all_triangles = []
         for face in faces:
-            sizing = SurfaceSizingField(global_spacing=spacing)
-            line_mesh = discretize_shape_edges(face, sizing)
+            geometry = SurfaceGeometry()
+            sizing = SurfaceSizingField(global_spacing=spacing, geometry_handler=geometry)
+            fronts = create_initial_fronts_from_surface(face, geometry, sizing)
+
+            class _Conn:
+                def __init__(self, fl):
+                    self.front_list = fl
+
             generator = SurfaceMeshGenerator(
                 surface=face,
                 global_spacing=spacing,
                 curvature_adaptation=False,
                 max_iterations=5000,
-                line_mesh=line_mesh,
+                connectors=[_Conn(fronts)] if fronts else None,
             )
             all_triangles.extend(generator.generate())
 

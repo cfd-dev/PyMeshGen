@@ -378,6 +378,7 @@ def create_connector_from_edge(
         cad_obj=edge_info
     )
     connector.front_list = fronts
+    connector.occ_edge = edge_info.get('edge_obj')
     
     return connector
 
@@ -644,6 +645,7 @@ def extract_edge_info_from_geometry(geometry_obj) -> List[Dict]:
                 if len(vertices) >= 2:
                     edge_info = {
                         'idx': idx,
+                        'edge_obj': edge,
                         'curve': curve,
                         'length': length,
                         'start_point': vertices[0],

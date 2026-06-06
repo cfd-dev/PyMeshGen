@@ -2,7 +2,7 @@
 三维曲面阵面推进法（3D AFM）模块
 
 基于阵面推进法在三维曲面上生成三角形网格，包含：
-- SurfaceMeshGenerator: 类接口，支持相交检测、曲率自适应、line_mesh 边界
+- SurfaceMeshGenerator: 类接口，支持相交检测、曲率自适应、connectors 边界
 
 修复记录:
 1. _check_intersection: 重写 shared_count==1 的边-边/边-面检测逻辑，避免误判
@@ -67,7 +67,7 @@ class SurfaceMeshGenerator:
         quality_threshold: float = 0.3,
         max_iterations: int = 100000,
         debug_level: int = 0,
-        line_mesh: dict = None,
+        connectors: list = None,
     ):
         """
         初始化曲面网格生成器
@@ -81,13 +81,13 @@ class SurfaceMeshGenerator:
             quality_threshold: 质量阈值
             max_iterations: 最大迭代次数
             debug_level: 调试级别
-            line_mesh: 预离散线网格（discretize_shape_edges 的输出），用于跨面共享边界
+            connectors: Connector 对象列表，包含预离散的边界阵面
         """
         self.surface = surface
         self.quality_threshold = quality_threshold
         self.max_iterations = max_iterations
         self.debug_level = debug_level
-        self._line_mesh = line_mesh
+        self._connectors = connectors
 
         self.geometry = SurfaceGeometry()
         self.sizing_field = SurfaceSizingField(
@@ -131,11 +131,21 @@ class SurfaceMeshGenerator:
         """初始化网格生成器（3D AFM）"""
         info("初始化曲面网格生成器...")
 
-        if self._line_mesh is not None:
-            from .surface_front import create_fronts_from_line_mesh
-            self.front_list = create_fronts_from_line_mesh(
-                self.surface, self.geometry, self._line_mesh
-            )
+        if self._connectors is not None:
+            self.front_list = []
+            for conn in self._connectors:
+                for front in conn.front_list:
+                    for node in front.node_elems:
+                        if node.surface is None:
+                            uv = self.geometry.project_point_to_surface(tuple(node.coords), self.surface)
+                            normal = self.geometry.get_surface_normal(uv[0], uv[1], self.surface)
+                            node.surface = self.surface
+                            node.uv_params = uv
+                            node.normal = normal
+                    front.surface = self.surface
+                    if front.tangent_normal is None:
+                        front.compute_tangent_normal(self.geometry)
+                    self.front_list.append(front)
         else:
             self.front_list = create_initial_fronts_from_surface(
                 self.surface,

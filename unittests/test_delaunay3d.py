@@ -9,9 +9,10 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from sfmesh.surface_front import discretize_shape_edges, SurfaceTriangle, NodeElement3D
+from sfmesh.surface_front import create_initial_fronts_from_surface, SurfaceTriangle, NodeElement3D
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.sizing_field import SurfaceSizingField
+from sfmesh.surface_geometry import SurfaceGeometry
 from delaunay3d.bowyer_watson import BowyerWatsonTetGen
 from delaunay3d.sizing import UniformSizing3D
 from data_structure.basic_elements import Tetrahedron
@@ -58,6 +59,20 @@ def read_stl(filename):
     return triangles
 
 
+class _SimpleConnector:
+    """测试用简单 Connector，仅持有 front_list"""
+    def __init__(self, front_list):
+        self.front_list = front_list
+
+
+def _make_connectors(face, spacing):
+    """从 OCC Face 创建测试用 Connector 列表"""
+    geometry = SurfaceGeometry()
+    sizing = SurfaceSizingField(global_spacing=spacing, geometry_handler=geometry)
+    fronts = create_initial_fronts_from_surface(face, geometry, sizing)
+    return [_SimpleConnector(fronts)] if fronts else []
+
+
 def generate_cube_surface(cube_size, spacing):
     """生成立方体曲面网格"""
     from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
@@ -74,14 +89,13 @@ def generate_cube_surface(cube_size, spacing):
 
     all_triangles = []
     for face in faces:
-        sizing = SurfaceSizingField(global_spacing=spacing)
-        line_mesh = discretize_shape_edges(face, sizing)
+        connectors = _make_connectors(face, spacing)
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=spacing,
             curvature_adaptation=False,
             max_iterations=5000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         all_triangles.extend(generator.generate())
 
@@ -104,14 +118,13 @@ def generate_cube_surface_fine(cube_size, spacing):
 
     all_triangles = []
     for face in faces:
-        sizing = SurfaceSizingField(global_spacing=spacing)
-        line_mesh = discretize_shape_edges(face, sizing)
+        connectors = _make_connectors(face, spacing)
         generator = SurfaceMeshGenerator(
             surface=face,
             global_spacing=spacing,
             curvature_adaptation=False,
             max_iterations=10000,
-            line_mesh=line_mesh,
+            connectors=connectors,
         )
         all_triangles.extend(generator.generate())
 
@@ -568,14 +581,13 @@ class TestBowyerWatsonGeometry(unittest.TestCase):
 
         all_triangles = []
         for face in faces:
-            sizing = SurfaceSizingField(global_spacing=spacing)
-            line_mesh = discretize_shape_edges(face, sizing)
+            connectors = _make_connectors(face, spacing)
             generator = SurfaceMeshGenerator(
                 surface=face,
                 global_spacing=spacing,
                 curvature_adaptation=False,
                 max_iterations=5000,
-                line_mesh=line_mesh,
+                connectors=connectors,
             )
             all_triangles.extend(generator.generate())
 
@@ -649,14 +661,13 @@ class TestBowyerWatsonGeometry(unittest.TestCase):
         all_triangles = []
         for face in faces:
             try:
-                sizing = SurfaceSizingField(global_spacing=spacing)
-                line_mesh = discretize_shape_edges(face, sizing)
+                connectors = _make_connectors(face, spacing)
                 generator = SurfaceMeshGenerator(
                     surface=face,
                     global_spacing=spacing,
                     curvature_adaptation=False,
                     max_iterations=5000,
-                    line_mesh=line_mesh,
+                    connectors=connectors,
                 )
                 all_triangles.extend(generator.generate())
             except Exception:

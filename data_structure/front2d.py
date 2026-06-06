@@ -25,6 +25,11 @@ class Front:
         "node_ids",
         "early_stop_flag",
         "layer_count",
+        # 3D 曲面网格可选属性
+        "surface",
+        "tangent_normal",
+        "left_triangle",
+        "right_triangle",
     ]
 
     def __init__(self, node_elem1, node_elem2, idx=None, bc_type=None, part_name=None, al = 3.0, layer_count=0):
@@ -111,13 +116,35 @@ class Front:
         # 只是方向不同，对于这种方向不同的阵面，我们认为其是相同的阵面，应该具有相同的hash值
         self.hash = hash((center_hash, length_hash))
 
-        # 备用精确坐标生成唯一hash
-        # self.hash = hash(
-        #     (
-        #         tuple(f"{x:.8f}" for x in node_elem1.coords),
-        #         tuple(f"{x:.8f}" for x in node_elem2.coords),
-        #     )
-        # )
+        # 3D 曲面网格可选属性
+        self.surface = None
+        self.tangent_normal = None
+        self.left_triangle = None
+        self.right_triangle = None
+
+    def compute_tangent_normal(self, geometry_handler):
+        """计算切平面推进方向（3D 曲面网格用）"""
+        direction = np.array(self.direction)
+        mid = self.center
+        if self.surface is not None and geometry_handler is not None:
+            uv = geometry_handler.project_point_to_surface(tuple(mid), self.surface)
+            surface_normal = np.array(geometry_handler.get_surface_normal(uv[0], uv[1], self.surface))
+        else:
+            n1 = getattr(self.node_elems[0], 'normal', None)
+            n2 = getattr(self.node_elems[1], 'normal', None)
+            if n1 and n2:
+                surface_normal = (np.array(n1) + np.array(n2)) / 2
+            else:
+                surface_normal = np.array([0.0, 0.0, 1.0])
+        norm = np.linalg.norm(surface_normal)
+        if norm > 1e-12:
+            surface_normal = surface_normal / norm
+        tangent = np.cross(direction, surface_normal)
+        norm = np.linalg.norm(tangent)
+        if norm > 1e-12:
+            tangent = tangent / norm
+        self.tangent_normal = tuple(tangent)
+        return self.tangent_normal
 
     def __lt__(self, other):
         # 优先比较priority属性，其次比较长度

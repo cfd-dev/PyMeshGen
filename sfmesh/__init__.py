@@ -7,7 +7,7 @@ sfmesh - Surface Mesh Generation Module
 
 from .surface_front import (
     SurfaceFront, NodeElement3D, SurfaceTriangle,
-    discretize_shape_edges, create_fronts_from_line_mesh,
+    create_initial_fronts_from_surface,
 )
 from .surface_geometry import SurfaceGeometry
 from .sizing_field import SurfaceSizingField
@@ -26,12 +26,11 @@ __all__ = [
     'SurfaceFront',
     'NodeElement3D',
     'SurfaceTriangle',
+    'create_initial_fronts_from_surface',
     'SurfaceGeometry',
     'SurfaceSizingField',
     'SurfaceMeshQuality',
     'SurfaceMeshGenerator',
-    'discretize_shape_edges',
-    'create_fronts_from_line_mesh',
     'generate_cube_mesh',
     'generate_cylinder_mesh',
     'generate_rectangle_mesh',

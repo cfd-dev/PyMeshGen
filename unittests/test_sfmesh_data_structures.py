@@ -31,7 +31,7 @@ class TestNodeElement3D(unittest.TestCase):
     def test_creation_basic(self):
         """基本创建"""
         node = NodeElement3D(coords=(1.0, 2.0, 3.0), idx=0)
-        self.assertEqual(node.coords, (1.0, 2.0, 3.0))
+        self.assertEqual(list(node.coords), [1.0, 2.0, 3.0])
         self.assertEqual(node.idx, 0)
 
     def test_hash_equal_coords(self):
@@ -68,14 +68,14 @@ class TestNodeElement3D(unittest.TestCase):
     def test_zero_coords(self):
         """零坐标"""
         node = NodeElement3D(coords=(0.0, 0.0, 0.0), idx=0)
-        self.assertEqual(node.coords, (0.0, 0.0, 0.0))
+        self.assertEqual(list(node.coords), [0.0, 0.0, 0.0])
         # 零坐标应该有一个确定的哈希
         self.assertIsInstance(node.hash, int)
 
     def test_negative_coords(self):
         """负坐标"""
         node = NodeElement3D(coords=(-1.0, -2.0, -3.0), idx=0)
-        self.assertEqual(node.coords, (-1.0, -2.0, -3.0))
+        self.assertEqual(list(node.coords), [-1.0, -2.0, -3.0])
 
     def test_set_membership(self):
         """节点可用于集合去重"""

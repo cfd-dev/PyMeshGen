@@ -337,6 +337,33 @@ class MeshOperations:
                 
                 if hasattr(self.gui, 'region_data') and self.gui.region_data:
                     connectors = self.gui.region_data.get('connectors') or []
+
+                    # 检测 OCC 几何 → 使用 sfmesh 曲面网格生成
+                    has_occ_edges = any(hasattr(c, 'occ_edge') and c.occ_edge is not None for c in connectors)
+                    has_occ_geometry = hasattr(self.gui, 'current_geometry') and self.gui.current_geometry is not None
+                    if has_occ_edges and has_occ_geometry:
+                        from gui.surface_mesh_generation import generate_surface_mesh_from_region
+                        occ_face = self.gui.region_data.get('occ_face')
+                        if occ_face is None:
+                            # 从 current_geometry 提取第一个 face
+                            try:
+                                from OCC.Core.TopExp import TopExp_Explorer
+                                from OCC.Core.TopAbs import TopAbs_FACE
+                                explorer = TopExp_Explorer(self.gui.current_geometry, TopAbs_FACE)
+                                if explorer.More():
+                                    occ_face = explorer.Current()
+                            except Exception:
+                                pass
+                        if occ_face is not None:
+                            spacing = params.global_spacing if hasattr(params, 'global_spacing') else 1.0
+                            result_mesh = generate_surface_mesh_from_region(connectors, occ_face, spacing)
+                            if result_mesh:
+                                self.gui.current_mesh = result_mesh
+                                self.gui.display_mesh()
+                                self.gui.log_info("曲面网格生成完成")
+                                self.gui.update_status("曲面网格生成完成")
+                            return
+
                     parts = []
                     if connectors:
                         from gui.line_mesh_generation import create_part_from_connectors
