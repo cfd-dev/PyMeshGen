@@ -574,31 +574,44 @@ class RegionCreationDialog(QDialog):
         if not self.check_region_closed():
             QMessageBox.warning(self, "警告", "请确保选择的Connector形成封闭区域！")
             return
-        
-        # 不再合并Connector，直接传递多个Connector
-        # 但需要处理Connector的方向翻转
+
+        # 对选中的 Connector 做浅拷贝 + front 方向处理，避免修改原始 Connector
+        # 这样同一个 Connector 可以被多个 domain 共享，各自有独立的方向
+        region_connectors = []
         for conn in self.selected_connectors:
             is_flipped = self.connector_directions.get(id(conn), False)
-            
+
+            # 拷贝 front_list，翻转时修改副本
+            fronts = list(conn.front_list)
             if is_flipped:
-                # 翻转front_list顺序
-                conn.front_list = conn.front_list[::-1]
-                # 翻转每个front的节点顺序
-                for front in conn.front_list:
-                    front.node_elems = [front.node_elems[1], front.node_elems[0]]
-                    # 重新计算front的方向和法向量
-                    node1, node2 = front.node_elems[0].coords, front.node_elems[1].coords
-                    front.length = np.linalg.norm(np.array(node2) - np.array(node1))
-                    front.center = [(a + b) / 2 for a, b in zip(node1, node2)]
-                    front.direction = [(b - a) / front.length for a, b in zip(node1, node2)]
-                    front.normal = [-front.direction[1], front.direction[0]]
-        
-        # 创建区域数据 - 直接传递多个Connector
+                fronts = fronts[::-1]
+
+            new_fronts = []
+            for front in fronts:
+                if is_flipped:
+                    # 创建新的 Front 对象，节点顺序翻转
+                    from data_structure.front2d import Front
+                    new_front = Front(
+                        node_elem1=front.node_elems[1],
+                        node_elem2=front.node_elems[0],
+                        idx=front.idx,
+                        bc_type=front.bc_type,
+                        part_name=front.part_name,
+                    )
+                    new_fronts.append(new_front)
+                else:
+                    new_fronts.append(front)
+
+            # 创建轻量 Connector 拷贝
+            region_conn = _RegionConnector(conn, new_fronts)
+            region_connectors.append(region_conn)
+
+        # 创建区域数据
         region_data = {
-            'connectors': self.selected_connectors,
+            'connectors': region_connectors,
             'directions': self.connector_directions.copy(),
-            'total_connectors': len(self.selected_connectors),
-            'total_fronts': sum(len(conn.front_list) for conn in self.selected_connectors)
+            'total_connectors': len(region_connectors),
+            'total_fronts': sum(len(c.front_list) for c in region_connectors)
         }
         
         self.region_created.emit(region_data)
@@ -700,3 +713,16 @@ class RegionCreationDialog(QDialog):
         arrow_scale = self._get_arrow_scale()
         for actor in self.gui.direction_actors:
             actor.SetScale(arrow_scale)
+
+
+class _RegionConnector:
+    """轻量 Connector 拷贝，用于区域数据
+
+    不修改原始 Connector，仅持有独立的 front_list 副本。
+    这样同一个 Connector 可以被多个 domain 共享，各自有独立的方向。
+    """
+    def __init__(self, original_connector, front_list):
+        self.front_list = front_list
+        self.part_name = original_connector.part_name
+        self.curve_name = getattr(original_connector, 'curve_name', '')
+        self.occ_edge = getattr(original_connector, 'occ_edge', None)
