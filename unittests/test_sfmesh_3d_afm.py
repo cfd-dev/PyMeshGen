@@ -511,7 +511,8 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         face = self._make_cone_face()
         self._run_and_validate(face, "cone", quality_min=0.3)
     
-    @unittest.skip("双曲抛物面测试过慢")
+    @unittest.skip("双曲抛物面：3D AFM 在双向弯曲曲面上产生碎片化边界环（χ=-42），"
+                   "与球面同属已知算法限制")
     def test_afm_hyperbolic_paraboloid(self):
         """双曲抛物面（马鞍面）"""
         face = self._make_hyperbolic_paraboloid_face()

@@ -2652,11 +2652,73 @@ class SurfaceMeshGenerator:
         if check_triangle_degenerate(p0, p1, p2, min_height, min_edge_len):
             return False
 
+        # 曲面贴合度检查：防止三角形偏离曲面过大
+        if self._check_surface_deviation(front, node):
+            return False
+
         # 相交检查（2D: is_cross + is_cross_rtree）
         if self._check_intersection(front, node):
             return False
 
         return True
+
+    def _check_surface_deviation(
+        self, front: SurfaceFront, node: NodeElement3D
+    ) -> bool:
+        """
+        检查候选三角形与曲面的最大偏离是否超过容差。
+        - r1 = 基边弦高偏差 ≈ κ·L²/2（基边作为弦在曲面上的偏离）
+        - r2 = 新节点位置偏差 ≈ κ·h²/2
+        - 使用 global_spacing 作为参考尺寸（而非局部曲率间距），避免
+          在曲率自适应区域过度限制三角形创建
+        - 接受条件: max(r1, r2) < tolerance * global_spacing
+
+        Returns:
+            True 表示偏离过大（应拒绝）
+        """
+        # 仅在启用曲率自适应时检查（平面无需检查）
+        if not self.sizing_field.curvature_adaptation:
+            return False
+
+        p0 = np.array(front.node_elems[0].coords)
+        p1 = np.array(front.node_elems[1].coords)
+        p2 = np.array(node.coords)
+        baselen = np.linalg.norm(p1 - p0)
+        tri_center = (p0 + p1 + p2) / 3.0
+        spacing = self.sizing_field.global_spacing
+        tolerance = 0.5  # 允许最大偏离 = 50% 全局间距
+
+        try:
+            # 基边中点曲率
+            edge_mid = (p0 + p1) / 2.0
+            uv_e = self.geometry.project_point_to_surface(
+                tuple(edge_mid), self.surface)
+            _, _, max_curv_e = self.geometry.get_surface_curvature(
+                uv_e[0], uv_e[1], self.surface)
+
+            # 三角形重心处曲率
+            uv_c = self.geometry.project_point_to_surface(
+                tuple(tri_center), self.surface)
+            _, _, max_curv_c = self.geometry.get_surface_curvature(
+                uv_c[0], uv_c[1], self.surface)
+
+            max_curv = max(max_curv_e, max_curv_c)
+            if max_curv < 1e-12:
+                return False  # 近似平面，无需检查
+
+            # r1: 基边弦高偏差 ≈ (κ·L²)/8 (标准圆弧逼近)
+            r1 = (max_curv * baselen * baselen) / 8.0
+
+            # r2: 新节点位置偏差 ≈ κ·h²/8
+            r2 = (max_curv * spacing * spacing) / 8.0
+
+            maxz = max(r1, r2)
+            if maxz > tolerance * spacing:
+                return True  # 偏离过大
+        except Exception:
+            pass  # 曲率查询失败，保守接受
+
+        return False
 
     def _select_best_node(
         self,
