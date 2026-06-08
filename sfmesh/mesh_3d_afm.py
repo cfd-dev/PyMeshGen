@@ -39,6 +39,8 @@ from .geom_utils import (
     check_triangle_degenerate,
     segment_segment_distance_3d,
     validate_mesh_topology,
+    circumcircle_contains_3d,
+    is_quad_convex_3d,
 )
 
 from utils.message import info, debug, warning
@@ -3418,8 +3420,7 @@ class SurfaceMeshGenerator:
             c = (ids0 - common).pop()
             d = (ids1 - common).pop()
 
-            # 凸性检查：c 和 d 必须在边 (a,b) 的异侧（在切平面内）
-            # 凹四边形的 Delaunay 交换会导致退化三角形
+            # 获取节点坐标和曲面法向
             p_a = self._get_node_coords_by_idx(a)
             p_b = self._get_node_coords_by_idx(b)
             p_c = self._get_node_coords_by_idx(c)
@@ -3433,45 +3434,14 @@ class SurfaceMeshGenerator:
                 sn = sn * getattr(self, '_normal_flip', 1.0)
             except Exception:
                 sn = np.array([0.0, 0.0, 1.0])
-            edge_vec = p_b - p_a
-            perp = np.cross(edge_vec, sn)
-            perp_len = np.linalg.norm(perp)
-            if perp_len > 1e-12:
-                perp /= perp_len
-                if np.dot(p_c - p_a, perp) * np.dot(p_d - p_a, perp) >= 0:
-                    continue  # c 和 d 在同侧 → 凹四边形，跳过
 
-            # 构造切平面局部 2D 坐标系，使用 Delaunay 外接圆检测
-            e1 = edge_vec / np.linalg.norm(edge_vec)
-            e2 = np.cross(sn, e1)
-            # 投影到 2D
-            def _proj2d(pt, origin):
-                v = pt - origin
-                return np.array([np.dot(v, e1), np.dot(v, e2)])
-            origin = p_a
-            a2d = _proj2d(p_a, origin)
-            b2d = _proj2d(p_b, origin)
-            c2d = _proj2d(p_c, origin)
-            d2d = _proj2d(p_d, origin)
+            # 凸性检查（共用 geom_utils）
+            if not is_quad_convex_3d(p_a, p_b, p_c, p_d, sn):
+                continue
 
-            # Delaunay 外接圆检测：行列式符号依赖于三角形顶点绕序，
-            # 需要根据 (p1,p2,p3) 的 2D 方向判断
-            def _in_circumcircle(p1, p2, p3, pt):
-                m = np.array([
-                    [p1[0]*p1[0] + p1[1]*p1[1], p1[0], p1[1], 1.0],
-                    [p2[0]*p2[0] + p2[1]*p2[1], p2[0], p2[1], 1.0],
-                    [p3[0]*p3[0] + p3[1]*p3[1], p3[0], p3[1], 1.0],
-                    [pt[0]*pt[0] + pt[1]*pt[1], pt[0], pt[1], 1.0],
-                ])
-                det = np.linalg.det(m)
-                orient = (p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0])
-                if orient > 0:
-                    return det > 1e-12   # CCW: inside if det > 0
-                else:
-                    return det < -1e-12  # CW: inside if det < 0
-
-            if not (_in_circumcircle(a2d, b2d, c2d, d2d) or
-                    _in_circumcircle(a2d, b2d, d2d, c2d)):
+            # Delaunay 外接圆检测（共用 geom_utils）
+            if not (circumcircle_contains_3d(p_a, p_b, p_c, p_d, sn) or
+                    circumcircle_contains_3d(p_a, p_b, p_d, p_c, sn)):
                 continue  # 不满足 Delaunay 准则，跳过
 
             # 计算交换后的三角形（需要 _orient_ccw 确定绕序）

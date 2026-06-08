@@ -974,6 +974,83 @@ def euler_characteristic(num_nodes: int, num_edges: int, num_faces: int) -> int:
     return num_nodes - num_edges + num_faces
 
 
+# ============================================================================
+# Delaunay 边交换工具（3D 曲面 mesh_3d_afm 与 2D optimize 共用）
+# ============================================================================
+
+def circumcircle_contains_3d(
+    p1: np.ndarray, p2: np.ndarray, p3: np.ndarray,
+    pt: np.ndarray, surface_normal: np.ndarray
+) -> bool:
+    """
+    检查点 pt 是否在三角形 (p1,p2,p3) 的外接圆内（3D 通用）。
+
+    将四点投影到以 surface_normal 为法向的切平面，然后用 2D 行列式
+    判断。行列式符号依赖于 (p1,p2,p3) 的投影绕序，函数内部自动处理。
+
+    Args:
+        p1, p2, p3: 三角形顶点 (3,)
+        pt: 待测点 (3,)
+        surface_normal: 曲面法向 (3,)，用于投影
+
+    Returns:
+        True 表示 pt 在 (p1,p2,p3) 的外接圆内（应交换边）
+    """
+    origin = p1
+    edge = p2 - p1
+    e1 = edge / np.linalg.norm(edge)
+    e2 = np.cross(surface_normal, e1)
+
+    def _proj2d(p):
+        v = p - origin
+        return np.array([np.dot(v, e1), np.dot(v, e2)])
+
+    a2, b2, c2, d2 = _proj2d(p1), _proj2d(p2), _proj2d(p3), _proj2d(pt)
+
+    m = np.array([
+        [a2[0]**2 + a2[1]**2, a2[0], a2[1], 1.0],
+        [b2[0]**2 + b2[1]**2, b2[0], b2[1], 1.0],
+        [c2[0]**2 + c2[1]**2, c2[0], c2[1], 1.0],
+        [d2[0]**2 + d2[1]**2, d2[0], d2[1], 1.0],
+    ])
+    det = np.linalg.det(m)
+
+    # 方向修正：行列式符号依赖于三角形顶点的投影绕序
+    orient = ((b2[0] - a2[0]) * (c2[1] - a2[1]) -
+              (b2[1] - a2[1]) * (c2[0] - a2[0]))
+    if orient > 0:
+        return det > 1e-12   # CCW: 点在圆内 → det > 0
+    else:
+        return det < -1e-12  # CW:  点在圆内 → det < 0
+
+
+def is_quad_convex_3d(
+    p_a: np.ndarray, p_b: np.ndarray,
+    p_c: np.ndarray, p_d: np.ndarray,
+    surface_normal: np.ndarray
+) -> bool:
+    """
+    检查四边形 a-b 为对角边的四边形是否为严格凸四边形（3D）。
+
+    c 和 d 必须在边 (a,b) 的异侧（在切平面内）。
+
+    Args:
+        p_a, p_b: 公共边两端点 (3,)
+        p_c, p_d: 独有顶点 (3,)
+        surface_normal: 曲面法向 (3,)
+
+    Returns:
+        True 表示凸四边形（可以安全交换）
+    """
+    edge_vec = p_b - p_a
+    perp = np.cross(edge_vec, surface_normal)
+    perp_len = np.linalg.norm(perp)
+    if perp_len <= 1e-12:
+        return False
+    perp /= perp_len
+    return np.dot(p_c - p_a, perp) * np.dot(p_d - p_a, perp) < 0
+
+
 def validate_mesh_topology(triangles, verbose: bool = True) -> dict:
     """
     验证网格拓扑完整性并输出统计信息。
