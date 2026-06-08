@@ -41,6 +41,9 @@ from .geom_utils import (
     validate_mesh_topology,
     circumcircle_contains_3d,
     is_quad_convex_3d,
+    triangle_min_angle_3d,
+    orient_triangle_ccw_3d,
+    build_edge_triangle_map,
 )
 
 from utils.message import info, debug, warning
@@ -3171,14 +3174,8 @@ class SurfaceMeshGenerator:
         self._print_statistics()
 
     def _build_edge_triangle_map(self) -> Dict[frozenset, List[int]]:
-        """构建边 → 三角形索引列表 的映射"""
-        edge_map: Dict[frozenset, List[int]] = {}
-        for tri_idx, tri in enumerate(self.triangle_list):
-            ids = tri.node_ids
-            for a, b in [(0, 1), (1, 2), (2, 0)]:
-                edge = frozenset([ids[a], ids[b]])
-                edge_map.setdefault(edge, []).append(tri_idx)
-        return edge_map
+        """构建边 → 三角形索引列表 的映射，委托给 geom_utils"""
+        return build_edge_triangle_map(self.triangle_list)
 
     def _detect_feature_edges(self, feature_angle_deg: float = 30.0):
         """
@@ -3760,21 +3757,11 @@ class SurfaceMeshGenerator:
         raise KeyError(f"Node idx={idx} not found in _node_idx_map")
 
     def _triangle_min_angle(self, node_ids: list) -> float:
-        """计算三角形最小角（度）"""
-        p0 = self._get_node_coords_by_idx(node_ids[0])
-        p1 = self._get_node_coords_by_idx(node_ids[1])
-        p2 = self._get_node_coords_by_idx(node_ids[2])
-        angles = []
-        for apex, a, b in [(p0, p1, p2), (p1, p0, p2), (p2, p0, p1)]:
-            va = a - apex
-            vb = b - apex
-            la = np.linalg.norm(va)
-            lb = np.linalg.norm(vb)
-            if la < 1e-15 or lb < 1e-15:
-                return 0.0
-            cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
-            angles.append(np.degrees(np.arccos(cos_a)))
-        return min(angles)
+        """计算三角形最小角（度），委托给 geom_utils"""
+        return triangle_min_angle_3d(
+            self._get_node_coords_by_idx(node_ids[0]),
+            self._get_node_coords_by_idx(node_ids[1]),
+            self._get_node_coords_by_idx(node_ids[2]))
 
     def _orient_ccw(self, node_ids: list):
         """确保三角形节点在 3D 中保持一致的绕序（返回 node_ids 或重排版本，退化时返回 None）"""
@@ -3784,11 +3771,9 @@ class SurfaceMeshGenerator:
         cross = np.cross(p1 - p0, p2 - p0)
         if np.linalg.norm(cross) < 1e-16:
             return None
-        # 使用曲面法向判断方向
         try:
             uv = self.geometry.project_point_to_surface(
-                tuple((p0 + p1 + p2) / 3.0), self.surface
-            )
+                tuple((p0 + p1 + p2) / 3.0), self.surface)
             sn = np.array(self.geometry.get_surface_normal(uv[0], uv[1], self.surface))
             sn = sn * getattr(self, '_normal_flip', 1.0)
             if np.dot(cross, sn) < 0:

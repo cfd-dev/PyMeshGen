@@ -1122,4 +1122,78 @@ def validate_mesh_topology(triangles, verbose: bool = True) -> dict:
              f"最小={quality_stats.get('quality_min', 0):.4f}, "
              f"低质量(<0.3)={quality_stats.get('poor_quality_count', 0)}")
 
+
+# ============================================================================
+# 三角形几何计算（mesh_3d_afm 与 optimize 共用）
+# ============================================================================
+
+def triangle_min_angle_3d(
+    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray
+) -> float:
+    """
+    计算三角形的最小内角（度）。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标 (3,) 或 (2,)
+
+    Returns:
+        最小角度（度），范围 (0, 180]
+    """
+    pts = [p0, p1, p2]
+    angles = []
+    for i in range(3):
+        apex = pts[i]
+        a = pts[(i + 1) % 3]
+        b = pts[(i + 2) % 3]
+        va = a - apex
+        vb = b - apex
+        la = np.linalg.norm(va)
+        lb = np.linalg.norm(vb)
+        if la < 1e-15 or lb < 1e-15:
+            return 0.0
+        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
+        angles.append(float(np.degrees(np.arccos(cos_a))))
+    return min(angles)
+
+
+def orient_triangle_ccw_3d(
+    p0: np.ndarray, p1: np.ndarray, p2: np.ndarray,
+    surface_normal: np.ndarray
+):
+    """
+    确保三角形顶点在曲面法向一侧呈 CCW 绕序。
+
+    Args:
+        p0, p1, p2: 三角形顶点坐标 (3,)
+        surface_normal: 曲面法向 (3,)
+
+    Returns:
+        (p0', p1', p2') 或 None（退化三角形）
+    """
+    cross = np.cross(p1 - p0, p2 - p0)
+    if np.linalg.norm(cross) < 1e-16:
+        return None
+    if np.dot(cross, surface_normal) < 0:
+        return (p0, p2, p1)
+    return (p0, p1, p2)
+
+
+def build_edge_triangle_map(triangles) -> Dict[frozenset, List[int]]:
+    """
+    从三角形列表构建边 → 三角形索引的映射。
+
+    Args:
+        triangles: 三角形列表，每个元素需有 node_ids 属性（List[int]）
+
+    Returns:
+        {frozenset({idx_a, idx_b}): [tri_idx, ...]}
+    """
+    edge_map: Dict[frozenset, List[int]] = {}
+    for tri_idx, tri in enumerate(triangles):
+        ids = tri.node_ids
+        for k in range(3):
+            edge = frozenset([ids[k], ids[(k + 1) % 3]])
+            edge_map.setdefault(edge, []).append(tri_idx)
+    return edge_map
+
     return result
