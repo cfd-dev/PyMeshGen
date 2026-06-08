@@ -27,7 +27,7 @@ from sfmesh.shape_generators import (
     _export_combined_mesh,
 )
 from sfmesh.occ_utils import _extract_faces
-from sfmesh.mesh_quality import SurfaceMeshQuality
+from sfmesh import SurfaceMeshQuality
 
 
 class TestExtractFaces(unittest.TestCase):

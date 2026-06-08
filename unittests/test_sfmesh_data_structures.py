@@ -17,7 +17,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront
-from sfmesh.mesh_quality import SurfaceMeshQuality
+from sfmesh import SurfaceMeshQuality
 from meshsize.surface_sizing import SurfaceSizingField
 from utils.geom_toolkit import point_to_segment_distance_3d
 

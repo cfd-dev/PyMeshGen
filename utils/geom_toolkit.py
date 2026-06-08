@@ -1151,3 +1151,420 @@ def unit_direction_vector(node1, node2):
     if length == 0:
         return (0.0,) * dim
     return (dx / length, dy / length, dz / length)[:dim]
+
+# ============================================================================
+# 从 sfmesh/geom_utils.py 合并的 3D 几何 / 相交检测 / Delaunay 工具
+# ============================================================================
+import numpy as np
+from typing import List, Tuple, Dict, Set, Optional
+from collections import Counter
+
+# 常量
+DEFAULT_TOL = 1e-10
+DEGENERATE_TOL = 1e-24
+COPLANAR_TOL = 1e-8
+FLOAT_MIN = np.finfo(np.float64).tiny
+
+
+# ---------------------------------------------------------------------------
+# 3D→2D 投影
+# ---------------------------------------------------------------------------
+
+def project_to_2d(points: np.ndarray, normal: np.ndarray) -> np.ndarray:
+    abs_n = np.abs(normal)
+    if abs_n[0] >= abs_n[1] and abs_n[0] >= abs_n[2]:
+        return points[..., [1, 2]]
+    elif abs_n[1] >= abs_n[0] and abs_n[1] >= abs_n[2]:
+        return points[..., [0, 2]]
+    else:
+        return points[..., [0, 1]]
+
+
+# ---------------------------------------------------------------------------
+# 2D 线段相交
+# ---------------------------------------------------------------------------
+
+def _on_segment_2d(p, a, b, tol):
+    return (min(a[0], b[0]) - tol <= p[0] <= max(a[0], b[0]) + tol and
+            min(a[1], b[1]) - tol <= p[1] <= max(a[1], b[1]) + tol)
+
+
+def segments_intersect_2d(a1, a2, b1, b2, tol=DEFAULT_TOL):
+    def cross2d(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    d1, d2 = cross2d(b1, b2, a1), cross2d(b1, b2, a2)
+    d3, d4 = cross2d(a1, a2, b1), cross2d(a1, a2, b2)
+    if abs(d1) < tol and abs(d2) < tol and abs(d3) < tol and abs(d4) < tol:
+        if abs(a2[0] - a1[0]) >= abs(a2[1] - a1[1]):
+            a_min, a_max = min(a1[0], a2[0]), max(a1[0], a2[0])
+            b_min, b_max = min(b1[0], b2[0]), max(b1[0], b2[0])
+        else:
+            a_min, a_max = min(a1[1], a2[1]), max(a1[1], a2[1])
+            b_min, b_max = min(b1[1], b2[1]), max(b1[1], b2[1])
+        return max(a_min, b_min) < min(a_max, b_max) - tol
+    for pa in (a1, a2):
+        for pb in (b1, b2):
+            if np.max(np.abs(pa - pb)) < tol:
+                return False
+    if max(a1[0], a2[0]) < min(b1[0], b2[0]) - tol: return False
+    if max(b1[0], b2[0]) < min(a1[0], a2[0]) - tol: return False
+    if max(a1[1], a2[1]) < min(b1[1], b2[1]) - tol: return False
+    if max(b1[1], b2[1]) < min(a1[1], a2[1]) - tol: return False
+    def sign(x): return 1 if x > tol else (-1 if x < -tol else 0)
+    s1, s2, s3, s4 = sign(d1), sign(d2), sign(d3), sign(d4)
+    if s1 * s2 < 0 and s3 * s4 < 0: return True
+    if s1 == 0 and _on_segment_2d(a1, b1, b2, tol): return True
+    if s2 == 0 and _on_segment_2d(a2, b1, b2, tol): return True
+    if s3 == 0 and _on_segment_2d(b1, a1, a2, tol): return True
+    if s4 == 0 and _on_segment_2d(b2, a1, a2, tol): return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 2D / 3D 点在三角形内
+# ---------------------------------------------------------------------------
+
+def point_in_triangle_2d(p, t0, t1, t2, tol=DEFAULT_TOL):
+    d1 = (p[0] - t1[0]) * (t0[1] - t1[1]) - (p[1] - t1[1]) * (t0[0] - t1[0])
+    d2 = (p[0] - t2[0]) * (t1[1] - t2[1]) - (p[1] - t2[1]) * (t1[0] - t2[0])
+    d3 = (p[0] - t0[0]) * (t2[1] - t0[1]) - (p[1] - t0[1]) * (t2[0] - t0[0])
+    has_neg = (d1 < -tol) or (d2 < -tol) or (d3 < -tol)
+    has_pos = (d1 > tol) or (d2 > tol) or (d3 > tol)
+    return not (has_neg and has_pos)
+
+
+def point_in_triangle_3d(p, a, b, c, tol=DEFAULT_TOL, check_coplanar=True):
+    v0, v1, v2 = c - a, b - a, p - a
+    if check_coplanar:
+        n = np.cross(v0, v1)
+        n_len = np.linalg.norm(n)
+        if n_len > DEGENERATE_TOL:
+            if abs(np.dot(v2, n)) / n_len > tol:
+                return False
+    dot00, dot01, dot02 = np.dot(v0, v0), np.dot(v0, v1), np.dot(v0, v2)
+    dot11, dot12 = np.dot(v1, v1), np.dot(v1, v2)
+    denom = dot00 * dot11 - dot01 * dot01
+    if abs(denom) < DEGENERATE_TOL * (dot00 * dot11 + FLOAT_MIN):
+        return False
+    inv = 1.0 / denom
+    u = (dot11 * dot02 - dot01 * dot12) * inv
+    v = (dot00 * dot12 - dot01 * dot02) * inv
+    return (u >= -tol) and (v >= -tol) and (u + v <= 1.0 + tol)
+
+
+# ---------------------------------------------------------------------------
+# 3D 线段 / 三角形相交 (Möller–Trumbore)
+# ---------------------------------------------------------------------------
+
+def segment_intersects_triangle(p, q, a, b, c, tol=DEFAULT_TOL):
+    e1, e2 = b - a, c - a
+    d = q - p
+    h = np.cross(d, e2)
+    det = np.dot(e1, h)
+    if -tol < det < tol: return False
+    f = 1.0 / det
+    s = p - a
+    u = f * np.dot(s, h)
+    if u < -tol or u > 1.0 + tol: return False
+    qv = np.cross(s, e1)
+    v = f * np.dot(d, qv)
+    if v < -tol or u + v > 1.0 + tol: return False
+    t = f * np.dot(e2, qv)
+    return tol < t < 1.0 - tol
+
+
+# ---------------------------------------------------------------------------
+# 3D 线段间最短距离
+# ---------------------------------------------------------------------------
+
+def segment_segment_distance_3d(p1, p2, q1, q2):
+    d1, d2 = p2 - p1, q2 - q1
+    r = p1 - q1
+    a = np.dot(d1, d1); e = np.dot(d2, d2); f = np.dot(d2, r)
+    if a < DEGENERATE_TOL and e < DEGENERATE_TOL: return float(np.linalg.norm(r))
+    if a < DEGENERATE_TOL:
+        s, t = 0.0, float(np.clip(f / e, 0.0, 1.0))
+    else:
+        c = np.dot(d1, r)
+        if e < DEGENERATE_TOL:
+            t, s = 0.0, float(np.clip(-c / a, 0.0, 1.0))
+        else:
+            bv = np.dot(d1, d2)
+            denom = a * e - bv * bv
+            if abs(denom) > DEGENERATE_TOL * (a * e + FLOAT_MIN):
+                s = float(np.clip((bv * f - c * e) / denom, 0.0, 1.0))
+                t = (bv * s + f) / e
+            else:
+                best = float('inf'); best_s = best_t = 0.0
+                for sc in (0.0, 1.0):
+                    tc = float(np.clip((bv * sc + f) / e, 0.0, 1.0))
+                    dist = np.linalg.norm((p1 + sc * d1) - (q1 + tc * d2))
+                    if dist < best: best, best_s, best_t = dist, sc, tc
+                for tc in (0.0, 1.0):
+                    sc = float(np.clip((bv * tc - c) / a, 0.0, 1.0))
+                    dist = np.linalg.norm((p1 + sc * d1) - (q1 + tc * d2))
+                    if dist < best: best, best_s, best_t = dist, sc, tc
+                s, t = best_s, best_t
+            if t < 0.0: t = 0.0; s = float(np.clip(-c / a, 0.0, 1.0))
+            elif t > 1.0: t = 1.0; s = float(np.clip((bv - c) / a, 0.0, 1.0))
+    return float(np.linalg.norm((p1 + s * d1) - (q1 + t * d2)))
+
+
+# ---------------------------------------------------------------------------
+# 3D 点到三角形最短距离
+# ---------------------------------------------------------------------------
+
+def point_triangle_distance_3d(p, a, b, c):
+    ab, ac, ap = b - a, c - a, p - a
+    d1, d2 = np.dot(ab, ap), np.dot(ac, ap)
+    if d1 <= 0.0 and d2 <= 0.0: return float(np.linalg.norm(ap))
+    bp = p - b
+    d3, d4 = np.dot(ab, bp), np.dot(ac, bp)
+    if d3 >= 0.0 and d4 <= d3: return float(np.linalg.norm(bp))
+    vc = d1 * d4 - d3 * d2
+    if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+        v = d1 / (d1 - d3 + np.copysign(FLOAT_MIN, d1 - d3))
+        return float(np.linalg.norm(p - (a + v * ab)))
+    cp = p - c
+    d5, d6 = np.dot(ab, cp), np.dot(ac, cp)
+    if d6 >= 0.0 and d5 <= d6: return float(np.linalg.norm(cp))
+    vb = d5 * d2 - d1 * d6
+    if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+        w = d2 / (d2 - d6 + np.copysign(FLOAT_MIN, d2 - d6))
+        return float(np.linalg.norm(p - (a + w * ac)))
+    va = d3 * d6 - d5 * d4
+    if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+        denom_edge = (d4 - d3) + (d5 - d6)
+        w = (d4 - d3) / (denom_edge + np.copysign(FLOAT_MIN, denom_edge))
+        return float(np.linalg.norm(p - (b + w * (c - b))))
+    n = np.cross(ab, ac)
+    n_len = np.linalg.norm(n)
+    if n_len < DEGENERATE_TOL: return 0.0
+    return float(abs(np.dot(ap, n)) / n_len)
+
+
+# ---------------------------------------------------------------------------
+# 共面三角形重叠检测
+# ---------------------------------------------------------------------------
+
+def are_coplanar_triangles_overlapping(tri_a, tri_b, surface_normal, tol=COPLANAR_TOL):
+    pa = project_to_2d(tri_a, surface_normal)
+    pb = project_to_2d(tri_b, surface_normal)
+    ea = [(pa[0], pa[1]), (pa[1], pa[2]), (pa[2], pa[0])]
+    eb = [(pb[0], pb[1]), (pb[1], pb[2]), (pb[2], pb[0])]
+    for e0 in ea:
+        for e1 in eb:
+            if segments_intersect_2d(e0[0], e0[1], e1[0], e1[1], tol):
+                return True
+    if point_in_triangle_2d(pa[0], pb[0], pb[1], pb[2], tol): return True
+    if point_in_triangle_2d(pb[0], pa[0], pa[1], pa[2], tol): return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# 三角形 / 边相交核心
+# ---------------------------------------------------------------------------
+
+def _point_on_segment_2d(p, s1, s2, tol=DEFAULT_TOL):
+    cp = (s2[0] - s1[0]) * (p[1] - s1[1]) - (s2[1] - s1[1]) * (p[0] - s1[0])
+    if abs(cp) > tol: return False
+    dot = (p[0] - s1[0]) * (p[0] - s2[0]) + (p[1] - s1[1]) * (p[1] - s2[1])
+    return dot < tol
+
+
+def _edge_intersects_triangle_core(es, ee, t1, t2, t3, tol=DEFAULT_TOL):
+    normal = np.cross(t2 - t1, t3 - t1)
+    norm_len = np.linalg.norm(normal)
+    if norm_len < DEGENERATE_TOL: return False
+    normal = normal / norm_len
+    d1 = np.dot(es - t1, normal); d2 = np.dot(ee - t1, normal)
+    if (d1 > tol and d2 > tol) or (d1 < -tol and d2 < -tol): return False
+    if abs(d1) < tol and abs(d2) < tol:
+        pn = np.cross(t2 - t1, t3 - t1)
+        es2 = project_to_2d(es, pn); ee2 = project_to_2d(ee, pn)
+        tri2 = np.array([project_to_2d(t1, pn), project_to_2d(t2, pn), project_to_2d(t3, pn)])
+        te = [(tri2[0], tri2[1]), (tri2[1], tri2[2]), (tri2[2], tri2[0])]
+        for ts, te_ in te:
+            if segments_intersect_2d(es2, ee2, ts, te_, tol): return True
+        stol = tol * 10.0
+        for ep, ep3 in [(es2, es), (ee2, ee)]:
+            if point_in_triangle_2d(ep, tri2[0], tri2[1], tri2[2], tol):
+                if all(np.linalg.norm(ep3 - v) > stol for v in (t1, t2, t3)): return True
+        for tv, tv3 in zip(tri2, (t1, t2, t3)):
+            if all(np.linalg.norm(tv3 - ep) > stol for ep in (es, ee)):
+                if _point_on_segment_2d(tv, es2, ee2, tol): return True
+        return False
+    denom = d1 - d2
+    if abs(denom) < DEGENERATE_TOL: return False
+    tp = d1 / (denom + np.copysign(FLOAT_MIN, denom))
+    if tp < tol or tp > 1.0 - tol: return False
+    inter = es + tp * (ee - es)
+    if not point_in_triangle_3d(inter, t1, t2, t3, tol, check_coplanar=False): return False
+    for v in (t1, t2, t3):
+        if np.linalg.norm(inter - v) < tol * 10.0: return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# 高层 API
+# ---------------------------------------------------------------------------
+
+def _extract_triangle_coords(triangle):
+    if isinstance(triangle, np.ndarray):
+        return triangle
+    return np.array([triangle.nodes[0].coords, triangle.nodes[1].coords,
+                     triangle.nodes[2].coords], dtype=np.float64)
+
+
+def check_triangle_intersection(tri1, tri2, tolerance=DEFAULT_TOL):
+    p = _extract_triangle_coords(tri1); q = _extract_triangle_coords(tri2)
+    p1, p2, p3 = p[0], p[1], p[2]; q1, q2, q3 = q[0], q[1], q[2]
+    p_min = np.minimum(np.minimum(p1, p2), p3); p_max = np.maximum(np.maximum(p1, p2), p3)
+    q_min = np.minimum(np.minimum(q1, q2), q3); q_max = np.maximum(np.maximum(q1, q2), q3)
+    if np.any(p_max < q_min - tolerance) or np.any(p_min > q_max + tolerance): return False
+    n1 = np.cross(p2 - p1, p3 - p1); n2 = np.cross(q2 - q1, q3 - q1)
+    n1_len = np.linalg.norm(n1); n2_len = np.linalg.norm(n2)
+    if n1_len < DEGENERATE_TOL or n2_len < DEGENERATE_TOL: return False
+    n1 /= n1_len; n2 /= n2_len
+    def _all_same_side(pts, plane_pt, plane_n):
+        dists = np.dot(pts - plane_pt, plane_n)
+        return bool(np.all(dists > tolerance) or np.all(dists < -tolerance))
+    if _all_same_side(q, p1, n1) or _all_same_side(p, q1, n2): return False
+    shtol = tolerance * 10.0
+    shared_p = [i for i in range(3) if any(np.linalg.norm(p[i] - q[j]) < shtol for j in range(3))]
+    shared_q = [j for j in range(3) if any(np.linalg.norm(q[j] - p[i]) < shtol for i in range(3))]
+    if len(shared_p) >= 2 and len(shared_q) >= 2:
+        nsp = [i for i in range(3) if i not in shared_p]
+        nsq = [j for j in range(3) if j not in shared_q]
+        if nsp and nsq:
+            cp_ = p[nsp[0]]; cq_ = q[nsq[0]]
+            s1_, s2_ = p[shared_p[0]], p[shared_p[1]]
+            if segment_segment_distance_3d(s1_, cp_, s2_, cq_) < tolerance: return True
+            if segment_segment_distance_3d(s2_, cp_, s1_, cq_) < tolerance: return True
+        return False
+    ep_ = [(p1, p2), (p2, p3), (p3, p1)]; eq_ = [(q1, q2), (q2, q3), (q3, q1)]
+    for es_, ee_ in ep_:
+        if _edge_intersects_triangle_core(es_, ee_, q1, q2, q3, tolerance): return True
+    for es_, ee_ in eq_:
+        if _edge_intersects_triangle_core(es_, ee_, p1, p2, p3, tolerance): return True
+    svtol = tolerance * 100.0
+    def _is_shared(pt, verts): return any(np.linalg.norm(pt - v) < svtol for v in verts)
+    for pt in p:
+        if point_in_triangle_3d(pt, q1, q2, q3, tolerance) and not _is_shared(pt, q): return True
+    for pt in q:
+        if point_in_triangle_3d(pt, p1, p2, p3, tolerance) and not _is_shared(pt, p): return True
+    return False
+
+
+def check_edge_triangle_intersection(es, ee, triangle, tolerance=DEFAULT_TOL):
+    verts = _extract_triangle_coords(triangle)
+    return _edge_intersects_triangle_core(es, ee, verts[0], verts[1], verts[2], tolerance)
+
+
+def check_triangle_vs_existing(new_coords, existing_coords, shared_count,
+                                new_shared_indices, existing_shared_indices,
+                                tolerance=DEFAULT_TOL):
+    p0, p1, p2 = new_coords[0], new_coords[1], new_coords[2]
+    q0, q1, q2 = existing_coords[0], existing_coords[1], existing_coords[2]
+    if shared_count >= 2:
+        new_set = {tuple(c) for c in new_coords}
+        ex_set = {tuple(c) for c in existing_coords}
+        if new_set == ex_set: return True
+        nsn = [i for i in range(3) if i not in new_shared_indices]
+        nse = [i for i in range(3) if i not in existing_shared_indices]
+        if nsn and nse:
+            cp_ = new_coords[nsn[0]]; cq_ = existing_coords[nse[0]]
+            if len(new_shared_indices) >= 2:
+                s1_, s2_ = new_coords[new_shared_indices[0]], new_coords[new_shared_indices[1]]
+                if segment_segment_distance_3d(s1_, cp_, s2_, cq_) < tolerance: return True
+                if segment_segment_distance_3d(s2_, cp_, s1_, cq_) < tolerance: return True
+        return False
+    if shared_count == 1:
+        sni = new_shared_indices[0]; sei = existing_shared_indices[0]
+        en = []; ee_ = []
+        for a_, b_ in [(0, 1), (1, 2), (2, 0)]:
+            if a_ != sni and b_ != sni: en.append((new_coords[a_], new_coords[b_]))
+        for a_, b_ in [(0, 1), (1, 2), (2, 0)]:
+            if a_ != sei and b_ != sei: ee_.append((existing_coords[a_], existing_coords[b_]))
+        for a1_, a2_ in en:
+            for b1_, b2_ in ee_:
+                if segment_segment_distance_3d(a1_, a2_, b1_, b2_) < tolerance: return True
+        for a1_, a2_ in en:
+            if _edge_intersects_triangle_core(a1_, a2_, q0, q1, q2): return True
+        for b1_, b2_ in ee_:
+            if _edge_intersects_triangle_core(b1_, b2_, p0, p1, p2): return True
+        return False
+    return check_triangle_intersection(new_coords, existing_coords, tolerance)
+
+
+# ---------------------------------------------------------------------------
+# 三角形质量与退化检测
+# ---------------------------------------------------------------------------
+
+def triangle_quality_from_coords(p0, p1, p2):
+    a = np.linalg.norm(p1 - p0); b = np.linalg.norm(p2 - p1); c = np.linalg.norm(p0 - p2)
+    if a < 1e-12 or b < 1e-12 or c < 1e-12: return 0.0
+    s = (a + b + c) / 2.0
+    area_sq = s * (s - a) * (s - b) * (s - c)
+    if area_sq <= 0: return 0.0
+    area = np.sqrt(area_sq)
+    sum_sq = a * a + b * b + c * c
+    quality = 4.0 * np.sqrt(3) * area / sum_sq
+    return min(1.0, max(0.0, quality))
+
+
+def check_triangle_degenerate(p0, p1, p2, min_height, min_edge_len):
+    ev = p1 - p0; el2 = np.dot(ev, ev)
+    if el2 > 1e-24:
+        t = np.dot(p2 - p0, ev) / el2
+        closest = p0 + np.clip(t, 0, 1) * ev
+        if np.linalg.norm(p2 - closest) < min_height: return True
+    if np.linalg.norm(p2 - p0) < min_edge_len or np.linalg.norm(p2 - p1) < min_edge_len:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Delaunay 边交换工具
+# ---------------------------------------------------------------------------
+
+def circumcircle_contains_3d(p1, p2, p3, pt, surface_normal):
+    origin = p1; edge = p2 - p1
+    e1 = edge / np.linalg.norm(edge); e2 = np.cross(surface_normal, e1)
+    def _pr(p): v = p - origin; return np.array([np.dot(v, e1), np.dot(v, e2)])
+    a2, b2, c2, d2 = _pr(p1), _pr(p2), _pr(p3), _pr(pt)
+    m = np.array([[a2[0]**2 + a2[1]**2, a2[0], a2[1], 1.0],
+                  [b2[0]**2 + b2[1]**2, b2[0], b2[1], 1.0],
+                  [c2[0]**2 + c2[1]**2, c2[0], c2[1], 1.0],
+                  [d2[0]**2 + d2[1]**2, d2[0], d2[1], 1.0]])
+    det = np.linalg.det(m)
+    orient = ((b2[0] - a2[0]) * (c2[1] - a2[1]) -
+              (b2[1] - a2[1]) * (c2[0] - a2[0]))
+    return det > 1e-12 if orient > 0 else det < -1e-12
+
+
+def is_quad_convex_3d(p_a, p_b, p_c, p_d, surface_normal):
+    ev = p_b - p_a; perp = np.cross(ev, surface_normal)
+    pl = np.linalg.norm(perp)
+    if pl <= 1e-12: return False
+    perp /= pl
+    return np.dot(p_c - p_a, perp) * np.dot(p_d - p_a, perp) < 0
+
+
+def triangle_min_angle_3d(p0, p1, p2):
+    pts = [p0, p1, p2]; angles = []
+    for i in range(3):
+        apex = pts[i]; a = pts[(i + 1) % 3]; b = pts[(i + 2) % 3]
+        va = a - apex; vb = b - apex
+        la = np.linalg.norm(va); lb = np.linalg.norm(vb)
+        if la < 1e-15 or lb < 1e-15: return 0.0
+        cos_a = np.clip(np.dot(va, vb) / (la * lb), -1.0, 1.0)
+        angles.append(float(np.degrees(np.arccos(cos_a))))
+    return min(angles)
+
+
+def orient_triangle_ccw_3d(p0, p1, p2, surface_normal):
+    cross = np.cross(p1 - p0, p2 - p0)
+    if np.linalg.norm(cross) < 1e-16: return None
+    if np.dot(cross, surface_normal) < 0: return (p0, p2, p1)
+    return (p0, p1, p2)

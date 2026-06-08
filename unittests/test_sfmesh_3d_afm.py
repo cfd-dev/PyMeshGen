@@ -24,7 +24,8 @@ ensure_occ_loaded()
 
 from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
 from sfmesh.shape_generators import _export_combined_mesh
-from sfmesh.mesh_quality import SurfaceMeshQuality, check_triangle_intersection
+from utils.geom_toolkit import check_triangle_intersection
+from utils.mesh_topology import evaluate_mesh_quality
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, create_initial_fronts_from_surface
 from meshsize.surface_sizing import SurfaceSizingField
 
@@ -269,7 +270,7 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
 
         validate_mesh_topology(triangles, "planar_square", self)
 
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         # 平面网格质量应较高（无曲率畸变）
         self.assertGreater(
             quality['quality_mean'], 0.5,
@@ -297,7 +298,7 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
         self.assertGreater(len(triangles), 40, "长方形平面三角形数量不足")
         validate_mesh_topology(triangles, "planar_rectangle", self)
 
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         self.assertGreater(
             quality['quality_mean'], 0.4,
             f"长方形平面平均质量过低: {quality['quality_mean']:.4f}"
@@ -326,7 +327,7 @@ class TestPlanarSurfaceAFM(unittest.TestCase):
         validate_mesh_topology(triangles, "planar_fine", self)
 
         # 细密网格质量应更高（边界效应占比小）
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         self.assertGreater(
             quality['quality_mean'], 0.5,
             f"细密平面平均质量过低: {quality['quality_mean']:.4f}"
@@ -474,7 +475,7 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
         validate_mesh_topology(triangles, name, self)
 
         # 质量验证
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         self.assertGreater(
             quality['quality_mean'], quality_min,
             f"{name}: 平均质量 {quality['quality_mean']:.4f} < {quality_min}"
@@ -577,7 +578,7 @@ class TestCubeAFM(unittest.TestCase):
         self.assertGreater(len(triangles), 10, "立方体单面三角形数量不足")
         validate_mesh_topology(triangles, "cube_single_face", self)
 
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         self.assertGreater(quality['quality_mean'], 0.5,
                            f"立方体单面平均质量过低: {quality['quality_mean']:.4f}")
 
@@ -615,7 +616,7 @@ class TestCubeAFM(unittest.TestCase):
         self.assertGreater(len(all_triangles), 50,
                            f"立方体总三角形数量不足 ({len(all_triangles)})")
 
-        quality = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        quality = evaluate_mesh_quality(all_triangles, verbose=False)
         self.assertGreater(quality['quality_mean'], 0.4,
                            f"立方体整体平均质量过低: {quality['quality_mean']:.4f}")
 
@@ -648,7 +649,7 @@ class TestCubeAFM(unittest.TestCase):
         self.assertGreater(len(all_triangles), 150,
                            f"立方体细密网格总数量不足 ({len(all_triangles)})")
 
-        quality = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        quality = evaluate_mesh_quality(all_triangles, verbose=False)
         self.assertGreater(quality['quality_mean'], 0.4,
                            f"立方体细密网格平均质量过低: {quality['quality_mean']:.4f}")
 
@@ -704,7 +705,7 @@ class TestCADFileAFM(unittest.TestCase):
         # 高曲率闭合曲面的 AFM 会产生面内自交，跳过自相交检查
         validate_mesh_topology(triangles, "ellipsoid", self, check_intersection=False)
 
-        quality = SurfaceMeshQuality.evaluate_mesh(triangles, verbose=False)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
         self.assertGreater(quality['quality_mean'], 0.3, "椭球体平均质量过低")
 
         output_file = self.output_dir / "afm_ellipsoid.vtk"
@@ -747,7 +748,7 @@ class TestCADFileAFM(unittest.TestCase):
 
         self.assertGreater(len(all_triangles), 0, "M6 未生成任何三角形")
 
-        quality = SurfaceMeshQuality.evaluate_mesh(all_triangles, verbose=False)
+        quality = evaluate_mesh_quality(all_triangles, verbose=False)
         self.assertGreater(quality['quality_mean'], 0.15, "M6 平均质量过低")
 
         output_file = self.output_dir / "afm_onera_m6.vtk"

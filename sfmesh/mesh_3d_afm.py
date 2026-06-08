@@ -29,8 +29,9 @@ from .surface_front import (
 )
 from .surface_geometry import SurfaceGeometry
 from meshsize.surface_sizing import SurfaceSizingField
-from .mesh_quality import SurfaceMeshQuality
-from .geom_utils import (
+from utils.mesh_topology import (
+    validate_mesh_topology, evaluate_mesh_quality, build_edge_triangle_map)
+from utils.geom_toolkit import (
     point_in_triangle_3d,
     check_triangle_intersection,
     check_triangle_vs_existing,
@@ -38,12 +39,10 @@ from .geom_utils import (
     triangle_quality_from_coords,
     check_triangle_degenerate,
     segment_segment_distance_3d,
-    validate_mesh_topology,
     circumcircle_contains_3d,
     is_quad_convex_3d,
     triangle_min_angle_3d,
     orient_triangle_ccw_3d,
-    build_edge_triangle_map,
 )
 
 from utils.message import info, debug, warning
@@ -2578,7 +2577,7 @@ class SurfaceMeshGenerator:
                 continue
             # 无共享节点：检查是否有节点在对方内部
             ex_coords = np.array([nd.coords for nd in existing.nodes])
-            from .geom_utils import point_in_triangle_3d
+            from utils.geom_toolkit import point_in_triangle_3d
             # 检查新三角形的节点是否在已有三角形内部
             for pt in new_coords:
                 if point_in_triangle_3d(pt, ex_coords[0], ex_coords[1], ex_coords[2]):

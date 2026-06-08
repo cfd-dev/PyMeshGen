@@ -23,7 +23,7 @@ from sfmesh.mesh_parametric import (
     generate_ellipsoid_mesh,
     _mesh_face_closed_surface,
 )
-from sfmesh.mesh_quality import SurfaceMeshQuality
+from sfmesh import SurfaceMeshQuality
 
 
 class TestPrimitiveMeshResult(unittest.TestCase):

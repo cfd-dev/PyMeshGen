@@ -12,7 +12,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from sfmesh.geom_utils import (
+from utils.geom_toolkit import (
     project_to_2d,
     segments_intersect_2d,
     point_in_triangle_2d,

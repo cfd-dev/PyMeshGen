@@ -20,7 +20,7 @@ project_root = Path(__file__).parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from sfmesh.geom_utils import (
+from utils.geom_toolkit import (
     project_to_2d,
     segments_intersect_2d,
     point_in_triangle_2d,
@@ -33,21 +33,78 @@ from sfmesh.geom_utils import (
     check_triangle_degenerate,
     check_triangle_intersection,
     check_triangle_vs_existing,
+)
+from utils.mesh_topology import (
     classify_edges,
     trace_boundary_loops,
     euler_characteristic,
     validate_mesh_topology,
-    point_to_segment_distance_3d,
-    ,
-    segments_cross_strict_2d,
-    triangle_min_angle_from_coords,
-    triangle_max_angle_from_coords,
-    triangle_edges,
-    check_min_edge_distance,
-    uv_out_of_bounds,
-    DEFAULT_TOL,
-    DEGENERATE_TOL,
 )
+from utils.geom_toolkit import point_to_segment_distance_3d
+
+# 测试文件中使用的本地辅助函数 / 别名
+def segments_cross_strict_2d(a1, a2, b1, b2):
+    """2D 线段严格穿越检测（测试用别名）"""
+    from utils.geom_toolkit import segments_intersect_strict
+    return segments_intersect_strict(a1, a2, b1, b2)
+
+def triangle_min_angle_from_coords(p0, p1, p2):
+    """三角形最小角度（测试用别名）"""
+    from utils.geom_toolkit import triangle_min_angle_3d
+    return triangle_min_angle_3d(p0, p1, p2)
+
+def triangle_max_angle_from_coords(p0, p1, p2):
+    """三角形最大角度"""
+    import numpy as _np
+    pts = [p0, p1, p2]
+    angles = []
+    for i in range(3):
+        apex = pts[i]; a = pts[(i + 1) % 3]; b = pts[(i + 2) % 3]
+        va = a - apex; vb = b - apex
+        la = _np.linalg.norm(va); lb = _np.linalg.norm(vb)
+        if la < 1e-15 or lb < 1e-15:
+            angles.append(0.0)
+        else:
+            cos_a = _np.clip(_np.dot(va, vb) / (la * lb), -1.0, 1.0)
+            angles.append(float(_np.degrees(_np.arccos(cos_a))))
+    return max(angles) if angles else 0.0
+
+def triangle_edges(p0, p1, p2):
+    """返回三角形三条边的端点索引对"""
+    return [(p0, p1), (p1, p2), (p2, p0)]
+
+def check_min_edge_distance(coords, tri, min_dist):
+    """检查新三角形与已有三角形的最小边距离（测试用桩）"""
+    from utils.geom_toolkit import segment_segment_distance_3d
+    new_edges = triangle_edges(coords[0], coords[1], coords[2])
+    if hasattr(tri, 'nodes'):
+        ex_coords = np.array([n.coords for n in tri.nodes])
+    else:
+        ex_coords = np.asarray(tri)
+    ex_edges = [(ex_coords[0], ex_coords[1]), (ex_coords[1], ex_coords[2]), (ex_coords[2], ex_coords[0])]
+    for a1, a2 in new_edges:
+        for b1, b2 in ex_edges:
+            if segment_segment_distance_3d(a1, a2, b1, b2) < min_dist:
+                return True
+    return False
+
+def uv_out_of_bounds(uv, bounds, margin=0.05):
+    """UV 越界检测（测试用桩）"""
+    u_min, u_max, v_min, v_max = bounds
+    u, v = uv
+    return (u < u_min - margin or u > u_max + margin or
+            v < v_min - margin or v > v_max + margin)
+
+def get_most_visible_plane(normal):
+    """返回最可见投影平面的轴索引（与 project_to_2d 逻辑一致）"""
+    abs_n = np.abs(normal)
+    if abs_n[0] >= abs_n[1] and abs_n[0] >= abs_n[2]:
+        return (1, 2)
+    elif abs_n[1] >= abs_n[0] and abs_n[1] >= abs_n[2]:
+        return (0, 2)
+    else:
+        return (0, 1)
+
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle
 
 
