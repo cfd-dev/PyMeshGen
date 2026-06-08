@@ -2167,6 +2167,9 @@ class SurfaceMeshGenerator:
         计算理想点：从阵面中点沿切平面垂直方向前进，投影到曲面。
         对于边界阵面，尝试两个方向（正/反），选择留在参数域内的方向。
 
+        当两端扇区数不同时，理想点偏向扇区
+        较少的一端（该端角度更尖锐，需要更小的三角形）。
+
         Args:
             front: 当前阵面
             spacing: 网格尺寸
@@ -2177,9 +2180,28 @@ class SurfaceMeshGenerator:
         distance = self.sizing_field.compute_ideal_point_distance(front, self.surface)
         u_min, u_max, v_min, v_max = self._get_surface_bounds()
 
+        # 扇区感知偏移：理想点偏向扇区角较小的一端
+        angle0 = self._compute_node_fan_angle(front.node_elems[0])
+        angle1 = self._compute_node_fan_angle(front.node_elems[1])
+        bias = 0.0  # 偏移量，[-1, 1]，负值偏向 node0，正值偏向 node1
+        if angle0 + angle1 > 1e-6:
+            bias = (angle1 - angle0) / (angle0 + angle1 + 1e-6)
+            bias = np.clip(bias * 0.3, -0.3, 0.3)  # 限制最大偏移 30% 边长
+
+        # 基边方向和偏移中心
+        p0 = np.array(front.node_elems[0].coords)
+        p1 = np.array(front.node_elems[1].coords)
+        edge_dir = p1 - p0
+        edge_len = np.linalg.norm(edge_dir)
+        if edge_len > 1e-12:
+            edge_dir /= edge_len
+        # 偏移后的起点：从基边中点沿基边方向偏移
+        biased_center = (p0 + p1) / 2.0 + edge_dir * bias * edge_len * 0.5
+        biased_center = tuple(biased_center)
+
         # 正方向
         ideal_point, ideal_uv = self.geometry.compute_ideal_point_on_surface(
-            front.center, front.tangent_normal, distance, self.surface,
+            biased_center, front.tangent_normal, distance, self.surface,
         )
 
         # 对于边界阵面，检查正方向是否越界，如果越界则尝试反方向
@@ -2656,11 +2678,91 @@ class SurfaceMeshGenerator:
         if self._check_surface_deviation(front, node):
             return False
 
+        # 可见性检查：三角形法向需与三个顶点处曲面法向一致
+        if self._check_visibility(front, node):
+            return False
+
+        # 尺寸渐变约束：限制相邻单元尺寸突变
+        if self._check_gradation(front, p0, p1, node):
+            return False
+
         # 相交检查（2D: is_cross + is_cross_rtree）
         if self._check_intersection(front, node):
             return False
 
         return True
+
+    def _check_gradation(
+        self, front: SurfaceFront,
+        p0: np.ndarray, p1: np.ndarray, node: NodeElement3D
+    ) -> bool:
+        """
+        尺寸渐变约束：确保新三角形边长不显著小于基边长度。
+
+        局部尺寸被约束在
+        [min_elsz / grading, min_elsz * grading] 范围内。
+        此处简化为：新三角形的两条新边长度不得小于基边长度的 1/grading。
+
+        Returns:
+            True 表示渐变过大（应拒绝）
+        """
+        grading = 2.0  # 渐变因子
+        baselen = np.linalg.norm(p1 - p0)
+        if baselen < 1e-12:
+            return False
+
+        p2 = np.array(node.coords)
+        new_edge0 = np.linalg.norm(p2 - p0)
+        new_edge1 = np.linalg.norm(p2 - p1)
+
+        min_allowed = baselen / grading
+        if new_edge0 < min_allowed or new_edge1 < min_allowed:
+            return True  # 新边过短，尺寸突变过大
+
+        return False
+
+    def _check_visibility(
+        self, front: SurfaceFront, node: NodeElement3D
+    ) -> bool:
+        """
+        三角形可见性检查：验证三角形法向与三个顶点处曲面法向的一致性。
+
+        检查三角形法向与各顶点处曲面法向的夹角。
+        使用期望的三角形法向方向（基于阵面切线方向确定），排除绕序差异
+        导致的方向反转。
+
+        Returns:
+            True 表示不可见（应拒绝）
+        """
+        tol_angle_deg = 75.0
+        cos_tol = math.cos(math.radians(tol_angle_deg))
+
+        n0 = front.node_elems[0]
+        n1 = front.node_elems[1]
+        n2 = node
+
+        p0 = np.array(n0.coords)
+        p1 = np.array(n1.coords)
+        p2 = np.array(n2.coords)
+        tri_norm = np.cross(p1 - p0, p2 - p0)
+        tn_len = np.linalg.norm(tri_norm)
+        if tn_len < 1e-12:
+            return True
+        tri_norm /= tn_len
+
+        # 确定期望的三角形法向方向：与阵面中点处曲面法向一致
+        front_mid = (p0 + p1) / 2.0
+        sn_front = self._get_local_surface_normal(front.node_elems[0])
+        if np.dot(tri_norm, sn_front) < 0:
+            tri_norm = -tri_norm  # 翻转以匹配曲面法向
+
+        # 各顶点处曲面法向与三角形法向的一致性
+        for n in (n0, n1, n2):
+            sn = self._get_local_surface_normal(n)
+            if np.dot(tri_norm, sn) < cos_tol:
+                return True
+
+        return False
 
     def _check_surface_deviation(
         self, front: SurfaceFront, node: NodeElement3D
@@ -3198,6 +3300,12 @@ class SurfaceMeshGenerator:
             if swapped == 0:
                 break
 
+        # 法向一致性交换：改善曲面上相邻三角形的法向连贯性
+        for _ in range(swap_iterations):
+            swapped = self._normal_swap_pass()
+            if swapped == 0:
+                break
+
         # 验证边界节点坐标未变化
         boundary_moved = 0
         for node in self.node_list:
@@ -3660,6 +3768,102 @@ class SurfaceMeshGenerator:
 
             # 角度不能退化太多（允许 50% 的退化）
             if angles_after < angles_before * 0.5:
+                continue
+
+            if self._try_execute_swap(idx0, idx1, new_ids0, new_ids1, dirty_indices):
+                swapped += 1
+
+        return swapped
+
+    def _normal_swap_pass(self) -> int:
+        """
+        法向一致性交换：改善曲面上相邻三角形的法向连贯性。
+        - 计算共享边的两个三角形法向与曲面法向的偏差和
+        - 模拟交换后重新计算偏差和
+        - 如果交换后偏差和减小且不产生自交，执行交换
+
+        Returns:
+            本轮交换次数
+        """
+        edge_map = self._build_edge_triangle_map()
+        swapped = 0
+        dirty_indices: Set[int] = set()
+
+        for edge, tri_indices in list(edge_map.items()):
+            if len(tri_indices) != 2:
+                continue
+            idx0, idx1 = tri_indices
+            if idx0 in dirty_indices or idx1 in dirty_indices:
+                continue
+            edge_ids = set(edge)
+            if edge_ids & self._boundary_idx:
+                continue
+            if edge in self._feature_edges:
+                continue
+
+            tri0 = self.triangle_list[idx0]
+            tri1 = self.triangle_list[idx1]
+            ids0, ids1 = set(tri0.node_ids), set(tri1.node_ids)
+            common = ids0 & ids1
+            if len(common) != 2:
+                continue
+
+            a, b = sorted(common)
+            c = (ids0 - common).pop()
+            d = (ids1 - common).pop()
+
+            # 计算当前法向偏差：两个三角形法向与共享边中点曲面法向的夹角和
+            p_a = self._get_node_coords_by_idx(a)
+            p_b = self._get_node_coords_by_idx(b)
+            p_c = self._get_node_coords_by_idx(c)
+            p_d = self._get_node_coords_by_idx(d)
+            edge_mid = (p_a + p_b) / 2.0
+
+            try:
+                uv = self.geometry.project_point_to_surface(
+                    tuple(edge_mid), self.surface)
+                sn = np.array(self.geometry.get_surface_normal(
+                    uv[0], uv[1], self.surface))
+                sn = sn * getattr(self, '_normal_flip', 1.0)
+                sn_len = np.linalg.norm(sn)
+                if sn_len > 1e-12:
+                    sn /= sn_len
+            except Exception:
+                continue
+
+            # 当前偏差
+            n_cur0 = np.array(tri0.normal)
+            n_cur1 = np.array(tri1.normal)
+            dev_before = abs(1.0 - abs(np.dot(n_cur0, sn))) + \
+                         abs(1.0 - abs(np.dot(n_cur1, sn)))
+
+            # 交换后偏差
+            n_new0 = np.cross(p_c - p_a, p_d - p_a)
+            n_new1 = np.cross(p_c - p_b, p_d - p_b)
+            n0_len = np.linalg.norm(n_new0)
+            n1_len = np.linalg.norm(n_new1)
+            if n0_len < 1e-16 or n1_len < 1e-16:
+                continue
+            n_new0 /= n0_len
+            n_new1 /= n1_len
+
+            # 确保法向方向一致
+            if np.dot(n_new0, sn) < 0:
+                n_new0 = -n_new0
+            if np.dot(n_new1, sn) < 0:
+                n_new1 = -n_new1
+
+            dev_after = abs(1.0 - abs(np.dot(n_new0, sn))) + \
+                        abs(1.0 - abs(np.dot(n_new1, sn)))
+
+            # 需要明显改善才交换
+            if dev_after >= dev_before * 0.95:
+                continue
+
+            # _orient_ccw 确定绕序
+            new_ids0 = self._orient_ccw([a, c, d])
+            new_ids1 = self._orient_ccw([b, c, d])
+            if new_ids0 is None or new_ids1 is None:
                 continue
 
             if self._try_execute_swap(idx0, idx1, new_ids0, new_ids1, dirty_indices):
