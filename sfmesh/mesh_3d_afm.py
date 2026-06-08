@@ -3064,7 +3064,7 @@ class SurfaceMeshGenerator:
 
         return True
 
-    def _optimize_mesh(self, swap_iterations: int = 3, smooth_iterations: int = 3):
+    def _optimize_mesh(self, swap_iterations: int = 5, smooth_iterations: int = 3):
         """
         网格后处理优化：边交换（Delaunay 准则）+ Laplacian 光滑
 
@@ -3124,6 +3124,23 @@ class SurfaceMeshGenerator:
 
         for _ in range(smooth_iterations):
             self._laplacian_smooth_pass()
+
+        # ---- 3. 光滑后边交换 ----
+        # Laplacian 光滑移动节点后可能破坏 Delaunay 准则，需要
+        # 重新执行边交换以确保最终网格质量
+        for _ in range(swap_iterations):
+            swapped = self._edge_swap_pass()
+            if swapped == 0:
+                break
+        for _ in range(swap_iterations):
+            swapped = self._degree_swap_pass()
+            if swapped == 0:
+                break
+        # 度数交换可能产生新的非 Delaunay 边，最终再跑一轮纯角度交换
+        for _ in range(swap_iterations):
+            swapped = self._edge_swap_pass()
+            if swapped == 0:
+                break
 
         # 验证边界节点坐标未变化
         boundary_moved = 0
@@ -3365,7 +3382,6 @@ class SurfaceMeshGenerator:
             本轮交换次数
         """
         edge_map = self._build_edge_triangle_map()
-        boundary_hashes = self._boundary_hashes
         swapped = 0
         # 跟踪本轮已修改的三角形索引，避免读取被先前交换污染的三角形
         dirty_indices: Set[int] = set()
@@ -3380,9 +3396,6 @@ class SurfaceMeshGenerator:
                 continue
 
             # 跳过任何涉及边界节点的边（保护边界不动）
-            if edge & boundary_hashes:
-                continue
-            # 双重保护：也用 node.idx 检查
             edge_ids = set(edge)
             if edge_ids & self._boundary_idx:
                 continue
@@ -3405,20 +3418,66 @@ class SurfaceMeshGenerator:
             c = (ids0 - common).pop()
             d = (ids1 - common).pop()
 
-            # 当前最小角
-            angles_before = self._triangle_min_angle(tri0.node_ids)
-            angles_before = min(angles_before, self._triangle_min_angle(tri1.node_ids))
+            # 凸性检查：c 和 d 必须在边 (a,b) 的异侧（在切平面内）
+            # 凹四边形的 Delaunay 交换会导致退化三角形
+            p_a = self._get_node_coords_by_idx(a)
+            p_b = self._get_node_coords_by_idx(b)
+            p_c = self._get_node_coords_by_idx(c)
+            p_d = self._get_node_coords_by_idx(d)
+            center = (p_a + p_b + p_c + p_d) / 4.0
+            try:
+                uv = self.geometry.project_point_to_surface(
+                    tuple(center), self.surface)
+                sn = np.array(self.geometry.get_surface_normal(
+                    uv[0], uv[1], self.surface))
+                sn = sn * getattr(self, '_normal_flip', 1.0)
+            except Exception:
+                sn = np.array([0.0, 0.0, 1.0])
+            edge_vec = p_b - p_a
+            perp = np.cross(edge_vec, sn)
+            perp_len = np.linalg.norm(perp)
+            if perp_len > 1e-12:
+                perp /= perp_len
+                if np.dot(p_c - p_a, perp) * np.dot(p_d - p_a, perp) >= 0:
+                    continue  # c 和 d 在同侧 → 凹四边形，跳过
 
-            # 交换后：a-c-d 和 b-c-d
+            # 构造切平面局部 2D 坐标系，使用 Delaunay 外接圆检测
+            e1 = edge_vec / np.linalg.norm(edge_vec)
+            e2 = np.cross(sn, e1)
+            # 投影到 2D
+            def _proj2d(pt, origin):
+                v = pt - origin
+                return np.array([np.dot(v, e1), np.dot(v, e2)])
+            origin = p_a
+            a2d = _proj2d(p_a, origin)
+            b2d = _proj2d(p_b, origin)
+            c2d = _proj2d(p_c, origin)
+            d2d = _proj2d(p_d, origin)
+
+            # Delaunay 外接圆检测：行列式符号依赖于三角形顶点绕序，
+            # 需要根据 (p1,p2,p3) 的 2D 方向判断
+            def _in_circumcircle(p1, p2, p3, pt):
+                m = np.array([
+                    [p1[0]*p1[0] + p1[1]*p1[1], p1[0], p1[1], 1.0],
+                    [p2[0]*p2[0] + p2[1]*p2[1], p2[0], p2[1], 1.0],
+                    [p3[0]*p3[0] + p3[1]*p3[1], p3[0], p3[1], 1.0],
+                    [pt[0]*pt[0] + pt[1]*pt[1], pt[0], pt[1], 1.0],
+                ])
+                det = np.linalg.det(m)
+                orient = (p2[0]-p1[0])*(p3[1]-p1[1]) - (p2[1]-p1[1])*(p3[0]-p1[0])
+                if orient > 0:
+                    return det > 1e-12   # CCW: inside if det > 0
+                else:
+                    return det < -1e-12  # CW: inside if det < 0
+
+            if not (_in_circumcircle(a2d, b2d, c2d, d2d) or
+                    _in_circumcircle(a2d, b2d, d2d, c2d)):
+                continue  # 不满足 Delaunay 准则，跳过
+
+            # 计算交换后的三角形（需要 _orient_ccw 确定绕序）
             new_ids0 = self._orient_ccw([a, c, d])
             new_ids1 = self._orient_ccw([b, c, d])
             if new_ids0 is None or new_ids1 is None:
-                continue
-
-            angles_after = self._triangle_min_angle(new_ids0)
-            angles_after = min(angles_after, self._triangle_min_angle(new_ids1))
-
-            if angles_after <= angles_before:
                 continue
 
             # 执行交换：创建新的 SurfaceTriangle
@@ -3503,6 +3562,16 @@ class SurfaceMeshGenerator:
             self.triangle_set.add(new_key1)
             dirty_indices.add(idx0)
             dirty_indices.add(idx1)
+
+            # 更新 _node_to_triangles 索引（与 _try_execute_swap 一致）
+            for old_tri_idx, old_tri in [(idx0, tri0), (idx1, tri1)]:
+                for nd in old_tri.nodes:
+                    self._node_to_triangles.get(nd.idx, set()).discard(old_tri_idx)
+            for new_tri_idx in [idx0, idx1]:
+                new_tri = self.triangle_list[new_tri_idx]
+                for nd in new_tri.nodes:
+                    self._node_to_triangles.setdefault(nd.idx, set()).add(new_tri_idx)
+
             swapped += 1
 
         return swapped
@@ -3519,7 +3588,6 @@ class SurfaceMeshGenerator:
             本轮交换次数
         """
         edge_map = self._build_edge_triangle_map()
-        boundary_hashes = self._boundary_hashes
         swapped = 0
         dirty_indices: Set[int] = set()
 
@@ -3531,8 +3599,6 @@ class SurfaceMeshGenerator:
             if idx0 in dirty_indices or idx1 in dirty_indices:
                 continue
 
-            if edge & boundary_hashes:
-                continue
             edge_ids = set(edge)
             if edge_ids & self._boundary_idx:
                 continue
