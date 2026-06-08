@@ -3081,13 +3081,8 @@ class SurfaceMeshGenerator:
         if len(self.triangle_list) < 2:
             return
 
-        # 构建完整的 node.idx → NodeElement3D 映射（确保包含所有节点）
-        self._node_idx_map: Dict[int, NodeElement3D] = {}
-        for node in self.node_list:
-            self._node_idx_map[node.idx] = node
-        for idx, node in self.node_dict.items():
-            if idx not in self._node_idx_map:
-                self._node_idx_map[idx] = node
+        # 构建完整的 node.idx → NodeElement3D 映射（仅从 node_list）
+        self._node_idx_map: Dict[int, NodeElement3D] = {n.idx: n for n in self.node_list}
 
         # 使用初始化时记录的边界节点 hash（此时 edge_count 已被三角形更新，不可靠）
         self._boundary_hashes = set(self._init_boundary_hashes)
@@ -3119,12 +3114,7 @@ class SurfaceMeshGenerator:
 
         # ---- 2. Laplacian 光滑 ----
         # 边交换可能改变三角形拓扑，重建 _node_idx_map 以确保完整
-        self._node_idx_map.clear()
-        for node in self.node_list:
-            self._node_idx_map[node.idx] = node
-        for idx, node in self.node_dict.items():
-            if idx not in self._node_idx_map:
-                self._node_idx_map[idx] = node
+        self._node_idx_map = {n.idx: n for n in self.node_list}
 
         for _ in range(smooth_iterations):
             self._laplacian_smooth_pass()
@@ -3749,10 +3739,20 @@ class SurfaceMeshGenerator:
             tri.bbox = tri._compute_bbox()
 
     def _get_node_coords_by_idx(self, idx: int) -> np.ndarray:
-        """通过 node.idx 获取节点坐标"""
+        """通过 node.idx 获取节点坐标（多重回退查找）"""
         node = self._node_idx_map.get(idx)
         if node is not None:
             return np.array(node.coords)
+        # 回退：node_dict 可能有 mixed key types，按 idx 查找
+        node = self.node_dict.get(idx)
+        if node is not None and getattr(node, 'idx', None) == idx:
+            self._node_idx_map[idx] = node
+            return np.array(node.coords)
+        # 更多回退...
+        for n in self.node_list:
+            if n.idx == idx:
+                self._node_idx_map[idx] = n
+                return np.array(n.coords)
         raise KeyError(f"Node idx={idx} not found in _node_idx_map")
 
     def _triangle_min_angle(self, node_ids: list) -> float:
