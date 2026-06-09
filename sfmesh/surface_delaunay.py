@@ -408,7 +408,7 @@ class SurfaceDelaunay:
             恢复的边数
         """
         recovered = 0
-        max_passes = 20  # 增加迭代次数
+        max_passes = 50  # 增加迭代次数以处理更多边
 
         for _pass in range(max_passes):
             missing = []
@@ -1098,6 +1098,39 @@ class SurfaceDelaunay:
         except Exception:
             return 1.0  # 回退到单位度量
 
+    def _remove_long_3d_edges(self, target_spacing: float,
+                                max_ratio: float = 2.5) -> int:
+        """
+        移除 3D 中边长过长的三角形（"桥状"三角形）。
+
+        在 UV 空间 Delaunay 三角剖分中，UV 邻接的节点在 3D 中可能相距
+        很远（鞍面等曲面）。这些跨面三角形会在 3D 中形成"桥"。
+
+        移除所有最长边超过 max_ratio * target_spacing 的三角形。
+        """
+        removed = 0
+        max_len = target_spacing * max_ratio
+        to_remove = set()
+
+        for tri in self.triangles:
+            if tri.removed:
+                continue
+            pts = tri.coords_3d
+            for k in range(3):
+                edge_len = float(np.linalg.norm(
+                    pts[(k + 1) % 3] - pts[k]))
+                if edge_len > max_len:
+                    to_remove.add(tri.idx)
+                    break
+
+        for ti in to_remove:
+            tri = self.triangles[ti]
+            if not tri.removed:
+                self._remove_triangle(tri)
+                removed += 1
+
+        return removed
+
     @staticmethod
     def _point_in_polygon_2d(uv: Tuple[float, float],
                              polygon: np.ndarray) -> bool:
@@ -1280,8 +1313,15 @@ class SurfaceDelaunay:
         # 10. 再次清理边界外三角形
         self._cleanup_outside_boundary(boundary_nodes)
 
-        # 11. 最终边界边检查与恢复
-        self._recover_boundary_edges(list(boundary_edges))
+        # 11. 最终边界边检查与恢复（多次迭代直到无进展）
+        for _ in range(10):
+            r = self._recover_boundary_edges(list(boundary_edges))
+            if r == 0:
+                break
+
+        # 注：UV 空间 Delaunay 在非等距参数化曲面上可能产生跨面
+        # "桥状"三角形（UV 邻接但 3D 相距远）。完整修复需要在节点
+        # 布置阶段使用 3D 测地距离而非 UV 距离。
         valid = [t for t in self.triangles if not t.removed]
         info(f"Delaunay 完成: {len(valid)} 三角形")
         return valid

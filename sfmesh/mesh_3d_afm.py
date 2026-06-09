@@ -145,14 +145,10 @@ class SurfaceMeshGenerator:
         from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
         from OCC.Core.GeomAbs import GeomAbs_Plane
         is_reversed = self.surface.Orientation() == TopAbs_REVERSED
-        # 始终使用 face-outward 法向：REVERSED 面法向相反，需要翻转
-        self._normal_flip = -1.0 if is_reversed else 1.0
-        # 平面 FORWARD 面：OCC 边方向与 REVERSED 面相反，需交换阵面节点顺序
-        # 使所有面的阵面遍历顺序一致，确保相同的网格推进行为。
-        # 仅在平面上应用（曲面法向变化主导网格推进，节点顺序影响可忽略）
         adaptor = BRepAdaptor_Surface(self.surface)
         is_planar = adaptor.GetType() == GeomAbs_Plane
         self._swap_front_nodes = (not is_reversed) and is_planar
+        self._normal_flip = -1.0 if (is_reversed or is_planar) else 1.0
 
         if self._connectors is not None:
             self.front_list = []
