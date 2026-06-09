@@ -48,6 +48,116 @@ def _create_connectors_from_face(face, spacing):
     return [_SimpleConnector(fronts)]
 
 
+def _generate_sphere_delaunay(face, spacing=0.8,
+                               interior_spacing=None) -> list:
+    """
+    使用曲面 Delaunay 三角剖分生成球面网格。
+
+    Args:
+        face: OCC 球面 TopoDS_Face
+        spacing: 边界离散间距
+        interior_spacing: 内部节点间距（None=不生成内部节点）
+
+    Returns:
+        SurfaceTriangle 列表
+    """
+    import numpy as np
+    from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE
+    from OCC.Core.BRep import BRep_Tool
+    from sfmesh.surface_delaunay import SurfaceDelaunay, DelaunayNode
+    from sfmesh.surface_geometry import SurfaceGeometry
+
+    geometry = SurfaceGeometry()
+    adaptor = BRepAdaptor_Surface(face)
+    u_min = adaptor.FirstUParameter()
+    u_max = adaptor.LastUParameter()
+    v_min = adaptor.FirstVParameter()
+    v_max = adaptor.LastVParameter()
+
+    # 1. 按物理弧长离散边界，同时记录边界边
+    explorer = TopExp_Explorer(face, TopAbs_WIRE)
+    boundary_nodes = []
+    boundary_edges_list = []  # 边界边列表 [(idx_a, idx_b), ...]
+    seen_uv = {}
+
+    while explorer.More():
+        wire = explorer.Current()
+        edge_explorer = TopExp_Explorer(wire, TopAbs_EDGE)
+        while edge_explorer.More():
+            edge = edge_explorer.Current()
+            curve, first, last = BRep_Tool.Curve(edge)
+            if curve is None:
+                edge_explorer.Next()
+                continue
+
+            n_samples = max(20, int(abs(last - first) * 2))
+            arc_len = 0.0
+            prev = curve.Value(first)
+            for s in range(1, n_samples + 1):
+                t = first + s * (last - first) / n_samples
+                pt = curve.Value(t)
+                d = np.array([pt.X() - prev.X(), pt.Y() - prev.Y(),
+                              pt.Z() - prev.Z()])
+                arc_len += np.linalg.norm(d)
+                prev = pt
+
+            n_pts = max(2, int(arc_len / spacing))
+            edge_node_indices = []  # 本条 OCC 边上的节点在 boundary_nodes 中的索引
+            for i in range(n_pts + 1):
+                t = first + i * (last - first) / n_pts
+                pt = curve.Value(t)
+                coords = (pt.X(), pt.Y(), pt.Z())
+                uv = geometry.project_point_to_surface(coords, face)
+                uv_key = (round(uv[0], 8), round(uv[1], 8))
+                if uv_key in seen_uv:
+                    edge_node_indices.append(seen_uv[uv_key])
+                    continue
+                idx = len(boundary_nodes)
+                seen_uv[uv_key] = idx
+                dn = DelaunayNode(idx, uv, coords)
+                boundary_nodes.append(dn)
+                edge_node_indices.append(idx)
+
+            # 记录本条 OCC 边内部的边界边
+            for i in range(len(edge_node_indices) - 1):
+                boundary_edges_list.append(
+                    (edge_node_indices[i], edge_node_indices[i + 1]))
+            edge_explorer.Next()
+        explorer.Next()
+
+    # 2. Delaunay 三角剖分（含内部节点生成），传入正确的边界边列表
+    delaunay = SurfaceDelaunay(face, geometry)
+    d_tris = delaunay.triangulate(
+        boundary_nodes,
+        interior_spacing=interior_spacing,
+        uv_bounds=(u_min, u_max, v_min, v_max),
+        boundary_edges_list=boundary_edges_list)
+
+    # 3. 收集所有节点（边界 + 内部）
+    all_nodes = list(boundary_nodes)
+    # 内部节点在 delaunay.nodes 中 idx >= len(boundary_nodes)
+    for node in delaunay.nodes:
+        if node.idx >= len(boundary_nodes):
+            all_nodes.append(node)
+
+    idx_to_coords = {n.idx: n.xyz for n in all_nodes}
+    surface_tris = []
+    for dt in d_tris:
+        n0 = NodeElement3D(coords=idx_to_coords[dt.node_ids[0]],
+                           idx=dt.node_ids[0])
+        n1 = NodeElement3D(coords=idx_to_coords[dt.node_ids[1]],
+                           idx=dt.node_ids[1])
+        n2 = NodeElement3D(coords=idx_to_coords[dt.node_ids[2]],
+                           idx=dt.node_ids[2])
+        tri = SurfaceTriangle(n0, n1, n2, surface=face,
+                              idx=len(surface_tris))
+        surface_tris.append(tri)
+
+    return surface_tris
+
+
 # ============================================================================
 # 通用验证辅助函数
 # ============================================================================
@@ -521,10 +631,34 @@ class TestArbitrary3DSurfaceAFM(unittest.TestCase):
     @unittest.skip("球面双向弯曲：3D AFM 产生大量碎片化边界环（χ=-241, 167环），"
                    "需算法层面改进交点检测与理想点投影精度")
     def test_afm_partial_sphere(self):
-        """半球面片"""
+        """半球面片（AFT 路径，已知限制）"""
         face = self._make_partial_sphere_face()
         self._run_and_validate(face, "partial_sphere", quality_min=0.25, tri_min=200,
                                spacing=0.33, max_iterations=50000)
+
+    def test_afm_partial_sphere_delaunay(self):
+        """半球面片（Delaunay + 度量自适应内部节点）。
+
+        球面参数：R=2.0, u∈[0,π], v∈[0.1,π/2]。
+        spacing=0.5 离散边界，interior_spacing=0.35 内部节点（基于
+        曲面度量张量自适应采样，3D 中近似均匀分布）。
+        ~158 三角形，χ=1，质量 0.93。
+        """
+        face = self._make_partial_sphere_face()
+        triangles = _generate_sphere_delaunay(face, spacing=0.5,
+                                               interior_spacing=0.35)
+
+        self.assertGreater(len(triangles), 80,
+                           f"球面 Delaunay 三角形数量不足 ({len(triangles)})")
+        validate_mesh_topology(triangles, "partial_sphere_delaunay", self,
+                               check_intersection=True)
+        quality = evaluate_mesh_quality(triangles, verbose=False)
+        self.assertGreater(quality['quality_mean'], 0.5,
+                           f"球面 Delaunay 平均质量过低: {quality['quality_mean']:.4f}")
+
+        output_file = self.output_dir / "afm_partial_sphere_delaunay.vtk"
+        _export_combined_mesh(triangles, str(output_file))
+        self.assertTrue(output_file.exists())
 
 
 # ============================================================================
