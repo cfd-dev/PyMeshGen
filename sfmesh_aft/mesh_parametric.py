@@ -10,9 +10,9 @@ from typing import List, Tuple
 
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
 
-from .surface_front import NodeElement3D, SurfaceTriangle
-from .surface_geometry import SurfaceGeometry
-from .occ_utils import _get_face_bbox, _is_point_in_face
+from sfmesh.surface_front import NodeElement3D, SurfaceTriangle
+from sfmesh.surface_geometry import SurfaceGeometry
+from sfmesh.occ_utils import _get_face_bbox, _is_point_in_face
 from utils.message import info
 
 

@@ -22,8 +22,8 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
-from sfmesh.shape_generators import _export_combined_mesh
+from sfmesh_aft.mesh_3d_afm import SurfaceMeshGenerator
+from sfmesh_aft.shape_generators import _export_combined_mesh
 from utils.geom_toolkit import check_triangle_intersection
 from utils.mesh_topology import evaluate_mesh_quality
 from sfmesh.surface_front import NodeElement3D, SurfaceTriangle, SurfaceFront, create_initial_fronts_from_surface

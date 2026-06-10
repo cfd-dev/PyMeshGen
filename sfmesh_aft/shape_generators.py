@@ -14,7 +14,7 @@ import math
 import numpy as np
 from typing import List, Dict, Tuple
 
-from .surface_front import SurfaceTriangle, NodeElement3D
+from sfmesh.surface_front import SurfaceTriangle, NodeElement3D
 from .mesh_2d_afm import (
     _mesh_face_2d_pipeline, _mesh_cylinder_unified,
     _create_fronts_from_2d_edges, _run_afm_2d_pipeline, _unstr_grid_to_3d,
@@ -544,7 +544,7 @@ def generate_surface_mesh_from_shape(
     Returns:
         生成的三角形列表
     """
-    from .occ_utils import (
+    from sfmesh.occ_utils import (
         _extract_faces, _is_cylinder_face, _extract_cylinder_params,
         _is_closed_surface, _is_planar_face, _is_disk_face, _extract_disk_params,
     )

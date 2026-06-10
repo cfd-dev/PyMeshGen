@@ -26,7 +26,7 @@ def generate_surface_mesh_from_domain(
     Returns:
         生成的 Unstructured_Grid 对象
     """
-    from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
+    from sfmesh_aft.mesh_3d_afm import SurfaceMeshGenerator
 
     generator = SurfaceMeshGenerator(
         surface=occ_face,

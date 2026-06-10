@@ -820,3 +820,100 @@ def pyramid_skewness(p1, p2, p3, p4, p5):
     skewness = max(0.0, min(1.0, skewness))
 
     return skewness
+
+
+# ---------------------------------------------------------------------------
+# SurfaceMeshQuality — 曲面三角形网格质量评估（向后兼容包装）
+# ---------------------------------------------------------------------------
+
+from utils.mesh_topology import evaluate_mesh_quality as _evaluate_mesh_quality
+from utils.geom_toolkit import triangle_min_angle_3d, triangle_quality_from_coords
+
+
+class SurfaceMeshQuality:
+    """曲面三角形网格质量评估，委托给 utils 模块"""
+
+    @staticmethod
+    def triangle_quality(triangle):
+        return triangle.quality
+
+    @staticmethod
+    def triangle_aspect_ratio(triangle):
+        p = [np.array(n.coords) for n in triangle.nodes]
+        a = np.linalg.norm(p[1] - p[0])
+        b = np.linalg.norm(p[2] - p[1])
+        c = np.linalg.norm(p[0] - p[2])
+        max_sq = max(a*a, b*b, c*c)
+        s = (a + b + c) / 2.0
+        area_sq = s * (s - a) * (s - b) * (s - c)
+        if area_sq <= 1e-30: return float('inf')
+        return max_sq / (4.0 * np.sqrt(3) * np.sqrt(area_sq))
+
+    @staticmethod
+    def triangle_min_angle(triangle):
+        p = [np.array(n.coords) for n in triangle.nodes]
+        return triangle_min_angle_3d(p[0], p[1], p[2])
+
+    @staticmethod
+    def triangle_max_angle(triangle):
+        p = [np.array(n.coords) for n in triangle.nodes]
+        return max(SurfaceMeshQuality._compute_angles(p[0], p[1], p[2]))
+
+    @staticmethod
+    def triangle_jacobian(triangle, uv_coords=None):
+        p = [np.array(n.coords) for n in triangle.nodes]
+        v1, v2 = p[1] - p[0], p[2] - p[0]
+        cross_norm = np.linalg.norm(np.cross(v1, v2))
+        max_sq = max(np.dot(v1, v1), np.dot(v2, v2), np.dot(p[2]-p[1], p[2]-p[1]))
+        if max_sq < 1e-30: return 0.0
+        return float(cross_norm / max_sq)
+
+    @staticmethod
+    def triangle_warpage(triangle):
+        p = [np.array(n.coords) for n in triangle.nodes]
+        face_n = np.cross(p[1] - p[0], p[2] - p[0])
+        fn = np.linalg.norm(face_n)
+        if fn < 1e-24: return 0.0
+        face_n /= fn
+        node_ns = []
+        for n in triangle.nodes:
+            nn = getattr(n, 'normal', None)
+            if nn is not None:
+                nv = np.array(nn, dtype=np.float64)
+                nv_n = np.linalg.norm(nv)
+                if nv_n > 1e-12: node_ns.append(nv / nv_n)
+        if not node_ns: return 0.0
+        devs = [np.degrees(np.arccos(abs(np.clip(np.dot(face_n, nn_), -1.0, 1.0)))) for nn_ in node_ns]
+        return float(np.mean(devs))
+
+    @staticmethod
+    def evaluate_triangle(triangle, quality_threshold=0.3,
+                          min_angle_threshold=15.0, max_angle_threshold=150.0):
+        q = SurfaceMeshQuality.triangle_quality(triangle)
+        ar = SurfaceMeshQuality.triangle_aspect_ratio(triangle)
+        ma = SurfaceMeshQuality.triangle_min_angle(triangle)
+        xa = SurfaceMeshQuality.triangle_max_angle(triangle)
+        j = SurfaceMeshQuality.triangle_jacobian(triangle)
+        w = SurfaceMeshQuality.triangle_warpage(triangle)
+        is_good = (q >= quality_threshold and ma >= min_angle_threshold
+                   and xa <= max_angle_threshold and w < 30.0)
+        return {'quality': q, 'aspect_ratio': ar, 'min_angle': ma,
+                'max_angle': xa, 'jacobian': j, 'warpage': w, 'is_good': is_good,
+                'area': triangle.area}
+
+    @staticmethod
+    def evaluate_mesh(triangles, verbose=True):
+        return _evaluate_mesh_quality(triangles, verbose=verbose)
+
+    @staticmethod
+    def _compute_angles(p1, p2, p3):
+        edges = np.array([p2 - p1, p3 - p2, p1 - p3])
+        norms = np.linalg.norm(edges, axis=1)
+        if np.any(norms < 1e-12): return (0.0, 0.0, 180.0)
+        cos_a = np.array([
+            np.dot(-edges[2], edges[0]) / (norms[2] * norms[0]),
+            np.dot(-edges[0], edges[1]) / (norms[0] * norms[1]),
+            np.dot(-edges[1], edges[2]) / (norms[1] * norms[2]),
+        ])
+        cos_a = np.clip(cos_a, -1.0, 1.0)
+        return tuple(np.degrees(np.arccos(cos_a)))

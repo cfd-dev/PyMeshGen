@@ -21,13 +21,13 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional, Any, Set
 from OCC.Core.TopoDS import TopoDS_Face
 
-from .surface_front import (
+from sfmesh.surface_front import (
     SurfaceFront,
     NodeElement3D,
     SurfaceTriangle,
     create_initial_fronts_from_surface
 )
-from .surface_geometry import SurfaceGeometry
+from sfmesh.surface_geometry import SurfaceGeometry
 from meshsize.surface_sizing import SurfaceSizingField
 from utils.mesh_topology import (
     validate_mesh_topology, evaluate_mesh_quality, build_edge_triangle_map)

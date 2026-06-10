@@ -10,7 +10,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from sfmesh.surface_front import create_initial_fronts_from_surface, SurfaceTriangle, NodeElement3D
-from sfmesh.mesh_3d_afm import SurfaceMeshGenerator
+from sfmesh_aft.mesh_3d_afm import SurfaceMeshGenerator
 from meshsize.surface_sizing import SurfaceSizingField
 from sfmesh.surface_geometry import SurfaceGeometry
 from delaunay3d.bowyer_watson import BowyerWatsonTetGen

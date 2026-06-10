@@ -17,8 +17,8 @@ if str(project_root) not in sys.path:
 from fileIO.occ_loader import ensure_occ_loaded
 ensure_occ_loaded()
 
-from sfmesh.shape_generators import PrimitiveMeshResult, generate_surface_mesh_from_shape, _export_combined_mesh
-from sfmesh.mesh_parametric import (
+from sfmesh_aft.shape_generators import PrimitiveMeshResult, generate_surface_mesh_from_shape, _export_combined_mesh
+from sfmesh_aft.mesh_parametric import (
     generate_sphere_mesh,
     generate_ellipsoid_mesh,
     _mesh_face_closed_surface,
