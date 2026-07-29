@@ -60,6 +60,10 @@ def _generate_boundary_layer_grid(parameters, front_heap, sizing_system, visual_
         param_obj=parameters,
         visual_obj=visual_obj,
     )
+    
+    # 启用 GNN 方向预测
+    adlayers.enable_gnn_direction(model_path="path/to/model.pth")
+    
     boundary_grid, updated_front_heap = adlayers.generate_elements()
     log_mesh_debug_summary(boundary_grid, "边界层网格")
     gui_log(gui_instance, "边界层网格生成完成")

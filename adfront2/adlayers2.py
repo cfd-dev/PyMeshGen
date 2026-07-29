@@ -78,9 +78,39 @@ class Adlayers2:
         # 多方向推进管理器
         self.multi_direction_manager = None
 
+        # GNN 方向预测器
+        self.gnn_predictor = None
+        self.use_gnn_direction = False
+
         self.init_parts_and_connectors_fronts()
         self.initialize_match_boundary()
         self.reorder_node_index_and_front()
+
+    def enable_gnn_direction(self, model_path=None):
+        """启用 GNN 方向预测
+
+        Args:
+            model_path: 模型文件路径，为 None 时自动查找
+        """
+        try:
+            from adfront2.gnn_direction_predictor import (
+                GNNDirectionPredictor,
+                find_trained_model,
+            )
+
+            if model_path is None:
+                model_path = find_trained_model()
+                if model_path is None:
+                    warning("[GNN] 未找到训练好的模型，保持传统模式")
+                    return False
+
+            self.gnn_predictor = GNNDirectionPredictor.from_checkpoint(model_path)
+            self.use_gnn_direction = True
+            info(f"[GNN] 已启用 GNN 方向预测: {model_path}")
+            return True
+        except Exception as e:
+            warning(f"[GNN] 启用失败: {e}，保持传统模式")
+            return False
 
     def init_parts_and_connectors_fronts(self):
         """初始化层推进部件和connectors的阵面列表"""
@@ -1229,9 +1259,13 @@ class Adlayers2:
         """准备几何信息"""
         self.compute_front_geometry()
 
-        self.compute_point_normals()
-
-        self.laplacian_smooth_normals()
+        if self.use_gnn_direction and self.gnn_predictor is not None:
+            # GNN 模式：使用训练好的模型预测方向
+            self.gnn_predictor.predict_and_assign(self.front_node_list)
+        else:
+            # 传统模式：阵面法向平均 + Laplacian 光滑
+            self.compute_point_normals()
+            self.laplacian_smooth_normals()
 
     def apply_multi_direction_workflow(self):
         """多方向推进流程：初始化、方向光滑、步长缩放"""
