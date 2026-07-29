@@ -1008,11 +1008,11 @@ class Adlayers2:
                     warning(f"node{node.idx}推进方向投影过小，保持默认推进步长。")
                     continue
 
-                # 节点推进距离
+                # 节点推进距离（取绝对值确保为正，方向由 _node_direction 控制）
                 node.marching_distance = (
                     self.current_step_size
                     * node.local_step_factor
-                    / mean_proj
+                    / abs(mean_proj)
                 )  # min(abs(proj1), abs(proj2))
 
         verbose("计算节点推进步长..., Done.\n")

@@ -60,9 +60,10 @@ def _generate_boundary_layer_grid(parameters, front_heap, sizing_system, visual_
         param_obj=parameters,
         visual_obj=visual_obj,
     )
-    
+
     # 启用 GNN 方向预测
-    adlayers.enable_gnn_direction(model_path="path/to/model.pth")
+    MODEL_PATH = r"neural\GNN_ALM\naca\models\0728\saved_model_GAT_L6_H64_Res_Drop0.0_LayerNorm_NoEdgeAttr_Heads8_LR0.01.pth"
+    adlayers.enable_gnn_direction(model_path=MODEL_PATH)
     
     boundary_grid, updated_front_heap = adlayers.generate_elements()
     log_mesh_debug_summary(boundary_grid, "边界层网格")

@@ -107,6 +107,9 @@ def add_elems_to_space_index_with_RTree(elems, space_index, elem_dict):
 
 def get_candidate_elements_id(base_elem, space_index, search_radius):
     """获取可能相交的阵面"""
+    # 确保搜索半径为正
+    search_radius = abs(search_radius)
+
     # 计算搜索区域
     x_min = base_elem.bbox[0] - search_radius
     x_max = base_elem.bbox[2] + search_radius
