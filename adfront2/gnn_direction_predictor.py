@@ -221,6 +221,30 @@ class GNNDirectionPredictor:
 
         return data
 
+    def _predict_with_data(self, node_list):
+        """内部方法：执行推理并返回 (prediction, data) 供复用
+
+        Args:
+            node_list: NodeElementALM 对象列表
+
+        Returns:
+            (prediction_tensor, data) 元组，失败时返回 (None, None)
+        """
+        from neural.GNN_ALM.nn_utils.tester import test_single_sample
+
+        n = len(node_list)
+        if n == 0:
+            return None, None
+
+        data = self._build_graph(node_list)
+        if data is None:
+            warning("[GNN] 图构建失败")
+            return None, None
+
+        data.y = torch.zeros((n, 2), dtype=torch.float)
+        prediction, _ = test_single_sample(self.model, data, self.device)
+        return prediction, data
+
     def predict(self, node_list):
         """预测节点推进方向
 
@@ -232,35 +256,36 @@ class GNNDirectionPredictor:
         Returns:
             预测方向列表 [(dx, dy), ...]，与 node_list 一一对应
         """
-        # 延迟导入，避免顶层依赖问题
-        from neural.GNN_ALM.nn_utils.tester import test_single_sample
-
         n = len(node_list)
-        if n == 0:
-            return []
-
-        data = self._build_graph(node_list)
-        if data is None:
-            warning("[GNN] 图构建失败，返回零向量")
+        prediction, _ = self._predict_with_data(node_list)
+        if prediction is None:
             return [(0.0, 0.0)] * n
 
-        # 复用 tester.py 中的 test_single_sample 逻辑
-        # 注意：推理时没有 ground truth，所以设置 dummy y
-        data.y = torch.zeros((n, 2), dtype=torch.float)
-        prediction, _ = test_single_sample(self.model, data, self.device)
         pred_np = prediction.cpu().numpy()
-
         return [(float(pred_np[i, 0]), float(pred_np[i, 1])) for i in range(n)]
 
-    def predict_and_assign(self, node_list):
+    def predict_and_assign(self, node_list, prediction=None, data=None):
         """预测并写回推进方向
 
         对多方向节点（marching_direction 为 list），保持已有方向扇不变。
+        支持传入预计算的 prediction 以避免重复推理。
 
         Args:
             node_list: NodeElementALM 对象列表
+            prediction: 预计算的预测结果（可选，为 None 时调用 _predict_with_data）
+            data: 预构建的图数据（可选，仅供 visualize_predictions 复用）
+
+        Returns:
+            (prediction_tensor, data) 元组，供可视化复用
         """
-        directions = self.predict(node_list)
+        if prediction is None:
+            prediction, data = self._predict_with_data(node_list)
+
+        if prediction is None:
+            return None, None
+
+        pred_np = prediction.cpu().numpy()
+        directions = [(float(pred_np[i, 0]), float(pred_np[i, 1])) for i in range(len(node_list))]
 
         assigned = 0
         skipped = 0
@@ -277,15 +302,22 @@ class GNNDirectionPredictor:
             f"{skipped} 个多方向节点保持原方向扇"
         )
 
-    def visualize_predictions(self, node_list, output_path, title="GNN Predicted Marching Directions"):
+        return prediction, data
+
+    def visualize_predictions(self, node_list, output_path,
+                              title="GNN Predicted Marching Directions",
+                              prediction=None, data=None):
         """可视化预测的推进方向
 
         复用 tester.py 中的 visualize_prediction 函数进行可视化。
+        支持传入预计算的 prediction 和 data 以避免重复推理。
 
         Args:
             node_list: NodeElementALM 对象列表
             output_path: 输出图片路径
             title: 图片标题
+            prediction: 预计算的预测结果（可选，为 None 时重新推理）
+            data: 预构建的图数据（可选，为 None 时重新构建）
         """
         # 延迟导入，避免顶层依赖问题
         from neural.GNN_ALM.nn_utils.tester import visualize_prediction, compute_metrics, test_single_sample
@@ -294,16 +326,17 @@ class GNNDirectionPredictor:
             warning("[GNN] 无可视化数据：节点列表为空")
             return
 
-        # 构建图数据
-        data = self._build_graph(node_list)
-        if data is None:
-            warning("[GNN] 图构建失败，无法可视化")
-            return
-
-        # 进行预测
-        n = len(node_list)
-        data.y = torch.zeros((n, 2), dtype=torch.float)  # dummy ground truth
-        prediction, ground_truth = test_single_sample(self.model, data, self.device)
+        # 如果未传入预计算结果，则重新构建图和推理
+        if data is None or prediction is None:
+            data = self._build_graph(node_list)
+            if data is None:
+                warning("[GNN] 图构建失败，无法可视化")
+                return
+            n = len(node_list)
+            data.y = torch.zeros((n, 2), dtype=torch.float)
+            prediction, ground_truth = test_single_sample(self.model, data, self.device)
+        else:
+            ground_truth = data.y if data.y is not None else torch.zeros_like(prediction)
 
         # 计算评估指标
         metrics = compute_metrics(prediction, ground_truth)
@@ -314,8 +347,8 @@ class GNNDirectionPredictor:
 
         # 复用 tester.py 中的 visualize_prediction 函数
         visualize_prediction(
-            data, 
-            prediction, 
+            data,
+            prediction,
             ground_truth,
             title=title,
             save_path=str(output_path),

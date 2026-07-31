@@ -47,7 +47,7 @@ class TestGNNLayerAdvancement(unittest.TestCase):
             print(f"\n[调试] 使用固定 CAS 文件: {fixed_cas.name}")
             return fixed_cas
 
-        # 回退到随机选择
+        # 随机选择
         all_cas_files = []
         for data_dir in self.data_dirs:
             if data_dir.exists():
@@ -105,7 +105,7 @@ class TestGNNLayerAdvancement(unittest.TestCase):
             })
 
         config = {
-            "debug_level": 3,
+            "debug_level": 0,
             "input_file": str(cas_file.resolve()),
             "output_file": str(output_file.resolve()),
             "sizing_decay": 1.45,

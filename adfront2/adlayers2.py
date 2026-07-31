@@ -1,3 +1,4 @@
+import time
 import numpy as np
 from math import pi, sqrt
 import heapq
@@ -107,6 +108,24 @@ class Adlayers2:
 
             self.gnn_predictor = GNNDirectionPredictor.from_checkpoint(model_path)
             self.use_gnn_direction = True
+
+            # CUDA warmup：用实际模型做一次推理，完成 GPU 上下文初始化和内核编译
+            import torch
+            from torch_geometric.data import Data as PyGData
+            if "cuda" in str(self.gnn_predictor.device):
+                info("[GNN] CUDA warmup...")
+                t0 = time.perf_counter()
+                device = self.gnn_predictor.device
+                # 构造一个小图做 warmup 推理
+                dummy_x = torch.randn(4, 2, device=device)
+                dummy_edge_index = torch.tensor([[0,1,2,3],[1,2,3,0]], dtype=torch.long, device=device)
+                dummy_edge_attr = torch.randn(4, 5, device=device)
+                dummy_data = PyGData(x=dummy_x, edge_index=dummy_edge_index, edge_attr=dummy_edge_attr)
+                dummy_data.y = torch.zeros(4, 2, device=device)
+                self.gnn_predictor.model(dummy_data)
+                torch.cuda.synchronize(device)
+                info(f"[GNN] CUDA warmup 完成, 耗时: {(time.perf_counter()-t0)*1000:.2f} ms")
+
             info(f"[GNN] 已启用 GNN 方向预测: {model_path}")
             return True
         except Exception as e:
@@ -200,6 +219,12 @@ class Adlayers2:
     def generate_elements(self):
         """生成边界层网格"""
         timer = TimeSpan()
+
+        # 耗时统计初始化
+        self.direction_time_total = 0.0   # 推进方向计算累计耗时
+        self.layer_time_total = 0.0       # 层推进累计耗时（不含方向计算）
+        self.direction_times_per_layer = []  # 每层方向计算耗时
+
         num_parts = len(self.part_params)
         for i, part in enumerate(self.part_params):
             if part.part_params.PRISM_SWITCH != "wall":
@@ -239,6 +264,23 @@ class Adlayers2:
                 info(f"  [{part.part_name}] 达到最大层数: {self.ilayer}层")
 
             info(f"  [{part.part_name}] 最终统计: 节点={self.num_nodes}, 单元={self.num_cells}\n")
+
+        # 输出耗时统计汇总
+        mode = "GNN" if self.use_gnn_direction else "传统"
+        total_layers = len(self.direction_times_per_layer)
+        info(f"\n{'='*60}")
+        info(f"推进方向计算耗时统计 (模式: {mode})")
+        info(f"{'='*60}")
+        for idx, dt in enumerate(self.direction_times_per_layer):
+            info(f"  第{idx+1}层: 方向计算 {dt*1000:.2f} ms")
+        if total_layers > 0:
+            avg_dir = self.direction_time_total / total_layers
+            info(f"  ------------------------------------")
+            info(f"  方向计算累计: {self.direction_time_total*1000:.2f} ms, "
+                 f"平均每层: {avg_dir*1000:.2f} ms")
+        info(f"  层推进累计(不含方向): {self.layer_time_total*1000:.2f} ms")
+        info(f"  层推进总耗时(含方向): {(self.direction_time_total + self.layer_time_total)*1000:.2f} ms")
+        info(f"{'='*60}\n")
 
         # 后处理：消除虚拟点
         if self.multi_direction and self.multi_direction_manager:
@@ -288,12 +330,14 @@ class Adlayers2:
         node_count = len(self.front_node_list)
         info(f"    阵面数={front_count}, 节点数={node_count}")
 
-        # 阶段1：基础几何与方向
+        # 阶段1：基础几何与方向（方向计算耗时在 prepare_geometry_info 内部统计）
         self.prepare_geometry_info()
 
         self.log_multi_direction_debug_summary()
 
-        # 阶段2：多方向流程（初始化→方向光滑→步长缩放）
+        # 阶段2 & 3：多方向流程 + 步长计算与推进（统计为层推进耗时）
+        t_layer_start = time.perf_counter()
+
         self.apply_multi_direction_workflow()
 
         # 阶段3：步长计算与推进
@@ -301,6 +345,9 @@ class Adlayers2:
         self.calculate_marching_distance()
 
         self.advancing_fronts()
+
+        t_layer_end = time.perf_counter()
+        self.layer_time_total += (t_layer_end - t_layer_start)
 
         new_cells = self.num_cells - start_cell_idx
         info(f"    本层新增单元数={new_cells}")
@@ -1281,23 +1328,33 @@ class Adlayers2:
         """准备几何信息"""
         self.compute_front_geometry()
 
-        if self.use_gnn_direction and self.gnn_predictor is not None:
-            # GNN 模式：使用训练好的模型预测方向
-            self.gnn_predictor.predict_and_assign(self.front_node_list)
+        # 统计推进方向计算耗时
+        t_dir_start = time.perf_counter()
 
-            # 可视化 GNN 预测的推进方向（每层保存一次）
-            if self.debug_level >= 1:
-                part_name = self.current_part.part_name if self.current_part else "unknown"
-                output_path = Path(f"debug_output/gnn_directions_{part_name}_layer{self.ilayer + 1}.png")
-                self.gnn_predictor.visualize_predictions(
-                    self.front_node_list,
-                    output_path,
-                    title=f"GNN Predicted Directions - {part_name} Layer {self.ilayer + 1}",
-                )
+        if self.use_gnn_direction and self.gnn_predictor is not None:
+            # GNN 模式：使用训练好的模型预测方向（仅推理一次）
+            prediction, data = self.gnn_predictor.predict_and_assign(self.front_node_list)
+
+            # 可视化 GNN 预测的推进方向（复用已有的 prediction，不重复推理）
+            # if self.debug_level >= 1 and prediction is not None:
+            #     part_name = self.current_part.part_name if self.current_part else "unknown"
+            #     output_path = Path(f"debug_output/gnn_directions_{part_name}_layer{self.ilayer + 1}.png")
+            #     self.gnn_predictor.visualize_predictions(
+            #         self.front_node_list,
+            #         output_path,
+            #         title=f"GNN Predicted Directions - {part_name} Layer {self.ilayer + 1}",
+            #         prediction=prediction,
+            #         data=data,
+            #     )
         else:
             # 传统模式：阵面法向平均 + Laplacian 光滑
             self.compute_point_normals()
             self.laplacian_smooth_normals()
+
+        t_dir_end = time.perf_counter()
+        dt_dir = t_dir_end - t_dir_start
+        self.direction_time_total += dt_dir
+        self.direction_times_per_layer.append(dt_dir)
 
     def apply_multi_direction_workflow(self):
         """多方向推进流程：初始化、方向光滑、步长缩放"""
