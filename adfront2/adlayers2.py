@@ -2,6 +2,7 @@ import numpy as np
 from math import pi, sqrt
 import heapq
 from collections import deque
+from pathlib import Path
 
 from utils.geom_toolkit import (
     min_distance_between_segments,
@@ -208,6 +209,8 @@ class Adlayers2:
             self.set_current_part(part)
 
             info(f"开始生成{part.part_name}的边界层网格...\n")
+            info(f"  配置: max_layers={self.max_layers}, first_height={self.first_height}, "
+                 f"growth_rate={self.growth_rate}, multi_direction={self.multi_direction}")
 
             self.ilayer = 0
 
@@ -216,13 +219,26 @@ class Adlayers2:
                 self.multi_direction_manager = MultiDirectionManager(self)
 
             while self.ilayer < self.max_layers and self.num_prism_cap > 0:
+                info(f"  [层{self.ilayer + 1}] 开始推进, num_prism_cap={self.num_prism_cap}")
                 self._process_single_layer(i, num_parts)
+                info(f"  [层{self.ilayer + 1}] 推进完成, num_prism_cap={self.num_prism_cap}, "
+                     f"总节点数={self.num_nodes}, 总单元数={self.num_cells}")
 
                 timer.show_to_console(
                     f"第{i+1}/{num_parts}个部件[{part.part_name}]：第{self.ilayer + 1}层推进完成."
                 )
 
                 self.ilayer += 1
+
+            if self.ilayer == 0:
+                warning(f"  [{part.part_name}] 未生成任何边界层！num_prism_cap={self.num_prism_cap}")
+            elif self.ilayer < self.max_layers:
+                info(f"  [{part.part_name}] 提前停止: num_prism_cap={self.num_prism_cap}, "
+                     f"已推进{self.ilayer}层")
+            else:
+                info(f"  [{part.part_name}] 达到最大层数: {self.ilayer}层")
+
+            info(f"  [{part.part_name}] 最终统计: 节点={self.num_nodes}, 单元={self.num_cells}\n")
 
         # 后处理：消除虚拟点
         if self.multi_direction and self.multi_direction_manager:
@@ -268,6 +284,9 @@ class Adlayers2:
             f"第{part_index+1}/{num_parts}个部件[{self.current_part.part_name}]：第{self.ilayer + 1}层推进中..."
         )
         start_cell_idx = self.num_cells
+        front_count = len(self.current_part.front_list)
+        node_count = len(self.front_node_list)
+        info(f"    阵面数={front_count}, 节点数={node_count}")
 
         # 阶段1：基础几何与方向
         self.prepare_geometry_info()
@@ -282,6 +301,9 @@ class Adlayers2:
         self.calculate_marching_distance()
 
         self.advancing_fronts()
+
+        new_cells = self.num_cells - start_cell_idx
+        info(f"    本层新增单元数={new_cells}")
 
         self.log_first_layer_cell_summary(start_cell_idx)
 
@@ -1262,6 +1284,16 @@ class Adlayers2:
         if self.use_gnn_direction and self.gnn_predictor is not None:
             # GNN 模式：使用训练好的模型预测方向
             self.gnn_predictor.predict_and_assign(self.front_node_list)
+
+            # 可视化 GNN 预测的推进方向（每层保存一次）
+            if self.debug_level >= 1:
+                part_name = self.current_part.part_name if self.current_part else "unknown"
+                output_path = Path(f"debug_output/gnn_directions_{part_name}_layer{self.ilayer + 1}.png")
+                self.gnn_predictor.visualize_predictions(
+                    self.front_node_list,
+                    output_path,
+                    title=f"GNN Predicted Directions - {part_name} Layer {self.ilayer + 1}",
+                )
         else:
             # 传统模式：阵面法向平均 + Laplacian 光滑
             self.compute_point_normals()

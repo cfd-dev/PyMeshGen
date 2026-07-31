@@ -41,15 +41,22 @@ class TestGNNLayerAdvancement(unittest.TestCase):
 
     def _get_random_cas_file(self):
         """从数据目录中随机选择一个 .cas 文件"""
+        # 固定使用 goe513_N75.cas 用于调试下表面边界层问题
+        fixed_cas = project_root / "neural" / "GNN_ALM" / "sample_grids" / "uiuc_airfoil_database" / "data" / "goe513_N75.cas"
+        if fixed_cas.exists():
+            print(f"\n[调试] 使用固定 CAS 文件: {fixed_cas.name}")
+            return fixed_cas
+
+        # 回退到随机选择
         all_cas_files = []
         for data_dir in self.data_dirs:
             if data_dir.exists():
                 cas_files = list(data_dir.glob("*.cas"))
                 all_cas_files.extend(cas_files)
-        
+
         if not all_cas_files:
             self.skipTest("未找到任何 .cas 文件，请确保数据目录存在")
-        
+
         return random.choice(all_cas_files)
 
     def _get_boundary_part_names(self, cas_file):
@@ -98,7 +105,7 @@ class TestGNNLayerAdvancement(unittest.TestCase):
             })
 
         config = {
-            "debug_level": 0,
+            "debug_level": 3,
             "input_file": str(cas_file.resolve()),
             "output_file": str(output_file.resolve()),
             "sizing_decay": 1.45,
