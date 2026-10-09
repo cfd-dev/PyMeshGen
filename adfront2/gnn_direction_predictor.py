@@ -91,11 +91,10 @@ class GNNDirectionPredictor:
 
         # === 先归一化坐标（与 test_cas_file.py 的 extract_ground_truth 一致）===
         if self.norm_params:
-            x_min = self.norm_params['x_min']
-            y_min = self.norm_params['y_min']
-            coord_scale = self.norm_params.get('data_range', 1.0) or 1.0
+            from neural.GNN_ALM.nn_utils.data_utils import normalize_xy
+
             coords = [
-                np.array([(c[0] - x_min) / coord_scale, (c[1] - y_min) / coord_scale])
+                np.array(normalize_xy(c[0], c[1], self.norm_params))
                 for c in raw_coords
             ]
         else:
